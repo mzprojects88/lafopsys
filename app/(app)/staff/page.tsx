@@ -4,6 +4,7 @@ import { StatusBadge } from "@/components/patterns/status-badge";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { ClockWidget } from "@/components/modules/staff/clock-widget";
+import { ClockInRequiredDialog } from "@/components/modules/staff/clock-in-required-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { staff, shifts, timeEntries } from "@/lib/mock-data";
 import { TODAY_ISO } from "@/lib/utils/seeded-random";
@@ -20,6 +21,7 @@ export default function StaffPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-6">
+      <ClockInRequiredDialog />
       <PageHeader
         title="Staff & Timekeeping"
         description="Clock in/out, today's roster, and shift schedule."

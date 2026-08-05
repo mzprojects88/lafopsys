@@ -1,17 +1,14 @@
 "use client";
 
-import * as React from "react";
 import { Clock, LogIn, LogOut, CalendarCheck, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { IconCircle } from "@/components/patterns/icon-circle";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
-import { staff, shifts, timeEntries } from "@/lib/mock-data";
-import { useLocalCollection } from "@/lib/store/use-mock-store";
-import { useRole } from "@/lib/rbac/use-role";
+import { shifts } from "@/lib/mock-data";
+import { useClockStatus } from "@/lib/hooks/use-clock-status";
 import { TODAY_ISO } from "@/lib/utils/seeded-random";
-import type { TimeEntry } from "@/lib/types/staff";
 import { EmptyState } from "@/components/patterns/empty-state";
 
 function nowLabel() {
@@ -19,10 +16,7 @@ function nowLabel() {
 }
 
 export function ClockWidget() {
-  const { user } = useRole();
-  const { items, updateItem, addItem } = useLocalCollection<TimeEntry>("time-entries", timeEntries);
-
-  const me = staff.find((s) => `${s.firstName} ${s.lastName}` === user);
+  const { me, todayEntry, clockedIn, clockIn, clockOut } = useClockStatus();
 
   if (!me) {
     return (
@@ -33,31 +27,15 @@ export function ClockWidget() {
     );
   }
 
-  const todayEntry = items.find((t) => t.staffId === me.id && t.date === TODAY_ISO);
-  const clockedIn = !!todayEntry?.clockIn && !todayEntry?.clockOut;
   const todayShift = shifts.find((s) => s.staffId === me.id && s.date === TODAY_ISO);
 
   function handleClockIn() {
-    if (!todayEntry) {
-      addItem({
-        id: `time-${me!.id}-${TODAY_ISO}`,
-        staffId: me!.id,
-        date: TODAY_ISO,
-        clockIn: nowLabel(),
-        breakMinutes: 0,
-        flag: "on_time",
-        overtimeMinutes: 0,
-        gpsStamped: true,
-      });
-    } else {
-      updateItem(todayEntry.id, { clockIn: nowLabel(), clockOut: undefined });
-    }
+    clockIn();
     toast.success(`Clocked in at ${nowLabel()}`);
   }
 
   function handleClockOut() {
-    if (!todayEntry) return;
-    updateItem(todayEntry.id, { clockOut: nowLabel() });
+    clockOut();
     toast.success(`Clocked out at ${nowLabel()}`);
   }
 

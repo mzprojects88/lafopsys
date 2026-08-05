@@ -17,6 +17,7 @@ import {
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { NotificationCenter } from "@/components/layout/notification-center";
+import { ClockStatusBadge } from "@/components/layout/clock-status-badge";
 import { useRole } from "@/lib/rbac/use-role";
 import { ROLES } from "@/lib/types/common";
 
@@ -49,6 +50,7 @@ export function Topbar({ onSearchClick }: { onSearchClick: () => void }) {
         <Button variant="ghost" size="icon" className="rounded-full sm:hidden" onClick={onSearchClick}>
           <Search className="size-4" />
         </Button>
+        <ClockStatusBadge />
         <ThemeToggle />
         <NotificationCenter />
         <DropdownMenu>
