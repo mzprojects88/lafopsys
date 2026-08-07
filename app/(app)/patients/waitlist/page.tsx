@@ -67,7 +67,7 @@ export default function WaitlistPage() {
                         toast.success(`${r.patientName} approved from waitlist`);
                       }}
                     >
-                      Admit
+                      Approve
                     </Button>
                   </div>
                 </CardContent>

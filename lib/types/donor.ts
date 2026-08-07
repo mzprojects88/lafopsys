@@ -25,6 +25,7 @@ export interface Donation {
   receivingEntity: Entity;
   kind: DonationKind;
   itemDescription?: string;
+  itemType?: string;
   quantity?: number;
   uomId?: string;
   unitValue?: number;

@@ -58,7 +58,7 @@ export function CommandPalette({ externalOpen, onExternalOpenChange }: CommandPa
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Patients">
-          {patients.slice(0, 8).map((p) => (
+          {patients.map((p) => (
             <CommandItem key={p.id} onSelect={() => go(`/patients/${p.id}`)}>
               <span>{p.firstName} {p.lastName}</span>
               <span className="ml-auto text-xs text-muted-foreground">{p.patientNumber}</span>
@@ -67,7 +67,7 @@ export function CommandPalette({ externalOpen, onExternalOpenChange }: CommandPa
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Donors">
-          {donors.slice(0, 6).map((d) => (
+          {donors.map((d) => (
             <CommandItem key={d.id} onSelect={() => go(`/donors/${d.id}`)}>
               <span>{d.name}</span>
             </CommandItem>

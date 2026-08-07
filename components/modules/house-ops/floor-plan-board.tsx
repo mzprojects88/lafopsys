@@ -2,8 +2,8 @@
 
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { rooms, units, bedPositions, stays, patients } from "@/lib/mock-data";
-import type { UnitStatus } from "@/lib/types/house-ops";
+import type { BedPosition, Room, Unit, UnitStatus } from "@/lib/types/house-ops";
+import type { Patient, Stay } from "@/lib/types/patient";
 
 const UNIT_STATUS_CLASSES: Record<UnitStatus, string> = {
   available: "border-emerald-300 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10",
@@ -12,7 +12,15 @@ const UNIT_STATUS_CLASSES: Record<UnitStatus, string> = {
   blocked: "border-red-300 bg-red-50 dark:border-red-500/30 dark:bg-red-500/10",
 };
 
-export function FloorPlanBoard() {
+interface FloorPlanBoardProps {
+  rooms: Room[];
+  units: Unit[];
+  bedPositions: BedPosition[];
+  stays: Stay[];
+  patients: Patient[];
+}
+
+export function FloorPlanBoard({ rooms, units, bedPositions, stays, patients }: FloorPlanBoardProps) {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">

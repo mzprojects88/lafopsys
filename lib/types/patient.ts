@@ -11,17 +11,26 @@ export interface Patient {
   patientNumber: string;
   firstName: string;
   lastName: string;
-  birthDate: string;
+  /** Missing for a small number of real records with corrupted source data -- don't fabricate one. */
+  birthDate?: string;
   sex: "M" | "F";
   provinceId: string;
-  cityId: string;
+  cityId?: string;
+  /** Literal address text, used when the address can't be resolved to a curated `City`. */
+  rawAddress?: string;
   diagnosisIds: string[];
   treatmentPhaseId: string;
   status: PatientStatus;
-  isolationRequired: boolean;
-  photoConsentGranted: boolean;
+  /** Undefined means unknown, not "no" -- don't default it. */
+  isolationRequired?: boolean;
+  /** Undefined means unknown, not "not granted" -- don't default it. */
+  photoConsentGranted?: boolean;
   carerIds: string[];
   admittedAt: string;
+  maritalStatus?: string;
+  remarks?: string;
+  /** Hospital that referred this patient — set for both real historical data and portal-admitted referrals. */
+  referringHospitalId?: string;
 }
 
 export interface Carer {
@@ -34,7 +43,7 @@ export interface Carer {
   effectiveTo?: string;
 }
 
-export type ReferralStatus = "submitted" | "approved" | "waitlisted" | "declined";
+export type ReferralStatus = "submitted" | "approved" | "waitlisted" | "declined" | "admitted";
 
 export interface Referral {
   id: string;
@@ -45,6 +54,23 @@ export interface Referral {
   date: string;
   status: ReferralStatus;
   reason?: string;
+  /** Set when submitted through the partner hospital portal (app/partners) rather than created internally. */
+  hospitalId?: string;
+  submittedByNurseId?: string;
+  patientFirstName?: string;
+  patientLastName?: string;
+  patientBirthDate?: string;
+  patientSex?: "M" | "F";
+  diagnosisIds?: string[];
+  treatmentPhaseId?: string;
+  provinceId?: string;
+  rawAddress?: string;
+  carerName?: string;
+  carerRelationship?: string;
+  carerMobile?: string;
+  /** Set by the "Confirm Arrival & Admit" action once the family physically arrives at LAF House. */
+  admittedPatientId?: string;
+  admittedAt?: string;
 }
 
 export type StayStatus = "in_house" | "checked_out" | "overdue";

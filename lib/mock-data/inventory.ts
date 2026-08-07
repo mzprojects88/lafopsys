@@ -1,5 +1,6 @@
 import type { InventoryItem, InventoryLot, InventoryTxn, StorageLocation } from "@/lib/types/inventory";
 import { makeRng } from "@/lib/utils/seeded-random";
+import { donors } from "@/lib/mock-data/donors";
 
 const rng = makeRng(404);
 
@@ -36,7 +37,7 @@ export const inventoryItems: InventoryItem[] = [
   { id: "item-detergent", category: "Household", name: "Laundry Detergent", defaultUomId: "uom-pack", perishable: false, reorderPoint: 4, reorderQty: 10 },
 ];
 
-const donorIdPool = Array.from({ length: 15 }).map((_, i) => `donor-${i + 1}`);
+const donorIdPool = donors.map((d) => d.id);
 
 export const inventoryLots: InventoryLot[] = inventoryItems.flatMap((item, itemIdx) =>
   Array.from({ length: rng.int(2, 4) }).map((_, i) => {

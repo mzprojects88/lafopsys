@@ -3,10 +3,11 @@
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/patterns/page-header";
 import { RosterCalendar, type CalendarEvent } from "@/components/patterns/roster-calendar";
-import { patients, appointments } from "@/lib/mock-data";
+import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 
 export default function AppointmentsPage() {
   const router = useRouter();
+  const { patients, appointments } = usePatientsData();
 
   const events: CalendarEvent[] = appointments.map((a) => {
     const patient = patients.find((p) => p.id === a.patientId);

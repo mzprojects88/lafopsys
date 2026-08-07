@@ -2,17 +2,18 @@
 
 import type { ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
-import { Users, UserCheck, CalendarPlus, KanbanSquare, ListOrdered, Share2, CalendarClock, Bus } from "lucide-react";
+import { Users, UserCheck, CalendarPlus, KanbanSquare, ListOrdered, Share2, CalendarClock, Bus, BedDouble } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
-import { patients, cities, diagnoses } from "@/lib/mock-data";
+import { cities, diagnoses } from "@/lib/mock-data";
 import type { Patient } from "@/lib/types/patient";
 import { computeAge } from "@/lib/utils/age";
 import { TODAY_ISO } from "@/lib/utils/seeded-random";
+import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 
 const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/patients/today", label: "Today Board", icon: KanbanSquare, color: "blue" },
@@ -20,6 +21,7 @@ const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/patients/referrals", label: "Referrals", icon: Share2, color: "purple" },
   { href: "/patients/appointments", label: "Appointments", icon: CalendarClock, color: "cyan" },
   { href: "/patients/manifest", label: "Manifest", icon: Bus, color: "green" },
+  { href: "/patients/stays", label: "Stay History", icon: BedDouble, color: "indigo" },
 ];
 
 const columns: ColumnDef<Patient>[] = [
@@ -41,7 +43,7 @@ const columns: ColumnDef<Patient>[] = [
   {
     id: "age",
     header: "Age",
-    accessorFn: (p) => computeAge(p.birthDate),
+    accessorFn: (p) => (p.birthDate ? computeAge(p.birthDate) : "—"),
   },
   { accessorKey: "sex", header: "Sex" },
   {
@@ -56,7 +58,8 @@ const columns: ColumnDef<Patient>[] = [
   {
     id: "city",
     header: "City",
-    cell: ({ row }) => cities.find((c) => c.id === row.original.cityId)?.name ?? "—",
+    cell: ({ row }) =>
+      cities.find((c) => c.id === row.original.cityId)?.name ?? row.original.rawAddress ?? "—",
   },
   {
     accessorKey: "status",
@@ -67,6 +70,7 @@ const columns: ColumnDef<Patient>[] = [
 
 export default function PatientsPage() {
   const router = useRouter();
+  const { patients } = usePatientsData();
   const ongoingCount = patients.filter((p) => p.status === "ongoing").length;
   const admittedThisMonth = patients.filter(
     (p) => p.admittedAt.slice(0, 7) === TODAY_ISO.slice(0, 7)

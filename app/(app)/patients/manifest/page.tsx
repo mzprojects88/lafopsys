@@ -1,15 +1,19 @@
+"use client";
+
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { patients, appointments, carers } from "@/lib/mock-data";
+import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { makeRng } from "@/lib/utils/seeded-random";
 
 const rng = makeRng(808);
 const tomorrow = rng.daysFromNow(1);
 
 export default function ManifestPage() {
+  const { patients, appointments, carers } = usePatientsData();
+
   const manifestRows = appointments
     .filter((a) => a.date === tomorrow && a.needsTransport)
     .map((a) => {

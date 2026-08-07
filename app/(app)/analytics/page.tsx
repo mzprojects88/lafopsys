@@ -39,7 +39,7 @@ export default function AnalyticsPage() {
   const sexSplit = { M: patients.filter((p) => p.sex === "M").length, F: patients.filter((p) => p.sex === "F").length };
   const ageBrackets = AGE_ORDER.map((bracket) => ({
     bracket,
-    count: patients.filter((p) => ageBracket(computeAge(p.birthDate)) === bracket).length,
+    count: patients.filter((p) => p.birthDate && ageBracket(computeAge(p.birthDate)) === bracket).length,
   }));
   const illnessBreakdown = ["cancer", "thalassemia", "other"].map((cat) => ({
     category: cat,

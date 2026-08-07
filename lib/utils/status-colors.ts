@@ -33,6 +33,7 @@ export const STATUS_DOMAIN_MAP: Record<string, Record<string, StatusTone>> = {
     approved: "positive",
     waitlisted: "warning",
     declined: "negative",
+    admitted: "info",
   },
   unit: {
     available: "positive",

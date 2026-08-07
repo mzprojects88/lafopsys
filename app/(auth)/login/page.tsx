@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { User, ShieldCheck, ArrowRight } from "lucide-react";
@@ -93,6 +94,9 @@ export default function LoginPage() {
             <div className="h-px flex-1 bg-border" />
           </div>
           <span className="text-xs text-muted-foreground">Secure internal access</span>
+          <Link href="/partners/login" className="text-xs text-primary hover:underline">
+            Partner hospital? Sign in here
+          </Link>
         </div>
       </CardContent>
     </Card>

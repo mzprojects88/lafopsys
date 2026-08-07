@@ -33,6 +33,9 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# real operational data synced from ../DATA/clean -- never commit real PII
+/lib/mock-data/real/
+
 # vercel
 .vercel
 

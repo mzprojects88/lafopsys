@@ -9,6 +9,7 @@ import type {
   Unit,
 } from "@/lib/types/house-ops";
 import { makeRng } from "@/lib/utils/seeded-random";
+import realPatients from "@/lib/mock-data/real/patients.json";
 
 const rng = makeRng(303);
 
@@ -44,7 +45,9 @@ export const bedPositions: BedPosition[] = units.flatMap((u) =>
   }))
 );
 
-const patientIdPool = Array.from({ length: 24 }).map((_, i) => `pt-${i + 1}`);
+// Sourced directly from the real patients JSON (not from ./patients.ts) to avoid
+// a circular import -- patients.ts already imports `bedPositions` from this file.
+const patientIdPool = (realPatients as { id: string }[]).map((p) => p.id);
 
 export const trips: Trip[] = Array.from({ length: 18 }).map((_, i) => {
   const dep = rng.pick(["06:30", "07:00", "08:00", "13:00"]);
