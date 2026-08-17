@@ -1,8 +1,12 @@
+"use client";
+
 import { PageHeader } from "@/components/patterns/page-header";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { Users, Home, Share2, Percent, Car, Utensils, LayoutGrid, HeartPulse, Sparkles } from "lucide-react";
-import { censusHistory, trips, mealServices } from "@/lib/mock-data";
+import { useCensusData } from "@/lib/hooks/use-census-collection";
+import { useTripsData } from "@/lib/hooks/use-trips-collection";
+import { useMealServicesData } from "@/lib/hooks/use-meal-services-collection";
 import { TODAY_ISO } from "@/lib/utils/seeded-random";
 
 const SUB_NAV: ModuleSubNavItem[] = [
@@ -14,11 +18,16 @@ const SUB_NAV: ModuleSubNavItem[] = [
 ];
 
 export default function HouseOpsPage() {
-  const today = censusHistory.find((c) => c.date === TODAY_ISO) ?? censusHistory[censusHistory.length - 1];
-  const yesterday = censusHistory[censusHistory.length - 2];
-  const utilization = today.unitsOccupied !== undefined ? Math.round((today.unitsOccupied / today.totalUnits) * 100) : undefined;
+  const { history, loading } = useCensusData();
+  const { trips } = useTripsData();
+  const { meals } = useMealServicesData();
+
+  const today = history.find((c) => c.date === TODAY_ISO) ?? history[history.length - 1];
+  const yesterday = today ? history[history.findIndex((c) => c.date === today.date) - 1] : undefined;
+  const utilization =
+    today?.unitsOccupied !== undefined && today ? Math.round((today.unitsOccupied / today.totalUnits) * 100) : undefined;
   const todaysTrips = trips.filter((t) => t.date === TODAY_ISO).length;
-  const todaysMeals = mealServices.filter((m) => m.date === TODAY_ISO).length;
+  const todaysMeals = meals.filter((m) => m.date === TODAY_ISO).length;
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -31,19 +40,23 @@ export default function HouseOpsPage() {
       <KpiGrid>
         <KpiCard
           label="In-House Now"
-          value={today.inHouse}
+          value={today?.inHouse ?? (loading ? "…" : "—")}
           icon={Users}
           color="orange"
-          deltaPct={yesterday ? Math.round(((today.inHouse - yesterday.inHouse) / yesterday.inHouse) * 100) : undefined}
-          deltaLabel="vs yesterday"
+          deltaPct={
+            today && yesterday && yesterday.inHouse > 0
+              ? Math.round(((today.inHouse - yesterday.inHouse) / yesterday.inHouse) * 100)
+              : undefined
+          }
+          deltaLabel="vs previous day on record"
         />
         <KpiCard
           label="Units Occupied"
-          value={today.unitsOccupied !== undefined ? `${today.unitsOccupied} / ${today.totalUnits}` : "—"}
+          value={today?.unitsOccupied !== undefined ? `${today.unitsOccupied} / ${today.totalUnits}` : "—"}
           icon={Home}
           color="blue"
         />
-        <KpiCard label="Units Shared" value={today.unitsShared ?? "—"} icon={Share2} color="purple" />
+        <KpiCard label="Units Shared" value={today?.unitsShared ?? "—"} icon={Share2} color="purple" />
         <KpiCard label="Utilization" value={utilization !== undefined ? `${utilization}%` : "—"} icon={Percent} color="amber" />
         <KpiCard label="Trips Today" value={todaysTrips} icon={Car} color="cyan" />
         <KpiCard label="Meal Services Today" value={todaysMeals} icon={Utensils} color="green" />

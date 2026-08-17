@@ -4,7 +4,8 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { Badge } from "@/components/ui/badge";
-import { careCartLogs, volunteers } from "@/lib/mock-data";
+import { volunteers } from "@/lib/mock-data";
+import { useCareCartData } from "@/lib/hooks/use-care-cart-collection";
 import type { CareCartLog } from "@/lib/types/house-ops";
 import { formatDate } from "@/lib/utils/date";
 
@@ -34,13 +35,14 @@ const columns: ColumnDef<CareCartLog>[] = [
 ];
 
 export default function CareCartPage() {
+  const { logs } = useCareCartData();
   return (
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader
         title="Care Cart"
         description="Service log by time slot — 10:00 / 12:00 / 14:00 / 17:00 ER round (real ledger data logs 10:00 & 14:00 as one combined window)."
       />
-      <DataTable columns={columns} data={careCartLogs} searchPlaceholder="Search items served…" />
+      <DataTable columns={columns} data={logs} searchPlaceholder="Search items served…" />
     </div>
   );
 }

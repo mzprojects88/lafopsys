@@ -33,8 +33,8 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } f
 import { useRole } from "@/lib/rbac/use-role";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
+import { useCensusData } from "@/lib/hooks/use-census-collection";
 import {
-  censusHistory,
   donations,
   cashEntries,
   inventoryItems,
@@ -52,15 +52,17 @@ export default function DashboardPage() {
   const { role } = useRole();
   const { referrals } = useReferralsData();
   const { patients, stays } = usePatientsData();
+  const { history: censusHistory } = useCensusData();
 
   const today = censusHistory[censusHistory.length - 1];
+  const inHouseNow = today?.inHouse ?? 0;
   const pendingApprovals = timesheetApprovals.filter((a) => a.status === "pending").length;
   const pendingReferrals = referrals.filter((r) => r.status === "submitted").length;
   const expiringSoon = inventoryLots.filter((l) => l.expiryDate && daysUntil(l.expiryDate) <= 14 && daysUntil(l.expiryDate) >= 0).length;
   const cashIn = cashEntries.filter((e) => e.direction === "inflow").reduce((s, e) => s + e.amount, 0);
 
-  const occupiedPct = Math.round((today.inHouse / HOUSE_CAPACITY) * 100);
-  const availableSlots = Math.max(0, HOUSE_CAPACITY - today.inHouse);
+  const occupiedPct = Math.round((inHouseNow / HOUSE_CAPACITY) * 100);
+  const availableSlots = Math.max(0, HOUSE_CAPACITY - inHouseNow);
 
   const goodStock = inventoryItems.filter((item) => {
     const stock = inventoryLots.filter((l) => l.itemId === item.id).reduce((s, l) => s + l.quantity, 0);
@@ -153,7 +155,7 @@ export default function DashboardPage() {
 
       <KpiGrid>
         {(role === "admin" || role === "social_worker" || role === "house_staff" || role === "driver") && (
-          <KpiCard label="In-House Now" value={today.inHouse} sublabel="Residents" icon={Users} color="blue" />
+          <KpiCard label="In-House Now" value={inHouseNow} sublabel="Residents" icon={Users} color="blue" />
         )}
         {(role === "admin" || role === "social_worker") && (
           <KpiCard label="Enrolled Patients" value={patients.length} sublabel="Total" icon={UserCheck} color="cyan" />
@@ -242,7 +244,7 @@ export default function DashboardPage() {
           <CardContent className="flex items-center gap-6">
             <OccupancyRing percent={occupiedPct} />
             <div className="flex flex-col gap-2 text-sm">
-              <LegendRow color="bg-blue-500" label="In-House Now" value={today.inHouse} />
+              <LegendRow color="bg-blue-500" label="In-House Now" value={inHouseNow} />
               <LegendRow color="bg-blue-200" label="Available Slots" value={availableSlots} />
               <LegendRow color="bg-slate-300" label="Total Capacity" value={HOUSE_CAPACITY} />
             </div>
