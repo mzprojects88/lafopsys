@@ -16,7 +16,12 @@ const columns: ColumnDef<CareCartLog>[] = [
   {
     accessorKey: "source",
     header: "Source",
-    cell: ({ row }) => <Badge variant="secondary">{row.original.source}</Badge>,
+    cell: ({ row }) =>
+      row.original.source ? (
+        <Badge variant="secondary">{row.original.source}</Badge>
+      ) : (
+        <span className="text-xs text-muted-foreground">Unknown</span>
+      ),
   },
   {
     id: "volunteer",
@@ -33,7 +38,7 @@ export default function CareCartPage() {
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader
         title="Care Cart"
-        description="Service log by time slot — 10:00 / 12:00 / 14:00 / 17:00 ER round."
+        description="Service log by time slot — 10:00 / 12:00 / 14:00 / 17:00 ER round (real ledger data logs 10:00 & 14:00 as one combined window)."
       />
       <DataTable columns={columns} data={careCartLogs} searchPlaceholder="Search items served…" />
     </div>

@@ -18,7 +18,19 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCE_DIR = resolve(REPO_ROOT, "..", "DATA", "clean");
 const DEST_DIR = join(REPO_ROOT, "lib", "mock-data", "real");
 
-const FILES = ["patients.json", "carers.json", "donors.json", "donations.json"];
+const FILES = [
+  "patients.json",
+  "carers.json",
+  "donors.json",
+  "donations.json",
+  "cash-entries.json",
+  "patients-dswd-delta.json",
+  "metric-snapshots.json",
+  "meal-services.json",
+  "care-cart-logs.json",
+  "census-history.json",
+  "calendar-events.json",
+];
 
 mkdirSync(DEST_DIR, { recursive: true });
 

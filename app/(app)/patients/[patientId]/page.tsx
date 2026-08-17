@@ -25,11 +25,14 @@ import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 
 export default function PatientDetailPage({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = use(params);
-  const { patients, carers, stays, appointments } = usePatientsData();
+  const { patients, carers, stays, appointments, loading } = usePatientsData();
   const patient = patients.find((p) => p.id === patientId);
   const { role } = useRole();
 
-  if (!patient) notFound();
+  if (!patient) {
+    if (loading) return null;
+    notFound();
+  }
 
   const canSeeClinical = canSeeClinicalDetail(role);
   const patientCarers = carers.filter((c) => c.patientId === patient.id);
@@ -88,6 +91,20 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
               value={patient.isolationRequired === undefined ? "Unknown" : patient.isolationRequired ? "Yes (unenforced)" : "No"}
             />
             <InfoTile label="Non-Pedia" value={patient.status === "non_pedia" ? "Yes" : "No"} />
+            {patient.religion && <InfoTile label="Religion" value={patient.religion} />}
+            {patient.lengthOfStay && <InfoTile label="Length of Stay" value={patient.lengthOfStay} />}
+            {patient.sectorCaseCategory && canSeeClinical && (
+              <InfoTile label="Sector / Case Category" value={patient.sectorCaseCategory} />
+            )}
+            {patient.sourceOfReferralText && canSeeClinical && (
+              <InfoTile label="Source of Referral" value={patient.sourceOfReferralText} />
+            )}
+            {patient.servicesReceived && canSeeClinical && (
+              <InfoTile label="Services Received" value={patient.servicesReceived} />
+            )}
+            {patient.deathInfo && canSeeClinical && (
+              <InfoTile label="Death Info" value={patient.deathInfo} />
+            )}
           </div>
         </TabsContent>
 
@@ -149,10 +166,10 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
                   <CardContent className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
                     <div className="flex flex-col">
                       <span className="font-medium">{c.name}</span>
-                      <span className="text-xs text-muted-foreground">{c.relationship}</span>
+                      <span className="text-xs text-muted-foreground">{c.relationship ?? "—"}</span>
                     </div>
                     <span className="text-xs text-muted-foreground">
-                      {canSeeClinical ? c.mobileNumber : <Restricted />}
+                      {canSeeClinical ? (c.mobileNumber ?? "—") : <Restricted />}
                     </span>
                   </CardContent>
                 </Card>

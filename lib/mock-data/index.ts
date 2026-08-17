@@ -7,3 +7,4 @@ export * from "./donors";
 export * from "./inventory";
 export * from "./finance";
 export * from "./reports";
+export * from "./calendar";

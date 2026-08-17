@@ -20,11 +20,14 @@ import { formatDate } from "@/lib/utils/date";
 
 export default function PartnerPatientDetailPage({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = use(params);
-  const { patients, carers, stays, appointments } = usePatientsData();
+  const { patients, carers, stays, appointments, loading } = usePatientsData();
   const [logVisitFor, setLogVisitFor] = React.useState<string | null>(null);
 
   const patient = patients.find((p) => p.id === patientId);
-  if (!patient) notFound();
+  if (!patient) {
+    if (loading) return null;
+    notFound();
+  }
 
   const patientCarers = carers.filter((c) => c.patientId === patient.id);
   const patientStays = stays.filter((s) => s.patientId === patient.id);
@@ -139,7 +142,7 @@ export default function PartnerPatientDetailPage({ params }: { params: Promise<{
                   <CardContent className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
                     <div className="flex flex-col">
                       <span className="font-medium">{c.name}</span>
-                      <span className="text-xs text-muted-foreground">{c.relationship}</span>
+                      <span className="text-xs text-muted-foreground">{c.relationship ?? "—"}</span>
                     </div>
                     <span className="text-xs text-muted-foreground">{c.mobileNumber || "—"}</span>
                   </CardContent>

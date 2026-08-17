@@ -45,17 +45,21 @@ export interface MealService {
   mealType: MealType;
   headcount: number;
   exceptions: { patientId: string; reason: string }[];
-  costPerHead: number;
+  /** No per-meal cost in the real Care Cart sheet -- undefined for real data, not fabricated. */
+  costPerHead?: number;
 }
 
 export interface CareCartLog {
   id: string;
   date: string;
-  timeSlot: "10:00" | "12:00" | "14:00" | "17:00 ER Round";
+  /** "10:00 & 14:00" covers the real food-distribution ledger's own combined-window rows, which
+   *  don't split per slot -- don't guess a single slot for those rows. */
+  timeSlot: "10:00" | "12:00" | "14:00" | "17:00 ER Round" | "10:00 & 14:00";
   itemsServed: string;
   headcount: number;
   volunteerId?: string;
-  source: "LAF Pantry" | "Donation";
+  /** No source column (pantry vs. donation) in the real ledger -- undefined for real data, not fabricated. */
+  source?: "LAF Pantry" | "Donation";
 }
 
 export interface ActivitySession {
@@ -71,7 +75,8 @@ export interface ActivitySession {
 export interface CensusSnapshot {
   date: string;
   inHouse: number;
-  unitsOccupied: number;
-  unitsShared: number;
+  /** No per-bed detail in the real Occupancy Tracker (name-only roster) -- undefined for real data, not fabricated. */
+  unitsOccupied?: number;
+  unitsShared?: number;
   totalUnits: number;
 }

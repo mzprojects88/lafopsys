@@ -1,10 +1,12 @@
 import type { AppNotification, DocumentRecord, MetricSnapshot, ReportDefinition } from "@/lib/types/reports";
 import { makeRng } from "@/lib/utils/seeded-random";
+import realMetricSnapshots from "@/lib/mock-data/real/metric-snapshots.json";
 
 const rng = makeRng(707);
 
 export const reportDefinitions: ReportDefinition[] = [
   { id: "rpt-dswd-license", name: "DSWD Licensing Report", category: "DSWD", description: "Annual facility licensing compliance report", schedule: "annual", lastGeneratedAt: "2026-01-15" },
+  { id: "rpt-dswd-caseload", name: "DSWD Caseload Inventory Report", category: "DSWD", description: "Annual caseload roster — religion, sector/case category, referral source, and social profile per patient", schedule: "annual" },
   { id: "rpt-dswd-psp", name: "DSWD Public Solicitation Report", category: "DSWD", description: "Permit DSWD-SB-PSP-S-2026-000125 solicitation summary", schedule: "quarterly", lastGeneratedAt: "2026-07-01" },
   { id: "rpt-bir-donee", name: "BIR Donee Certificate Register", category: "BIR", description: "Sequential donee certificate log for BIR", schedule: "monthly", lastGeneratedAt: "2026-07-31" },
   { id: "rpt-bir-summary", name: "BIR Donation Summary", category: "BIR", description: "Donation summary tied to BIR registration 601-322-056-00000", schedule: "monthly", lastGeneratedAt: "2026-07-31" },
@@ -33,7 +35,7 @@ export const notifications: AppNotification[] = [
   { id: "notif-6", title: "Monthly close checklist due", body: "July close checklist has unchecked items.", createdAt: rng.daysFromNow(-3), read: true, kind: "system" },
 ];
 
-export const metricSnapshots: MetricSnapshot[] = Array.from({ length: 12 }).map((_, m) => ({
+const mockMetricSnapshots: MetricSnapshot[] = Array.from({ length: 12 }).map((_, m) => ({
   date: `2026-${String(m + 1).padStart(2, "0")}-01`,
   bedNights: rng.int(280, 420),
   meals: rng.int(700, 1100),
@@ -42,3 +44,11 @@ export const metricSnapshots: MetricSnapshot[] = Array.from({ length: 12 }).map(
   activityParticipants: rng.int(30, 90),
   donationsYtd: (m + 1) * rng.int(120000, 180000),
 }));
+
+// Real monthly program metrics, synced from DATA/clean/metric-snapshots.json (see
+// scripts/sync-real-data.mjs and scripts/clean-program-metrics.py). Only as many
+// months as the source "Summary YTD" sheet has actually reported (currently
+// Jan-Jun 2026) -- unreported months are left out entirely, not zero-filled.
+// Falls back to 12 months of seeded mock data if that sync hasn't run.
+export const metricSnapshots: MetricSnapshot[] =
+  realMetricSnapshots.length > 0 ? (realMetricSnapshots as MetricSnapshot[]) : mockMetricSnapshots;

@@ -133,7 +133,10 @@ export default function DashboardPage() {
 
   const chartConfig: ChartConfig = { amount: { label: "Donations", color: "var(--chart-1)" } };
 
-  const admissionsTrend = censusHistory.map((day) => ({
+  // The card is explicitly labeled "Last 30 days" -- real censusHistory can span
+  // much further back than mock data ever did, so it's windowed here to match
+  // what the label actually promises rather than dumping the full real history.
+  const admissionsTrend = censusHistory.slice(-30).map((day) => ({
     date: day.date,
     enrolled: patients.filter((p) => p.admittedAt <= day.date).length,
     admissions: patients.filter((p) => p.admittedAt === day.date).length,

@@ -8,8 +8,11 @@ import type {
   Trip,
   Unit,
 } from "@/lib/types/house-ops";
-import { makeRng } from "@/lib/utils/seeded-random";
+import { makeRng, TODAY_ISO } from "@/lib/utils/seeded-random";
 import realPatients from "@/lib/mock-data/real/patients.json";
+import realMealServices from "@/lib/mock-data/real/meal-services.json";
+import realCareCartLogs from "@/lib/mock-data/real/care-cart-logs.json";
+import realCensusHistory from "@/lib/mock-data/real/census-history.json";
 
 const rng = makeRng(303);
 
@@ -68,7 +71,7 @@ export const trips: Trip[] = Array.from({ length: 18 }).map((_, i) => {
   };
 });
 
-export const mealServices: MealService[] = Array.from({ length: 14 }).flatMap((_, day) =>
+const mockMealServices: MealService[] = Array.from({ length: 14 }).flatMap((_, day) =>
   (["breakfast", "lunch", "dinner"] as const).map((mealType) => ({
     id: `meal-${day}-${mealType}`,
     date: rng.daysFromNow(-day),
@@ -81,7 +84,13 @@ export const mealServices: MealService[] = Array.from({ length: 14 }).flatMap((_
   }))
 );
 
-export const careCartLogs: CareCartLog[] = Array.from({ length: 20 }).map((_, i) => ({
+// Real day-log meal headcounts, synced from DATA/clean/meal-services.json (see
+// scripts/sync-real-data.mjs and scripts/clean-care-cart-data.py). Real records
+// have no costPerHead (not in the source sheet). Falls back to seeded mock data.
+export const mealServices: MealService[] =
+  realMealServices.length > 0 ? (realMealServices as MealService[]) : mockMealServices;
+
+const mockCareCartLogs: CareCartLog[] = Array.from({ length: 20 }).map((_, i) => ({
   id: `cc-${i + 1}`,
   date: rng.daysFromNow(-rng.int(0, 10)),
   timeSlot: rng.pick(["10:00", "12:00", "14:00", "17:00 ER Round"] as const),
@@ -90,6 +99,12 @@ export const careCartLogs: CareCartLog[] = Array.from({ length: 20 }).map((_, i)
   volunteerId: rng.bool(0.6) ? rng.pick(["vol-1", "vol-5"]) : undefined,
   source: rng.pick(["LAF Pantry", "Donation"] as const),
 }));
+
+// Real Care Cart food-distribution ledger, synced from DATA/clean/care-cart-logs.json.
+// Real records have no volunteerId/source (not in the source ledgers) and use the
+// combined "10:00 & 14:00" slot the source itself doesn't split per row.
+export const careCartLogs: CareCartLog[] =
+  realCareCartLogs.length > 0 ? (realCareCartLogs as CareCartLog[]) : mockCareCartLogs;
 
 export const activitySessions: ActivitySession[] = Array.from({ length: 10 }).map((_, i) => ({
   id: `act-${i + 1}`,
@@ -101,7 +116,7 @@ export const activitySessions: ActivitySession[] = Array.from({ length: 10 }).ma
   hours: rng.pick([1, 1.5, 2]),
 }));
 
-export const censusHistory: CensusSnapshot[] = Array.from({ length: 30 }).map((_, day) => {
+const mockCensusHistory: CensusSnapshot[] = Array.from({ length: 30 }).map((_, day) => {
   const inHouse = rng.int(10, 19);
   return {
     date: rng.daysFromNow(-29 + day),
@@ -111,3 +126,16 @@ export const censusHistory: CensusSnapshot[] = Array.from({ length: 30 }).map((_
     totalUnits: 13,
   };
 });
+
+// Real daily headcounts, synced from DATA/clean/census-history.json (see
+// scripts/sync-real-data.mjs and scripts/clean-occupancy-data.py). No
+// unitsOccupied/unitsShared for real days -- the source roster has no bed-
+// level detail, only names (see the script's docstring for why `stays`
+// itself, used for bed-level views, is untouched by this data).
+//
+// Truncated to <= TODAY_ISO so `censusHistory[censusHistory.length - 1]`
+// keeps meaning "today" for the dashboard/analytics pages that assume that,
+// even though the source sheet range extends a few days past TODAY_ISO.
+const realCensusHistoryFiltered = (realCensusHistory as CensusSnapshot[]).filter((c) => c.date <= TODAY_ISO);
+export const censusHistory: CensusSnapshot[] =
+  realCensusHistoryFiltered.length > 0 ? realCensusHistoryFiltered : mockCensusHistory;

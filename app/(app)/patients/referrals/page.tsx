@@ -10,8 +10,8 @@ import { ReasonDialog } from "@/components/patterns/reason-dialog";
 import { ConfirmArrivalDialog } from "@/components/modules/patients/confirm-arrival-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { referrals as seedReferrals, hospitals } from "@/lib/mock-data";
-import { useLocalCollection } from "@/lib/store/use-mock-store";
+import { hospitals } from "@/lib/mock-data";
+import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import type { Referral, ReferralStatus } from "@/lib/types/patient";
 import type { CategoryColor } from "@/lib/utils/category-colors";
 import { formatDate } from "@/lib/utils/date";
@@ -27,7 +27,7 @@ const STATUSES: { id: ReferralStatus; title: string; color: CategoryColor; icon:
 ];
 
 export default function ReferralsPage() {
-  const { items, updateItem } = useLocalCollection<Referral>("referrals", seedReferrals);
+  const { referrals, updateReferral } = useReferralsData();
   const [declineTarget, setDeclineTarget] = React.useState<string | null>(null);
   const [arrivalTarget, setArrivalTarget] = React.useState<string | null>(null);
 
@@ -36,15 +36,19 @@ export default function ReferralsPage() {
     title: s.title,
     color: s.color,
     icon: s.icon,
-    items: items.filter((r) => r.status === s.id),
+    items: referrals.filter((r) => r.status === s.id),
   }));
 
-  function setStatus(id: string, status: ReferralStatus, reason?: string) {
-    updateItem(id, { status, reason });
+  async function setStatus(id: string, status: ReferralStatus, reason?: string) {
+    const result = await updateReferral(id, { status, reason });
+    if (!result.ok) {
+      toast.error(`Couldn't update the referral: ${result.error}`);
+      return;
+    }
     toast.success(`Referral marked ${status}`);
   }
 
-  const arrivalReferral = items.find((r) => r.id === arrivalTarget) ?? null;
+  const arrivalReferral = referrals.find((r) => r.id === arrivalTarget) ?? null;
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -130,9 +134,18 @@ export default function ReferralsPage() {
       <ConfirmArrivalDialog
         referral={arrivalReferral}
         onOpenChange={(open) => !open && setArrivalTarget(null)}
-        onAdmitted={(patientId) => {
+        onAdmitted={async (patientId) => {
           if (!arrivalTarget) return;
-          updateItem(arrivalTarget, { status: "admitted", admittedPatientId: patientId, admittedAt: TODAY_ISO });
+          const result = await updateReferral(arrivalTarget, {
+            status: "admitted",
+            admittedPatientId: patientId,
+            admittedAt: TODAY_ISO,
+          });
+          if (!result.ok) {
+            toast.error(`Patient admitted, but couldn't update the referral record: ${result.error}`);
+            setArrivalTarget(null);
+            return;
+          }
           toast.success(`${arrivalReferral?.patientName} admitted to LAF House`);
           setArrivalTarget(null);
         }}

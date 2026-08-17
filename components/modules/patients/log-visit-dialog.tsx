@@ -14,8 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
-import { newId } from "@/lib/utils/id";
 
 const PURPOSES = ["Chemo cycle", "Follow-up check-up", "Lab work", "Transfusion", "Consult", "Other procedure"];
 const CLINICS = ["Pediatric Oncology Clinic", "Hematology Clinic", "Radiology", "Chemo Day Ward"];
@@ -34,6 +34,7 @@ export function LogVisitDialog({ patientId, patientName, onOpenChange, onLogged 
   const [clinic, setClinic] = React.useState(CLINICS[0]);
   const [purpose, setPurpose] = React.useState(PURPOSES[0]);
   const [needsTransport, setNeedsTransport] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
 
   function reset() {
     setDate("");
@@ -43,11 +44,12 @@ export function LogVisitDialog({ patientId, patientName, onOpenChange, onLogged 
     setNeedsTransport(false);
   }
 
-  function handleConfirm() {
+  async function handleConfirm() {
     if (!patientId || !date) return;
+    setSubmitting(true);
 
-    addAppointment({
-      id: newId("appt-hosp"),
+    const result = await addAppointment({
+      id: crypto.randomUUID(),
       patientId,
       date,
       time,
@@ -55,6 +57,12 @@ export function LogVisitDialog({ patientId, patientName, onOpenChange, onLogged 
       purpose,
       needsTransport,
     });
+    setSubmitting(false);
+
+    if (!result.ok) {
+      toast.error(`Couldn't log the visit: ${result.error}`);
+      return;
+    }
 
     onLogged();
     reset();
@@ -121,8 +129,8 @@ export function LogVisitDialog({ patientId, patientName, onOpenChange, onLogged 
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button disabled={!date} onClick={handleConfirm}>
-            Log Visit
+          <Button disabled={!date || submitting} onClick={handleConfirm}>
+            {submitting ? "Logging…" : "Log Visit"}
           </Button>
         </DialogFooter>
       </DialogContent>

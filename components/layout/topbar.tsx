@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Search, LogOut } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
@@ -23,6 +25,13 @@ import { ROLES } from "@/lib/types/common";
 
 export function Topbar({ onSearchClick }: { onSearchClick: () => void }) {
   const { role, user } = useRole();
+  const router = useRouter();
+
+  async function handleLogOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+  }
   const roleLabel = ROLES.find((r) => r.value === role)?.label ?? role;
   const initials = user
     .split(" ")
@@ -73,11 +82,9 @@ export function Topbar({ onSearchClick }: { onSearchClick: () => void }) {
             <DropdownMenuItem asChild>
               <Link href="/settings">Settings</Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/login">
-                <LogOut />
-                Log out
-              </Link>
+            <DropdownMenuItem onClick={handleLogOut}>
+              <LogOut />
+              Log out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

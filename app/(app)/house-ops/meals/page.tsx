@@ -21,7 +21,11 @@ export default function MealsPage() {
     { accessorKey: "date", header: "Date", cell: ({ row }) => formatDate(row.original.date) },
     { accessorKey: "mealType", header: "Meal", cell: ({ row }) => <span className="capitalize">{row.original.mealType}</span> },
     { accessorKey: "headcount", header: "Headcount" },
-    { accessorKey: "costPerHead", header: "Cost / Head", cell: ({ row }) => `₱${row.original.costPerHead}` },
+    {
+      accessorKey: "costPerHead",
+      header: "Cost / Head",
+      cell: ({ row }) => (row.original.costPerHead !== undefined ? `₱${row.original.costPerHead}` : "—"),
+    },
     {
       id: "exceptions",
       header: "Exceptions",

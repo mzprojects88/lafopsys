@@ -95,7 +95,15 @@ export default function AnalyticsPage() {
   // Panel G — Financial
   const totalIn = cashEntries.filter((e) => e.direction === "inflow").reduce((s, e) => s + e.amount, 0);
   const totalOut = cashEntries.filter((e) => e.direction === "outflow").reduce((s, e) => s + e.amount, 0);
-  const monthlyBurn = totalOut / 7; // sample period ≈ 7 months
+  // Burn rate divides by the number of distinct months actually present in the outflow
+  // data (skipping rows with an unparseable/flagged date) rather than a fixed constant —
+  // real cash-entries.json doesn't span a clean fixed window like the old mock data did.
+  const monthsWithOutflow = new Set(
+    cashEntries
+      .filter((e) => e.direction === "outflow" && /^\d{4}-\d{2}-\d{2}$/.test(e.date))
+      .map((e) => e.date.slice(0, 7))
+  ).size || 1;
+  const monthlyBurn = totalOut / monthsWithOutflow;
   const cashOnHand = accounts.reduce((s, a) => s + (a.currency === "PHP" ? a.balance : a.balance * 56), 0);
   const runwayMonths = monthlyBurn > 0 ? Math.round(cashOnHand / monthlyBurn) : undefined;
   const programSpendChart = programs.map((p) => ({
@@ -213,9 +221,19 @@ export default function AnalyticsPage() {
         <h2 className="text-sm font-semibold text-muted-foreground">Panel D — Live House Census</h2>
         <KpiGrid>
           <KpiCard label="In-House Now" value={today.inHouse} icon={Users} color="orange" />
-          <KpiCard label="Units Occupied" value={`${today.unitsOccupied} / ${today.totalUnits}`} icon={Home} color="blue" />
-          <KpiCard label="Units Shared" value={today.unitsShared} icon={Share2} color="purple" />
-          <KpiCard label="Utilization" value={`${Math.round((today.unitsOccupied / today.totalUnits) * 100)}%`} icon={Percent} color="amber" />
+          <KpiCard
+            label="Units Occupied"
+            value={today.unitsOccupied !== undefined ? `${today.unitsOccupied} / ${today.totalUnits}` : "—"}
+            icon={Home}
+            color="blue"
+          />
+          <KpiCard label="Units Shared" value={today.unitsShared ?? "—"} icon={Share2} color="purple" />
+          <KpiCard
+            label="Utilization"
+            value={today.unitsOccupied !== undefined ? `${Math.round((today.unitsOccupied / today.totalUnits) * 100)}%` : "—"}
+            icon={Percent}
+            color="amber"
+          />
         </KpiGrid>
       </section>
 

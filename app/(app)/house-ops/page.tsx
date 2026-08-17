@@ -16,7 +16,7 @@ const SUB_NAV: ModuleSubNavItem[] = [
 export default function HouseOpsPage() {
   const today = censusHistory.find((c) => c.date === TODAY_ISO) ?? censusHistory[censusHistory.length - 1];
   const yesterday = censusHistory[censusHistory.length - 2];
-  const utilization = Math.round((today.unitsOccupied / today.totalUnits) * 100);
+  const utilization = today.unitsOccupied !== undefined ? Math.round((today.unitsOccupied / today.totalUnits) * 100) : undefined;
   const todaysTrips = trips.filter((t) => t.date === TODAY_ISO).length;
   const todaysMeals = mealServices.filter((m) => m.date === TODAY_ISO).length;
 
@@ -37,9 +37,14 @@ export default function HouseOpsPage() {
           deltaPct={yesterday ? Math.round(((today.inHouse - yesterday.inHouse) / yesterday.inHouse) * 100) : undefined}
           deltaLabel="vs yesterday"
         />
-        <KpiCard label="Units Occupied" value={`${today.unitsOccupied} / ${today.totalUnits}`} icon={Home} color="blue" />
-        <KpiCard label="Units Shared" value={today.unitsShared} icon={Share2} color="purple" />
-        <KpiCard label="Utilization" value={`${utilization}%`} icon={Percent} color="amber" />
+        <KpiCard
+          label="Units Occupied"
+          value={today.unitsOccupied !== undefined ? `${today.unitsOccupied} / ${today.totalUnits}` : "—"}
+          icon={Home}
+          color="blue"
+        />
+        <KpiCard label="Units Shared" value={today.unitsShared ?? "—"} icon={Share2} color="purple" />
+        <KpiCard label="Utilization" value={utilization !== undefined ? `${utilization}%` : "—"} icon={Percent} color="amber" />
         <KpiCard label="Trips Today" value={todaysTrips} icon={Car} color="cyan" />
         <KpiCard label="Meal Services Today" value={todaysMeals} icon={Utensils} color="green" />
       </KpiGrid>

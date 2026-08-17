@@ -5,6 +5,7 @@ import { hospitals, hospitalNurses } from "@/lib/mock-data/hospitals";
 import { diagnoses, treatmentPhases, provinces } from "@/lib/mock-data/reference-data";
 import realPatients from "@/lib/mock-data/real/patients.json";
 import realCarers from "@/lib/mock-data/real/carers.json";
+import realDswdDelta from "@/lib/mock-data/real/patients-dswd-delta.json";
 
 const rng = makeRng(202);
 
@@ -26,27 +27,60 @@ interface RealPatientRecord {
   remarks: string | null;
 }
 
+interface DswdDeltaRecord {
+  patientId: string;
+  religion: string | null;
+  sectorCaseCategory: string | null;
+  placeOfBirth: string | null;
+  illnessType: string | null;
+  sourceOfReferralText: string | null;
+  reasonForReferral: string | null;
+  socialProfileOfParent: string | null;
+  servicesReceived: string | null;
+  deathInfo: string | null;
+  lengthOfStay: string | null;
+}
+
+// Enrichment fields from the DSWD Caseload Inventory sheet, synced from
+// DATA/clean/patients-dswd-delta.json (see scripts/clean-dswd-data.py). Joined
+// onto the patient master by patientId; patients with no DSWD-sheet match are
+// left with these fields undefined, not fabricated.
+const dswdByPatientId = new Map((realDswdDelta as DswdDeltaRecord[]).map((d) => [d.patientId, d]));
+
 // Real patient master, synced from DATA/clean/patients.json (see scripts/sync-real-data.mjs
 // and scripts/clean-real-data.py). Falls back to an empty list if that sync hasn't run.
-export const patients: Patient[] = (realPatients as RealPatientRecord[]).map((p) => ({
-  id: p.id,
-  patientNumber: p.patientNumber,
-  firstName: p.firstName,
-  lastName: p.lastName,
-  birthDate: p.birthDate ?? undefined,
-  sex: (p.sex === "F" ? "F" : "M") as "M" | "F",
-  provinceId: p.provinceId ?? "",
-  rawAddress: p.rawAddress ?? undefined,
-  diagnosisIds: p.diagnosisIds,
-  treatmentPhaseId: p.treatmentPhaseId ?? "",
-  status: p.status,
-  carerIds: p.carerIds,
-  admittedAt: p.admittedAt ?? "",
-  maritalStatus: p.maritalStatus ?? undefined,
-  remarks: p.remarks ?? undefined,
-  // The real FINAL_PATIENTS DATABASE this was cleaned from is entirely NCH-sourced.
-  referringHospitalId: "hosp-nch",
-}));
+export const patients: Patient[] = (realPatients as RealPatientRecord[]).map((p) => {
+  const dswd = dswdByPatientId.get(p.id);
+  return {
+    id: p.id,
+    patientNumber: p.patientNumber,
+    firstName: p.firstName,
+    lastName: p.lastName,
+    birthDate: p.birthDate ?? undefined,
+    sex: (p.sex === "F" ? "F" : "M") as "M" | "F",
+    provinceId: p.provinceId ?? "",
+    rawAddress: p.rawAddress ?? undefined,
+    diagnosisIds: p.diagnosisIds,
+    treatmentPhaseId: p.treatmentPhaseId ?? "",
+    status: p.status,
+    carerIds: p.carerIds,
+    admittedAt: p.admittedAt ?? "",
+    maritalStatus: p.maritalStatus ?? undefined,
+    remarks: p.remarks ?? undefined,
+    // The real FINAL_PATIENTS DATABASE this was cleaned from is entirely NCH-sourced.
+    referringHospitalId: "hosp-nch",
+    religion: dswd?.religion ?? undefined,
+    sectorCaseCategory: dswd?.sectorCaseCategory ?? undefined,
+    placeOfBirth: dswd?.placeOfBirth ?? undefined,
+    illnessType: dswd?.illnessType ?? undefined,
+    sourceOfReferralText: dswd?.sourceOfReferralText ?? undefined,
+    reasonForReferral: dswd?.reasonForReferral ?? undefined,
+    socialProfileOfParent: dswd?.socialProfileOfParent ?? undefined,
+    servicesReceived: dswd?.servicesReceived ?? undefined,
+    deathInfo: dswd?.deathInfo ?? undefined,
+    lengthOfStay: dswd?.lengthOfStay ?? undefined,
+  };
+});
 
 export const carers: Carer[] = realCarers as Carer[];
 

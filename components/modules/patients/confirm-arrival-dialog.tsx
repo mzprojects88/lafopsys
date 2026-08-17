@@ -12,9 +12,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
 import { units, bedPositions, rooms } from "@/lib/mock-data";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
-import { newId } from "@/lib/utils/id";
 import { TODAY_ISO } from "@/lib/utils/seeded-random";
 import type { Referral } from "@/lib/types/patient";
 
@@ -27,6 +27,7 @@ interface ConfirmArrivalDialogProps {
 export function ConfirmArrivalDialog({ referral, onOpenChange, onAdmitted }: ConfirmArrivalDialogProps) {
   const { stays, addPatient, addCarer, addStay } = usePatientsData();
   const [bedPositionId, setBedPositionId] = React.useState<string>("");
+  const [submitting, setSubmitting] = React.useState(false);
 
   // A bed is only genuinely free if its unit isn't under maintenance/blocked AND no
   // active stay currently references that exact bed position — Unit.status alone
@@ -44,13 +45,14 @@ export function ConfirmArrivalDialog({ referral, onOpenChange, onAdmitted }: Con
     return unit ? `${unit.code} · ${room?.name ?? ""}` : "";
   }
 
-  function handleConfirm() {
+  async function handleConfirm() {
     if (!referral || !bedPositionId) return;
+    setSubmitting(true);
 
-    const patientId = newId("pt-hosp");
-    const carerId = newId("carer-hosp");
+    const patientId = crypto.randomUUID();
+    const carerId = crypto.randomUUID();
 
-    addPatient({
+    const patientResult = await addPatient({
       id: patientId,
       patientNumber: `REF-${referral.id}`,
       firstName: referral.patientFirstName ?? referral.patientName.split(" ")[0],
@@ -66,9 +68,14 @@ export function ConfirmArrivalDialog({ referral, onOpenChange, onAdmitted }: Con
       admittedAt: TODAY_ISO,
       referringHospitalId: referral.hospitalId,
     });
+    if (!patientResult.ok) {
+      toast.error(`Couldn't create the patient record: ${patientResult.error}`);
+      setSubmitting(false);
+      return;
+    }
 
     if (referral.carerName) {
-      addCarer({
+      const carerResult = await addCarer({
         id: carerId,
         patientId,
         name: referral.carerName,
@@ -76,17 +83,28 @@ export function ConfirmArrivalDialog({ referral, onOpenChange, onAdmitted }: Con
         mobileNumber: referral.carerMobile ?? "",
         effectiveFrom: TODAY_ISO,
       });
+      if (!carerResult.ok) {
+        toast.error(`Patient created, but couldn't save the carer: ${carerResult.error}`);
+        setSubmitting(false);
+        return;
+      }
     }
 
-    addStay({
-      id: newId("stay-hosp"),
+    const stayResult = await addStay({
+      id: crypto.randomUUID(),
       patientId,
       bedPositionId,
       carerId: referral.carerName ? carerId : undefined,
       checkInAt: TODAY_ISO,
       status: "in_house",
     });
+    if (!stayResult.ok) {
+      toast.error(`Patient created, but couldn't check them into the bed: ${stayResult.error}`);
+      setSubmitting(false);
+      return;
+    }
 
+    setSubmitting(false);
     onAdmitted(patientId);
     setBedPositionId("");
     onOpenChange(false);
@@ -121,8 +139,8 @@ export function ConfirmArrivalDialog({ referral, onOpenChange, onAdmitted }: Con
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button disabled={!bedPositionId} onClick={handleConfirm}>
-            Confirm & Admit
+          <Button disabled={!bedPositionId || submitting} onClick={handleConfirm}>
+            {submitting ? "Admitting…" : "Confirm & Admit"}
           </Button>
         </DialogFooter>
       </DialogContent>

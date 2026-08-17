@@ -1,6 +1,7 @@
 import type { Account, BudgetLine, CashEntry, CashEntrySource } from "@/lib/types/finance";
 import { makeRng } from "@/lib/utils/seeded-random";
 import { programs } from "@/lib/mock-data/reference-data";
+import realCashEntries from "@/lib/mock-data/real/cash-entries.json";
 
 const rng = makeRng(606);
 
@@ -14,7 +15,7 @@ function labelFor(source: CashEntrySource) {
     .join(" ");
 }
 
-export const cashEntries: CashEntry[] = Array.from({ length: 40 }).map((_, i) => {
+const mockCashEntries: CashEntry[] = Array.from({ length: 40 }).map((_, i) => {
   const direction = rng.bool(0.55) ? "inflow" : "outflow";
   const source = direction === "inflow" ? rng.pick(inflowSources) : rng.pick(outflowSources);
   const entity = rng.bool(0.7) ? "PH_SEC" : "US_501C3";
@@ -31,6 +32,17 @@ export const cashEntries: CashEntry[] = Array.from({ length: 40 }).map((_, i) =>
     approvalStatus: rng.pick(["pending", "approved", "approved", "approved", "rejected"] as const),
   };
 });
+
+// Real cash ledger (donations + bank feed + reimbursements), synced from
+// DATA/clean/cash-entries.json (see scripts/sync-real-data.mjs and
+// scripts/clean-finance-data.py). Falls back to seeded mock data if that
+// sync hasn't run (a different machine, CI). Entries with `needsReview: true`
+// were machine-classified with low confidence (unresolved CASH/BDO_CASH
+// DONATIONS duplicate, or an unclassified Bank Statement/reimbursement row)
+// and should not be treated as authoritative for tax receipts or board
+// reporting until a human clears them -- see finance-import-report.md.
+export const cashEntries: CashEntry[] =
+  realCashEntries.length > 0 ? (realCashEntries as CashEntry[]) : mockCashEntries;
 
 export const accounts: Account[] = [
   { id: "acct-ph-bdo", name: "BDO Current (PH)", entity: "PH_SEC", currency: "PHP", balance: 1284300, type: "bank" },
