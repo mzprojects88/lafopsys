@@ -15,8 +15,8 @@ interface ChecklistItem {
 }
 
 const seedChecklist: ChecklistItem[] = [
-  { id: "close-1", label: "Reconcile bank statements (PH + US)", done: true },
-  { id: "close-2", label: "Post all pending cash entries", done: true },
+  { id: "close-1", label: "Reconcile bank statements (PH + US)", done: false },
+  { id: "close-2", label: "Post all pending cash entries", done: false },
   { id: "close-3", label: "Verify AR sequence has no gaps", done: false },
   { id: "close-4", label: "Verify Donee Cert register has no gaps", done: false },
   { id: "close-5", label: "Review program allocation against budget", done: false },

@@ -35,8 +35,8 @@ import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useCensusData } from "@/lib/hooks/use-census-collection";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
+import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
 import {
-  cashEntries,
   inventoryItems,
   inventoryLots,
   timesheetApprovals,
@@ -53,6 +53,7 @@ export default function DashboardPage() {
   const { patients, stays } = usePatientsData();
   const { history: censusHistory } = useCensusData();
   const { donations, donors } = useDonorsData();
+  const { entries: cashEntries } = useCashEntriesData();
 
   const today = censusHistory[censusHistory.length - 1];
   const inHouseNow = today?.inHouse ?? 0;

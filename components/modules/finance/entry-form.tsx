@@ -12,10 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { cashEntries, programs } from "@/lib/mock-data";
-import { useLocalCollection } from "@/lib/store/use-mock-store";
+import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
+import { useProgramsData } from "@/lib/hooks/use-programs-collection";
 import { TODAY_ISO } from "@/lib/utils/seeded-random";
-import { newId } from "@/lib/utils/id";
 import type { CashEntryDirection, CashEntrySource } from "@/lib/types/finance";
 
 const inflowSources: CashEntrySource[] = ["cash_donation", "in_kind_donation", "capital_infusion", "grant", "fundraising_event", "interest", "inter_entity_transfer"];
@@ -38,7 +37,8 @@ type FormValues = z.infer<typeof schema>;
 
 export function EntryForm() {
   const router = useRouter();
-  const { addItem } = useLocalCollection("cash-entries", cashEntries);
+  const { addEntry } = useCashEntriesData();
+  const { programs } = useProgramsData();
   const {
     register,
     handleSubmit,
@@ -53,9 +53,8 @@ export function EntryForm() {
   const direction = watch("direction") as CashEntryDirection;
   const sources = direction === "inflow" ? inflowSources : outflowSources;
 
-  function onSubmit(values: FormValues) {
-    addItem({
-      id: newId("cash-new"),
+  async function onSubmit(values: FormValues) {
+    const result = await addEntry({
       date: TODAY_ISO,
       direction: values.direction,
       source: values.source as CashEntrySource,
@@ -66,6 +65,10 @@ export function EntryForm() {
       description: values.description,
       approvalStatus: "pending",
     });
+    if (!result.ok) {
+      toast.error(`Couldn't record the entry: ${result.error}`);
+      return;
+    }
     toast.success("Cash entry recorded — pending approval");
     router.push("/finance");
   }
