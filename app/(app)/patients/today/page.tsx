@@ -6,13 +6,15 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { BoardColumns, type BoardColumn } from "@/components/patterns/board-columns";
 import { Card, CardContent } from "@/components/ui/card";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
-import { patients, stays, bedPositions, units } from "@/lib/mock-data";
+import { bedPositions, units } from "@/lib/mock-data";
 import type { Stay } from "@/lib/types/patient";
 import { TODAY_ISO } from "@/lib/utils/seeded-random";
 import { formatDate } from "@/lib/utils/date";
+import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 
 export default function TodayBoardPage() {
   const router = useRouter();
+  const { patients, stays } = usePatientsData();
 
   const arrivals = stays.filter((s) => s.checkInAt === TODAY_ISO);
   const departures = stays.filter((s) => s.checkOutAt === TODAY_ISO);

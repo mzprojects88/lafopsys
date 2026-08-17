@@ -32,15 +32,14 @@ import { Badge } from "@/components/ui/badge";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { useRole } from "@/lib/rbac/use-role";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
+import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import {
   censusHistory,
-  patients,
   donations,
   cashEntries,
   inventoryItems,
   inventoryLots,
   timesheetApprovals,
-  stays,
   donors,
 } from "@/lib/mock-data";
 import { formatCurrency } from "@/lib/utils/currency";
@@ -52,6 +51,7 @@ const HOUSE_CAPACITY = 20; // placeholder pending the spec's open question on li
 export default function DashboardPage() {
   const { role } = useRole();
   const { referrals } = useReferralsData();
+  const { patients, stays } = usePatientsData();
 
   const today = censusHistory[censusHistory.length - 1];
   const pendingApprovals = timesheetApprovals.filter((a) => a.status === "pending").length;

@@ -12,7 +12,8 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { useVisibleNavItems } from "@/lib/rbac/use-role";
-import { patients, donors, inventoryItems } from "@/lib/mock-data";
+import { donors, inventoryItems } from "@/lib/mock-data";
+import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 
 interface CommandPaletteProps {
   externalOpen?: boolean;
@@ -25,6 +26,7 @@ export function CommandPalette({ externalOpen, onExternalOpenChange }: CommandPa
   const setOpen = onExternalOpenChange ?? setInternalOpen;
   const router = useRouter();
   const navItems = useVisibleNavItems();
+  const { patients } = usePatientsData();
 
   React.useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
