@@ -12,10 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { donors, donations, unitsOfMeasure } from "@/lib/mock-data";
-import { useLocalCollection } from "@/lib/store/use-mock-store";
+import { unitsOfMeasure } from "@/lib/mock-data";
+import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { TODAY_ISO } from "@/lib/utils/seeded-random";
-import { newId } from "@/lib/utils/id";
 
 const schema = z.object({
   donorId: z.string().min(1, "Select a donor"),
@@ -32,7 +31,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function DonationIntakePage() {
   const router = useRouter();
-  const { addItem } = useLocalCollection("donations", donations);
+  const { donors, addDonation } = useDonorsData();
   const {
     register,
     handleSubmit,
@@ -48,10 +47,9 @@ export default function DonationIntakePage() {
   const quantity = watch("quantity") ?? 0;
   const unitValue = watch("unitValue") ?? 0;
 
-  function onSubmit(values: FormValues) {
+  async function onSubmit(values: FormValues) {
     const totalValue = values.kind === "cash" ? values.cashAmount ?? 0 : (values.quantity ?? 0) * (values.unitValue ?? 0);
-    addItem({
-      id: newId("don-new"),
+    const result = await addDonation({
       donorId: values.donorId,
       date: TODAY_ISO,
       receivingEntity: values.receivingEntity,
@@ -63,11 +61,13 @@ export default function DonationIntakePage() {
       totalValue,
       currency: values.receivingEntity === "US_501C3" ? "USD" : "PHP",
     });
-    toast.success(
-      values.kind === "in_kind"
-        ? "Donation recorded — inventory lot created automatically"
-        : "Cash donation recorded"
-    );
+    if (!result.ok) {
+      toast.error(`Couldn't record the donation: ${result.error}`);
+      return;
+    }
+    // Inventory lot creation depends on the laf-inventory side of the
+    // Donations Bridge, which hasn't been built yet -- don't claim it happened.
+    toast.success(values.kind === "in_kind" ? "In-kind donation recorded" : "Cash donation recorded");
     router.push("/donors");
   }
 

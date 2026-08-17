@@ -34,13 +34,12 @@ import { useRole } from "@/lib/rbac/use-role";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useCensusData } from "@/lib/hooks/use-census-collection";
+import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import {
-  donations,
   cashEntries,
   inventoryItems,
   inventoryLots,
   timesheetApprovals,
-  donors,
 } from "@/lib/mock-data";
 import { formatCurrency } from "@/lib/utils/currency";
 import { daysUntil, formatDate } from "@/lib/utils/date";
@@ -53,6 +52,7 @@ export default function DashboardPage() {
   const { referrals } = useReferralsData();
   const { patients, stays } = usePatientsData();
   const { history: censusHistory } = useCensusData();
+  const { donations, donors } = useDonorsData();
 
   const today = censusHistory[censusHistory.length - 1];
   const inHouseNow = today?.inHouse ?? 0;

@@ -10,7 +10,7 @@ import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { Button } from "@/components/ui/button";
-import { donors } from "@/lib/mock-data";
+import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import type { Donor } from "@/lib/types/donor";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
@@ -49,6 +49,7 @@ const columns: ColumnDef<Donor>[] = [
 
 export default function DonorsPage() {
   const router = useRouter();
+  const { donors } = useDonorsData();
   const totalGifts = donors.reduce((sum, d) => sum + d.giftCount, 0);
   const totalLifetimeValue = donors.reduce((sum, d) => sum + d.lifetimeValue, 0);
   const avgGift = totalGifts > 0 ? totalLifetimeValue / totalGifts : 0;
