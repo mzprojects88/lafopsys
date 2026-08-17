@@ -74,9 +74,8 @@ export interface Referral {
   date: string;
   status: ReferralStatus;
   reason?: string;
-  /** Set when submitted through the partner hospital portal (app/partners) rather than created internally. */
+  /** The hospital that referred this patient. */
   hospitalId?: string;
-  submittedByNurseId?: string;
   patientFirstName?: string;
   patientLastName?: string;
   patientBirthDate?: string;
@@ -123,4 +122,38 @@ export interface Appointment {
   clinic: string;
   purpose: string;
   needsTransport: boolean;
+}
+
+export type PatientDocumentType =
+  | "parent_guardian_id"
+  | "medical_certificate"
+  | "signed_intake_form"
+  | "patient_photo"
+  | "photo_media_consent";
+
+export interface PatientDocument {
+  id: string;
+  patientId: string;
+  documentType: PatientDocumentType;
+  /** Path within the `patient-documents` Storage bucket. Undefined until a file is actually uploaded. */
+  storagePath?: string;
+  collectedAt?: string;
+  collectedByStaffId?: string;
+  notes?: string;
+}
+
+/** Org-editable orientation-topic list. Deliberately starts empty -- real arrival-day
+ * script content is unknown org policy and must never be fabricated; staff add the
+ * real topics themselves as they define them. */
+export interface OrientationTopic {
+  id: string;
+  topic: string;
+  sortOrder: number;
+}
+
+export interface PatientOrientationCheck {
+  patientId: string;
+  topicId: string;
+  coveredAt: string;
+  coveredByStaffId?: string;
 }

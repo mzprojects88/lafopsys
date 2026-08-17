@@ -22,6 +22,7 @@ import { formatDate } from "@/lib/utils/date";
 import { useRole } from "@/lib/rbac/use-role";
 import { canSeeClinicalDetail } from "@/lib/rbac/roles";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
+import { AdmissionChecklist } from "@/components/modules/patients/admission-checklist";
 
 export default function PatientDetailPage({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = use(params);
@@ -179,7 +180,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
         </TabsContent>
 
         <TabsContent value="documents" className="pt-4">
-          <EmptyState title="No documents uploaded" description="Referral letter, IDs and consent forms would appear here." />
+          <AdmissionChecklist patientId={patient.id} />
         </TabsContent>
       </Tabs>
     </div>

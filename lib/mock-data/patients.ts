@@ -1,8 +1,6 @@
-import type { Appointment, Carer, Patient, PatientStatus, Referral, Stay } from "@/lib/types/patient";
+import type { Appointment, Carer, Patient, PatientStatus, Stay } from "@/lib/types/patient";
 import { makeRng, TODAY_ISO } from "@/lib/utils/seeded-random";
 import { bedPositions } from "@/lib/mock-data/house-ops";
-import { hospitals, hospitalNurses } from "@/lib/mock-data/hospitals";
-import { diagnoses, treatmentPhases, provinces } from "@/lib/mock-data/reference-data";
 import realPatients from "@/lib/mock-data/real/patients.json";
 import realCarers from "@/lib/mock-data/real/carers.json";
 import realDswdDelta from "@/lib/mock-data/real/patients-dswd-delta.json";
@@ -85,53 +83,6 @@ export const patients: Patient[] = (realPatients as RealPatientRecord[]).map((p)
 export const carers: Carer[] = realCarers as Carer[];
 
 const carerIdByPatientId = new Map(carers.map((c) => [c.patientId, c.id]));
-
-const firstNames = [
-  "Kieth Xander", "Ella Marie", "John Paul", "Angel Grace", "Mark Anthony", "Princess Joy",
-  "Josh Emmanuel", "Aira Nicole", "Rafael", "Maricel", "Dave", "Kyla", "Vince", "Nicole",
-  "Justin", "Trisha", "Kurt", "Danica", "Adrian", "Faith", "Renz", "Bea", "Elijah", "Samantha", "Miguel",
-];
-const lastNames = [
-  "Carpio", "Reyes", "Santos", "Cruz", "Bautista", "Gonzales", "Mendoza", "Torres", "Ramos",
-  "Flores", "Aquino", "Castillo", "Villanueva", "Del Rosario", "Garcia", "Rivera", "Domingo",
-  "Fernandez", "Pascual", "Marquez",
-];
-
-export const referrals: Referral[] = Array.from({ length: 14 }).map((_, i) => {
-  const fromHospital = i < 6; // seed the first 6 as if submitted through the partner hospital portal
-  const patientFirstName = rng.pick(firstNames);
-  const patientLastName = rng.pick(lastNames);
-  const hospital = fromHospital ? hospitals[i % hospitals.length] : undefined;
-  const nurse = hospital ? rng.pick(hospitalNurses.filter((n) => n.hospitalId === hospital.id)) : undefined;
-
-  return {
-    id: `ref-${i + 1}`,
-    patientName: `${patientFirstName} ${patientLastName}`,
-    referringPerson: nurse
-      ? `${nurse.firstName} ${nurse.lastName} (${hospital!.code})`
-      : rng.pick(["Dr. Aquino (NCH Onco)", "Dr. Bautista (NCH Hema)", "NCH Medical Social Service", "Dr. Reyes (NCH Onco)"]),
-    department: rng.pick(["Pediatric Oncology", "Pediatric Hematology", "Medical Social Service"]),
-    urgency: rng.pick(["routine", "routine", "urgent", "emergency"] as const),
-    date: rng.daysFromNow(-rng.int(0, 30)),
-    status: rng.pick(["submitted", "submitted", "approved", "waitlisted", "declined"] as const),
-    reason: rng.bool(0.3) ? "No open bed position matching isolation need" : undefined,
-    ...(fromHospital && {
-      hospitalId: hospital!.id,
-      submittedByNurseId: nurse?.id,
-      patientFirstName,
-      patientLastName,
-      patientBirthDate: rng.daysFromNow(-rng.int(1, 17) * 365 - rng.int(0, 364)),
-      patientSex: rng.pick(["M", "F"] as const),
-      diagnosisIds: [rng.pick(diagnoses).id],
-      treatmentPhaseId: rng.pick(treatmentPhases).id,
-      provinceId: rng.pick(provinces).id,
-      rawAddress: rng.pick(["Brgy. San Isidro, Antipolo", "Purok 3, Binangonan", "Brgy. Poblacion, San Pedro", "Brgy. Sto. Niño, Marikina"]),
-      carerName: `${rng.pick(["Maria", "Josefa", "Rosario", "Teresa", "Corazon"])} ${patientLastName}`,
-      carerRelationship: rng.pick(["Mother", "Father", "Grandmother", "Aunt", "Guardian"]),
-      carerMobile: `09${rng.int(10, 99)}${rng.int(1000000, 9999999)}`,
-    }),
-  } satisfies Referral;
-});
 
 const availablePositions = bedPositions;
 

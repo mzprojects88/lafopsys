@@ -14,14 +14,15 @@ const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const admin = createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
 
 async function main() {
-  const [dx, tp, prov, hosp, bed] = await Promise.all([
+  const [dx, tp, prov, hosp, bed, staffRow] = await Promise.all([
     admin.schema("ops").from("diagnoses").select("id").limit(1),
     admin.schema("ops").from("treatment_phases").select("id").limit(1),
     admin.schema("ops").from("provinces").select("id").limit(1),
     admin.schema("ops").from("hospitals").select("id").limit(1),
     admin.schema("ops").from("bed_positions").select("id").limit(1),
+    admin.schema("shared").from("staff").select("id").limit(1),
   ]);
-  for (const [label, res] of [["diagnosis", dx], ["phase", tp], ["province", prov], ["hospital", hosp], ["bed", bed]]) {
+  for (const [label, res] of [["diagnosis", dx], ["phase", tp], ["province", prov], ["hospital", hosp], ["bed", bed], ["staff", staffRow]]) {
     if (res.error || !res.data?.length) {
       console.error(`Missing reference data for ${label}:`, res.error?.message ?? "no rows");
       process.exit(1);
@@ -32,6 +33,7 @@ async function main() {
   const provinceId = prov.data[0].id;
   const hospitalId = hosp.data[0].id;
   const bedPositionId = bed.data[0].id;
+  const staffId = staffRow.data[0].id;
 
   // 1. Insert a referral (mirrors NewReferralPage's addReferral call).
   const referralId = randomUUID();
@@ -44,6 +46,7 @@ async function main() {
     date: "2026-08-17",
     status: "submitted",
     hospital_id: hospitalId,
+    submitted_by_staff_id: staffId,
     patient_first_name: "Smoke",
     patient_last_name: "Test Patient",
     patient_birth_date: "2015-01-01",
@@ -78,7 +81,11 @@ async function main() {
     console.error("Referral diagnosis join did not round-trip correctly:", readBack.referral_diagnoses);
     process.exit(1);
   }
-  console.log("[ok] referral read-back with diagnosis join matches");
+  if (readBack.submitted_by_staff_id !== staffId) {
+    console.error("submitted_by_staff_id FK did not round-trip correctly:", readBack.submitted_by_staff_id);
+    process.exit(1);
+  }
+  console.log("[ok] referral read-back with diagnosis join + submitted_by_staff_id FK matches");
 
   // 3. Approve, then confirm-arrival: patient + carer + stay (mirrors ConfirmArrivalDialog).
   const { error: approveError } = await admin.schema("ops").from("referrals").update({ status: "approved" }).eq("id", referralId);

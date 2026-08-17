@@ -206,7 +206,9 @@ Org-wide analytics — patient demographics/outcomes, donations, inventory, fina
 
 ---
 
-## 6. Partner Hospital Portal (`/partners/*`)
+## 6. Partner Hospital Portal (`/partners/*`) — REMOVED 2026-08-18
+
+Per an org decision during the real-backend wiring effort, hospitals no longer get direct system access at all: referrals now arrive as a hospital-maintained Google Sheet that LAF staff transcribe into `app/(app)/patients/referrals/new` themselves. The route tree, `HospitalAuthProvider`/`HospitalAuthGate`, and `PartnerTopbar` described below were deleted from the codebase. Section kept for historical context only — nothing below this line still exists.
 
 A dedicated portal for partner hospitals (currently National Children's Hospital — "NCH") to manage their relationship with LAF House, without touching internal operational data. Built to digitize a workflow that was previously a shared Google Sheet: a hospital-assigned nurse logs in with a PIN, encodes patients being referred to LAF House, and tracks them through to admission.
 

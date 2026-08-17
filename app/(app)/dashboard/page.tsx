@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { useRole } from "@/lib/rbac/use-role";
+import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import {
   censusHistory,
   patients,
@@ -39,7 +40,6 @@ import {
   inventoryItems,
   inventoryLots,
   timesheetApprovals,
-  referrals,
   stays,
   donors,
 } from "@/lib/mock-data";
@@ -51,6 +51,7 @@ const HOUSE_CAPACITY = 20; // placeholder pending the spec's open question on li
 
 export default function DashboardPage() {
   const { role } = useRole();
+  const { referrals } = useReferralsData();
 
   const today = censusHistory[censusHistory.length - 1];
   const pendingApprovals = timesheetApprovals.filter((a) => a.status === "pending").length;
