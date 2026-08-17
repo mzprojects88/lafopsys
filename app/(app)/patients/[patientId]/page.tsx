@@ -1,14 +1,15 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import { notFound } from "next/navigation";
-import { ShieldAlert } from "lucide-react";
+import { ShieldAlert, LogOut, CalendarClock, ArrowRightLeft } from "lucide-react";
 import { EntityDetailHeader } from "@/components/patterns/entity-detail-header";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   cities,
   provinces,
@@ -23,12 +24,19 @@ import { useRole } from "@/lib/rbac/use-role";
 import { canSeeClinicalDetail } from "@/lib/rbac/roles";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { AdmissionChecklist } from "@/components/modules/patients/admission-checklist";
+import { DischargeDialog } from "@/components/modules/patients/discharge-dialog";
+import { ExtendStayDialog } from "@/components/modules/patients/extend-stay-dialog";
+import { TransferBedDialog } from "@/components/modules/patients/transfer-bed-dialog";
+import type { Stay } from "@/lib/types/patient";
 
 export default function PatientDetailPage({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = use(params);
-  const { patients, carers, stays, appointments, loading } = usePatientsData();
+  const { patients, carers, stays, appointments, loading, refetch } = usePatientsData();
   const patient = patients.find((p) => p.id === patientId);
   const { role } = useRole();
+  const [dischargeTarget, setDischargeTarget] = useState<Stay | null>(null);
+  const [extendTarget, setExtendTarget] = useState<Stay | null>(null);
+  const [transferTarget, setTransferTarget] = useState<Stay | null>(null);
 
   if (!patient) {
     if (loading) return null;
@@ -116,6 +124,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
             <div className="flex flex-col gap-2">
               {patientStays.map((stay) => {
                 const unit = units.find((u) => u.id === bedPositions.find((b) => b.id === stay.bedPositionId)?.unitId);
+                const isActive = stay.status === "in_house" || stay.status === "overdue";
                 return (
                   <Card key={stay.id}>
                     <CardContent className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
@@ -123,9 +132,28 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
                         <span className="font-medium">Bed {unit?.code ?? "—"}</span>
                         <span className="text-xs text-muted-foreground">
                           {formatDate(stay.checkInAt)} — {stay.checkOutAt ? formatDate(stay.checkOutAt) : "current"}
+                          {stay.expectedCheckoutAt && !stay.checkOutAt && ` · expected ${formatDate(stay.expectedCheckoutAt)}`}
                         </span>
                       </div>
-                      <StatusBadge domain="stay" status={stay.status} />
+                      <div className="flex items-center gap-2">
+                        <StatusBadge domain="stay" status={stay.status} />
+                        {isActive && (
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => setExtendTarget(stay)}>
+                              <CalendarClock className="size-3.5" />
+                              Extend
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => setTransferTarget(stay)}>
+                              <ArrowRightLeft className="size-3.5" />
+                              Transfer
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setDischargeTarget(stay)}>
+                              <LogOut className="size-3.5" />
+                              Discharge
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 );
@@ -183,6 +211,26 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
           <AdmissionChecklist patientId={patient.id} />
         </TabsContent>
       </Tabs>
+
+      <DischargeDialog
+        stay={dischargeTarget}
+        patientName={`${patient.firstName} ${patient.lastName}`}
+        onOpenChange={(open) => !open && setDischargeTarget(null)}
+        onDischarged={refetch}
+      />
+      <ExtendStayDialog
+        key={extendTarget?.id}
+        stay={extendTarget}
+        patientName={`${patient.firstName} ${patient.lastName}`}
+        onOpenChange={(open) => !open && setExtendTarget(null)}
+        onExtended={refetch}
+      />
+      <TransferBedDialog
+        stay={transferTarget}
+        patientName={`${patient.firstName} ${patient.lastName}`}
+        onOpenChange={(open) => !open && setTransferTarget(null)}
+        onTransferred={refetch}
+      />
     </div>
   );
 }
