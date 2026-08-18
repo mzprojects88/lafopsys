@@ -6,9 +6,12 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { staff, timeEntries } from "@/lib/mock-data";
+import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
+import { useTimeEntriesData } from "@/lib/hooks/use-time-entries-collection";
 
 export default function PayrollExportPage() {
+  const { staff } = useStaffRoster();
+  const { entries: timeEntries } = useTimeEntriesData();
   const totalOvertimeMin = timeEntries.reduce((sum, t) => sum + t.overtimeMinutes, 0);
   const flaggedCount = timeEntries.filter((t) => t.flag !== "on_time").length;
   const activeStaff = staff.filter((s) => s.active).length;

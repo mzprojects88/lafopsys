@@ -7,9 +7,9 @@ import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { ApprovalQueue, type ApprovalQueueItem } from "@/components/patterns/approval-queue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { staff, timesheetApprovals as seedApprovals, timeEntries } from "@/lib/mock-data";
-import { useLocalCollection } from "@/lib/store/use-mock-store";
-import type { TimesheetApproval } from "@/lib/types/staff";
+import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
+import { useTimeEntriesData } from "@/lib/hooks/use-time-entries-collection";
+import { useTimesheetApprovalsData } from "@/lib/hooks/use-timesheet-approvals-collection";
 
 interface FlagRow {
   id: string;
@@ -35,9 +35,11 @@ const columns: ColumnDef<FlagRow>[] = [
 ];
 
 export default function TimesheetsPage() {
-  const { items, updateItem } = useLocalCollection<TimesheetApproval>("timesheet-approvals", seedApprovals);
+  const { staff } = useStaffRoster();
+  const { entries: timeEntries } = useTimeEntriesData();
+  const { approvals, updateStatus } = useTimesheetApprovalsData();
 
-  const pending: ApprovalQueueItem[] = items
+  const pending: ApprovalQueueItem[] = approvals
     .filter((a) => a.status === "pending")
     .map((a) => {
       const entry = timeEntries.find((t) => t.id === a.timeEntryId);
@@ -76,11 +78,11 @@ export default function TimesheetsPage() {
           <ApprovalQueue
             items={pending}
             onApprove={(id, reason) => {
-              updateItem(id, { status: "approved", adjustmentReason: reason || undefined });
+              updateStatus(id, "approved", reason || undefined);
               toast.success("Timesheet approved");
             }}
             onReject={(id, reason) => {
-              updateItem(id, { status: "rejected", adjustmentReason: reason });
+              updateStatus(id, "rejected", reason);
               toast.error("Timesheet rejected");
             }}
           />

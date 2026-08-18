@@ -7,13 +7,12 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
 import { Button } from "@/components/ui/button";
-import { volunteers as seedVolunteers } from "@/lib/mock-data";
-import { useLocalCollection } from "@/lib/store/use-mock-store";
+import { useVolunteersData } from "@/lib/hooks/use-volunteers-collection";
 import type { Volunteer } from "@/lib/types/staff";
 import { formatDate } from "@/lib/utils/date";
 
 export default function VolunteersPage() {
-  const { items, updateItem } = useLocalCollection<Volunteer>("volunteers", seedVolunteers);
+  const { volunteers, incrementCertificates } = useVolunteersData();
 
   const columns: ColumnDef<Volunteer>[] = [
     {
@@ -48,8 +47,8 @@ export default function VolunteersPage() {
           className="h-7 gap-1.5"
           onClick={(e) => {
             e.stopPropagation();
-            updateItem(row.original.id, { certificatesIssued: row.original.certificatesIssued + 1 });
-            toast.success(`Service certificate generated for ${row.original.firstName} ${row.original.lastName}`);
+            incrementCertificates(row.original.id, row.original.certificatesIssued);
+            toast.success(`Service certificate count updated for ${row.original.firstName} ${row.original.lastName}`);
           }}
         >
           <Award className="size-3.5" />
@@ -62,7 +61,7 @@ export default function VolunteersPage() {
   return (
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader title="Volunteers" description="Separate sign-in from staff — tracks hours and generates service certificates." />
-      <DataTable columns={columns} data={items} searchPlaceholder="Search volunteers…" />
+      <DataTable columns={columns} data={volunteers} searchPlaceholder="Search volunteers…" />
     </div>
   );
 }

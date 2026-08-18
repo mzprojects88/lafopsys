@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { IconCircle } from "@/components/patterns/icon-circle";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
-import { shifts } from "@/lib/mock-data";
+import { useShiftsData } from "@/lib/hooks/use-shifts-collection";
 import { useClockStatus } from "@/lib/hooks/use-clock-status";
 import { TODAY_ISO } from "@/lib/utils/seeded-random";
 import { EmptyState } from "@/components/patterns/empty-state";
@@ -16,7 +16,10 @@ function nowLabel() {
 }
 
 export function ClockWidget() {
-  const { me, todayEntry, clockedIn, clockIn, clockOut } = useClockStatus();
+  const { me, todayEntry, clockedIn, loading, clockIn, clockOut } = useClockStatus();
+  const { shifts } = useShiftsData();
+
+  if (loading) return null;
 
   if (!me) {
     return (
@@ -29,14 +32,16 @@ export function ClockWidget() {
 
   const todayShift = shifts.find((s) => s.staffId === me.id && s.date === TODAY_ISO);
 
-  function handleClockIn() {
-    clockIn();
-    toast.success(`Clocked in at ${nowLabel()}`);
+  async function handleClockIn() {
+    const result = await clockIn();
+    if (result?.ok === false) toast.error(result.error);
+    else toast.success(`Clocked in at ${nowLabel()}`);
   }
 
-  function handleClockOut() {
-    clockOut();
-    toast.success(`Clocked out at ${nowLabel()}`);
+  async function handleClockOut() {
+    const result = await clockOut();
+    if (result?.ok === false) toast.error(result.error);
+    else toast.success(`Clocked out at ${nowLabel()}`);
   }
 
   const statusLabel = clockedIn

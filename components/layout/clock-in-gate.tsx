@@ -14,13 +14,13 @@ import { useClockStatus } from "@/lib/hooks/use-clock-status";
 export function ClockInGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { me, hasClockedInToday } = useClockStatus();
+  const { me, hasClockedInToday, loading } = useClockStatus();
   const [mounted, setMounted] = React.useState(false);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- avoids gating on the pre-localStorage-sync default identity
   React.useEffect(() => setMounted(true), []);
 
-  const mustClockIn = mounted && !!me && !hasClockedInToday && pathname !== "/staff";
+  const mustClockIn = mounted && !loading && !!me && !hasClockedInToday && pathname !== "/staff";
 
   React.useEffect(() => {
     if (mustClockIn) {

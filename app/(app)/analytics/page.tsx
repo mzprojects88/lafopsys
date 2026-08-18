@@ -10,20 +10,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { useRole } from "@/lib/rbac/use-role";
-import {
-  patients,
-  diagnoses,
-  provinces,
-  censusHistory,
-  metricSnapshots,
-  donations,
-  donors,
-  inventoryLots,
-  inventoryItems,
-  cashEntries,
-  accounts,
-  programs,
-} from "@/lib/mock-data";
+import { usePatientsData } from "@/lib/hooks/use-patients-collection";
+import { useDiagnosesReferenceData } from "@/lib/hooks/use-diagnoses-reference-collection";
+import { useReferenceTableData } from "@/lib/hooks/use-reference-table-collection";
+import { useCensusData } from "@/lib/hooks/use-census-collection";
+import { useMetricSnapshotsData } from "@/lib/hooks/use-metric-snapshots-collection";
+import { useDonorsData } from "@/lib/hooks/use-donors-collection";
+import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
+import { useAccountsData } from "@/lib/hooks/use-accounts-collection";
+import { useProgramsData } from "@/lib/hooks/use-programs-collection";
+// Inventory stays mock -- lafopsys only reads inventory data through
+// laf-inventory's published views once that bridge exists (Phase 3 boundary,
+// not built yet from the inventory side).
+import { inventoryLots, inventoryItems } from "@/lib/mock-data";
 import { computeAge, ageBracket } from "@/lib/utils/age";
 import { formatCurrency } from "@/lib/utils/currency";
 import { daysUntil } from "@/lib/utils/date";
@@ -34,6 +33,16 @@ export default function AnalyticsPage() {
   const { role } = useRole();
   const isBoard = role === "board";
   const [panelBMode, setPanelBMode] = React.useState<"nights" | "unique">("nights");
+
+  const { patients } = usePatientsData();
+  const { rows: diagnoses } = useDiagnosesReferenceData();
+  const { rows: provinces } = useReferenceTableData("provinces", "prov", "region");
+  const { history: censusHistory } = useCensusData();
+  const { snapshots: metricSnapshots } = useMetricSnapshotsData();
+  const { donations, donors } = useDonorsData();
+  const { entries: cashEntries } = useCashEntriesData();
+  const { accounts } = useAccountsData();
+  const { programs } = useProgramsData();
 
   // Panel A — Enrolled Patients Overview
   const sexSplit = { M: patients.filter((p) => p.sex === "M").length, F: patients.filter((p) => p.sex === "F").length };
@@ -63,6 +72,7 @@ export default function AnalyticsPage() {
     .map((prov) => ({ name: prov.name, count: patients.filter((p) => p.provinceId === prov.id).length }))
     .filter((p) => p.count > 0)
     .sort((a, b) => b.count - a.count);
+  const maxProvinceCount = byProvince[0]?.count ?? 0;
 
   // Panel D — Live Census
   const today = censusHistory[censusHistory.length - 1];
@@ -80,7 +90,7 @@ export default function AnalyticsPage() {
   );
   const lastMonth = metricSnapshots[metricSnapshots.length - 1];
   const prevMonth = metricSnapshots[metricSnapshots.length - 2];
-  const bedNightDelta = prevMonth ? Math.round(((lastMonth.bedNights - prevMonth.bedNights) / prevMonth.bedNights) * 100) : undefined;
+  const bedNightDelta = lastMonth && prevMonth ? Math.round(((lastMonth.bedNights - prevMonth.bedNights) / prevMonth.bedNights) * 100) : undefined;
 
   // Panel F — Donations & Inventory
   const cashTotal = donations.filter((d) => d.kind === "cash").reduce((s, d) => s + d.totalValue, 0);
@@ -205,7 +215,7 @@ export default function AnalyticsPage() {
                   <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
                     <div
                       className="h-full rounded-full bg-primary"
-                      style={{ width: `${(p.count / byProvince[0].count) * 100}%` }}
+                      style={{ width: `${maxProvinceCount ? (p.count / maxProvinceCount) * 100 : 0}%` }}
                     />
                   </div>
                   <span className="w-6 text-right text-xs text-muted-foreground">{p.count}</span>
@@ -220,17 +230,17 @@ export default function AnalyticsPage() {
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-muted-foreground">Panel D — Live House Census</h2>
         <KpiGrid>
-          <KpiCard label="In-House Now" value={today.inHouse} icon={Users} color="orange" />
+          <KpiCard label="In-House Now" value={today?.inHouse ?? 0} icon={Users} color="orange" />
           <KpiCard
             label="Units Occupied"
-            value={today.unitsOccupied !== undefined ? `${today.unitsOccupied} / ${today.totalUnits}` : "—"}
+            value={today?.unitsOccupied !== undefined ? `${today.unitsOccupied} / ${today.totalUnits}` : "—"}
             icon={Home}
             color="blue"
           />
-          <KpiCard label="Units Shared" value={today.unitsShared ?? "—"} icon={Share2} color="purple" />
+          <KpiCard label="Units Shared" value={today?.unitsShared ?? "—"} icon={Share2} color="purple" />
           <KpiCard
             label="Utilization"
-            value={today.unitsOccupied !== undefined ? `${Math.round((today.unitsOccupied / today.totalUnits) * 100)}%` : "—"}
+            value={today?.unitsOccupied !== undefined ? `${Math.round((today.unitsOccupied / today.totalUnits) * 100)}%` : "—"}
             icon={Percent}
             color="amber"
           />

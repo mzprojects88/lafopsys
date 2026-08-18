@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/patterns/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { useNotificationPrefs } from "@/lib/hooks/use-notification-prefs";
 
 const PREFS = [
   { id: "expiry", label: "Inventory expiry alerts", description: "60 / 30 / 14 day thresholds", defaultOn: true },
@@ -14,9 +15,11 @@ const PREFS = [
 ];
 
 export default function NotificationSettingsPage() {
+  const { prefs, loading, setPref } = useNotificationPrefs();
+
   return (
     <div className="flex max-w-xl flex-1 flex-col gap-6">
-      <PageHeader title="Notification Preferences" description="In-app, email, and optional SMS for expiry and admission alerts." />
+      <PageHeader title="Notification Preferences" description="Your on/off preferences, saved to your account. No email or SMS provider is connected yet — these control what would be sent once one is." />
       <Card>
         <CardContent className="flex flex-col divide-y pt-6">
           {PREFS.map((pref, i) => (
@@ -25,7 +28,14 @@ export default function NotificationSettingsPage() {
                 <span className="text-sm font-medium">{pref.label}</span>
                 <span className="text-xs text-muted-foreground">{pref.description}</span>
               </div>
-              <Switch defaultChecked={pref.defaultOn} onCheckedChange={() => toast.success("Preference updated")} />
+              <Switch
+                disabled={loading}
+                checked={prefs[pref.id] ?? pref.defaultOn}
+                onCheckedChange={async (checked) => {
+                  const result = await setPref(pref.id, checked);
+                  toast[result.ok ? "success" : "error"](result.ok ? "Preference saved" : result.error);
+                }}
+              />
             </div>
           ))}
         </CardContent>

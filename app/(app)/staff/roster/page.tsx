@@ -2,10 +2,13 @@
 
 import { PageHeader } from "@/components/patterns/page-header";
 import { RosterCalendar, type CalendarEvent } from "@/components/patterns/roster-calendar";
-import { staff, shifts } from "@/lib/mock-data";
+import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
+import { useShiftsData } from "@/lib/hooks/use-shifts-collection";
 import { toast } from "sonner";
 
 export default function RosterPage() {
+  const { staff } = useStaffRoster();
+  const { shifts } = useShiftsData();
   const events: CalendarEvent[] = shifts.map((shift) => {
     const person = staff.find((s) => s.id === shift.staffId);
     return {

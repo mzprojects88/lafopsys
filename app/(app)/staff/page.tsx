@@ -1,3 +1,5 @@
+"use client";
+
 import { CalendarDays, FileText, Users2 } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { StatusBadge } from "@/components/patterns/status-badge";
@@ -6,7 +8,9 @@ import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/modul
 import { ClockWidget } from "@/components/modules/staff/clock-widget";
 import { ClockInRequiredDialog } from "@/components/modules/staff/clock-in-required-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { staff, shifts, timeEntries } from "@/lib/mock-data";
+import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
+import { useShiftsData } from "@/lib/hooks/use-shifts-collection";
+import { useTimeEntriesData } from "@/lib/hooks/use-time-entries-collection";
 import { TODAY_ISO } from "@/lib/utils/seeded-random";
 
 const SUB_NAV: ModuleSubNavItem[] = [
@@ -16,6 +20,9 @@ const SUB_NAV: ModuleSubNavItem[] = [
 ];
 
 export default function StaffPage() {
+  const { staff } = useStaffRoster();
+  const { shifts } = useShiftsData();
+  const { entries: timeEntries } = useTimeEntriesData();
   const todayShifts = shifts.filter((s) => s.date === TODAY_ISO);
   const todayEntries = timeEntries.filter((t) => t.date === TODAY_ISO);
 

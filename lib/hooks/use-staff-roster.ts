@@ -9,6 +9,7 @@ export interface StaffRosterEntry {
   firstName: string;
   lastName: string;
   role: Role;
+  position: string;
   active: boolean;
 }
 
@@ -17,6 +18,7 @@ interface StaffRow {
   first_name: string;
   last_name: string;
   role: Role;
+  position: string;
   active: boolean;
 }
 
@@ -31,7 +33,7 @@ export function useStaffRoster() {
     const { data } = await supabase
       .schema("shared")
       .from("staff")
-      .select("id, first_name, last_name, role, active")
+      .select("id, first_name, last_name, role, position, active")
       .order("first_name");
     setStaff(
       ((data ?? []) as StaffRow[]).map((row) => ({
@@ -39,6 +41,7 @@ export function useStaffRoster() {
         firstName: row.first_name,
         lastName: row.last_name,
         role: row.role,
+        position: row.position,
         active: row.active,
       }))
     );

@@ -1,6 +1,5 @@
 export * from "./reference-data";
 export * from "./hospitals";
-export * from "./staff";
 export * from "./patients";
 export * from "./house-ops";
 export * from "./donors";

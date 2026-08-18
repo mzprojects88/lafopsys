@@ -36,10 +36,10 @@ import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useCensusData } from "@/lib/hooks/use-census-collection";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
+import { useTimesheetApprovalsData } from "@/lib/hooks/use-timesheet-approvals-collection";
 import {
   inventoryItems,
   inventoryLots,
-  timesheetApprovals,
 } from "@/lib/mock-data";
 import { formatCurrency } from "@/lib/utils/currency";
 import { daysUntil, formatDate } from "@/lib/utils/date";
@@ -54,6 +54,7 @@ export default function DashboardPage() {
   const { history: censusHistory } = useCensusData();
   const { donations, donors } = useDonorsData();
   const { entries: cashEntries } = useCashEntriesData();
+  const { approvals: timesheetApprovals } = useTimesheetApprovalsData();
 
   const today = censusHistory[censusHistory.length - 1];
   const inHouseNow = today?.inHouse ?? 0;

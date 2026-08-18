@@ -25,17 +25,18 @@ function nowLabel() {
  * is the only way to close it, mirroring the ClockInGate navigation rule.
  */
 export function ClockInRequiredDialog() {
-  const { me, hasClockedInToday, clockIn } = useClockStatus();
+  const { me, hasClockedInToday, loading, clockIn } = useClockStatus();
   const [mounted, setMounted] = React.useState(false);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- avoids flashing open on the pre-localStorage-sync default identity
   React.useEffect(() => setMounted(true), []);
 
-  const open = mounted && !!me && !hasClockedInToday;
+  const open = mounted && !loading && !!me && !hasClockedInToday;
 
-  function handleClockIn() {
-    clockIn();
-    toast.success(`Clocked in at ${nowLabel()}`);
+  async function handleClockIn() {
+    const result = await clockIn();
+    if (result?.ok === false) toast.error(result.error);
+    else toast.success(`Clocked in at ${nowLabel()}`);
   }
 
   return (
