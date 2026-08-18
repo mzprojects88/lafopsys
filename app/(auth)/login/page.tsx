@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { LoginForm, type LoginRosterEntry } from "@/components/modules/auth/login-form";
+import { ALL_ROLES } from "@/lib/rbac/roles";
 
 // A visitor on the login page has no session yet, so the RLS-gated
 // `shared.staff` table isn't readable by the browser client (RLS requires
@@ -15,6 +16,7 @@ export default async function LoginPage() {
     .from("staff")
     .select("id, staff_code, first_name, last_name")
     .eq("active", true)
+    .in("role", ALL_ROLES)
     .order("first_name");
 
   const roster: LoginRosterEntry[] = (data ?? []).map((s) => ({
