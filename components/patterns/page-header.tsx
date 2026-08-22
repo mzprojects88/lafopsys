@@ -14,7 +14,12 @@ export function PageHeader({ title, description, action, className }: PageHeader
         <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">{title}</h1>
         {description && <p className="text-sm text-muted-foreground">{description}</p>}
       </div>
-      {action && <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>}
+      {/* Full width below `sm` so a wrapped action row (most often ModuleSubNav) can
+          scroll horizontally within the viewport instead of forcing the page wider than
+          the screen -- `shrink-0` alone made the header the widest thing on the page. */}
+      {action && (
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">{action}</div>
+      )}
     </div>
   );
 }

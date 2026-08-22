@@ -121,6 +121,18 @@
   --sidebar-ring: hsl(221 83% 65%);
 }
 
+/* Horizontally scrollable strips (mobile tab bars, module sub-nav) still need to
+   scroll, but a visible scrollbar under a row of pills reads as a rendering bug
+   rather than an affordance. `components/ui/command.tsx` already referenced this
+   class before it existed anywhere. */
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

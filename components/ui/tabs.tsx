@@ -46,12 +46,24 @@ function TabsList({
 }: React.ComponentProps<typeof TabsPrimitive.List> &
   VariantProps<typeof tabsListVariants>) {
   return (
-    <TabsPrimitive.List
-      data-slot="tabs-list"
-      data-variant={variant}
-      className={cn(tabsListVariants({ variant }), className)}
-      {...props}
-    />
+    // The list itself is `inline-flex w-fit` with `whitespace-nowrap` triggers, so a
+    // 4-5 tab bar (patient detail, donor detail, inventory item, finance registers)
+    // overflows a phone viewport and scrolls the whole page sideways. This wrapper
+    // confines that overflow to its own horizontal scroll, on horizontal tabs only --
+    // vertical tabs stack and have nothing to scroll. `pb-1.5` keeps the `line`
+    // variant's `after:bottom-[-5px]` underline from being clipped by the new
+    // scroll container.
+    <div
+      data-slot="tabs-list-viewport"
+      className="no-scrollbar group-data-horizontal/tabs:w-full group-data-horizontal/tabs:max-w-full group-data-horizontal/tabs:overflow-x-auto group-data-horizontal/tabs:pb-1.5"
+    >
+      <TabsPrimitive.List
+        data-slot="tabs-list"
+        data-variant={variant}
+        className={cn(tabsListVariants({ variant }), className)}
+        {...props}
+      />
+    </div>
   )
 }
 

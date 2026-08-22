@@ -1,6 +1,7 @@
 "use client";
 
-import { Clock, LogIn, LogOut, CalendarCheck, ShieldCheck } from "lucide-react";
+import * as React from "react";
+import { Clock, LogIn, LogOut, CalendarCheck, ShieldCheck, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,9 @@ function nowLabel() {
 export function ClockWidget() {
   const { me, todayEntry, clockedIn, loading, clockIn, clockOut } = useClockStatus();
   const { shifts } = useShiftsData();
+  // A punch waits on a GPS fix (up to 8s), so the button has to say so — an
+  // unresponsive-looking button invites a second tap and a duplicate punch.
+  const [punching, setPunching] = React.useState(false);
 
   if (loading) return null;
 
@@ -33,13 +37,17 @@ export function ClockWidget() {
   const todayShift = shifts.find((s) => s.staffId === me.id && s.date === TODAY_ISO);
 
   async function handleClockIn() {
+    setPunching(true);
     const result = await clockIn();
+    setPunching(false);
     if (result?.ok === false) toast.error(result.error);
     else toast.success(`Clocked in at ${nowLabel()}`);
   }
 
   async function handleClockOut() {
+    setPunching(true);
     const result = await clockOut();
+    setPunching(false);
     if (result?.ok === false) toast.error(result.error);
     else toast.success(`Clocked out at ${nowLabel()}`);
   }
@@ -65,14 +73,25 @@ export function ClockWidget() {
         </div>
 
         {clockedIn ? (
-          <Button size="lg" variant="destructive" className="h-12 w-full gap-2 text-base" onClick={handleClockOut}>
+          <Button
+            size="lg"
+            variant="destructive"
+            className="h-12 w-full gap-2 text-base"
+            disabled={punching}
+            onClick={handleClockOut}
+          >
             <LogOut className="size-5" />
-            Clock Out
+            {punching ? "Recording…" : "Clock Out"}
           </Button>
         ) : (
-          <Button size="lg" className="h-12 w-full gap-2 text-base" onClick={handleClockIn}>
+          <Button
+            size="lg"
+            className="h-12 w-full gap-2 text-base"
+            disabled={punching}
+            onClick={handleClockIn}
+          >
             <LogIn className="size-5" />
-            Clock In
+            {punching ? "Recording…" : "Clock In"}
           </Button>
         )}
 
@@ -101,6 +120,17 @@ export function ClockWidget() {
               <span className="text-sm font-medium">{clockedIn ? "In progress" : "0h 0m"}</span>
             </div>
           </div>
+        </div>
+
+        {/* Staff are told what a punch records, in plain words and before they tap
+            it — location tracking that people only discover afterwards isn't consent.
+            Declining the browser's location prompt is explicitly safe. */}
+        <div className="flex items-start gap-2.5 rounded-lg bg-accent/40 px-3 py-2.5 text-xs text-muted-foreground">
+          <MapPin className="size-4 shrink-0 text-primary" />
+          <span>
+            Clocking in or out records your location, device and network address to your Daily Time Record.
+            You can decline the location prompt — your punch is still saved, noted as no location given.
+          </span>
         </div>
 
         <div className="flex items-start gap-2.5 rounded-lg bg-accent/40 px-3 py-2.5 text-xs text-muted-foreground">

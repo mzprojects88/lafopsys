@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, FileText, Users2 } from "lucide-react";
+import { CalendarDays, FileText, Fingerprint, Users2 } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
@@ -12,8 +12,10 @@ import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { useShiftsData } from "@/lib/hooks/use-shifts-collection";
 import { useTimeEntriesData } from "@/lib/hooks/use-time-entries-collection";
 import { TODAY_ISO } from "@/lib/utils/seeded-random";
+import { todayIso } from "@/lib/utils/date";
 
 const SUB_NAV: ModuleSubNavItem[] = [
+  { href: "/staff/dtr", label: "Daily Time Record", icon: Fingerprint, color: "cyan" },
   { href: "/staff/roster", label: "Roster", icon: CalendarDays, color: "blue" },
   { href: "/staff/timesheets", label: "Timesheets", icon: FileText, color: "purple" },
   { href: "/staff/volunteers", label: "Volunteers", icon: Users2, color: "green" },
@@ -23,8 +25,10 @@ export default function StaffPage() {
   const { staff } = useStaffRoster();
   const { shifts } = useShiftsData();
   const { entries: timeEntries } = useTimeEntriesData();
+  // Shifts stay on the frozen demo date (that's what the seeded roster is built
+  // around), but clock entries are real records written under the real date.
   const todayShifts = shifts.filter((s) => s.date === TODAY_ISO);
-  const todayEntries = timeEntries.filter((t) => t.date === TODAY_ISO);
+  const todayEntries = timeEntries.filter((t) => t.date === todayIso());
 
   return (
     <div className="flex flex-1 flex-col gap-6">

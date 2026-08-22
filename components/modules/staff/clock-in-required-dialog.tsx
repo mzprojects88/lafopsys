@@ -32,9 +32,14 @@ export function ClockInRequiredDialog() {
   React.useEffect(() => setMounted(true), []);
 
   const open = mounted && !loading && !!me && !hasClockedInToday;
+  // Punching waits on a GPS fix (up to 8s). Without a visible pending state this
+  // dialog looks frozen, and a second tap would record a duplicate punch.
+  const [punching, setPunching] = React.useState(false);
 
   async function handleClockIn() {
+    setPunching(true);
     const result = await clockIn();
+    setPunching(false);
     if (result?.ok === false) toast.error(result.error);
     else toast.success(`Clocked in at ${nowLabel()}`);
   }
@@ -56,10 +61,14 @@ export function ClockInRequiredDialog() {
             below to continue.
           </DialogDescription>
         </DialogHeader>
+        <p className="text-center text-xs text-muted-foreground">
+          Clocking in records your location, device and network address to your Daily Time Record.
+          You can decline the location prompt — your punch is still saved.
+        </p>
         <DialogFooter>
-          <Button size="lg" className="w-full gap-2" onClick={handleClockIn}>
+          <Button size="lg" className="w-full gap-2" disabled={punching} onClick={handleClockIn}>
             <LogIn className="size-4" />
-            Clock In Now
+            {punching ? "Recording…" : "Clock In Now"}
           </Button>
         </DialogFooter>
       </DialogContent>

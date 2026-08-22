@@ -34,6 +34,23 @@ interface DataTableProps<TData> {
   toolbar?: React.ReactNode;
   emptyMessage?: string;
   pageSize?: number;
+  /**
+   * Overrides the generic card built from the column defs for the below-`sm` layout.
+   * Only worth passing when the generic version reads poorly for a particular table --
+   * every table gets a usable card without it.
+   */
+  renderMobileCard?: (row: TData) => React.ReactNode;
+}
+
+/**
+ * A column's header, but only when it's a plain string we can use as a field label.
+ * The `id: "actions"` columns in this codebase carry `header: ""`, which is the signal
+ * to move that cell into the card's footer instead of labelling it.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches ColumnDef's own open value type
+function headerLabel(column: { columnDef: ColumnDef<any, any> }): string | undefined {
+  const header = column.columnDef.header;
+  return typeof header === "string" && header.trim().length > 0 ? header : undefined;
 }
 
 export function DataTable<TData>({
@@ -44,6 +61,7 @@ export function DataTable<TData>({
   toolbar,
   emptyMessage = "No results.",
   pageSize = 10,
+  renderMobileCard,
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = React.useState("");
@@ -83,7 +101,76 @@ export function DataTable<TData>({
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-xl border bg-card">
+      {/* Below `sm` a 6-8 column table is unreadable even with its own horizontal scroll,
+          so each row becomes a card instead. Rendered as a sibling and toggled with CSS
+          rather than a JS breakpoint hook, which would flash the wrong layout on first
+          paint. Cards reuse each column's own `cell` renderer, so avatars, status badges
+          and formatted dates carry over unchanged. */}
+      <div className="flex flex-col gap-2 sm:hidden">
+        {table.getRowModel().rows.length ? (
+          table.getRowModel().rows.map((row) => {
+            if (renderMobileCard) {
+              return <React.Fragment key={row.id}>{renderMobileCard(row.original)}</React.Fragment>;
+            }
+            const cells = row.getVisibleCells();
+            const [titleCell, ...restCells] = cells;
+            const fieldCells = restCells.filter((cell) => headerLabel(cell.column));
+            const footerCells = restCells.filter((cell) => !headerLabel(cell.column));
+            return (
+              <div
+                key={row.id}
+                role={onRowClick ? "button" : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                onClick={() => onRowClick?.(row.original)}
+                onKeyDown={(e) => {
+                  if (!onRowClick) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onRowClick(row.original);
+                  }
+                }}
+                className={cn(
+                  "flex flex-col gap-2.5 rounded-xl border bg-card p-3 text-sm",
+                  onRowClick && "cursor-pointer transition-colors hover:bg-accent/40"
+                )}
+              >
+                {titleCell && (
+                  <div className="min-w-0 font-medium">
+                    {flexRender(titleCell.column.columnDef.cell, titleCell.getContext())}
+                  </div>
+                )}
+                {fieldCells.length > 0 && (
+                  <dl className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
+                    {fieldCells.map((cell) => (
+                      <React.Fragment key={cell.id}>
+                        <dt className="truncate text-muted-foreground">{headerLabel(cell.column)}</dt>
+                        <dd className="min-w-0 break-words text-foreground">
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </dd>
+                      </React.Fragment>
+                    ))}
+                  </dl>
+                )}
+                {footerCells.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 border-t pt-2.5">
+                    {footerCells.map((cell) => (
+                      <React.Fragment key={cell.id}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <div className="rounded-xl border bg-card px-3 py-10 text-center text-sm text-muted-foreground">
+            {emptyMessage}
+          </div>
+        )}
+      </div>
+
+      <div className="hidden overflow-hidden rounded-xl border bg-card sm:block">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (

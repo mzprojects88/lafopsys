@@ -142,7 +142,7 @@ export default function DonationIntakePage() {
                     <FieldLabel htmlFor="itemDescription">Item Description</FieldLabel>
                     <Input id="itemDescription" placeholder="e.g. Egg (30/Tray)" {...register("itemDescription")} />
                   </Field>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <Field>
                       <FieldLabel htmlFor="quantity">Quantity</FieldLabel>
                       <Input id="quantity" type="number" min={0} {...register("quantity", { valueAsNumber: true })} />
