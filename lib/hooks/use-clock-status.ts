@@ -4,6 +4,8 @@ import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useStaffRoster, type StaffRosterEntry } from "@/lib/hooks/use-staff-roster";
 import { useTimeEntriesData, type MutationResult } from "@/lib/hooks/use-time-entries-collection";
+import { useAppSettings } from "@/lib/hooks/use-app-settings";
+import { INVENTORY_ROLES } from "@/lib/rbac/roles";
 import { todayIso } from "@/lib/utils/date";
 import type { PunchLocationStatus } from "@/lib/types/staff";
 
@@ -62,6 +64,7 @@ function captureLocation(): Promise<CapturedLocation> {
 export function useClockStatus() {
   const { staff, loading: staffLoading } = useStaffRoster();
   const { entries, loading: entriesLoading, refetch } = useTimeEntriesData();
+  const { requireClockInForInventoryRoles, loading: settingsLoading } = useAppSettings();
   const [authId, setAuthId] = React.useState<string | undefined>(undefined);
 
   React.useEffect(() => {
@@ -71,12 +74,16 @@ export function useClockStatus() {
     });
   }, []);
 
-  const loading = staffLoading || entriesLoading || authId === undefined;
+  const loading = staffLoading || entriesLoading || settingsLoading || authId === undefined;
   const me: StaffRosterEntry | undefined = authId ? staff.find((s) => s.id === authId) : undefined;
   const today = todayIso();
   const todayEntry = me ? entries.find((t) => t.staffId === me.id && t.date === today) : undefined;
   const clockedIn = !!todayEntry?.clockIn && !todayEntry?.clockOut;
   const hasClockedInToday = !!todayEntry?.clockIn;
+  // Non-inventory roles must always clock in, as before. Inventory roles are
+  // exempt until an admin turns on the "require clock-in" setting (see
+  // components/modules/settings/clock-in-requirement-toggle.tsx).
+  const clockInRequired = !me ? false : !INVENTORY_ROLES.includes(me.role) || requireClockInForInventoryRoles;
 
   async function punch(punchType: "clock_in" | "clock_out"): Promise<MutationResult | undefined> {
     if (!me) return undefined;
@@ -115,5 +122,5 @@ export function useClockStatus() {
     return punch("clock_out");
   }
 
-  return { me, todayEntry, clockedIn, hasClockedInToday, loading, clockIn, clockOut };
+  return { me, todayEntry, clockedIn, hasClockedInToday, clockInRequired, loading, clockIn, clockOut };
 }

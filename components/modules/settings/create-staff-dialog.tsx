@@ -20,6 +20,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ROLES } from "@/lib/types/common";
 import { createStaffAccount } from "@/app/(app)/settings/users/actions";
 
+// Org-wide default for every newly-created account (matches
+// scripts/create-employee-201-accounts.mjs and replaces the sibling
+// laf-inventory app's old "123456" convention now that lafopsys is the one
+// place accounts get created). Admins can still randomize with the dice
+// button below.
+const DEFAULT_PIN = "888888";
+
 function randomSixDigitPin() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
@@ -38,7 +45,7 @@ export function CreateStaffDialog() {
   const [position, setPosition] = React.useState("");
   const [staffCodeRaw, setStaffCodeRaw] = React.useState("");
   const [staffCodeTouched, setStaffCodeTouched] = React.useState(false);
-  const [pin, setPin] = React.useState(randomSixDigitPin());
+  const [pin, setPin] = React.useState(DEFAULT_PIN);
 
   // Auto-suggested from the name until the admin edits it directly — a plain
   // derived value (not synced via an effect), so it updates in the same
@@ -52,7 +59,7 @@ export function CreateStaffDialog() {
     setPosition("");
     setStaffCodeRaw("");
     setStaffCodeTouched(false);
-    setPin(randomSixDigitPin());
+    setPin(DEFAULT_PIN);
   }
 
   const canSubmit = firstName && lastName && role && position && staffCode.length >= 3 && /^\d{6}$/.test(pin);

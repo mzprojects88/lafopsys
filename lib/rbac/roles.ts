@@ -30,9 +30,21 @@ export const ALL_ROLES: Role[] = [
   "volunteer",
 ];
 
+/** laf-inventory-only roles. Real accounts, created from lafopsys like any
+ * other, but scoped in lafopsys's own nav to Inventory (read-only) + Staff &
+ * Time (DTR) — see NAV_ITEMS below. */
+export const INVENTORY_ROLES: Role[] = ["chef", "inventory_staff", "nutritionist", "inventory_lead"];
+
+/** Every role creatable from lafopsys and visible in its login picker.
+ * Deliberately a superset of ALL_ROLES — lafopsys is the single place every
+ * account gets created org-wide, inventory-only roles included. */
+export const ORG_ROLES: Role[] = [...ALL_ROLES, ...INVENTORY_ROLES];
+
+export const LOGIN_VISIBLE_ROLES = ORG_ROLES;
+
 export const NAV_ITEMS: NavItem[] = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, allowedRoles: "all" },
-  { title: "Staff & Time", href: "/staff", icon: Clock, allowedRoles: "all" },
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, allowedRoles: ALL_ROLES },
+  { title: "Staff & Time", href: "/staff", icon: Clock, allowedRoles: [...ALL_ROLES, ...INVENTORY_ROLES] },
   {
     title: "Patients & Admissions",
     href: "/patients",
@@ -55,7 +67,7 @@ export const NAV_ITEMS: NavItem[] = [
     title: "Inventory",
     href: "/inventory",
     icon: Boxes,
-    allowedRoles: ["admin", "house_staff", "finance"],
+    allowedRoles: ["admin", "house_staff", "finance", ...INVENTORY_ROLES],
   },
   {
     title: "Financial",
@@ -63,7 +75,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Wallet,
     allowedRoles: ["admin", "finance", "board"],
   },
-  { title: "Analytics", href: "/analytics", icon: BarChart3, allowedRoles: "all" },
+  { title: "Analytics", href: "/analytics", icon: BarChart3, allowedRoles: ALL_ROLES },
   {
     title: "Reports",
     href: "/reports",

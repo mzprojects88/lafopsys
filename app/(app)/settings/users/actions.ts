@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ALL_ROLES } from "@/lib/rbac/roles";
+import { ORG_ROLES } from "@/lib/rbac/roles";
 import type { Role } from "@/lib/types/common";
 
 export interface CreateStaffInput {
@@ -53,7 +53,7 @@ export async function createStaffAccount(input: CreateStaffInput): Promise<Creat
   if (!firstName || !lastName || !position || !staffCode) {
     return { ok: false, error: "First name, last name, position, and staff code are all required." };
   }
-  if (!ALL_ROLES.includes(input.role)) {
+  if (!ORG_ROLES.includes(input.role)) {
     return { ok: false, error: "Invalid role." };
   }
   if (!/^\d{6}$/.test(input.temporaryPin)) {

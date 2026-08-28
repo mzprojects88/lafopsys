@@ -17,7 +17,7 @@ const PIN_LENGTH = 6;
 
 export interface LoginRosterEntry {
   id: string;
-  staffCode: string;
+  email: string;
   firstName: string;
   lastName: string;
 }
@@ -39,9 +39,11 @@ export function LoginForm({ roster }: { roster: LoginRosterEntry[] }) {
 
     setSubmitting(true);
     const supabase = createClient();
-    const email = `${selected.staffCode.toLowerCase()}@staff.lafopsys.internal`;
 
-    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password: pin });
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email: selected.email,
+      password: pin,
+    });
     if (signInError || !signInData.user) {
       toast.error("Incorrect PIN. Please try again.");
       setPin("");

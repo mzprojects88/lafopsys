@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Database, Users, Bell, RotateCcw } from "lucide-react";
+import { Database, Users, Bell, RotateCcw, ClipboardCheck } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { IconCircle } from "@/components/patterns/icon-circle";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ResetDemoDataButton } from "@/components/modules/settings/reset-demo-data-button";
+import { ClockInRequirementToggle } from "@/components/modules/settings/clock-in-requirement-toggle";
 
 const REFERENCE_TABLES = [
   { slug: "provinces", label: "Provinces & Cities" },
@@ -50,6 +51,16 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <Link href="/settings/notifications" className="text-sm text-primary hover:underline">Notification preferences</Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex-row items-center gap-2 space-y-0">
+            <IconCircle icon={ClipboardCheck} color="green" size="sm" />
+            <CardTitle className="text-sm">Attendance Policy</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ClockInRequirementToggle />
           </CardContent>
         </Card>
 
