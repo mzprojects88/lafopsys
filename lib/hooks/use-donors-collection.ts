@@ -131,6 +131,25 @@ export function useDonorsData() {
       .eq("id", donation.donorId);
     if (donorError) return { ok: false, error: donorError.message };
 
+    // ops.campaigns.raised_amount is a stored rollup, same as the donor
+    // fields above, not derived at read time -- it was previously never
+    // incremented anywhere, so every campaign progress bar was stuck at 0.
+    if (donation.campaignId) {
+      const { data: campaign } = await supabase
+        .schema("ops")
+        .from("campaigns")
+        .select("raised_amount")
+        .eq("id", donation.campaignId)
+        .single();
+      if (campaign) {
+        await supabase
+          .schema("ops")
+          .from("campaigns")
+          .update({ raised_amount: Number(campaign.raised_amount) + donation.totalValue })
+          .eq("id", donation.campaignId);
+      }
+    }
+
     await refetch();
     return { ok: true };
   }

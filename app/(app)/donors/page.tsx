@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -11,9 +12,11 @@ import { PersonAvatar } from "@/components/patterns/person-avatar";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { Button } from "@/components/ui/button";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
+import { useDonorPledgesData } from "@/lib/hooks/use-donor-pledges-collection";
 import type { Donor } from "@/lib/types/donor";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
+import { isVipEligible } from "@/lib/utils/donor-vip";
 
 const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/donors/receipts", label: "Receipts", icon: Receipt, color: "blue" },
@@ -21,35 +24,44 @@ const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/donors/campaigns", label: "Campaigns", icon: Megaphone, color: "rose" },
 ];
 
-const columns: ColumnDef<Donor>[] = [
-  {
-    accessorKey: "name",
-    header: "Donor",
-    cell: ({ row }) => (
-      <div className="flex items-center gap-2.5">
-        <PersonAvatar name={row.original.name} size="sm" />
-        <span className="font-medium">{row.original.name}</span>
-      </div>
-    ),
-  },
-  { accessorKey: "type", header: "Type", cell: ({ row }) => <span className="capitalize">{row.original.type}</span> },
-  { accessorKey: "taxJurisdiction", header: "Jurisdiction" },
-  { accessorKey: "giftCount", header: "Gifts" },
-  {
-    accessorKey: "lifetimeValue",
-    header: "Lifetime Value",
-    cell: ({ row }) => formatCurrency(row.original.lifetimeValue),
-  },
-  {
-    accessorKey: "lastGiftDate",
-    header: "Last Gift",
-    cell: ({ row }) => formatDate(row.original.lastGiftDate),
-  },
-];
+function buildColumns(pledges: import("@/lib/types/donor").DonorPledge[]): ColumnDef<Donor>[] {
+  return [
+    {
+      accessorKey: "name",
+      header: "Donor",
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2.5">
+          <PersonAvatar name={row.original.name} size="sm" />
+          <span className="font-medium">{row.original.name}</span>
+          {isVipEligible(row.original, pledges) && (
+            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+              VIP
+            </span>
+          )}
+        </div>
+      ),
+    },
+    { accessorKey: "type", header: "Type", cell: ({ row }) => <span className="capitalize">{row.original.type}</span> },
+    { accessorKey: "taxJurisdiction", header: "Jurisdiction" },
+    { accessorKey: "giftCount", header: "Gifts" },
+    {
+      accessorKey: "lifetimeValue",
+      header: "Lifetime Value",
+      cell: ({ row }) => formatCurrency(row.original.lifetimeValue),
+    },
+    {
+      accessorKey: "lastGiftDate",
+      header: "Last Gift",
+      cell: ({ row }) => formatDate(row.original.lastGiftDate),
+    },
+  ];
+}
 
 export default function DonorsPage() {
   const router = useRouter();
   const { donors } = useDonorsData();
+  const { pledges } = useDonorPledgesData();
+  const columns = React.useMemo(() => buildColumns(pledges), [pledges]);
   const totalGifts = donors.reduce((sum, d) => sum + d.giftCount, 0);
   const totalLifetimeValue = donors.reduce((sum, d) => sum + d.lifetimeValue, 0);
   const avgGift = totalGifts > 0 ? totalLifetimeValue / totalGifts : 0;

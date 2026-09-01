@@ -83,6 +83,20 @@ export const STATUS_DOMAIN_MAP: Record<string, Record<string, StatusTone>> = {
     in_progress: "info",
     completed: "positive",
   },
+  pledge: {
+    active: "positive",
+    paused: "warning",
+    cancelled: "neutral",
+  },
+  commitment: {
+    pledged: "info",
+    fulfilled: "positive",
+    cancelled: "neutral",
+  },
+  donorAccount: {
+    active: "positive",
+    suspended: "negative",
+  },
 };
 
 export function getStatusTone(domain: string, status: string): StatusTone {

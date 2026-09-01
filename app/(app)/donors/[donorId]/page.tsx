@@ -13,6 +13,9 @@ import { Button } from "@/components/ui/button";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useAcknowledgmentReceiptsData } from "@/lib/hooks/use-acknowledgment-receipts-collection";
 import { useDoneeCertificatesData } from "@/lib/hooks/use-donee-certificates-collection";
+import { PledgeCard } from "@/components/modules/donors/pledge-card";
+import { PortalAccountCard } from "@/components/modules/donors/portal-account-card";
+import { CampaignCommitmentsTab } from "@/components/modules/donors/campaign-commitments-tab";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
 
@@ -62,9 +65,15 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
         ]}
       />
 
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <PledgeCard donorId={donor.id} />
+        <PortalAccountCard donorId={donor.id} />
+      </div>
+
       <Tabs defaultValue="history">
         <TabsList>
           <TabsTrigger value="history">Giving History ({donorDonations.length})</TabsTrigger>
+          <TabsTrigger value="commitments">Campaign Commitments</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
         </TabsList>
 
@@ -120,6 +129,10 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
               })}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="commitments" className="pt-4">
+          <CampaignCommitmentsTab donorId={donor.id} donorDonations={donorDonations} />
         </TabsContent>
 
         <TabsContent value="documents" className="pt-4">

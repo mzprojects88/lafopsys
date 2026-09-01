@@ -67,3 +67,44 @@ export interface Campaign {
   startDate: string;
   endDate?: string;
 }
+
+export type PledgeFrequency = "weekly" | "monthly" | "quarterly" | "annual";
+export type PledgeStatus = "active" | "paused" | "cancelled";
+
+export interface DonorPledge {
+  id: string;
+  donorId: string;
+  kind: DonationKind;
+  frequency: PledgeFrequency;
+  amount?: number;
+  currency?: Currency;
+  itemDescription?: string;
+  status: PledgeStatus;
+  startedAt: string;
+  notes?: string;
+}
+
+export type CommitmentStatus = "pledged" | "fulfilled" | "cancelled";
+
+export interface CampaignCommitment {
+  id: string;
+  donorId: string;
+  campaignId: string;
+  kind: DonationKind;
+  pledgedAmount?: number;
+  currency?: Currency;
+  itemDescription?: string;
+  status: CommitmentStatus;
+  fulfilledDonationId?: string;
+  createdAt: string;
+}
+
+export type DonorAccountStatus = "active" | "suspended";
+
+export interface DonorAccount {
+  id: string;
+  donorId: string;
+  email: string;
+  mustChangePassword: boolean;
+  status: DonorAccountStatus;
+}
