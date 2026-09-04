@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { DonorAccount } from "@/lib/types/donor";
 
 interface DonorAccountRow {
@@ -25,21 +25,20 @@ function toDonorAccount(row: DonorAccountRow): DonorAccount {
 /** shared.donor_accounts -- staff-side read of which donors already have a
  * portal login. Creation happens through the createDonorPortalAccount
  * Server Action (needs the service-role client), not this hook. */
-export function useDonorAccountsData() {
-  const [accounts, setAccounts] = React.useState<DonorAccount[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const donorAccountsStore = createCollection<DonorAccount[]>({
+  key: "shared.donor_accounts",
+  empty: [],
+  tables: [{ schema: "shared", table: "donor_accounts" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("shared").from("donor_accounts").select("*");
-    setAccounts((data ?? []).map(toDonorAccount));
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("shared").from("donor_accounts").select("*");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toDonorAccount);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useDonorAccountsData() {
+  const { data: accounts, loading } = useCollection(donorAccountsStore);
 
-  return { accounts, loading, refetch };
+  return { accounts, loading, refetch: donorAccountsStore.refetch };
 }

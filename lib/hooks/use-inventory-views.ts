@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollectionFamily, useCollection } from "@/lib/data/collection-store";
 import type {
   ConsumptionDailyRow,
   ExpiringLotRow,
@@ -16,36 +16,40 @@ import type {
  * Numeric columns arrive from PostgREST as strings (Postgres `numeric`), so
  * every hook below coerces them once here; pages get real numbers.
  *
- * No realtime and no writes: this is HQ reporting. Anything that changes
- * stock happens in the LAF Inventory app itself.
+ * No writes: this is HQ reporting. Anything that changes stock happens in the
+ * LAF Inventory app itself. The views are computed over every inventory
+ * table, so the store is invalidated by any change in the `inventory` schema.
  */
-function useView<T>(view: string, mapRow: (row: Record<string, unknown>) => T, order?: { column: string; ascending?: boolean }) {
-  const [rows, setRows] = React.useState<T[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+interface ViewSpec {
+  mapRow: (row: Record<string, unknown>) => unknown;
+  order?: { column: string; ascending?: boolean };
+}
 
-  const refetch = React.useCallback(async () => {
+const viewSpecs = new Map<string, ViewSpec>();
+
+const inventoryViews = createCollectionFamily<unknown[]>({
+  key: "inventory.view",
+  empty: [],
+  tables: () => [{ schema: "inventory" }],
+  fetch: async (view) => {
+    const spec = viewSpecs.get(view);
+    if (!spec) throw new Error(`Unknown inventory view ${view}`);
     let query = createClient().schema("inventory").from(view).select("*");
-    if (order) query = query.order(order.column, { ascending: order.ascending ?? true });
+    if (spec.order) query = query.order(spec.order.column, { ascending: spec.order.ascending ?? true });
     const { data, error } = await query;
-    if (error) {
-      setError(error.message);
-      setRows([]);
-    } else {
-      setError(null);
-      setRows(((data ?? []) as Record<string, unknown>[]).map(mapRow));
-    }
-    setLoading(false);
-    // mapRow/order are stable per hook below
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view]);
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as Record<string, unknown>[]).map(spec.mapRow);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
-
-  return { rows, loading, error, refetch };
+function useView<T>(view: string, mapRow: (row: Record<string, unknown>) => T, order?: { column: string; ascending?: boolean }) {
+  // mapRow/order are constant per public hook below, so first registration wins.
+  if (!viewSpecs.has(view)) viewSpecs.set(view, { mapRow, order });
+  const store = inventoryViews.get(view);
+  const { data, loading, error } = useCollection(store);
+  // A failed read shows an empty table plus the error, never stale rows.
+  const rows = error ? [] : (data as T[]);
+  return { rows, loading, error, refetch: store.refetch };
 }
 
 const num = (v: unknown) => (v == null ? 0 : Number(v));

@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { ActivitySession } from "@/lib/types/house-ops";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -28,21 +28,20 @@ function toActivitySession(row: ActivitySessionRow): ActivitySession {
   };
 }
 
-export function useActivitySessionsData() {
-  const [sessions, setSessions] = React.useState<ActivitySession[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const activitySessionsStore = createCollection<ActivitySession[]>({
+  key: "ops.activity_sessions",
+  empty: [],
+  tables: [{ schema: "ops", table: "activity_sessions" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("activity_sessions").select("*").order("date", { ascending: false });
-    setSessions((data ?? []).map(toActivitySession));
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("ops").from("activity_sessions").select("*").order("date", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toActivitySession);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useActivitySessionsData() {
+  const { data: sessions, loading } = useCollection(activitySessionsStore);
 
   async function addSession(session: Omit<ActivitySession, "id">): Promise<MutationResult> {
     const supabase = createClient();
@@ -56,9 +55,9 @@ export function useActivitySessionsData() {
       hours: session.hours,
     });
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await activitySessionsStore.refetch();
     return { ok: true };
   }
 
-  return { sessions, loading, addSession, refetch };
+  return { sessions, loading, addSession, refetch: activitySessionsStore.refetch };
 }

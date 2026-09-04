@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { CashEntry, ApprovalStatus } from "@/lib/types/finance";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -44,21 +44,20 @@ function toCashEntry(row: CashEntryRow): CashEntry {
   };
 }
 
-export function useCashEntriesData() {
-  const [entries, setEntries] = React.useState<CashEntry[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const cashEntriesStore = createCollection<CashEntry[]>({
+  key: "ops.cash_entries",
+  empty: [],
+  tables: [{ schema: "ops", table: "cash_entries" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("cash_entries").select("*").order("date", { ascending: false, nullsFirst: false });
-    setEntries((data ?? []).map(toCashEntry));
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("ops").from("cash_entries").select("*").order("date", { ascending: false, nullsFirst: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toCashEntry);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useCashEntriesData() {
+  const { data: entries, loading } = useCollection(cashEntriesStore);
 
   async function addEntry(entry: Omit<CashEntry, "id">): Promise<MutationResult> {
     const supabase = createClient();
@@ -76,7 +75,7 @@ export function useCashEntriesData() {
       needs_review: false,
     });
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await cashEntriesStore.refetch();
     return { ok: true };
   }
 
@@ -84,9 +83,9 @@ export function useCashEntriesData() {
     const supabase = createClient();
     const { error } = await supabase.schema("ops").from("cash_entries").update({ approval_status: status }).eq("id", id);
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await cashEntriesStore.refetch();
     return { ok: true };
   }
 
-  return { entries, loading, addEntry, setApprovalStatus, refetch };
+  return { entries, loading, addEntry, setApprovalStatus, refetch: cashEntriesStore.refetch };
 }

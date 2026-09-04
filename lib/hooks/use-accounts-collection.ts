@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { Account } from "@/lib/types/finance";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -28,21 +28,20 @@ function toAccount(row: AccountRow): Account {
 
 /** ops.accounts starts empty -- the 3 demo balances in mock-data were entirely
  * fabricated, not real LAF account data. Staff add real accounts here. */
-export function useAccountsData() {
-  const [accounts, setAccounts] = React.useState<Account[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const accountsStore = createCollection<Account[]>({
+  key: "ops.accounts",
+  empty: [],
+  tables: [{ schema: "ops", table: "accounts" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("accounts").select("*").order("name");
-    setAccounts((data ?? []).map(toAccount));
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("ops").from("accounts").select("*").order("name");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toAccount);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useAccountsData() {
+  const { data: accounts, loading } = useCollection(accountsStore);
 
   async function addAccount(account: Omit<Account, "id">): Promise<MutationResult> {
     const supabase = createClient();
@@ -55,9 +54,9 @@ export function useAccountsData() {
       type: account.type,
     });
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await accountsStore.refetch();
     return { ok: true };
   }
 
-  return { accounts, loading, addAccount, refetch };
+  return { accounts, loading, addAccount, refetch: accountsStore.refetch };
 }

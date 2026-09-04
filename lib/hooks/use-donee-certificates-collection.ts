@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { DoneeCertificate, DoneeCertStatus } from "@/lib/types/donor";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -26,21 +26,20 @@ function toDoneeCertificate(row: DoneeCertificateRow): DoneeCertificate {
   };
 }
 
-export function useDoneeCertificatesData() {
-  const [certificates, setCertificates] = React.useState<DoneeCertificate[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const doneeCertificatesStore = createCollection<DoneeCertificate[]>({
+  key: "ops.donee_certificates",
+  empty: [],
+  tables: [{ schema: "ops", table: "donee_certificates" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("donee_certificates").select("*").order("requested_at", { ascending: false });
-    setCertificates((data ?? []).map(toDoneeCertificate));
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("ops").from("donee_certificates").select("*").order("requested_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toDoneeCertificate);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useDoneeCertificatesData() {
+  const { data: certificates, loading } = useCollection(doneeCertificatesStore);
 
   async function generateCertificate(donationId: string): Promise<MutationResult> {
     const supabase = createClient();
@@ -53,7 +52,7 @@ export function useDoneeCertificatesData() {
       requested_at: new Date().toISOString(),
     });
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await doneeCertificatesStore.refetch();
     return { ok: true };
   }
 
@@ -63,9 +62,9 @@ export function useDoneeCertificatesData() {
     if (nextStatus === "released") row.released_at = new Date().toISOString();
     const { error } = await supabase.schema("ops").from("donee_certificates").update(row).eq("id", id);
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await doneeCertificatesStore.refetch();
     return { ok: true };
   }
 
-  return { certificates, loading, generateCertificate, advanceStatus, refetch };
+  return { certificates, loading, generateCertificate, advanceStatus, refetch: doneeCertificatesStore.refetch };
 }

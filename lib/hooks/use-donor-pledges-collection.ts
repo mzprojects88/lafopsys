@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { DonorPledge, PledgeStatus } from "@/lib/types/donor";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -37,21 +37,20 @@ function toDonorPledge(row: DonorPledgeRow): DonorPledge {
 /** ops.donor_pledges -- staff-recorded recurring commitments. Read/write
  * staff-side; donors get a read-only view of their own row (RLS-scoped, no
  * client-side filtering needed for that case). */
-export function useDonorPledgesData() {
-  const [pledges, setPledges] = React.useState<DonorPledge[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const donorPledgesStore = createCollection<DonorPledge[]>({
+  key: "ops.donor_pledges",
+  empty: [],
+  tables: [{ schema: "ops", table: "donor_pledges" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("donor_pledges").select("*").order("started_at", { ascending: false });
-    setPledges((data ?? []).map(toDonorPledge));
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("ops").from("donor_pledges").select("*").order("started_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toDonorPledge);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useDonorPledgesData() {
+  const { data: pledges, loading } = useCollection(donorPledgesStore);
 
   async function addPledge(pledge: Omit<DonorPledge, "id" | "status">): Promise<MutationResult> {
     const supabase = createClient();
@@ -68,7 +67,7 @@ export function useDonorPledgesData() {
       notes: pledge.notes ?? null,
     });
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await donorPledgesStore.refetch();
     return { ok: true };
   }
 
@@ -76,9 +75,9 @@ export function useDonorPledgesData() {
     const supabase = createClient();
     const { error } = await supabase.schema("ops").from("donor_pledges").update({ status }).eq("id", id);
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await donorPledgesStore.refetch();
     return { ok: true };
   }
 
-  return { pledges, loading, addPledge, updatePledgeStatus, refetch };
+  return { pledges, loading, addPledge, updatePledgeStatus, refetch: donorPledgesStore.refetch };
 }

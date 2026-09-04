@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { BudgetLine } from "@/lib/types/finance";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -20,21 +20,20 @@ function toBudgetLine(row: BudgetLineRow): BudgetLine {
 
 /** ops.budget_lines starts empty -- mock budgeted/actual amounts were entirely
  * rng-fabricated, not real LAF budget data. Staff add real budget lines here. */
-export function useBudgetLinesData() {
-  const [budgetLines, setBudgetLines] = React.useState<BudgetLine[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const budgetLinesStore = createCollection<BudgetLine[]>({
+  key: "ops.budget_lines",
+  empty: [],
+  tables: [{ schema: "ops", table: "budget_lines" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("budget_lines").select("*").order("month", { ascending: false });
-    setBudgetLines((data ?? []).map(toBudgetLine));
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("ops").from("budget_lines").select("*").order("month", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toBudgetLine);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useBudgetLinesData() {
+  const { data: budgetLines, loading } = useCollection(budgetLinesStore);
 
   async function addBudgetLine(line: Omit<BudgetLine, "id">): Promise<MutationResult> {
     const supabase = createClient();
@@ -46,9 +45,9 @@ export function useBudgetLinesData() {
       actual: line.actual,
     });
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await budgetLinesStore.refetch();
     return { ok: true };
   }
 
-  return { budgetLines, loading, addBudgetLine, refetch };
+  return { budgetLines, loading, addBudgetLine, refetch: budgetLinesStore.refetch };
 }

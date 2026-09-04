@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollectionFamily, useCollection } from "@/lib/data/collection-store";
 import type { PatientDocument, PatientDocumentType } from "@/lib/types/patient";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -40,21 +40,20 @@ function toPatientDocument(row: PatientDocumentRow): PatientDocument {
 
 /** Per-patient admission document checklist against `ops.patient_documents` + the
  * `patient-documents` Storage bucket. Non-blocking -- never gates admission. */
+const patientDocuments = createCollectionFamily<PatientDocument[]>({
+  key: "ops.patient_documents",
+  empty: [],
+  tables: () => [{ schema: "ops", table: "patient_documents" }],
+  fetch: async (patientId) => {
+    const { data, error } = await createClient().schema("ops").from("patient_documents").select("*").eq("patient_id", patientId);
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as PatientDocumentRow[]).map(toPatientDocument);
+  },
+});
+
 export function usePatientDocuments(patientId: string) {
-  const [documents, setDocuments] = React.useState<PatientDocument[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
-    const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("patient_documents").select("*").eq("patient_id", patientId);
-    setDocuments((data ?? []).map(toPatientDocument));
-    setLoading(false);
-  }, [patientId]);
-
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+  const store = patientDocuments.get(patientId);
+  const { data: documents, loading } = useCollection(store);
 
   async function markCollected(documentType: PatientDocumentType, notes?: string): Promise<MutationResult> {
     const supabase = createClient();
@@ -73,7 +72,7 @@ export function usePatientDocuments(patientId: string) {
         { onConflict: "patient_id,document_type" }
       );
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await store.refetch();
     return { ok: true };
   }
 
@@ -98,7 +97,7 @@ export function usePatientDocuments(patientId: string) {
         { onConflict: "patient_id,document_type" }
       );
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await store.refetch();
     return { ok: true };
   }
 
@@ -108,5 +107,5 @@ export function usePatientDocuments(patientId: string) {
     return data?.signedUrl ?? null;
   }
 
-  return { documents, loading, markCollected, uploadFile, getSignedUrl, refetch };
+  return { documents, loading, markCollected, uploadFile, getSignedUrl, refetch: store.refetch };
 }

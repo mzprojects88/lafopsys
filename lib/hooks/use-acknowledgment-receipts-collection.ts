@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { AcknowledgmentReceipt, ArStatus } from "@/lib/types/donor";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -30,21 +30,20 @@ function toAcknowledgmentReceipt(row: AcknowledgmentReceiptRow): AcknowledgmentR
   };
 }
 
-export function useAcknowledgmentReceiptsData() {
-  const [receipts, setReceipts] = React.useState<AcknowledgmentReceipt[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const acknowledgmentReceiptsStore = createCollection<AcknowledgmentReceipt[]>({
+  key: "ops.acknowledgment_receipts",
+  empty: [],
+  tables: [{ schema: "ops", table: "acknowledgment_receipts" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("acknowledgment_receipts").select("*").order("issued_at", { ascending: false });
-    setReceipts((data ?? []).map(toAcknowledgmentReceipt));
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("ops").from("acknowledgment_receipts").select("*").order("issued_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toAcknowledgmentReceipt);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useAcknowledgmentReceiptsData() {
+  const { data: receipts, loading } = useCollection(acknowledgmentReceiptsStore);
 
   async function generateReceipt(donationId: string, entity: AcknowledgmentReceipt["entity"]): Promise<MutationResult> {
     const supabase = createClient();
@@ -59,7 +58,7 @@ export function useAcknowledgmentReceiptsData() {
       issued_at: new Date().toISOString(),
     });
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await acknowledgmentReceiptsStore.refetch();
     return { ok: true };
   }
 
@@ -70,9 +69,9 @@ export function useAcknowledgmentReceiptsData() {
     if (nextStatus === "acknowledged") row.acknowledged_at = new Date().toISOString();
     const { error } = await supabase.schema("ops").from("acknowledgment_receipts").update(row).eq("id", id);
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await acknowledgmentReceiptsStore.refetch();
     return { ok: true };
   }
 
-  return { receipts, loading, generateReceipt, advanceStatus, refetch };
+  return { receipts, loading, generateReceipt, advanceStatus, refetch: acknowledgmentReceiptsStore.refetch };
 }

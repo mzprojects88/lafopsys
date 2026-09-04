@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { Program } from "@/lib/types/reference";
 
 interface ProgramRow {
@@ -15,21 +15,20 @@ function toProgram(row: ProgramRow): Program {
 }
 
 /** Real `ops.programs` reference data -- the 6-item LAF program taxonomy. */
-export function useProgramsData() {
-  const [programs, setPrograms] = React.useState<Program[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const programsStore = createCollection<Program[]>({
+  key: "ops.programs",
+  empty: [],
+  tables: [{ schema: "ops", table: "programs" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("programs").select("*").order("name");
-    setPrograms((data ?? []).map(toProgram));
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("ops").from("programs").select("*").order("name");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toProgram);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useProgramsData() {
+  const { data: programs, loading } = useCollection(programsStore);
 
-  return { programs, loading, refetch };
+  return { programs, loading, refetch: programsStore.refetch };
 }

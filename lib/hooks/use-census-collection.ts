@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { CensusSnapshot } from "@/lib/types/house-ops";
 
 interface CensusSnapshotRow {
@@ -24,21 +24,20 @@ function toCensusSnapshot(row: CensusSnapshotRow): CensusSnapshot {
 
 /** Real daily occupancy history from `ops.census_snapshots`, ordered oldest-first
  * (matching the old mock export's convention of `[...][length - 1]` meaning "most recent"). */
-export function useCensusData() {
-  const [history, setHistory] = React.useState<CensusSnapshot[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const censusStore = createCollection<CensusSnapshot[]>({
+  key: "ops.census_snapshots",
+  empty: [],
+  tables: [{ schema: "ops", table: "census_snapshots" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("census_snapshots").select("*").order("date", { ascending: true });
-    setHistory((data ?? []).map(toCensusSnapshot));
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("ops").from("census_snapshots").select("*").order("date", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toCensusSnapshot);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useCensusData() {
+  const { data: history, loading } = useCollection(censusStore);
 
-  return { history, loading, refetch };
+  return { history, loading, refetch: censusStore.refetch };
 }

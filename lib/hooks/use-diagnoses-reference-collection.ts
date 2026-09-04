@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import { newId } from "@/lib/utils/id";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -16,27 +16,26 @@ export interface DiagnosisRow {
 /** Real ops.diagnoses -- category is a check-constrained enum, so this hook
  * (unlike use-reference-table-collection.ts's generic free-text meta column)
  * requires a valid category on insert. */
-export function useDiagnosesReferenceData() {
-  const [rows, setRows] = React.useState<DiagnosisRow[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const diagnosesReferenceStore = createCollection<DiagnosisRow[]>({
+  key: "ops.diagnoses",
+  empty: [],
+  tables: [{ schema: "ops", table: "diagnoses" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("diagnoses").select("id, name, category").order("name");
-    setRows((data ?? []) as DiagnosisRow[]);
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("ops").from("diagnoses").select("id, name, category").order("name");
+    if (error) throw new Error(error.message);
+    return (data ?? []) as DiagnosisRow[];
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useDiagnosesReferenceData() {
+  const { data: rows, loading } = useCollection(diagnosesReferenceStore);
 
   async function addRow(name: string, category: DiagnosisCategory): Promise<MutationResult> {
     const supabase = createClient();
     const { error } = await supabase.schema("ops").from("diagnoses").insert({ id: newId("diag"), name, category });
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await diagnosesReferenceStore.refetch();
     return { ok: true };
   }
 
@@ -44,9 +43,9 @@ export function useDiagnosesReferenceData() {
     const supabase = createClient();
     const { error } = await supabase.schema("ops").from("diagnoses").delete().eq("id", id);
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await diagnosesReferenceStore.refetch();
     return { ok: true };
   }
 
-  return { rows, loading, addRow, deleteRow, refetch };
+  return { rows, loading, addRow, deleteRow, refetch: diagnosesReferenceStore.refetch };
 }

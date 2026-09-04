@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { CareCartLog } from "@/lib/types/house-ops";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -28,21 +28,20 @@ function toCareCartLog(row: CareCartLogRow): CareCartLog {
   };
 }
 
-export function useCareCartData() {
-  const [logs, setLogs] = React.useState<CareCartLog[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const careCartStore = createCollection<CareCartLog[]>({
+  key: "ops.care_cart_logs",
+  empty: [],
+  tables: [{ schema: "ops", table: "care_cart_logs" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("care_cart_logs").select("*").order("date", { ascending: false });
-    setLogs((data ?? []).map(toCareCartLog));
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("ops").from("care_cart_logs").select("*").order("date", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toCareCartLog);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useCareCartData() {
+  const { data: logs, loading } = useCollection(careCartStore);
 
   async function addLog(log: Omit<CareCartLog, "id">): Promise<MutationResult> {
     const supabase = createClient();
@@ -56,9 +55,9 @@ export function useCareCartData() {
       source: log.source ?? null,
     });
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await careCartStore.refetch();
     return { ok: true };
   }
 
-  return { logs, loading, addLog, refetch };
+  return { logs, loading, addLog, refetch: careCartStore.refetch };
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { MetricSnapshot } from "@/lib/types/reports";
 
 interface MetricSnapshotRow {
@@ -27,21 +27,20 @@ function toMetricSnapshot(row: MetricSnapshotRow): MetricSnapshot {
 }
 
 /** Real ops.metric_snapshots -- 6 real monthly rows (integrate.md Step 3). */
-export function useMetricSnapshotsData() {
-  const [snapshots, setSnapshots] = React.useState<MetricSnapshot[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const metricSnapshotsStore = createCollection<MetricSnapshot[]>({
+  key: "ops.metric_snapshots",
+  empty: [],
+  tables: [{ schema: "ops", table: "metric_snapshots" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("metric_snapshots").select("*").order("date");
-    setSnapshots((data ?? []).map(toMetricSnapshot));
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("ops").from("metric_snapshots").select("*").order("date");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toMetricSnapshot);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useMetricSnapshotsData() {
+  const { data: snapshots, loading } = useCollection(metricSnapshotsStore);
 
-  return { snapshots, loading, refetch };
+  return { snapshots, loading, refetch: metricSnapshotsStore.refetch };
 }

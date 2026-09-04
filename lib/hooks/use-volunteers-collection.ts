@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { Volunteer } from "@/lib/types/staff";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -31,21 +31,20 @@ function toVolunteer(row: VolunteerRow): Volunteer {
 /** Real ops.volunteers -- starts empty. lib/mock-data/staff.ts's volunteers
  * array is fixed demo data (names/hours/certs) with no real source file, so
  * it wasn't migrated -- staff add real volunteers going forward. */
-export function useVolunteersData() {
-  const [volunteers, setVolunteers] = React.useState<Volunteer[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const volunteersStore = createCollection<Volunteer[]>({
+  key: "ops.volunteers",
+  empty: [],
+  tables: [{ schema: "ops", table: "volunteers" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("volunteers").select("*").order("first_name");
-    setVolunteers((data ?? []).map(toVolunteer));
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("ops").from("volunteers").select("*").order("first_name");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toVolunteer);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useVolunteersData() {
+  const { data: volunteers, loading } = useCollection(volunteersStore);
 
   async function addVolunteer(volunteer: Omit<Volunteer, "id">): Promise<MutationResult> {
     const supabase = createClient();
@@ -59,7 +58,7 @@ export function useVolunteersData() {
       certificates_issued: volunteer.certificatesIssued,
     });
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await volunteersStore.refetch();
     return { ok: true };
   }
 
@@ -67,9 +66,9 @@ export function useVolunteersData() {
     const supabase = createClient();
     const { error } = await supabase.schema("ops").from("volunteers").update({ certificates_issued: current + 1 }).eq("id", id);
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await volunteersStore.refetch();
     return { ok: true };
   }
 
-  return { volunteers, loading, addVolunteer, incrementCertificates, refetch };
+  return { volunteers, loading, addVolunteer, incrementCertificates, refetch: volunteersStore.refetch };
 }

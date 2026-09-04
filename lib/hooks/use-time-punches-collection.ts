@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { PunchDeviceType, PunchLocationStatus, TimePunch } from "@/lib/types/staff";
 
 interface TimePunchRow {
@@ -51,27 +51,26 @@ function toTimePunch(row: TimePunchRow): TimePunch {
  * only their own punches, while admin and finance see everyone's. So the same
  * page is correct for both without a client-side role check.
  */
-export function useTimePunchesData() {
-  const [punches, setPunches] = React.useState<TimePunch[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const timePunchesStore = createCollection<TimePunch[]>({
+  key: "ops.time_punches",
+  empty: [],
+  tables: [{ schema: "ops", table: "time_punches" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .schema("ops")
       .from("time_punches")
       .select(
         "id, time_entry_id, staff_id, punch_type, punched_at, latitude, longitude, accuracy_meters, address_label, location_status, ip_address, user_agent, device_label, device_type"
       )
       .order("punched_at", { ascending: false });
-    setPunches((data ?? []).map(toTimePunch));
-    setLoading(false);
-  }, []);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toTimePunch);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useTimePunchesData() {
+  const { data: punches, loading } = useCollection(timePunchesStore);
 
-  return { punches, loading, refetch };
+  return { punches, loading, refetch: timePunchesStore.refetch };
 }

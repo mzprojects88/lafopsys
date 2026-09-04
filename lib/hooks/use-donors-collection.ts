@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, invalidateTables, useCollection } from "@/lib/data/collection-store";
 import type { Donor, Donation } from "@/lib/types/donor";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -72,26 +72,38 @@ function toDonation(row: DonationRow): Donation {
   };
 }
 
-export function useDonorsData() {
-  const [donors, setDonors] = React.useState<Donor[]>([]);
-  const [donations, setDonations] = React.useState<Donation[]>([]);
-  const [loading, setLoading] = React.useState(true);
+interface DonorsData {
+  donors: Donor[];
+  donations: Donation[];
+}
 
-  const refetch = React.useCallback(async () => {
+export const donorsStore = createCollection<DonorsData>({
+  key: "ops.donors",
+  empty: { donors: [], donations: [] },
+  tables: [
+    { schema: "ops", table: "donors" },
+    { schema: "ops", table: "donations" },
+  ],
+  fetch: async () => {
     const supabase = createClient();
     const [donorsRes, donationsRes] = await Promise.all([
       supabase.schema("ops").from("donors").select("*").order("name"),
       supabase.schema("ops").from("donations").select("*").order("date", { ascending: false }),
     ]);
-    setDonors((donorsRes.data ?? []).map(toDonor));
-    setDonations((donationsRes.data ?? []).map(toDonation));
-    setLoading(false);
-  }, []);
+    if (donorsRes.error) throw new Error(donorsRes.error.message);
+    if (donationsRes.error) throw new Error(donationsRes.error.message);
+    return {
+      donors: (donorsRes.data ?? []).map(toDonor),
+      donations: (donationsRes.data ?? []).map(toDonation),
+    };
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useDonorsData() {
+  const {
+    data: { donors, donations },
+    loading,
+  } = useCollection(donorsStore);
 
   /** Records a new donation and updates the donor's rolled-up gift_count/lifetime_value/
    * last_gift_date to match -- these are stored aggregates on ops.donors, not derived at
@@ -150,9 +162,11 @@ export function useDonorsData() {
       }
     }
 
-    await refetch();
+    await donorsStore.refetch();
+    // The campaign rollup lives in another store; wake it up too.
+    if (donation.campaignId) void invalidateTables([{ schema: "ops", table: "campaigns" }]);
     return { ok: true };
   }
 
-  return { donors, donations, loading, addDonation, refetch };
+  return { donors, donations, loading, addDonation, refetch: donorsStore.refetch };
 }

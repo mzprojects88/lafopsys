@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { TimesheetApproval, TimesheetStatus } from "@/lib/types/staff";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -28,21 +28,20 @@ function toTimesheetApproval(row: TimesheetApprovalRow): TimesheetApproval {
 
 /** Real ops.timesheet_approvals -- starts empty, no real historical approval
  * data exists (generated with `rng` in lib/mock-data/staff.ts). */
-export function useTimesheetApprovalsData() {
-  const [approvals, setApprovals] = React.useState<TimesheetApproval[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const timesheetApprovalsStore = createCollection<TimesheetApproval[]>({
+  key: "ops.timesheet_approvals",
+  empty: [],
+  tables: [{ schema: "ops", table: "timesheet_approvals" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("timesheet_approvals").select("*");
-    setApprovals((data ?? []).map(toTimesheetApproval));
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("ops").from("timesheet_approvals").select("*");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toTimesheetApproval);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useTimesheetApprovalsData() {
+  const { data: approvals, loading } = useCollection(timesheetApprovalsStore);
 
   async function updateStatus(id: string, status: TimesheetStatus, adjustmentReason?: string): Promise<MutationResult> {
     const supabase = createClient();
@@ -52,9 +51,9 @@ export function useTimesheetApprovalsData() {
       .update({ status, adjustment_reason: adjustmentReason ?? null })
       .eq("id", id);
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await timesheetApprovalsStore.refetch();
     return { ok: true };
   }
 
-  return { approvals, loading, updateStatus, refetch };
+  return { approvals, loading, updateStatus, refetch: timesheetApprovalsStore.refetch };
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { Referral } from "@/lib/types/patient";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -103,25 +103,25 @@ function referralPatchToRow(patch: Partial<Referral>) {
 }
 
 /** Real-backend replacement for `useLocalCollection<Referral>("referrals", ...)`, against `ops.referrals`. */
-export function useReferralsData() {
-  const [referrals, setReferrals] = React.useState<Referral[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const referralsStore = createCollection<Referral[]>({
+  key: "ops.referrals",
+  empty: [],
+  // The embedded select reads the join table too, so a change there must refresh this.
+  tables: [{ schema: "ops", table: "referrals" }, { schema: "ops", table: "referral_diagnoses" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .schema("ops")
       .from("referrals")
       .select("*, referral_diagnoses(diagnosis_id)")
       .order("date", { ascending: false });
-    setReferrals((data ?? []).map(toReferral));
-    setLoading(false);
-  }, []);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toReferral);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useReferralsData() {
+  const { data: referrals, loading } = useCollection(referralsStore);
 
   async function addReferral(referral: Referral): Promise<MutationResult> {
     const supabase = createClient();
@@ -134,7 +134,7 @@ export function useReferralsData() {
         .insert(referral.diagnosisIds.map((diagnosisId) => ({ referral_id: referral.id, diagnosis_id: diagnosisId })));
       if (dxError) return { ok: false, error: dxError.message };
     }
-    await refetch();
+    await referralsStore.refetch();
     return { ok: true };
   }
 
@@ -142,9 +142,9 @@ export function useReferralsData() {
     const supabase = createClient();
     const { error } = await supabase.schema("ops").from("referrals").update(referralPatchToRow(patch)).eq("id", id);
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await referralsStore.refetch();
     return { ok: true };
   }
 
-  return { referrals, loading, addReferral, updateReferral, refetch };
+  return { referrals, loading, addReferral, updateReferral, refetch: referralsStore.refetch };
 }

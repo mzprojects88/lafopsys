@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { Trip, TripDirection, TripStatus } from "@/lib/types/house-ops";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -38,25 +38,25 @@ function toTrip(row: TripRow): Trip {
   };
 }
 
-export function useTripsData() {
-  const [trips, setTrips] = React.useState<Trip[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const tripsStore = createCollection<Trip[]>({
+  key: "ops.trips",
+  empty: [],
+  // The embedded select reads the join table too, so a change there must refresh this.
+  tables: [{ schema: "ops", table: "trips" }, { schema: "ops", table: "trip_passengers" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .schema("ops")
       .from("trips")
       .select("*, trip_passengers(patient_id)")
       .order("date", { ascending: false });
-    setTrips((data ?? []).map(toTrip));
-    setLoading(false);
-  }, []);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toTrip);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useTripsData() {
+  const { data: trips, loading } = useCollection(tripsStore);
 
   async function addTrip(trip: Omit<Trip, "id"> & { id?: string }): Promise<MutationResult> {
     const supabase = createClient();
@@ -83,7 +83,7 @@ export function useTripsData() {
         .insert(trip.passengerPatientIds.map((patientId) => ({ trip_id: id, patient_id: patientId })));
       if (passengersError) return { ok: false, error: passengersError.message };
     }
-    await refetch();
+    await tripsStore.refetch();
     return { ok: true };
   }
 
@@ -96,9 +96,9 @@ export function useTripsData() {
     if ("fuelCost" in patch) row.fuel_cost = patch.fuelCost ?? null;
     const { error } = await supabase.schema("ops").from("trips").update(row).eq("id", id);
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await tripsStore.refetch();
     return { ok: true };
   }
 
-  return { trips, loading, addTrip, updateTrip, refetch };
+  return { trips, loading, addTrip, updateTrip, refetch: tripsStore.refetch };
 }

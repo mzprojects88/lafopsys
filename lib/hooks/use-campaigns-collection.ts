@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { Campaign } from "@/lib/types/donor";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -26,21 +26,20 @@ function toCampaign(row: CampaignRow): Campaign {
   };
 }
 
-export function useCampaignsData() {
-  const [campaigns, setCampaigns] = React.useState<Campaign[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const campaignsStore = createCollection<Campaign[]>({
+  key: "ops.campaigns",
+  empty: [],
+  tables: [{ schema: "ops", table: "campaigns" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("campaigns").select("*").order("start_date", { ascending: false });
-    setCampaigns((data ?? []).map(toCampaign));
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("ops").from("campaigns").select("*").order("start_date", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toCampaign);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useCampaignsData() {
+  const { data: campaigns, loading } = useCollection(campaignsStore);
 
   async function addCampaign(campaign: Omit<Campaign, "id" | "raisedAmount">): Promise<MutationResult> {
     const supabase = createClient();
@@ -53,9 +52,9 @@ export function useCampaignsData() {
       end_date: campaign.endDate ?? null,
     });
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await campaignsStore.refetch();
     return { ok: true };
   }
 
-  return { campaigns, loading, addCampaign, refetch };
+  return { campaigns, loading, addCampaign, refetch: campaignsStore.refetch };
 }

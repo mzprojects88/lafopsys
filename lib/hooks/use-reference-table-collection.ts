@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollectionFamily, useCollection } from "@/lib/data/collection-store";
 import { newId } from "@/lib/utils/id";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -19,27 +19,31 @@ export interface ReferenceRow {
  * with a constrained (check-enum) meta column, like diagnoses.category,
  * are NOT safe to write through this generic path -- see
  * use-diagnoses-reference-collection.ts instead. */
+/** One store per (table, metaColumn) pair -- the meta column changes the row shape. */
+function parseKey(key: string): { table: string; metaColumn?: string } {
+  const sep = key.indexOf("|");
+  return { table: key.slice(0, sep), metaColumn: key.slice(sep + 1) || undefined };
+}
+
+const referenceTables = createCollectionFamily<ReferenceRow[]>({
+  key: "ops.reference",
+  empty: [],
+  tables: (key) => [{ schema: "ops", table: parseKey(key).table }],
+  fetch: async (key) => {
+    const { table, metaColumn } = parseKey(key);
+    const { data, error } = await createClient().schema("ops").from(table).select("*").order("name");
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+      id: row.id as string,
+      name: row.name as string,
+      meta: metaColumn ? ((row[metaColumn] as string | null) ?? undefined) : undefined,
+    }));
+  },
+});
+
 export function useReferenceTableData(table: string, idPrefix: string, metaColumn?: string) {
-  const [rows, setRows] = React.useState<ReferenceRow[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
-    const supabase = createClient();
-    const { data } = await supabase.schema("ops").from(table).select("*").order("name");
-    setRows(
-      ((data ?? []) as Record<string, unknown>[]).map((row) => ({
-        id: row.id as string,
-        name: row.name as string,
-        meta: metaColumn ? ((row[metaColumn] as string | null) ?? undefined) : undefined,
-      }))
-    );
-    setLoading(false);
-  }, [table, metaColumn]);
-
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+  const store = referenceTables.get(`${table}|${metaColumn ?? ""}`);
+  const { data: rows, loading } = useCollection(store);
 
   async function addRow(name: string, meta?: string): Promise<MutationResult> {
     const supabase = createClient();
@@ -47,7 +51,7 @@ export function useReferenceTableData(table: string, idPrefix: string, metaColum
     if (metaColumn && meta) payload[metaColumn] = meta;
     const { error } = await supabase.schema("ops").from(table).insert(payload);
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await store.refetch();
     return { ok: true };
   }
 
@@ -55,9 +59,9 @@ export function useReferenceTableData(table: string, idPrefix: string, metaColum
     const supabase = createClient();
     const { error } = await supabase.schema("ops").from(table).delete().eq("id", id);
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await store.refetch();
     return { ok: true };
   }
 
-  return { rows, loading, addRow, deleteRow, refetch };
+  return { rows, loading, addRow, deleteRow, refetch: store.refetch };
 }

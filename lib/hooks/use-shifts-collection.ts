@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { Shift } from "@/lib/types/staff";
 
 interface ShiftRow {
@@ -20,21 +20,20 @@ function toShift(row: ShiftRow): Shift {
 /** Real ops.shifts -- starts empty, no real historical schedule data exists
  * (lib/mock-data/staff.ts generates shifts entirely with `rng`). Staff build
  * the real schedule going forward once accounts exist. */
-export function useShiftsData() {
-  const [shifts, setShifts] = React.useState<Shift[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const shiftsStore = createCollection<Shift[]>({
+  key: "ops.shifts",
+  empty: [],
+  tables: [{ schema: "ops", table: "shifts" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("shifts").select("*").order("date", { ascending: false });
-    setShifts((data ?? []).map(toShift));
-    setLoading(false);
-  }, []);
+    const { data, error } = await supabase.schema("ops").from("shifts").select("*").order("date", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toShift);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useShiftsData() {
+  const { data: shifts, loading } = useCollection(shiftsStore);
 
-  return { shifts, loading, refetch };
+  return { shifts, loading, refetch: shiftsStore.refetch };
 }

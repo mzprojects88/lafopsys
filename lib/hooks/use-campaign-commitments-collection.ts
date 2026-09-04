@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { CampaignCommitment } from "@/lib/types/donor";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -38,25 +38,24 @@ function toCampaignCommitment(row: CampaignCommitmentRow): CampaignCommitment {
  * pledge/lead record here, not a real donation. Staff see every commitment
  * (full-access RLS); a donor session only ever gets their own rows back
  * (RLS-scoped), so no client-side filtering is needed for that case either. */
-export function useCampaignCommitmentsData() {
-  const [commitments, setCommitments] = React.useState<CampaignCommitment[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
+export const campaignCommitmentsStore = createCollection<CampaignCommitment[]>({
+  key: "ops.campaign_commitments",
+  empty: [],
+  tables: [{ schema: "ops", table: "campaign_commitments" }],
+  fetch: async () => {
     const supabase = createClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .schema("ops")
       .from("campaign_commitments")
       .select("*")
       .order("created_at", { ascending: false });
-    setCommitments((data ?? []).map(toCampaignCommitment));
-    setLoading(false);
-  }, []);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toCampaignCommitment);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useCampaignCommitmentsData() {
+  const { data: commitments, loading } = useCollection(campaignCommitmentsStore);
 
   async function addCommitment(commitment: Omit<CampaignCommitment, "id" | "status" | "fulfilledDonationId" | "createdAt">): Promise<MutationResult> {
     const supabase = createClient();
@@ -71,7 +70,7 @@ export function useCampaignCommitmentsData() {
       status: "pledged",
     });
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await campaignCommitmentsStore.refetch();
     return { ok: true };
   }
 
@@ -87,7 +86,7 @@ export function useCampaignCommitmentsData() {
       .eq("id", id)
       .eq("status", "pledged");
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await campaignCommitmentsStore.refetch();
     return { ok: true };
   }
 
@@ -100,9 +99,9 @@ export function useCampaignCommitmentsData() {
       .update({ status: "fulfilled", fulfilled_donation_id: donationId })
       .eq("id", id);
     if (error) return { ok: false, error: error.message };
-    await refetch();
+    await campaignCommitmentsStore.refetch();
     return { ok: true };
   }
 
-  return { commitments, loading, addCommitment, cancelCommitment, markFulfilled, refetch };
+  return { commitments, loading, addCommitment, cancelCommitment, markFulfilled, refetch: campaignCommitmentsStore.refetch };
 }
