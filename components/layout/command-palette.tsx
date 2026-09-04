@@ -12,7 +12,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { useVisibleNavItems } from "@/lib/rbac/use-role";
-import { inventoryItems } from "@/lib/mock-data";
+import { useStockSummary } from "@/lib/hooks/use-inventory-views";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 
@@ -29,6 +29,9 @@ export function CommandPalette({ externalOpen, onExternalOpenChange }: CommandPa
   const navItems = useVisibleNavItems();
   const { patients } = usePatientsData();
   const { donors } = useDonorsData();
+  const { rows: stockSummary } = useStockSummary();
+  // v_stock_summary is per item per House -- one entry per item, first six by name.
+  const inventoryItems = stockSummary.filter((r, i, all) => all.findIndex((x) => x.item_id === r.item_id) === i).slice(0, 6);
 
   React.useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -79,8 +82,8 @@ export function CommandPalette({ externalOpen, onExternalOpenChange }: CommandPa
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Inventory">
-          {inventoryItems.slice(0, 6).map((i) => (
-            <CommandItem key={i.id} onSelect={() => go(`/inventory/${i.id}`)}>
+          {inventoryItems.map((i) => (
+            <CommandItem key={i.item_id} onSelect={() => go(`/inventory/${i.item_id}`)}>
               <span>{i.name}</span>
             </CommandItem>
           ))}

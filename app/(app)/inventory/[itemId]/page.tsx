@@ -1,8 +1,7 @@
 "use client";
 
 import { use } from "react";
-import { notFound } from "next/navigation";
-import { toast } from "sonner";
+import { ExternalLink } from "lucide-react";
 import { EntityDetailHeader } from "@/components/patterns/entity-detail-header";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { EmptyState } from "@/components/patterns/empty-state";
@@ -10,70 +9,91 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  inventoryItems,
-  inventoryLots,
-  inventoryTxns,
-  unitsOfMeasure,
-  donors,
-} from "@/lib/mock-data";
-import { storageLocationPath } from "@/lib/utils/storage-path";
-import { formatDate, daysUntil } from "@/lib/utils/date";
-import { TODAY_ISO } from "@/lib/utils/seeded-random";
+  useConsumptionDaily,
+  useLotsOnHand,
+  useStockSummary,
+  useStorageLocations,
+  useWasteLog,
+} from "@/lib/hooks/use-inventory-views";
+import { formatCurrency } from "@/lib/utils/currency";
+import { formatDate } from "@/lib/utils/date";
+import { expiryStatus } from "@/lib/utils/inventory-status";
+import { inventoryAppHref } from "@/lib/utils/inventory-app";
 
-function expiryStatus(daysLeft: number) {
-  if (daysLeft < 0) return "expired";
-  if (daysLeft <= 14) return "soon14";
-  if (daysLeft <= 30) return "soon30";
-  if (daysLeft <= 60) return "soon60";
-  return "fresh";
-}
+const CONSUMPTION_WINDOW_DAYS = 14;
+const CHANNEL_LABEL: Record<string, string> = { kitchen: "Kitchen", care_cart: "Care Cart", family: "Family" };
 
 export default function InventoryItemPage({ params }: { params: Promise<{ itemId: string }> }) {
   const { itemId } = use(params);
-  const item = inventoryItems.find((i) => i.id === itemId);
-  if (!item) notFound();
+  const { rows: stock, loading: stockLoading, error } = useStockSummary();
+  const { rows: allLots } = useLotsOnHand();
+  const { rows: allConsumption } = useConsumptionDaily();
+  const { rows: allWaste } = useWasteLog();
+  const { rows: locations } = useStorageLocations();
 
-  const lots = inventoryLots.filter((l) => l.itemId === item.id);
-  const txns = inventoryTxns.filter((t) => t.itemId === item.id).sort((a, b) => b.date.localeCompare(a.date));
-  const uom = unitsOfMeasure.find((u) => u.id === item.defaultUomId);
-  const totalStock = lots.reduce((sum, l) => sum + l.quantity, 0);
+  const summaryRows = stock.filter((r) => r.item_id === itemId);
+  const lots = allLots.filter((l) => l.item_id === itemId);
+  const consumption = allConsumption.filter((c) => c.item_id === itemId);
+  const waste = allWaste.filter((w) => w.item_id === itemId);
+  const pathById = new Map(locations.map((l) => [l.id, l.path]));
 
-  const issuedTotal = txns.filter((t) => t.type === "issue").reduce((sum, t) => sum + t.quantity, 0);
-  const consumptionPerDay = issuedTotal / 14; // txn history spans ~2 weeks in the seed data
-  const daysOfCover = consumptionPerDay > 0 ? Math.round(totalStock / consumptionPerDay) : Infinity;
-  const reorderStatus = totalStock === 0 ? "out" : totalStock <= item.reorderPoint ? "reorder" : totalStock <= item.reorderPoint * 1.5 ? "low" : "ok";
-
-  function action(label: string) {
-    toast.success(`${label} recorded (demo — no persistence beyond this session)`);
+  if (stockLoading) {
+    return <EmptyState title="Loading item…" />;
   }
+  if (error) {
+    return <EmptyState title="Couldn't load this item" description={error} />;
+  }
+  if (summaryRows.length === 0) {
+    // v_stock_summary only carries items that have (or had) lots. An item with
+    // no stock history at all is still a real catalogue entry in the inventory app.
+    return (
+      <EmptyState
+        title="No stock on record for this item"
+        description="It may be a catalogue entry that has never been received, or the id is wrong. Open it in the LAF Inventory app to check."
+      />
+    );
+  }
+
+  const first = summaryRows[0];
+  const onHand = summaryRows.reduce((s, r) => s + r.on_hand_qty, 0);
+  const stockValue = summaryRows.reduce((s, r) => s + r.stock_value, 0);
+  const status = summaryRows.some((r) => r.status === "out") && onHand <= 0 ? "out" : summaryRows.some((r) => r.status === "low") ? "low" : "ok";
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - CONSUMPTION_WINDOW_DAYS);
+  const cutoffIso = cutoff.toISOString().slice(0, 10);
+  const recentIssued = consumption.filter((c) => c.date >= cutoffIso).reduce((s, c) => s + c.qty_issued, 0);
+  const perDay = recentIssued / CONSUMPTION_WINDOW_DAYS;
+  const daysOfCover = perDay > 0 ? Math.round(onHand / perDay) : null;
 
   return (
     <div className="flex flex-1 flex-col gap-6">
       <EntityDetailHeader
-        title={item.name}
-        subtitle={`${item.category} · Default unit: ${uom?.name ?? "—"}`}
-        badge={<StatusBadge domain="stock" status={reorderStatus} />}
+        title={first.name}
+        subtitle={`${first.category.toLowerCase()} · Unit: ${first.uom}`}
+        badge={<StatusBadge domain="stock" status={status} />}
         metadata={[
-          { label: "Total Stock", value: `${totalStock} ${uom?.code ?? ""}` },
-          { label: "Consumption / Day", value: consumptionPerDay > 0 ? consumptionPerDay.toFixed(1) : "—" },
-          { label: "Days of Cover", value: Number.isFinite(daysOfCover) ? `${daysOfCover}d` : "—" },
-          { label: "Reorder Point / Qty", value: `${item.reorderPoint} / ${item.reorderQty}` },
+          { label: "On Hand", value: `${onHand} ${first.uom}` },
+          { label: "Stock Value", value: formatCurrency(stockValue) },
+          { label: `Drawn / Day (${CONSUMPTION_WINDOW_DAYS}d)`, value: perDay > 0 ? perDay.toFixed(1) : "—" },
+          { label: "Days of Cover", value: daysOfCover != null ? `${daysOfCover}d` : "—" },
+          { label: "Reorder Point", value: `${first.reorder_point} ${first.uom}` },
         ]}
         actions={
-          <>
-            <Button size="sm" onClick={() => action("Replenish")}>Replenish</Button>
-            <Button size="sm" variant="outline" onClick={() => action("Issue")}>Issue</Button>
-            <Button size="sm" variant="outline" onClick={() => action("Move")}>Move</Button>
-            <Button size="sm" variant="outline" onClick={() => action("Adjust")}>Adjust</Button>
-            <Button size="sm" variant="outline" className="text-red-600" onClick={() => action("Waste")}>Mark Waste</Button>
-          </>
+          <Button size="sm" asChild>
+            <a href={inventoryAppHref(`/catalogue/${itemId}`)} target="_blank" rel="noreferrer">
+              <ExternalLink />
+              Open in LAF Inventory
+            </a>
+          </Button>
         }
       />
 
       <Tabs defaultValue="lots">
         <TabsList>
-          <TabsTrigger value="lots">Lots ({lots.length})</TabsTrigger>
-          <TabsTrigger value="history">Transaction History ({txns.length})</TabsTrigger>
+          <TabsTrigger value="lots">Lots on hand ({lots.length})</TabsTrigger>
+          <TabsTrigger value="consumption">Consumption ({consumption.length})</TabsTrigger>
+          <TabsTrigger value="waste">Waste ({waste.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="lots" className="pt-4">
@@ -81,48 +101,68 @@ export default function InventoryItemPage({ params }: { params: Promise<{ itemId
             <EmptyState title="No lots on hand" />
           ) : (
             <div className="flex flex-col gap-2">
-              {lots.map((lot) => {
-                const donor = donors.find((d) => d.id === lot.sourceDonorId);
-                const daysLeft = lot.expiryDate ? daysUntil(lot.expiryDate) : undefined;
-                return (
-                  <Card key={lot.id}>
-                    <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
-                      <div className="flex flex-col">
-                        <span className="font-medium">
-                          {lot.quantity} {uom?.code} · {storageLocationPath(lot.storageLocationId)}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          Received {formatDate(lot.receivedAt)} · Cost ₱{lot.unitCost} · Source: {donor?.name ?? "Purchased"}
-                        </span>
+              {lots.map((lot) => (
+                <Card key={lot.lot_id}>
+                  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
+                    <div className="flex flex-col">
+                      <span className="font-medium">
+                        {lot.qty_remaining} {lot.uom} · {pathById.get(lot.storage_location_id) ?? lot.storage_location_id}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        Received {formatDate(lot.received_at)} · {formatCurrency(lot.unit_cost)}/{lot.uom} · {lot.source_type === "donation" ? "Donated" : "Purchased"}
+                      </span>
+                    </div>
+                    {lot.expiry_date && lot.days_left != null ? (
+                      <div className="flex flex-col items-end">
+                        <StatusBadge domain="expiry" status={expiryStatus(lot.days_left)} label={lot.days_left < 0 ? "expired" : `${lot.days_left}d left`} />
+                        <span className="text-[11px] text-muted-foreground">exp {formatDate(lot.expiry_date)}</span>
                       </div>
-                      {lot.expiryDate ? (
-                        <div className="flex flex-col items-end">
-                          <StatusBadge domain="expiry" status={expiryStatus(daysLeft!)} label={`${daysLeft}d left`} />
-                          <span className="text-[11px] text-muted-foreground">exp {formatDate(lot.expiryDate)}</span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">No expiry</span>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                    ) : (
+                      <span className="text-xs text-muted-foreground">No expiry</span>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           )}
         </TabsContent>
 
-        <TabsContent value="history" className="pt-4">
-          {txns.length === 0 ? (
-            <EmptyState title="No transactions yet" />
+        <TabsContent value="consumption" className="pt-4">
+          {consumption.length === 0 ? (
+            <EmptyState title="Nothing drawn yet" />
           ) : (
             <div className="flex flex-col gap-2">
-              {txns.map((t) => (
-                <Card key={t.id}>
+              {consumption.map((c) => (
+                <Card key={`${c.date}-${c.house_id}-${c.channel ?? "none"}`}>
+                  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
+                    <span className="font-medium">
+                      {c.qty_issued} {first.uom} · {c.channel ? CHANNEL_LABEL[c.channel] ?? c.channel : "Issued"}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDate(c.date)} · {formatCurrency(c.cost)}
+                    </span>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="waste" className="pt-4">
+          {waste.length === 0 ? (
+            <EmptyState title="No waste recorded" />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {waste.map((w) => (
+                <Card key={w.transaction_id}>
                   <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
                     <div className="flex flex-col">
-                      <span className="font-medium capitalize">{t.type} · {t.quantity} {uom?.code}</span>
+                      <span className="font-medium">
+                        {w.qty} {first.uom}
+                        {w.reason ? ` · ${w.reason}` : ""}
+                      </span>
                       <span className="text-xs text-muted-foreground">
-                        {formatDate(t.date)} · {t.performedBy}{t.reason ? ` · ${t.reason}` : ""}
+                        {formatDate(w.date)} · {w.performed_by} · {formatCurrency(w.value)}
                       </span>
                     </div>
                   </CardContent>
@@ -132,8 +172,6 @@ export default function InventoryItemPage({ params }: { params: Promise<{ itemId
           )}
         </TabsContent>
       </Tabs>
-
-      <p className="text-xs text-muted-foreground">As of {TODAY_ISO}</p>
     </div>
   );
 }

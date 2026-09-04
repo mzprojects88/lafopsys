@@ -37,12 +37,10 @@ import { useCensusData } from "@/lib/hooks/use-census-collection";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
 import { useTimesheetApprovalsData } from "@/lib/hooks/use-timesheet-approvals-collection";
-import {
-  inventoryItems,
-  inventoryLots,
-} from "@/lib/mock-data";
+import { useExpiringLots, useStockSummary } from "@/lib/hooks/use-inventory-views";
+import { inventoryAppHref } from "@/lib/utils/inventory-app";
 import { formatCurrency } from "@/lib/utils/currency";
-import { daysUntil, formatDate } from "@/lib/utils/date";
+import { formatDate } from "@/lib/utils/date";
 import type { CategoryColor } from "@/lib/utils/category-colors";
 
 const HOUSE_CAPACITY = 20; // placeholder pending the spec's open question on licensed capacity
@@ -55,25 +53,27 @@ export default function DashboardPage() {
   const { donations, donors } = useDonorsData();
   const { entries: cashEntries } = useCashEntriesData();
   const { approvals: timesheetApprovals } = useTimesheetApprovalsData();
+  const { rows: stockSummary } = useStockSummary();
+  const { rows: expiringLots } = useExpiringLots();
 
   const today = censusHistory[censusHistory.length - 1];
   const inHouseNow = today?.inHouse ?? 0;
   const pendingApprovals = timesheetApprovals.filter((a) => a.status === "pending").length;
   const pendingReferrals = referrals.filter((r) => r.status === "submitted").length;
-  const expiringSoon = inventoryLots.filter((l) => l.expiryDate && daysUntil(l.expiryDate) <= 14 && daysUntil(l.expiryDate) >= 0).length;
+  const expiringSoon = expiringLots.filter((l) => l.days_left >= 0 && l.days_left <= 14).length;
   const cashIn = cashEntries.filter((e) => e.direction === "inflow").reduce((s, e) => s + e.amount, 0);
 
   const occupiedPct = Math.round((inHouseNow / HOUSE_CAPACITY) * 100);
   const availableSlots = Math.max(0, HOUSE_CAPACITY - inHouseNow);
 
-  const goodStock = inventoryItems.filter((item) => {
-    const stock = inventoryLots.filter((l) => l.itemId === item.id).reduce((s, l) => s + l.quantity, 0);
-    return stock > item.reorderPoint * 1.5;
-  }).length;
-  const lowStock = inventoryItems.filter((item) => {
-    const stock = inventoryLots.filter((l) => l.itemId === item.id).reduce((s, l) => s + l.quantity, 0);
-    return stock > 0 && stock <= item.reorderPoint * 1.5;
-  }).length;
+  // v_stock_summary is per item per House; count distinct items at their worst status.
+  const stockByItem = new Map<string, "ok" | "low" | "out">();
+  for (const r of stockSummary) {
+    const cur = stockByItem.get(r.item_id);
+    if (!cur || r.status === "out" || (r.status === "low" && cur === "ok")) stockByItem.set(r.item_id, r.status);
+  }
+  const goodStock = [...stockByItem.values()].filter((s) => s === "ok").length;
+  const lowStock = [...stockByItem.values()].filter((s) => s === "low").length;
 
   const donationChart = donations
     .slice()
@@ -130,7 +130,7 @@ export default function DashboardPage() {
   const quickActions = [
     { label: "Create Referral", href: "/patients/referrals/new", icon: Send, color: "purple" as CategoryColor },
     { label: "Record Donation", href: "/donors/intake", icon: HandCoins, color: "green" as CategoryColor },
-    { label: "Add Inventory", href: "/inventory/scan", icon: Boxes, color: "teal" as CategoryColor },
+    { label: "Receive Inventory", href: inventoryAppHref("/intake"), icon: Boxes, color: "teal" as CategoryColor },
     { label: "New Cash Entry", href: "/finance/entry", icon: FileSignature, color: "blue" as CategoryColor },
     { label: "Request Approval", href: "/finance/approvals", icon: CheckCircle2, color: "amber" as CategoryColor },
     { label: "Generate Report", href: "/reports/builder", icon: BarChart3, color: "indigo" as CategoryColor },

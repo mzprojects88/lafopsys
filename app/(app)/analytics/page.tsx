@@ -19,10 +19,7 @@ import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
 import { useAccountsData } from "@/lib/hooks/use-accounts-collection";
 import { useProgramsData } from "@/lib/hooks/use-programs-collection";
-// Inventory stays mock -- lafopsys only reads inventory data through
-// laf-inventory's published views once that bridge exists (Phase 3 boundary,
-// not built yet from the inventory side).
-import { inventoryLots, inventoryItems } from "@/lib/mock-data";
+import { useExpiringLots, useStockSummary } from "@/lib/hooks/use-inventory-views";
 import { computeAge, ageBracket } from "@/lib/utils/age";
 import { formatCurrency } from "@/lib/utils/currency";
 import { daysUntil } from "@/lib/utils/date";
@@ -41,6 +38,8 @@ export default function AnalyticsPage() {
   const { snapshots: metricSnapshots } = useMetricSnapshotsData();
   const { donations, donors } = useDonorsData();
   const { entries: cashEntries } = useCashEntriesData();
+  const { rows: stockSummary } = useStockSummary();
+  const { rows: expiringLots } = useExpiringLots();
   const { accounts } = useAccountsData();
   const { programs } = useProgramsData();
 
@@ -96,11 +95,8 @@ export default function AnalyticsPage() {
   const cashTotal = donations.filter((d) => d.kind === "cash").reduce((s, d) => s + d.totalValue, 0);
   const inKindTotal = donations.filter((d) => d.kind === "in_kind").reduce((s, d) => s + d.totalValue, 0);
   const topDonors = [...donors].sort((a, b) => b.lifetimeValue - a.lifetimeValue).slice(0, 5);
-  const expiringSoon = inventoryLots.filter((l) => l.expiryDate && daysUntil(l.expiryDate) <= 14 && daysUntil(l.expiryDate) >= 0).length;
-  const lowStockItems = inventoryItems.filter((item) => {
-    const stock = inventoryLots.filter((l) => l.itemId === item.id).reduce((s, l) => s + l.quantity, 0);
-    return stock <= item.reorderPoint;
-  }).length;
+  const expiringSoon = expiringLots.filter((l) => l.days_left >= 0 && l.days_left <= 14).length;
+  const lowStockItems = new Set(stockSummary.filter((r) => r.status !== "ok").map((r) => r.item_id)).size;
 
   // Panel G — Financial
   const totalIn = cashEntries.filter((e) => e.direction === "inflow").reduce((s, e) => s + e.amount, 0);
