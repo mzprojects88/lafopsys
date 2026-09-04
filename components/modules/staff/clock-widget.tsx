@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Clock, LogIn, LogOut, CalendarCheck, ShieldCheck, MapPin } from "lucide-react";
+import { Clock, LogIn, LogOut, CalendarCheck, CalendarDays, CalendarRange, ShieldCheck, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,9 @@ import { IconCircle } from "@/components/patterns/icon-circle";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
 import { useShiftsData } from "@/lib/hooks/use-shifts-collection";
 import { useClockStatus } from "@/lib/hooks/use-clock-status";
+import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
+import { todayIso } from "@/lib/utils/date";
+import { formatMinutes } from "@/lib/utils/dtr";
 import { TODAY_ISO } from "@/lib/utils/seeded-random";
 import { EmptyState } from "@/components/patterns/empty-state";
 
@@ -17,8 +20,10 @@ function nowLabel() {
 }
 
 export function ClockWidget() {
-  const { me, todayEntry, clockedIn, loading, clockIn, clockOut } = useClockStatus();
+  const { me, todayEntry, openEntry, clockedIn, loading, clockIn, clockOut } = useClockStatus();
   const { shifts } = useShiftsData();
+  // Live hours from the punches; an open session keeps ticking on its own.
+  const { totals } = useDtrSessions({ staffIds: me ? [me.id] : [] });
   // A punch waits on a GPS fix (up to 8s), so the button has to say so — an
   // unresponsive-looking button invites a second tap and a duplicate punch.
   const [punching, setPunching] = React.useState(false);
@@ -40,23 +45,25 @@ export function ClockWidget() {
     setPunching(true);
     const result = await clockIn();
     setPunching(false);
-    if (result?.ok === false) toast.error(result.error);
-    else toast.success(`Clocked in at ${nowLabel()}`);
+    if (result?.ok) toast.success(`Clocked in at ${nowLabel()}`);
+    else toast.error(result ? result.error : "Couldn't record the punch.");
   }
 
   async function handleClockOut() {
     setPunching(true);
     const result = await clockOut();
     setPunching(false);
-    if (result?.ok === false) toast.error(result.error);
-    else toast.success(`Clocked out at ${nowLabel()}`);
+    if (result?.ok) toast.success(`Clocked out at ${nowLabel()}`);
+    else toast.error(result ? result.error : "You're not clocked in.");
   }
 
+  const sessionsToday = todayEntry?.sessionCount ?? 0;
   const statusLabel = clockedIn
-    ? `Clocked in at ${todayEntry?.clockIn}`
+    ? `Clocked in at ${openEntry?.clockIn}${openEntry && openEntry.date !== todayIso() ? " yesterday" : ""}`
     : todayEntry?.clockOut
       ? `Clocked out at ${todayEntry.clockOut}`
       : "Not clocked in today";
+  const sessionsLabel = sessionsToday > 0 ? ` · ${sessionsToday} session${sessionsToday === 1 ? "" : "s"} today` : "";
 
   return (
     <Card>
@@ -69,7 +76,10 @@ export function ClockWidget() {
         <div className="flex flex-col items-center gap-2">
           <IconCircle icon={Clock} color="blue" size="lg" />
           <span className="text-4xl font-semibold tabular-nums">{nowLabel()}</span>
-          <span className="text-xs text-muted-foreground">{statusLabel}</span>
+          <span className="text-xs text-muted-foreground">
+            {statusLabel}
+            {sessionsLabel}
+          </span>
         </div>
 
         {clockedIn ? (
@@ -117,7 +127,26 @@ export function ClockWidget() {
             <IconCircle icon={CalendarCheck} color="blue" size="sm" />
             <div className="flex flex-col">
               <span className="text-xs text-muted-foreground">Hours Today</span>
-              <span className="text-sm font-medium">{clockedIn ? "In progress" : "0h 0m"}</span>
+              <span className="text-sm font-medium tabular-nums">
+                {formatMinutes(totals.today)}
+                {clockedIn && <span className="ml-1.5 text-xs font-normal text-muted-foreground">in progress</span>}
+              </span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex items-center gap-2.5 rounded-lg border px-3 py-2">
+              <IconCircle icon={CalendarDays} color="indigo" size="sm" />
+              <div className="flex flex-col">
+                <span className="text-xs text-muted-foreground">This Week</span>
+                <span className="text-sm font-medium tabular-nums">{formatMinutes(totals.week)}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5 rounded-lg border px-3 py-2">
+              <IconCircle icon={CalendarRange} color="purple" size="sm" />
+              <div className="flex flex-col">
+                <span className="text-xs text-muted-foreground">This Month</span>
+                <span className="text-sm font-medium tabular-nums">{formatMinutes(totals.month)}</span>
+              </div>
             </div>
           </div>
         </div>
