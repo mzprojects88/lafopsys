@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { useTimeEntriesData } from "@/lib/hooks/use-time-entries-collection";
 import { useTimesheetApprovalsData } from "@/lib/hooks/use-timesheet-approvals-collection";
+import { formatMinutes } from "@/lib/utils/dtr";
 
 interface FlagRow {
   id: string;
@@ -18,6 +19,7 @@ interface FlagRow {
   flag: string;
   clockIn?: string;
   clockOut?: string;
+  totalMinutes: number;
   overtimeMinutes: number;
 }
 
@@ -31,6 +33,9 @@ const columns: ColumnDef<FlagRow>[] = [
   },
   { accessorKey: "clockIn", header: "Clock In", cell: ({ row }) => row.original.clockIn ?? "—" },
   { accessorKey: "clockOut", header: "Clock Out", cell: ({ row }) => row.original.clockOut ?? "—" },
+  // First in / latest out of the day (Manila). An out earlier than the in is
+  // an overnight shift; hours come from the punches, not from these labels.
+  { accessorKey: "totalMinutes", header: "Hours", cell: ({ row }) => <span className="tabular-nums">{formatMinutes(row.original.totalMinutes)}</span> },
   { accessorKey: "overtimeMinutes", header: "OT (min)" },
 ];
 
@@ -62,6 +67,7 @@ export default function TimesheetsPage() {
         flag: t.flag,
         clockIn: t.clockIn,
         clockOut: t.clockOut,
+        totalMinutes: t.totalMinutes,
         overtimeMinutes: t.overtimeMinutes,
       };
     });

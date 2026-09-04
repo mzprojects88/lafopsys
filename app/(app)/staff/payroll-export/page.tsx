@@ -8,10 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { useTimeEntriesData } from "@/lib/hooks/use-time-entries-collection";
+import { formatMinutes } from "@/lib/utils/dtr";
 
 export default function PayrollExportPage() {
   const { staff } = useStaffRoster();
   const { entries: timeEntries } = useTimeEntriesData();
+  const totalMinutes = timeEntries.reduce((sum, t) => sum + t.totalMinutes, 0);
   const totalOvertimeMin = timeEntries.reduce((sum, t) => sum + t.overtimeMinutes, 0);
   const flaggedCount = timeEntries.filter((t) => t.flag !== "on_time").length;
   const activeStaff = staff.filter((s) => s.active).length;
@@ -31,8 +33,8 @@ export default function PayrollExportPage() {
 
       <KpiGrid>
         <KpiCard label="Active Staff" value={activeStaff} icon={Users} color="cyan" />
-        <KpiCard label="Time Entries (period)" value={timeEntries.length} icon={Clock} color="blue" />
-        <KpiCard label="Total Overtime" value={`${Math.round(totalOvertimeMin / 60)}h ${totalOvertimeMin % 60}m`} icon={Timer} color="amber" />
+        <KpiCard label="Total Hours" value={formatMinutes(totalMinutes)} sublabel={`${timeEntries.length} time entries`} icon={Clock} color="blue" />
+        <KpiCard label="Total Overtime" value={formatMinutes(totalOvertimeMin)} icon={Timer} color="amber" />
         <KpiCard label="Flagged Entries" value={flaggedCount} icon={Flag} color="rose" />
       </KpiGrid>
 
