@@ -30,6 +30,9 @@ if (!url || !serviceRoleKey) {
 const admin = createClient(url, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
 
 const EVENT_TIMEOUT_MS = 5000;
+/** Realtime acks a join slightly before its poller picks up the new
+ * subscription, so a write in the first few hundred ms can be missed. */
+const SETTLE_MS = 3000;
 const SMOKE_DATE = "2000-01-01";
 let failed = false;
 let cleanup = async () => {};
@@ -130,6 +133,7 @@ async function main() {
   const tableChannel = await listen({ event: "*", schema: "ops", table: "time_entries" }, (p) => tableHandler(p));
   const schemaChannel = await listen({ event: "*", schema: "ops" }, (p) => schemaHandler(p));
   console.log("[ok] subscribed: ops.time_entries (table) and ops (schema-wide)");
+  await new Promise((r) => setTimeout(r, SETTLE_MS));
 
   const insertSeen = expectEvent(
     "ops.time_entries INSERT",
@@ -186,6 +190,7 @@ async function main() {
   }
   let sharedHandler = () => {};
   const sharedChannel = await listen({ event: "*", schema: "shared" }, (p) => sharedHandler(p));
+  await new Promise((r) => setTimeout(r, SETTLE_MS));
   const updateSeen = expectEvent(
     "shared.app_settings UPDATE",
     (h) => (sharedHandler = h),
