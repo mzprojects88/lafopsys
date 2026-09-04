@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { AuthBackdrop } from "@/components/layout/auth-backdrop";
 import { DonorPortalShell } from "@/components/layout/donor-portal-shell";
 import { DonorAuthProvider } from "@/context/donor-auth-provider";
+import { RealtimeProvider } from "@/lib/data/realtime-provider";
 
 const BARE_PATHS = ["/portal/login", "/portal/change-password"];
 
@@ -22,7 +23,9 @@ export default function DonorPortalLayout({ children }: { children: ReactNode })
 
   return (
     <DonorAuthProvider>
-      <DonorPortalShell>{children}</DonorPortalShell>
+      <RealtimeProvider schemas={["ops"]}>
+        <DonorPortalShell>{children}</DonorPortalShell>
+      </RealtimeProvider>
     </DonorAuthProvider>
   );
 }
