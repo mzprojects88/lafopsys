@@ -1,10 +1,10 @@
 "use client";
 
-import * as React from "react";
-import { createClient } from "@/lib/supabase/client";
-import { useStaffRoster, type StaffRosterEntry } from "@/lib/hooks/use-staff-roster";
-import { useTimeEntriesData, type MutationResult } from "@/lib/hooks/use-time-entries-collection";
-import { useAppSettings } from "@/lib/hooks/use-app-settings";
+import { useRole } from "@/context/role-provider";
+import { invalidateTables, useCollection } from "@/lib/data/collection-store";
+import { staffRosterStore, type StaffRosterEntry } from "@/lib/hooks/use-staff-roster";
+import { timeEntriesStore, type MutationResult } from "@/lib/hooks/use-time-entries-collection";
+import { appSettingsStore } from "@/lib/hooks/use-app-settings";
 import { INVENTORY_ROLES } from "@/lib/rbac/roles";
 import { todayIso } from "@/lib/utils/date";
 import type { PunchLocationStatus } from "@/lib/types/staff";
@@ -50,32 +50,28 @@ function captureLocation(): Promise<CapturedLocation> {
 }
 
 /**
- * Single source of truth for "is the current logged-in staff member clocked
- * in today" — drives the /staff clock widget, the clock-in-required dialog,
- * the topbar status badge, and the app-wide navigation gate. `me` is matched
- * against the real Supabase Auth session id, not a name string.
+ * "Is the current logged-in staff member clocked in today" -- drives the
+ * /staff clock widget, the clock-in-required dialog, the topbar status badge,
+ * and the app-wide navigation gate.
+ *
+ * A pure derivation over the shared staff / time_entries / app_settings
+ * stores plus the auth id from RoleProvider: every component that calls this
+ * reads the same data, so one punch flips all of them in the same render.
+ * (Previously each caller held its own fetched copy, and the gate in the app
+ * shell never learned about a punch made by the dialog until a page reload.)
  *
  * Punching goes through `app/api/dtr/punch/route.ts` rather than writing
  * `ops.time_entries` directly, so every punch also lands in the DTR with its
- * location, device and IP. Both `clockIn` and `clockOut` keep their original
- * no-argument signature, so the widget and the required-dialog pick up location
- * capture without changing.
+ * location, device and IP.
  */
 export function useClockStatus() {
-  const { staff, loading: staffLoading } = useStaffRoster();
-  const { entries, loading: entriesLoading, refetch } = useTimeEntriesData();
-  const { requireClockInForInventoryRoles, loading: settingsLoading } = useAppSettings();
-  const [authId, setAuthId] = React.useState<string | undefined>(undefined);
+  const { staffId } = useRole();
+  const { data: staff, loading: staffLoading } = useCollection(staffRosterStore);
+  const { data: entries, loading: entriesLoading } = useCollection(timeEntriesStore);
+  const { data: settings, loading: settingsLoading } = useCollection(appSettingsStore);
 
-  React.useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      setAuthId(data.user?.id);
-    });
-  }, []);
-
-  const loading = staffLoading || entriesLoading || settingsLoading || authId === undefined;
-  const me: StaffRosterEntry | undefined = authId ? staff.find((s) => s.id === authId) : undefined;
+  const loading = staffLoading || entriesLoading || settingsLoading || staffId === undefined;
+  const me: StaffRosterEntry | undefined = staffId ? staff.find((s) => s.id === staffId) : undefined;
   const today = todayIso();
   const todayEntry = me ? entries.find((t) => t.staffId === me.id && t.date === today) : undefined;
   const clockedIn = !!todayEntry?.clockIn && !todayEntry?.clockOut;
@@ -83,7 +79,7 @@ export function useClockStatus() {
   // Non-inventory roles must always clock in, as before. Inventory roles are
   // exempt until an admin turns on the "require clock-in" setting (see
   // components/modules/settings/clock-in-requirement-toggle.tsx).
-  const clockInRequired = !me ? false : !INVENTORY_ROLES.includes(me.role) || requireClockInForInventoryRoles;
+  const clockInRequired = !me ? false : !INVENTORY_ROLES.includes(me.role) || settings.requireClockInForInventoryRoles;
 
   async function punch(punchType: "clock_in" | "clock_out"): Promise<MutationResult | undefined> {
     if (!me) return undefined;
@@ -109,7 +105,10 @@ export function useClockStatus() {
       return { ok: false, error: result && "error" in result ? result.error : "Couldn't record the punch." };
     }
 
-    await refetch();
+    // The shared store update is what closes the dialog, flips the badge and
+    // releases the gate everywhere at once. The DTR page reads time_punches.
+    await timeEntriesStore.refetch();
+    void invalidateTables([{ schema: "ops", table: "time_punches" }]);
     return { ok: true, id: punchType };
   }
 
@@ -122,5 +121,5 @@ export function useClockStatus() {
     return punch("clock_out");
   }
 
-  return { me, todayEntry, clockedIn, hasClockedInToday, clockInRequired, loading, clockIn, clockOut };
+  return { me, todayEntry, clockedIn, hasClockedInToday, clockInRequired, loading, clockIn, clockOut, refetch: timeEntriesStore.refetch };
 }

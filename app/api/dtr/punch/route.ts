@@ -111,7 +111,7 @@ export async function POST(request: Request) {
   const { data: existing } = await supabase
     .schema("ops")
     .from("time_entries")
-    .select("id")
+    .select("id, clock_in, clock_out")
     .eq("staff_id", user.id)
     .eq("date", date)
     .maybeSingle();
@@ -119,6 +119,12 @@ export async function POST(request: Request) {
   let timeEntryId = existing?.id ?? null;
 
   if (punchType === "clock_in") {
+    // A second clock-in while still clocked in (double tap, or a stale button
+    // in another tab) used to overwrite the day's original clock_in time and
+    // add a duplicate punch to the DTR. Refuse it instead.
+    if (existing?.clock_in && !existing.clock_out) {
+      return NextResponse.json({ ok: false, error: `Already clocked in at ${existing.clock_in}.` }, { status: 409 });
+    }
     if (timeEntryId) {
       const { error } = await supabase
         .schema("ops")

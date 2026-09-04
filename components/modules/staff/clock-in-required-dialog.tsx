@@ -25,13 +25,11 @@ function nowLabel() {
  * is the only way to close it, mirroring the ClockInGate navigation rule.
  */
 export function ClockInRequiredDialog() {
-  const { me, hasClockedInToday, loading, clockIn } = useClockStatus();
-  const [mounted, setMounted] = React.useState(false);
+  const { me, hasClockedInToday, clockInRequired, loading, clockIn } = useClockStatus();
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- avoids flashing open on the pre-localStorage-sync default identity
-  React.useEffect(() => setMounted(true), []);
-
-  const open = mounted && !loading && !!me && !hasClockedInToday;
+  // Same rule as ClockInGate: inventory roles are only held here when the
+  // admin setting requires it. `loading` already covers the pre-identity window.
+  const open = !loading && !!me && clockInRequired && !hasClockedInToday;
   // Punching waits on a GPS fix (up to 8s). Without a visible pending state this
   // dialog looks frozen, and a second tap would record a duplicate punch.
   const [punching, setPunching] = React.useState(false);
