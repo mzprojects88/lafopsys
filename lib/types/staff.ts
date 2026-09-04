@@ -32,6 +32,10 @@ export interface TimeEntry {
   flag: TimeEntryFlag;
   overtimeMinutes: number;
   gpsStamped: boolean;
+  /** Minutes of completed sessions, from the punches (never from clockIn/clockOut). */
+  totalMinutes: number;
+  /** Clock-in sessions the day had, open ones included. */
+  sessionCount: number;
 }
 
 /** Why a punch has no address. Never inferred -- the capture path records which
@@ -42,8 +46,10 @@ export type PunchDeviceType = "mobile" | "tablet" | "desktop" | "unknown";
 
 /**
  * One clock-in or clock-out event. `TimeEntry` above is the *daily summary*
- * (one row per staff per day, overwritten on re-punch); this is the append-only
- * history behind it, and the only place location and device are recorded.
+ * (one row per staff per day: first in, latest out, totals); this is the
+ * append-only history behind it -- every session of the day is here, and it
+ * is the only place location and device are recorded. lib/utils/dtr.ts pairs
+ * punches into sessions.
  */
 export interface TimePunch {
   id: string;

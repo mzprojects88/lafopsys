@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { reverseGeocode } from "@/lib/utils/geocode";
 import { clientIpFromHeaders, parseUserAgent } from "@/lib/utils/device";
 import { todayIso, nowTimeLabel } from "@/lib/utils/date";
+import { addDays, entryTotals, pairSessions, zonedDayStart } from "@/lib/utils/dtr";
 import type { PunchLocationStatus } from "@/lib/types/staff";
 
 const LOCATION_STATUSES: PunchLocationStatus[] = [
@@ -28,6 +29,16 @@ function finiteNumber(value: unknown): number | undefined {
  * Records one clock-in or clock-out punch: the DTR row in `ops.time_punches`
  * (location + device + IP) and the matching daily summary in `ops.time_entries`
  * that the clock-in gate and timesheets read.
+ *
+ * A day can have any number of sessions. The summary keeps the day's first
+ * clock_in, its latest clock_out (null while clocked in) and the totals;
+ * every session is in the punches. Decision table:
+ *   clock_in  | open entry (today/yesterday)  -> 409
+ *   clock_in  | today's entry, closed         -> reopen (clock_out = null)
+ *   clock_in  | no entry                      -> insert
+ *   clock_out | no open entry                 -> 409 (covers double clock-out)
+ *   clock_out | open entry                    -> close it (may be yesterday's)
+ * then insert the punch, then recompute the day's totals from its punches.
  *
  * Server-side because three of the four things it records can only be obtained
  * or trusted here: the IP comes from proxy headers, Nominatim's usage policy
@@ -104,57 +115,85 @@ export async function POST(request: Request) {
     }
   }
 
-  const date = todayIso();
+  const today = todayIso();
+  const yesterday = addDays(today, -1);
   const time = nowTimeLabel();
 
-  // ---- the daily summary row (unchanged shape; still what the gate reads) ----
-  const { data: existing } = await supabase
+  // ---- clock state lives on the daily summary (what the gate and roster read) ----
+  // "Open" = clocked in and not yet out, today OR yesterday: a Night/24hr shift
+  // crosses midnight and must still be closable after it. Same rule as
+  // use-clock-status.ts. Anything older than that is a forgotten clock-out.
+  const { data: recent, error: recentError } = await supabase
     .schema("ops")
     .from("time_entries")
-    .select("id, clock_in, clock_out")
+    .select("id, date, clock_in, clock_out")
     .eq("staff_id", user.id)
-    .eq("date", date)
-    .maybeSingle();
+    .in("date", [today, yesterday])
+    .order("date", { ascending: false });
+  if (recentError) return NextResponse.json({ ok: false, error: recentError.message }, { status: 500 });
 
-  let timeEntryId = existing?.id ?? null;
+  type RecentEntry = { id: string; date: string; clock_in: string | null; clock_out: string | null };
+  const todayEntry = ((recent ?? []) as RecentEntry[]).find((e) => e.date === today) ?? null;
+  const openEntry = ((recent ?? []) as RecentEntry[]).find((e) => !!e.clock_in && !e.clock_out) ?? null;
+
+  let entryId: string;
+  let entryDay: string;
+  // Undoes the summary write if the punch insert right after it fails, so the
+  // summary never claims a session the DTR doesn't have.
+  let revert: (() => Promise<void>) | null = null;
 
   if (punchType === "clock_in") {
-    // A second clock-in while still clocked in (double tap, or a stale button
-    // in another tab) used to overwrite the day's original clock_in time and
-    // add a duplicate punch to the DTR. Refuse it instead.
-    if (existing?.clock_in && !existing.clock_out) {
-      return NextResponse.json({ ok: false, error: `Already clocked in at ${existing.clock_in}.` }, { status: 409 });
+    if (openEntry) {
+      const when = openEntry.date === yesterday ? `${openEntry.clock_in} yesterday` : openEntry.clock_in;
+      return NextResponse.json({ ok: false, error: `Already clocked in at ${when}.` }, { status: 409 });
     }
-    if (timeEntryId) {
-      const { error } = await supabase
-        .schema("ops")
-        .from("time_entries")
-        .update({ clock_in: time, clock_out: null })
-        .eq("id", timeEntryId);
+    if (todayEntry) {
+      // Clocked out earlier today: reopen the day. clock_in keeps the day's first
+      // time; the session that just ended is safe in the punches.
+      const { error } = await supabase.schema("ops").from("time_entries").update({ clock_out: null }).eq("id", todayEntry.id);
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      entryId = todayEntry.id;
+      const previousOut = todayEntry.clock_out;
+      revert = async () => {
+        await supabase.schema("ops").from("time_entries").update({ clock_out: previousOut }).eq("id", todayEntry.id);
+      };
     } else {
       const { data: inserted, error } = await supabase
         .schema("ops")
         .from("time_entries")
-        .insert({ staff_id: user.id, date, clock_in: time })
+        .insert({ staff_id: user.id, date: today, clock_in: time })
         .select("id")
         .single();
-      if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-      timeEntryId = inserted.id;
+      if (error) {
+        // unique (staff_id, date): two devices raced to create the day. One won;
+        // this one is a duplicate tap.
+        if (error.code === "23505") return NextResponse.json({ ok: false, error: "Already clocked in." }, { status: 409 });
+        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      }
+      entryId = inserted.id as string;
+      revert = async () => {
+        await supabase.schema("ops").from("time_entries").delete().eq("id", inserted.id);
+      };
     }
-  } else {
-    if (!timeEntryId) {
-      return NextResponse.json(
-        { ok: false, error: "No clock-in recorded today, so there is nothing to clock out of." },
-        { status: 409 }
-      );
-    }
-    const { error } = await supabase
+    entryDay = today;
+
+    // A day left open before yesterday is a forgotten clock-out. Flag it for the
+    // timesheet queue; never block today's clock-in on it. Best effort.
+    await supabase
       .schema("ops")
       .from("time_entries")
-      .update({ clock_out: time })
-      .eq("id", timeEntryId);
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      .update({ flag: "missed_punch" })
+      .eq("staff_id", user.id)
+      .lt("date", yesterday)
+      .is("clock_out", null)
+      .not("clock_in", "is", null)
+      .neq("flag", "missed_punch");
+  } else {
+    if (!openEntry) {
+      return NextResponse.json({ ok: false, error: "You're not clocked in." }, { status: 409 });
+    }
+    entryId = openEntry.id;
+    entryDay = openEntry.date;
   }
 
   // ---- the DTR punch itself ----
@@ -162,7 +201,7 @@ export async function POST(request: Request) {
   const device = parseUserAgent(userAgent);
 
   const { error: punchError } = await supabase.schema("ops").from("time_punches").insert({
-    time_entry_id: timeEntryId,
+    time_entry_id: entryId,
     staff_id: user.id,
     punch_type: punchType,
     latitude: latitude ?? null,
@@ -178,13 +217,56 @@ export async function POST(request: Request) {
   });
 
   if (punchError) {
-    // The summary already moved, so report the DTR gap explicitly rather than
-    // letting the punch vanish silently.
+    if (revert) await revert();
+    return NextResponse.json({ ok: false, error: `The punch could not be recorded: ${punchError.message}` }, { status: 500 });
+  }
+
+  // ---- the day's totals, from the punches (the only source of duration) ----
+  // Window = the entry's day plus the next, so an overnight session's clock-out
+  // is in range; sessions belong to the day they were clocked in.
+  const { data: punchRows } = await supabase
+    .schema("ops")
+    .from("time_punches")
+    .select("id, staff_id, punch_type, punched_at, time_entry_id")
+    .eq("staff_id", user.id)
+    .gte("punched_at", zonedDayStart(entryDay).toISOString())
+    .lt("punched_at", zonedDayStart(addDays(entryDay, 2)).toISOString());
+  type PunchRowLite = { id: string; staff_id: string; punch_type: "clock_in" | "clock_out"; punched_at: string; time_entry_id: string | null };
+  const sessions = pairSessions(
+    ((punchRows ?? []) as PunchRowLite[]).map((r) => ({
+      id: r.id,
+      staffId: r.staff_id,
+      punchType: r.punch_type,
+      punchedAt: r.punched_at,
+      timeEntryId: r.time_entry_id ?? undefined,
+    }))
+  );
+  const totals = entryTotals(sessions, entryDay, user.id);
+
+  const { error: summaryError } = await supabase
+    .schema("ops")
+    .from("time_entries")
+    .update({
+      ...(punchType === "clock_out" ? { clock_out: time } : {}),
+      total_minutes: totals.totalMinutes,
+      session_count: totals.sessionCount,
+    })
+    .eq("id", entryId);
+  if (summaryError) {
+    // The punch is in the DTR; only the summary lags. Say exactly that.
     return NextResponse.json(
-      { ok: false, error: `Clock recorded, but the DTR entry failed: ${punchError.message}` },
+      { ok: false, error: `Punch recorded, but the daily summary failed: ${summaryError.message}` },
       { status: 500 }
     );
   }
 
-  return NextResponse.json({ ok: true, timeEntryId, locationStatus, addressLabel, device: device.label });
+  return NextResponse.json({
+    ok: true,
+    timeEntryId: entryId,
+    locationStatus,
+    addressLabel,
+    device: device.label,
+    totalMinutesToday: totals.totalMinutes,
+    sessionCount: totals.sessionCount,
+  });
 }

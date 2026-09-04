@@ -7,6 +7,7 @@ import { timeEntriesStore, type MutationResult } from "@/lib/hooks/use-time-entr
 import { appSettingsStore } from "@/lib/hooks/use-app-settings";
 import { INVENTORY_ROLES } from "@/lib/rbac/roles";
 import { todayIso } from "@/lib/utils/date";
+import { addDays } from "@/lib/utils/dtr";
 import type { PunchLocationStatus } from "@/lib/types/staff";
 
 /** How long to wait for a GPS fix before punching without one. A staff member
@@ -60,6 +61,13 @@ function captureLocation(): Promise<CapturedLocation> {
  * (Previously each caller held its own fetched copy, and the gate in the app
  * shell never learned about a punch made by the dialog until a page reload.)
  *
+ * "Clocked in" means an *open* daily entry (clock_in set, clock_out null)
+ * dated today or yesterday -- a Night/24hr shift crosses midnight and must
+ * still read as clocked in, and be closable, after it. Same rule as the
+ * punch route. Sessions and hours come from the punches (use-dtr-sessions.ts);
+ * this hook deliberately doesn't read that table because it is mounted in the
+ * app shell on every page.
+ *
  * Punching goes through `app/api/dtr/punch/route.ts` rather than writing
  * `ops.time_entries` directly, so every punch also lands in the DTR with its
  * location, device and IP.
@@ -73,9 +81,13 @@ export function useClockStatus() {
   const loading = staffLoading || entriesLoading || settingsLoading || staffId === undefined;
   const me: StaffRosterEntry | undefined = staffId ? staff.find((s) => s.id === staffId) : undefined;
   const today = todayIso();
+  const yesterday = addDays(today, -1);
   const todayEntry = me ? entries.find((t) => t.staffId === me.id && t.date === today) : undefined;
-  const clockedIn = !!todayEntry?.clockIn && !todayEntry?.clockOut;
-  const hasClockedInToday = !!todayEntry?.clockIn;
+  const openEntry = me
+    ? entries.find((t) => t.staffId === me.id && (t.date === today || t.date === yesterday) && !!t.clockIn && !t.clockOut)
+    : undefined;
+  const clockedIn = !!openEntry;
+  const hasClockedInToday = !!todayEntry?.clockIn || clockedIn;
   // Non-inventory roles must always clock in, as before. Inventory roles are
   // exempt until an admin turns on the "require clock-in" setting (see
   // components/modules/settings/clock-in-requirement-toggle.tsx).
@@ -117,9 +129,20 @@ export function useClockStatus() {
   }
 
   async function clockOut(): Promise<MutationResult | undefined> {
-    if (!todayEntry) return undefined;
+    if (!openEntry) return undefined;
     return punch("clock_out");
   }
 
-  return { me, todayEntry, clockedIn, hasClockedInToday, clockInRequired, loading, clockIn, clockOut, refetch: timeEntriesStore.refetch };
+  return {
+    me,
+    todayEntry,
+    openEntry,
+    clockedIn,
+    hasClockedInToday,
+    clockInRequired,
+    loading,
+    clockIn,
+    clockOut,
+    refetch: timeEntriesStore.refetch,
+  };
 }

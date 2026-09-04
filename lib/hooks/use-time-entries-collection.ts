@@ -16,6 +16,8 @@ interface TimeEntryRow {
   flag: TimeEntryFlag;
   overtime_minutes: number;
   gps_stamped: boolean;
+  total_minutes: number | null;
+  session_count: number | null;
 }
 
 function toTimeEntry(row: TimeEntryRow): TimeEntry {
@@ -29,6 +31,8 @@ function toTimeEntry(row: TimeEntryRow): TimeEntry {
     flag: row.flag,
     overtimeMinutes: row.overtime_minutes,
     gpsStamped: row.gps_stamped,
+    totalMinutes: row.total_minutes ?? 0,
+    sessionCount: row.session_count ?? 0,
   };
 }
 
