@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { MealService } from "@/lib/types/house-ops";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -26,25 +26,27 @@ function toMealService(row: MealServiceRow): MealService {
   };
 }
 
-export function useMealServicesData() {
-  const [meals, setMeals] = React.useState<MealService[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
-    const supabase = createClient();
-    const { data } = await supabase
+export const mealServicesStore = createCollection<MealService[]>({
+  key: "ops.meal_services",
+  empty: [],
+  // The embedded select reads exceptions too, so a change there must refresh this.
+  tables: [
+    { schema: "ops", table: "meal_services" },
+    { schema: "ops", table: "meal_service_exceptions" },
+  ],
+  fetch: async () => {
+    const { data, error } = await createClient()
       .schema("ops")
       .from("meal_services")
       .select("*, meal_service_exceptions(patient_id, reason)")
       .order("date", { ascending: false });
-    setMeals((data ?? []).map(toMealService));
-    setLoading(false);
-  }, []);
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as MealServiceRow[]).map(toMealService);
+  },
+});
 
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function useMealServicesData() {
+  const { data: meals, loading } = useCollection(mealServicesStore);
 
   /** Adds an exception for a staff-chosen patient (never a random pick) and
    * decrements the headcount by one, matching the prior demo behavior's intent
@@ -64,9 +66,9 @@ export function useMealServicesData() {
       .eq("id", mealServiceId);
     if (headcountError) return { ok: false, error: headcountError.message };
 
-    await refetch();
+    await mealServicesStore.refetch();
     return { ok: true };
   }
 
-  return { meals, loading, addException, refetch };
+  return { meals, loading, addException, refetch: mealServicesStore.refetch };
 }

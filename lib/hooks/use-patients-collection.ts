@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { Patient, Carer, Stay, Appointment } from "@/lib/types/patient";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -245,14 +245,24 @@ function fromAppointment(a: Appointment) {
  * update-item shapes) so the ~10 pages already consuming this hook keep working unchanged
  * -- only the storage underneath moved from localStorage to `ops.*` in Supabase.
  */
-export function usePatientsData() {
-  const [patients, setPatients] = React.useState<Patient[]>([]);
-  const [carers, setCarers] = React.useState<Carer[]>([]);
-  const [stays, setStays] = React.useState<Stay[]>([]);
-  const [appointments, setAppointments] = React.useState<Appointment[]>([]);
-  const [loading, setLoading] = React.useState(true);
+interface PatientsData {
+  patients: Patient[];
+  carers: Carer[];
+  stays: Stay[];
+  appointments: Appointment[];
+}
 
-  const refetch = React.useCallback(async () => {
+export const patientsStore = createCollection<PatientsData>({
+  key: "ops.patients",
+  empty: { patients: [], carers: [], stays: [], appointments: [] },
+  tables: [
+    { schema: "ops", table: "patients" },
+    { schema: "ops", table: "patient_diagnoses" },
+    { schema: "ops", table: "carers" },
+    { schema: "ops", table: "stays" },
+    { schema: "ops", table: "appointments" },
+  ],
+  fetch: async () => {
     const supabase = createClient();
     const [patientsRes, carersRes, staysRes, appointmentsRes] = await Promise.all([
       supabase.schema("ops").from("patients").select("*, patient_diagnoses(diagnosis_id)"),
@@ -260,6 +270,8 @@ export function usePatientsData() {
       supabase.schema("ops").from("stays").select("*"),
       supabase.schema("ops").from("appointments").select("*"),
     ]);
+    const failed = [patientsRes, carersRes, staysRes, appointmentsRes].find((r) => r.error);
+    if (failed?.error) throw new Error(failed.error.message);
 
     const carerRows = carersRes.data ?? [];
     const carerIdsByPatient = new Map<string, string[]>();
@@ -268,18 +280,21 @@ export function usePatientsData() {
       list.push(c.id);
       carerIdsByPatient.set(c.patient_id, list);
     }
+    return {
+      patients: (patientsRes.data ?? []).map((row) => toPatient(row, carerIdsByPatient.get(row.id) ?? [])),
+      carers: carerRows.map(toCarer),
+      stays: (staysRes.data ?? []).map(toStay),
+      appointments: (appointmentsRes.data ?? []).map(toAppointment),
+    };
+  },
+});
 
-    setPatients((patientsRes.data ?? []).map((row) => toPatient(row, carerIdsByPatient.get(row.id) ?? [])));
-    setCarers(carerRows.map(toCarer));
-    setStays((staysRes.data ?? []).map(toStay));
-    setAppointments((appointmentsRes.data ?? []).map(toAppointment));
-    setLoading(false);
-  }, []);
-
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
+export function usePatientsData() {
+  const {
+    data: { patients, carers, stays, appointments },
+    loading,
+  } = useCollection(patientsStore);
+  const refetch = patientsStore.refetch;
 
   async function addPatient(patient: Patient): Promise<MutationResult> {
     const supabase = createClient();

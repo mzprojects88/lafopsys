@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { TimeEntry, TimeEntryFlag } from "@/lib/types/staff";
 
 export type MutationResult = { ok: true; id: string } | { ok: false; error: string };
@@ -32,63 +32,23 @@ function toTimeEntry(row: TimeEntryRow): TimeEntry {
   };
 }
 
+export const timeEntriesStore = createCollection<TimeEntry[]>({
+  key: "ops.time_entries",
+  empty: [],
+  tables: [{ schema: "ops", table: "time_entries" }],
+  fetch: async () => {
+    const { data, error } = await createClient().schema("ops").from("time_entries").select("*").order("date", { ascending: false });
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as TimeEntryRow[]).map(toTimeEntry);
+  },
+});
+
 /** Real ops.time_entries -- backs the clock-in gate, roster "clocked in"
- * status, and the timesheets flag table. Starts empty (no real historical
- * clock data exists); staff create real rows by clocking in going forward. */
+ * status, and the timesheets flag table. Writes go through
+ * app/api/dtr/punch/route.ts (see use-clock-status.ts) so every punch also
+ * lands in the DTR with its location and device; nothing writes this table
+ * from the browser. */
 export function useTimeEntriesData() {
-  const [entries, setEntries] = React.useState<TimeEntry[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const refetch = React.useCallback(async () => {
-    const supabase = createClient();
-    const { data } = await supabase.schema("ops").from("time_entries").select("*").order("date", { ascending: false });
-    setEntries((data ?? []).map(toTimeEntry));
-    setLoading(false);
-  }, []);
-
-  React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from Supabase, an external system
-    refetch();
-  }, [refetch]);
-
-  async function clockIn(staffId: string, date: string, time: string): Promise<MutationResult> {
-    const supabase = createClient();
-    const { data: existing } = await supabase
-      .schema("ops")
-      .from("time_entries")
-      .select("id")
-      .eq("staff_id", staffId)
-      .eq("date", date)
-      .maybeSingle();
-
-    if (existing) {
-      const { error } = await supabase
-        .schema("ops")
-        .from("time_entries")
-        .update({ clock_in: time, clock_out: null })
-        .eq("id", existing.id);
-      if (error) return { ok: false, error: error.message };
-      await refetch();
-      return { ok: true, id: existing.id };
-    }
-
-    const id = crypto.randomUUID();
-    const { error } = await supabase
-      .schema("ops")
-      .from("time_entries")
-      .insert({ id, staff_id: staffId, date, clock_in: time });
-    if (error) return { ok: false, error: error.message };
-    await refetch();
-    return { ok: true, id };
-  }
-
-  async function clockOut(entryId: string, time: string): Promise<MutationResult> {
-    const supabase = createClient();
-    const { error } = await supabase.schema("ops").from("time_entries").update({ clock_out: time }).eq("id", entryId);
-    if (error) return { ok: false, error: error.message };
-    await refetch();
-    return { ok: true, id: entryId };
-  }
-
-  return { entries, loading, clockIn, clockOut, refetch };
+  const { data: entries, loading } = useCollection(timeEntriesStore);
+  return { entries, loading, refetch: timeEntriesStore.refetch };
 }
