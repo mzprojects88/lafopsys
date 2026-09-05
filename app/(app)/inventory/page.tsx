@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
-import { Package, AlertTriangle, XCircle, Wallet, ExternalLink, MapPin, Trash2 } from "lucide-react";
+import { Package, Archive, AlertTriangle, XCircle, Wallet, ExternalLink, MapPin, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
@@ -17,6 +17,7 @@ import { formatCurrency } from "@/lib/utils/currency";
 import { inventoryAppHref } from "@/lib/utils/inventory-app";
 
 const SUB_NAV: ModuleSubNavItem[] = [
+  { href: "/inventory/assets", label: "Fixed Assets", icon: Archive, color: "indigo" },
   { href: "/inventory/locations", label: "Locations", icon: MapPin, color: "teal" },
   { href: "/inventory/expiry", label: "Expiry Alerts", icon: AlertTriangle, color: "amber" },
   { href: "/inventory/waste", label: "Waste Log", icon: Trash2, color: "red" },

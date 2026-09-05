@@ -104,3 +104,43 @@ export interface DonationReceiptRow {
   notes: string | null;
   lots_count: number;
 }
+
+/** inventory.v_fixed_assets -- one row per fixed asset the foundation has
+ * registered, disposed of or not. `value_on_books` is the acquisition value
+ * for an asset still owned and 0 once it has been disposed of, so summing it
+ * gives register value without re-deriving the rule here. */
+export interface FixedAssetRow {
+  asset_id: string;
+  name: string;
+  category: string;
+  brand: string | null;
+  manufacturer: string | null;
+  description: string | null;
+  serial_number: string | null;
+  condition: "good" | "fair" | "needs_repair" | "retired";
+  acquired_date: string;
+  acquired_value: number;
+  source_donor_id: string | null;
+  storage_location_id: string;
+  location_path: string | null;
+  disposed_at: string | null;
+  value_on_books: number;
+}
+
+/** inventory.v_asset_disposals -- one row per asset that has left, with what
+ * came back for it. `signed_off` is true only once both signatures are in. */
+export interface AssetDisposalRow {
+  disposal_id: string;
+  asset_id: string;
+  name: string;
+  category: string;
+  date: string;
+  reason: string;
+  proceeds: number;
+  notes: string | null;
+  acquired_value: number;
+  recorded_by: string;
+  sign_off_1: string | null;
+  sign_off_2: string | null;
+  signed_off: boolean;
+}

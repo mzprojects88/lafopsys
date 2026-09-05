@@ -54,6 +54,13 @@ export const STATUS_DOMAIN_MAP: Record<string, Record<string, StatusTone>> = {
     released: "positive",
     filed: "positive",
   },
+  asset: {
+    good: "positive",
+    fair: "info",
+    needs_repair: "warning",
+    retired: "neutral",
+    disposed: "neutral",
+  },
   stock: {
     ok: "positive",
     low: "warning",

@@ -3,9 +3,11 @@
 import { createClient } from "@/lib/supabase/client";
 import { createCollectionFamily, useCollection } from "@/lib/data/collection-store";
 import type {
+  AssetDisposalRow,
   ConsumptionDailyRow,
   ExpiringLotRow,
   LotOnHandRow,
+  FixedAssetRow,
   StockSummaryRow,
   StorageLocationRow,
   WasteRow,
@@ -103,4 +105,28 @@ export function useWasteLog() {
 
 export function useStorageLocations() {
   return useView<StorageLocationRow>("v_storage_locations", (r) => ({ ...(r as unknown as StorageLocationRow), depth: num(r.depth) }), { column: "path" });
+}
+
+export function useFixedAssets() {
+  return useView<FixedAssetRow>(
+    "v_fixed_assets",
+    (r) => ({
+      ...(r as unknown as FixedAssetRow),
+      acquired_value: num(r.acquired_value),
+      value_on_books: num(r.value_on_books),
+    }),
+    { column: "name" }
+  );
+}
+
+export function useAssetDisposals() {
+  return useView<AssetDisposalRow>(
+    "v_asset_disposals",
+    (r) => ({
+      ...(r as unknown as AssetDisposalRow),
+      proceeds: num(r.proceeds),
+      acquired_value: num(r.acquired_value),
+    }),
+    { column: "date", ascending: false }
+  );
 }
