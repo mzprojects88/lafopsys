@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
 import { useProgramsData } from "@/lib/hooks/use-programs-collection";
-import { TODAY_ISO } from "@/lib/utils/seeded-random";
+import { todayIso } from "@/lib/utils/date";
 import type { CashEntryDirection, CashEntrySource } from "@/lib/types/finance";
 
 const inflowSources: CashEntrySource[] = ["cash_donation", "in_kind_donation", "capital_infusion", "grant", "fundraising_event", "interest", "inter_entity_transfer"];
@@ -25,6 +25,10 @@ function sourceLabel(source: string) {
 }
 
 const schema = z.object({
+  // The day the money actually moved. This used to be pinned to the frozen
+  // demo constant TODAY_ISO ("2026-08-04"), so every entry ever keyed in
+  // landed in August 2026 and no month-by-month figure could be trusted.
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick the date"),
   direction: z.enum(["inflow", "outflow"]),
   source: z.string().min(1, "Select a source"),
   entity: z.enum(["US_501C3", "PH_SEC"]),
@@ -47,7 +51,7 @@ export function EntryForm() {
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { direction: "outflow", source: "", entity: "PH_SEC", description: "" },
+    defaultValues: { date: todayIso(), direction: "outflow", source: "", entity: "PH_SEC", description: "" },
   });
 
   const direction = watch("direction") as CashEntryDirection;
@@ -55,7 +59,7 @@ export function EntryForm() {
 
   async function onSubmit(values: FormValues) {
     const result = await addEntry({
-      date: TODAY_ISO,
+      date: values.date,
       direction: values.direction,
       source: values.source as CashEntrySource,
       entity: values.entity,
@@ -149,6 +153,14 @@ export function EntryForm() {
                 />
               </Field>
             )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field data-invalid={!!errors.date}>
+                <FieldLabel htmlFor="entry-date">Date</FieldLabel>
+                <Input id="entry-date" type="date" max={todayIso()} {...register("date")} />
+                <FieldError errors={[errors.date]} />
+              </Field>
+            </div>
 
             <Field data-invalid={!!errors.amount}>
               <FieldLabel htmlFor="amount">Amount</FieldLabel>

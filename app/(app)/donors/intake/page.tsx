@@ -14,9 +14,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { unitsOfMeasure } from "@/lib/mock-data";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
-import { TODAY_ISO } from "@/lib/utils/seeded-random";
+import { todayIso } from "@/lib/utils/date";
 
 const schema = z.object({
+  // The day the gift was received. Was the frozen demo constant TODAY_ISO,
+  // which put every donation ever keyed in on 2026-08-04.
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick the date"),
   donorId: z.string().min(1, "Select a donor"),
   receivingEntity: z.enum(["US_501C3", "PH_SEC"]),
   kind: z.enum(["cash", "in_kind"]),
@@ -40,7 +43,7 @@ export default function DonationIntakePage() {
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { donorId: "", receivingEntity: "PH_SEC", kind: "in_kind" },
+    defaultValues: { date: todayIso(), donorId: "", receivingEntity: "PH_SEC", kind: "in_kind" },
   });
 
   const kind = watch("kind");
@@ -51,7 +54,7 @@ export default function DonationIntakePage() {
     const totalValue = values.kind === "cash" ? values.cashAmount ?? 0 : (values.quantity ?? 0) * (values.unitValue ?? 0);
     const result = await addDonation({
       donorId: values.donorId,
-      date: TODAY_ISO,
+      date: values.date,
       receivingEntity: values.receivingEntity,
       kind: values.kind,
       itemDescription: values.kind === "in_kind" ? values.itemDescription : undefined,
@@ -95,6 +98,12 @@ export default function DonationIntakePage() {
                   )}
                 />
                 <FieldError errors={[errors.donorId]} />
+              </Field>
+
+              <Field data-invalid={!!errors.date}>
+                <FieldLabel htmlFor="donation-date">Date received</FieldLabel>
+                <Input id="donation-date" type="date" max={todayIso()} className="w-48" {...register("date")} />
+                <FieldError errors={[errors.date]} />
               </Field>
 
               <Field>

@@ -4,9 +4,12 @@ import { cn } from "@/lib/utils";
 import { useClockStatus } from "@/lib/hooks/use-clock-status";
 
 export function ClockStatusBadge() {
-  const { me, clockedIn, hasClockedInToday } = useClockStatus();
+  const { me, clockedIn, hasClockedInToday, clockInRequired } = useClockStatus();
 
   if (!me) return null;
+  // Someone who does not have to clock in should not wear an amber "Not
+  // Clocked In" all day. If they punch anyway, the badge still shows it.
+  if (!clockInRequired && !hasClockedInToday) return null;
 
   const label = clockedIn ? "Clocked In" : hasClockedInToday ? "Clocked Out" : "Not Clocked In";
   const tone = clockedIn
