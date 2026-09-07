@@ -29,6 +29,11 @@ export default function FixedAssetsPage() {
   // value_on_books is already 0 for a disposed asset, so this is what the
   // foundation still owns without re-deriving the rule.
   const registerValue = assets.reduce((sum, a) => sum + a.value_on_books, 0);
+  // Straight-line, computed in the view rather than stored (laf-inventory
+  // 0028), so it is right for today. Assets with no useful life recorded are
+  // carried at cost, which is why this can equal registerValue.
+  const bookValue = assets.reduce((sum, a) => sum + a.book_value, 0);
+  const depreciated = assets.some((a) => !a.disposed_at && a.useful_life_years);
   const owned = assets.filter((a) => !a.disposed_at).length;
   const proceeds = disposals.reduce((sum, d) => sum + d.proceeds, 0);
   const awaitingSignOff = disposals.filter((d) => !d.signed_off).length;
@@ -50,8 +55,24 @@ export default function FixedAssetsPage() {
     { id: "location", header: "Location", accessorFn: (a) => a.location_path ?? "—" },
     { id: "acquired", header: "Acquired", accessorFn: (a) => a.acquired_date, cell: ({ row }) => formatDate(row.original.acquired_date) },
     {
+      id: "book_value",
+      header: "Book value",
+      accessorFn: (a) => a.book_value,
+      cell: ({ row }) =>
+        row.original.disposed_at ? (
+          <span className="text-muted-foreground">—</span>
+        ) : (
+          <span className="tabular-nums">
+            {formatCurrency(row.original.book_value)}
+            {row.original.useful_life_years ? (
+              <span className="text-muted-foreground"> · {row.original.useful_life_years}y</span>
+            ) : null}
+          </span>
+        ),
+    },
+    {
       id: "value",
-      header: "Value",
+      header: "Acquired for",
       accessorFn: (a) => a.acquired_value,
       cell: ({ row }) => (
         <span className={row.original.disposed_at ? "text-muted-foreground line-through" : undefined}>
@@ -99,7 +120,13 @@ export default function FixedAssetsPage() {
       />
 
       <KpiGrid>
-        <KpiCard label="Register Value" value={loading ? "…" : formatCurrency(registerValue)} sublabel="Assets still owned" icon={Wallet} color="green" />
+        <KpiCard
+          label="Register Value"
+          value={loading ? "…" : formatCurrency(registerValue)}
+          sublabel={depreciated ? `${formatCurrency(bookValue)} book value` : "Assets still owned"}
+          icon={Wallet}
+          color="green"
+        />
         <KpiCard label="Assets Owned" value={loading ? "…" : owned} icon={Archive} color="indigo" />
         <KpiCard label="Disposed" value={disposalsLoading ? "…" : disposals.length} sublabel={awaitingSignOff > 0 ? `${awaitingSignOff} awaiting sign-off` : "All signed off"} icon={PackageX} color="slate" />
         <KpiCard label="Disposal Proceeds" value={disposalsLoading ? "…" : formatCurrency(proceeds)} icon={Wallet} color="amber" />

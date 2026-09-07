@@ -125,6 +125,15 @@ export interface FixedAssetRow {
   location_path: string | null;
   disposed_at: string | null;
   value_on_books: number;
+  house_id: string;
+  /** Years of useful life, or null for an asset that is deliberately not
+   * depreciated -- book_value then equals what was paid for it. */
+  useful_life_years: number | null;
+  salvage_value: number;
+  /** Straight-line book value as of today, computed by
+   * inventory.asset_book_value() in the view (laf-inventory 0028) rather than
+   * stored, so it is never stale. Zero once the asset has been disposed of. */
+  book_value: number;
 }
 
 /** inventory.v_asset_disposals -- one row per asset that has left, with what

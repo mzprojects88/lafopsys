@@ -114,6 +114,8 @@ export function useFixedAssets() {
       ...(r as unknown as FixedAssetRow),
       acquired_value: num(r.acquired_value),
       value_on_books: num(r.value_on_books),
+      salvage_value: num(r.salvage_value),
+      book_value: num(r.book_value),
     }),
     { column: "name" }
   );
