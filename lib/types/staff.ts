@@ -28,9 +28,7 @@ export interface TimeEntry {
   date: string;
   clockIn?: string;
   clockOut?: string;
-  breakMinutes: number;
   flag: TimeEntryFlag;
-  overtimeMinutes: number;
   gpsStamped: boolean;
   /** Minutes of completed sessions, from the punches (never from clockIn/clockOut). */
   totalMinutes: number;
@@ -69,6 +67,15 @@ export interface TimePunch {
   userAgent?: string;
   deviceLabel?: string;
   deviceType: PunchDeviceType;
+  /** "device" is a punch somebody actually made. "adjustment" is a missing
+   * punch supplied afterwards by an admin (0029) -- always an extra row,
+   * never an edit to an existing one. */
+  source: "device" | "adjustment";
+  /** Set only on an adjustment: why the punch was missing. */
+  adjustmentReason?: string;
+  /** Set only on an adjustment: the admin who supplied it, from their session
+   * rather than from the request. */
+  adjustedBy?: string;
 }
 
 export type TimesheetStatus = "pending" | "approved" | "flagged" | "rejected";

@@ -12,9 +12,7 @@ interface TimeEntryRow {
   date: string;
   clock_in: string | null;
   clock_out: string | null;
-  break_minutes: number;
   flag: TimeEntryFlag;
-  overtime_minutes: number;
   gps_stamped: boolean;
   total_minutes: number | null;
   session_count: number | null;
@@ -27,9 +25,7 @@ function toTimeEntry(row: TimeEntryRow): TimeEntry {
     date: row.date,
     clockIn: row.clock_in ?? undefined,
     clockOut: row.clock_out ?? undefined,
-    breakMinutes: row.break_minutes,
     flag: row.flag,
-    overtimeMinutes: row.overtime_minutes,
     gpsStamped: row.gps_stamped,
     totalMinutes: row.total_minutes ?? 0,
     sessionCount: row.session_count ?? 0,

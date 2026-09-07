@@ -263,6 +263,33 @@ export function entryTotals(sessions: readonly DtrSession[], day: string, staffI
   return { totalMinutes, sessionCount };
 }
 
+/**
+ * The normal working day in minutes -- 8 hours, Art. 83 of the Labor Code.
+ * Only the fallback: the live value is shared.app_settings.
+ * overtime_threshold_minutes, which an admin can change in Settings.
+ */
+export const DEFAULT_OVERTIME_THRESHOLD_MINUTES = 8 * 60;
+
+/**
+ * Splits a day's worked minutes into regular and overtime.
+ *
+ * Computed wherever it is shown rather than stored on the entry: the threshold
+ * is a setting, and a stored figure would keep whatever number happened to
+ * apply the day it was written. ops.time_entries.overtime_minutes existed for
+ * that and was never once written to (dropped in 0029).
+ *
+ * Overtime is per DAY, not per week or per session -- someone who works two
+ * four-hour sessions has done eight regular hours, not two short days.
+ */
+export function splitOvertime(
+  totalMinutes: number,
+  thresholdMinutes: number = DEFAULT_OVERTIME_THRESHOLD_MINUTES
+): { regular: number; overtime: number } {
+  const total = Math.max(0, Math.round(totalMinutes));
+  const threshold = Math.max(0, Math.round(thresholdMinutes));
+  return { regular: Math.min(total, threshold), overtime: Math.max(0, total - threshold) };
+}
+
 /** `7h 45m`. */
 export function formatMinutes(minutes: number): string {
   const m = Math.max(0, Math.round(minutes));

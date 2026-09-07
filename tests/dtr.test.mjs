@@ -11,6 +11,7 @@ import {
   formatMinutes,
   pairSessions,
   sessionMinutes,
+  splitOvertime,
   timeLabel,
   totalsFor,
   weekKey,
@@ -164,5 +165,32 @@ describe("formatMinutes", () => {
     assert.equal(formatMinutes(0), "0h 0m");
     assert.equal(formatMinutes(75), "1h 15m");
     assert.equal(formatMinutes(510), "8h 30m");
+  });
+});
+
+describe("splitOvertime", () => {
+  it("leaves a normal day entirely regular", () => {
+    assert.deepEqual(splitOvertime(480), { regular: 480, overtime: 0 });
+    assert.deepEqual(splitOvertime(300), { regular: 300, overtime: 0 });
+  });
+
+  it("counts minutes past the threshold as overtime", () => {
+    assert.deepEqual(splitOvertime(570), { regular: 480, overtime: 90 });
+  });
+
+  it("measures the day as a whole, not each session", () => {
+    // Two five-hour sessions is a ten-hour day: eight regular, two over --
+    // not two short days that each fall under the threshold.
+    assert.deepEqual(splitOvertime(300 + 300), { regular: 480, overtime: 120 });
+  });
+
+  it("follows a threshold the admin changed", () => {
+    assert.deepEqual(splitOvertime(570, 600), { regular: 570, overtime: 0 });
+    assert.deepEqual(splitOvertime(570, 360), { regular: 360, overtime: 210 });
+  });
+
+  it("has nothing to split on an empty day", () => {
+    assert.deepEqual(splitOvertime(0), { regular: 0, overtime: 0 });
+    assert.deepEqual(splitOvertime(-5), { regular: 0, overtime: 0 });
   });
 });

@@ -19,6 +19,9 @@ interface TimePunchRow {
   user_agent: string | null;
   device_label: string | null;
   device_type: PunchDeviceType;
+  source: "device" | "adjustment";
+  adjustment_reason: string | null;
+  adjusted_by: string | null;
 }
 
 function toTimePunch(row: TimePunchRow): TimePunch {
@@ -37,6 +40,9 @@ function toTimePunch(row: TimePunchRow): TimePunch {
     userAgent: row.user_agent ?? undefined,
     deviceLabel: row.device_label ?? undefined,
     deviceType: row.device_type,
+    source: row.source,
+    adjustmentReason: row.adjustment_reason ?? undefined,
+    adjustedBy: row.adjusted_by ?? undefined,
   };
 }
 
@@ -61,7 +67,7 @@ export const timePunchesStore = createCollection<TimePunch[]>({
       .schema("ops")
       .from("time_punches")
       .select(
-        "id, time_entry_id, staff_id, punch_type, punched_at, latitude, longitude, accuracy_meters, address_label, location_status, ip_address, user_agent, device_label, device_type"
+        "id, time_entry_id, staff_id, punch_type, punched_at, latitude, longitude, accuracy_meters, address_label, location_status, ip_address, user_agent, device_label, device_type, source, adjustment_reason, adjusted_by"
       )
       .order("punched_at", { ascending: false });
     if (error) throw new Error(error.message);

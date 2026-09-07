@@ -5,6 +5,7 @@ import { IconCircle } from "@/components/patterns/icon-circle";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ResetDemoDataButton } from "@/components/modules/settings/reset-demo-data-button";
 import { ClockInRequirementToggle } from "@/components/modules/settings/clock-in-requirement-toggle";
+import { OvertimeThresholdField } from "@/components/modules/settings/overtime-threshold-field";
 
 const REFERENCE_TABLES = [
   { slug: "provinces", label: "Provinces & Cities" },
@@ -59,8 +60,9 @@ export default function SettingsPage() {
             <IconCircle icon={ClipboardCheck} color="green" size="sm" />
             <CardTitle className="text-sm">Attendance Policy</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-4">
             <ClockInRequirementToggle />
+            <OvertimeThresholdField />
           </CardContent>
         </Card>
 
