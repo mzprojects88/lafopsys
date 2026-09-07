@@ -2,7 +2,7 @@
 Cleans the real event/booking log into normalized JSON shaped to match the
 new lib/types/calendar.ts's CalendarEvent.
 
-Reads from  ../DATA/LAF Master Calendar 2026 Updated v2.xlsx   (sibling of this repo)
+Reads from  ../DATA/LAF Master Calendar 2026 as of Sept7.xlsx   (sibling of this repo)
 Writes to   ../DATA/clean/calendar-events.json + calendar-report.md
 
 Both input and output live entirely outside the git repository. This script
@@ -35,7 +35,7 @@ from pathlib import Path
 import openpyxl
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SOURCE_XLSX = REPO_ROOT.parent / "DATA" / "LAF Master Calendar 2026 Updated v2.xlsx"
+SOURCE_XLSX = REPO_ROOT.parent / "DATA" / "LAF Master Calendar 2026 as of Sept7.xlsx"
 OUT_DIR = REPO_ROOT.parent / "DATA" / "clean"
 
 COL_DATE = 1
