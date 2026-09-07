@@ -111,6 +111,40 @@ export const STATUS_DOMAIN_MAP: Record<string, Record<string, StatusTone>> = {
     unchanged: "neutral",
     failed: "negative",
   },
+  // HR (0036+): employee status, 201 documents, deadlines.
+  employee: {
+    active: "positive",
+    on_leave: "info",
+    resigned: "neutral",
+    terminated: "negative",
+    unlinked: "warning",
+    probationary: "warning",
+    regular: "positive",
+    contractual: "info",
+    part_time: "info",
+    casual: "neutral",
+  },
+  document: {
+    complete: "positive",
+    submitted: "info",
+    pending: "warning",
+    for_renewal: "warning",
+    expiring: "warning",
+    expired: "negative",
+    missing: "negative",
+    not_applicable: "neutral",
+  },
+  deadline: {
+    ok: "positive",
+    due_soon: "warning",
+    overdue: "negative",
+  },
+  rateTable: {
+    in_force: "positive",
+    enjoined: "warning",
+    draft: "neutral",
+    superseded: "neutral",
+  },
   // Master calendar venues (0032). Lower-cased at lookup; free text falls to neutral.
   venue: {
     laf: "positive",
