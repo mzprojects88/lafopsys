@@ -194,3 +194,42 @@ describe("splitOvertime", () => {
     assert.deepEqual(splitOvertime(-5), { regular: 0, overtime: 0 });
   });
 });
+
+describe("a supplied clock-out on consecutive forgotten days", () => {
+  // Production had four days in a row clocked into and never out of. When an
+  // admin supplies the missing time, the danger is that a clock-out timed
+  // after the NEXT day's clock-in closes that day's session instead --
+  // silently crediting the hours to the wrong day. app/api/dtr/adjust checks
+  // exactly this before it writes anything; these pin the behaviour it checks.
+  const day1In = punch("s1", "clock_in", "2026-08-27T06:00");
+  const day2In = punch("s1", "clock_in", "2026-08-28T05:06");
+
+  it("closes the intended day when the time is before the next clock-in", () => {
+    const supplied = punch("s1", "clock_out", "2026-08-27T17:00");
+    const sessions = pairSessions([day1In, day2In, supplied]);
+    const closed = sessions.find((s) => s.clockOutAt === supplied.punchedAt);
+    assert.equal(closed.dayKey, "2026-08-27");
+    assert.equal(closed.status, "closed");
+    assert.equal(entryTotals(sessions, "2026-08-27", "s1").totalMinutes, 11 * 60);
+  });
+
+  it("closes the FOLLOWING day when the time falls after its clock-in", () => {
+    // 08-28 08:00 is after 08-28's own 05:06 clock-in, so pairing attaches it
+    // there and 08-27 stays a missed clock-out worth nothing. The route
+    // refuses this rather than writing it.
+    const supplied = punch("s1", "clock_out", "2026-08-28T08:00");
+    const sessions = pairSessions([day1In, day2In, supplied]);
+    const closed = sessions.find((s) => s.clockOutAt === supplied.punchedAt);
+    assert.equal(closed.dayKey, "2026-08-28");
+    assert.equal(entryTotals(sessions, "2026-08-27", "s1").totalMinutes, 0);
+  });
+
+  it("still allows a genuine overnight clock-out before the next shift", () => {
+    const lateIn = punch("s1", "clock_in", "2026-08-30T22:00");
+    const supplied = punch("s1", "clock_out", "2026-08-31T02:00");
+    const sessions = pairSessions([lateIn, supplied]);
+    const closed = sessions.find((s) => s.clockOutAt === supplied.punchedAt);
+    assert.equal(closed.dayKey, "2026-08-30");
+    assert.equal(entryTotals(sessions, "2026-08-30", "s1").totalMinutes, 4 * 60);
+  });
+});

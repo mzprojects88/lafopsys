@@ -87,8 +87,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "A clock-out can't be in the future." }, { status: 400 });
   }
 
-  // The window the punch route uses: the entry's day plus the next two, so an
-  // overnight session's clock-out is in range wherever it falls.
+  // The same window the punch route uses: the entry's day and the one after
+  // it, so an overnight session's clock-out is in range wherever it falls.
   const entryDay = dayKey(entry.date as string);
   const { data: punchRows, error: punchesError } = await supabase
     .schema("ops")
@@ -110,6 +110,46 @@ export async function POST(request: Request) {
     );
   }
 
+  // Pair the punches as they WOULD be with this clock-out, before writing it.
+  //
+  // pairSessions closes a still-open session as `missed_out` the moment a
+  // clock-in arrives on a later day. So on consecutive forgotten days, a
+  // clock-out timed after the NEXT day's clock-in closes that day's session
+  // instead of this one -- silently, and on the wrong person's wrong day.
+  // Reachable from the dialog's "next morning" option, which is why it is
+  // checked here rather than trusted to the caller.
+  const sessions = pairSessions(
+    [
+      ...existing,
+      {
+        id: "pending-adjustment",
+        staff_id: entry.staff_id as string,
+        punch_type: "clock_out" as const,
+        punched_at: punchedAt.toISOString(),
+        time_entry_id: entry.id as string,
+      },
+    ].map((r) => ({
+      id: r.id,
+      staffId: r.staff_id,
+      punchType: r.punch_type,
+      punchedAt: r.punched_at,
+      timeEntryId: r.time_entry_id ?? undefined,
+    }))
+  );
+
+  const closedByThis = sessions.find((s) => s.clockOutAt === punchedAt.toISOString());
+  if (!closedByThis || closedByThis.dayKey !== entryDay) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "That time falls after the next shift started, so it would close that one instead. Pick an earlier time.",
+      },
+      { status: 409 }
+    );
+  }
+
+  const totals = entryTotals(sessions, entryDay, entry.staff_id as string);
+
   const { error: insertError } = await supabase.schema("ops").from("time_punches").insert({
     time_entry_id: entry.id,
     staff_id: entry.staff_id,
@@ -122,23 +162,6 @@ export async function POST(request: Request) {
     adjusted_by: user.id,
   });
   if (insertError) return NextResponse.json({ ok: false, error: insertError.message }, { status: 500 });
-
-  // Same recomputation as the punch route, from the punches including the one
-  // just added -- so the day's totals come from the record, not from arithmetic
-  // done here on the side.
-  const sessions = pairSessions(
-    [
-      ...existing,
-      { id: "adjustment", staff_id: entry.staff_id as string, punch_type: "clock_out" as const, punched_at: punchedAt.toISOString(), time_entry_id: entry.id as string },
-    ].map((r) => ({
-      id: r.id,
-      staffId: r.staff_id,
-      punchType: r.punch_type,
-      punchedAt: r.punched_at,
-      timeEntryId: r.time_entry_id ?? undefined,
-    }))
-  );
-  const totals = entryTotals(sessions, entryDay, entry.staff_id as string);
 
   // `flag` is deliberately left alone. The day WAS a missed punch; that it has
   // since been corrected is recorded by the adjustment punch, which says who
