@@ -84,3 +84,39 @@ export async function updateOvertimeThreshold(minutes: number): Promise<UpdateCl
   revalidatePath("/settings");
   return { ok: true };
 }
+
+/**
+ * Turns the two-hourly Google Sheet sync for the master calendar on or off
+ * (0034). Off is the end of the transition: the scheduled job still fires
+ * but the route does nothing, and every event becomes editable in the app.
+ */
+export async function updateCalendarSheetSync(enabled: boolean): Promise<UpdateClockInRequirementResult> {
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+
+  if (!caller) {
+    return { ok: false, error: "Not signed in." };
+  }
+
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+
+  if (callerStaff?.role !== "admin") {
+    return { ok: false, error: "Only admins can change this setting." };
+  }
+
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({ calendar_sheet_sync_enabled: enabled, updated_at: new Date().toISOString(), updated_by: caller.id })
+    .eq("id", true);
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/calendar");
+  return { ok: true };
+}

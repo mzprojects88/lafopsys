@@ -36,7 +36,10 @@ const TIME_SUGGESTIONS = ["All day", "9:00 AM", "10:00 AM", "10:30 AM - 12:00 NN
 export type EventDialogState =
   | { mode: "closed" }
   | { mode: "create"; date: string }
-  | { mode: "edit"; event: CalendarEvent };
+  | { mode: "edit"; event: CalendarEvent }
+  /** Read-only: an event that follows the Google Sheet (0034), or a viewer
+   * whose role cannot edit. Same form, every field disabled. */
+  | { mode: "view"; event: CalendarEvent };
 
 /**
  * Add or edit one calendar event. Plain useState, seeded from the state it is
@@ -48,7 +51,7 @@ export type EventDialogState =
  */
 export function EventDialog({ state, onOpenChange }: { state: EventDialogState; onOpenChange: (open: boolean) => void }) {
   if (state.mode === "closed") return null;
-  const key = state.mode === "edit" ? state.event.id : `new-${state.date}`;
+  const key = state.mode === "create" ? `new-${state.date}` : `${state.mode}-${state.event.id}`;
   return <EventForm key={key} state={state} onOpenChange={onOpenChange} />;
 }
 
@@ -60,9 +63,11 @@ function EventForm({
   onOpenChange: (open: boolean) => void;
 }) {
   const { addEvent, updateEvent, deleteEvent } = useCalendarEventsData();
-  const existing = state.mode === "edit" ? state.event : null;
+  const existing = state.mode === "create" ? null : state.event;
+  const readOnly = state.mode === "view";
+  const fromSheet = existing?.source === "sheet";
 
-  const [date, setDate] = React.useState(state.mode === "edit" ? state.event.date : state.date);
+  const [date, setDate] = React.useState(state.mode === "create" ? state.date : state.event.date);
   const [time, setTime] = React.useState(existing?.time ?? "");
   const [title, setTitle] = React.useState(existing?.title ?? "");
   const [venue, setVenue] = React.useState(existing?.venue ?? "");
@@ -75,7 +80,7 @@ function EventForm({
   const [saving, setSaving] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
 
-  const canSave = !!date && !!title.trim() && !saving;
+  const canSave = !readOnly && !!date && !!title.trim() && !saving;
 
   function payload(): CalendarEventInput {
     return { date, time, title, venue, officerOnDuty: officer, staffNeeded, bookedBy, contactInfo, remarks, isHoliday };
@@ -112,13 +117,19 @@ function EventForm({
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{existing ? "Edit event" : "Add event"}</DialogTitle>
+          <DialogTitle>{readOnly ? (fromSheet ? "Event from the Google Sheet" : "Event") : existing ? "Edit event" : "Add event"}</DialogTitle>
           <DialogDescription>
-            {existing ? "Changes are saved to the foundation calendar for everyone." : "Goes on the foundation calendar for everyone to see."}
+            {readOnly
+              ? fromSheet
+                ? "This event comes from the Google Sheet. Change it there — the calendar updates within two hours — or add events here once the sheet is retired."
+                : "Admins and social workers can change events."
+              : existing
+                ? "Changes are saved to the foundation calendar for everyone."
+                : "Goes on the foundation calendar for everyone to see."}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4">
+        <fieldset disabled={readOnly} className="flex flex-col gap-4 disabled:opacity-90">
           <Field>
             <FieldLabel htmlFor="ev-title">Event</FieldLabel>
             <Input id="ev-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Gerry's Grill Care Cart" autoFocus />
@@ -189,10 +200,10 @@ function EventForm({
             </div>
             <Switch checked={isHoliday} onCheckedChange={setIsHoliday} />
           </div>
-        </div>
+        </fieldset>
 
         <DialogFooter className="sm:justify-between">
-          {existing ? (
+          {existing && !readOnly ? (
             <Button variant="ghost" className="text-destructive" onClick={() => setConfirmDelete(true)} disabled={saving}>
               Remove
             </Button>
@@ -201,11 +212,13 @@ function EventForm({
           )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-              Cancel
+              {readOnly ? "Close" : "Cancel"}
             </Button>
-            <Button onClick={handleSave} disabled={!canSave}>
-              {saving ? "Saving…" : existing ? "Save" : "Add event"}
-            </Button>
+            {!readOnly ? (
+              <Button onClick={handleSave} disabled={!canSave}>
+                {saving ? "Saving…" : existing ? "Save" : "Add event"}
+              </Button>
+            ) : null}
           </div>
         </DialogFooter>
       </DialogContent>

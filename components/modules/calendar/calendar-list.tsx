@@ -1,7 +1,7 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { Pencil } from "lucide-react";
+import { Pencil, Table2 } from "lucide-react";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { Button } from "@/components/ui/button";
@@ -23,13 +23,18 @@ export function VenueBadge({ venue }: { venue?: string }) {
 export function CalendarList({
   events,
   canEdit,
-  onEdit,
+  canEditEvent,
+  onOpen,
   toolbar,
   emptyMessage,
 }: {
   events: CalendarEvent[];
+  /** Whether this viewer may edit anything at all -- shows the actions column. */
   canEdit: boolean;
-  onEdit: (event: CalendarEvent) => void;
+  /** Whether this particular event is editable (sheet events are not while the sync is on). */
+  canEditEvent: (event: CalendarEvent) => boolean;
+  /** Opens the event -- to edit, or read-only, as the page decides. */
+  onOpen: (event: CalendarEvent) => void;
   toolbar?: React.ReactNode;
   emptyMessage: string;
 }) {
@@ -51,7 +56,10 @@ export function CalendarList({
       header: "Event",
       accessorFn: (e) => e.title,
       cell: ({ row }) => (
-        <span className={row.original.isHoliday ? "font-medium text-amber-700 dark:text-amber-400" : "font-medium"}>{row.original.title}</span>
+        <span className="flex items-center gap-1.5">
+          <span className={row.original.isHoliday ? "font-medium text-amber-700 dark:text-amber-400" : "font-medium"}>{row.original.title}</span>
+          {row.original.source === "sheet" ? <Table2 className="size-3 shrink-0 text-muted-foreground" aria-label="From the Google Sheet" /> : null}
+        </span>
       ),
     },
     { id: "venue", header: "Venue", accessorFn: (e) => e.venue ?? "", cell: ({ row }) => <VenueBadge venue={row.original.venue} /> },
@@ -77,11 +85,12 @@ export function CalendarList({
           {
             id: "actions",
             header: "",
-            cell: ({ row }) => (
-              <Button variant="ghost" size="icon-sm" aria-label={`Edit ${row.original.title}`} onClick={() => onEdit(row.original)}>
-                <Pencil className="size-3.5" />
-              </Button>
-            ),
+            cell: ({ row }) =>
+              canEditEvent(row.original) ? (
+                <Button variant="ghost" size="icon-sm" aria-label={`Edit ${row.original.title}`} onClick={() => onOpen(row.original)}>
+                  <Pencil className="size-3.5" />
+                </Button>
+              ) : null,
           } satisfies ColumnDef<CalendarEvent>,
         ]
       : []),
@@ -95,7 +104,7 @@ export function CalendarList({
       toolbar={toolbar}
       emptyMessage={emptyMessage}
       pageSize={25}
-      onRowClick={canEdit ? onEdit : undefined}
+      onRowClick={onOpen}
     />
   );
 }

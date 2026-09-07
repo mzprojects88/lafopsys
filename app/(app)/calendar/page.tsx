@@ -13,7 +13,9 @@ import { EventDialog, type EventDialogState } from "@/components/modules/calenda
 import { useCalendarEventsData } from "@/lib/hooks/use-calendar-events-collection";
 import { useNow } from "@/lib/hooks/use-now";
 import { useRole } from "@/lib/rbac/use-role";
-import { canEditCalendar } from "@/lib/rbac/roles";
+import { canEditCalendar, canEditCalendarEvent } from "@/lib/rbac/roles";
+import { useAppSettings } from "@/lib/hooks/use-app-settings";
+import { SyncStatus } from "@/components/modules/calendar/sync-status";
 import { dayKey, monthKey } from "@/lib/utils/dtr";
 import { inWindow, periodLabel, periodWindow, shiftAnchor, type PeriodKind } from "@/lib/utils/period";
 import type { CalendarEvent } from "@/lib/types/calendar";
@@ -37,7 +39,12 @@ const PERIODS: { kind: PeriodKind; label: string }[] = [
 export default function CalendarPage() {
   const { events, loading, error } = useCalendarEventsData();
   const { role } = useRole();
+  const { calendarSheetSyncEnabled } = useAppSettings();
   const canEdit = canEditCalendar(role);
+  const canEditEvent = React.useCallback(
+    (event: CalendarEvent) => canEditCalendarEvent(role, event, calendarSheetSyncEnabled),
+    [role, calendarSheetSyncEnabled]
+  );
   const today = dayKey(useNow());
 
   const [kind, setKind] = React.useState<PeriodKind>("week");
@@ -57,9 +64,10 @@ export default function CalendarPage() {
     if (!canEdit) return;
     setDialog({ mode: "create", date });
   }
-  function openEdit(event: CalendarEvent) {
-    if (!canEdit) return;
-    setDialog({ mode: "edit", event });
+  // Everyone can open an event; whether it opens for editing depends on the
+  // role and, while the sheet sync is on, on where the event came from.
+  function openEvent(event: CalendarEvent) {
+    setDialog(canEditEvent(event) ? { mode: "edit", event } : { mode: "view", event });
   }
 
   const periodControl = (
@@ -123,13 +131,15 @@ export default function CalendarPage() {
         }
       />
 
+      <SyncStatus />
+
       {error ? (
         <EmptyState title="Couldn't load the calendar" description={error} />
       ) : view === "month" ? (
         <Card>
           <CardContent className="flex flex-col gap-4 pt-6">
             {periodControl}
-            <MonthGrid month={month} events={inMonth} today={today} canEdit={canEdit} onDayClick={openCreate} onEventClick={openEdit} />
+            <MonthGrid month={month} events={inMonth} today={today} canEdit={canEdit} onDayClick={openCreate} onEventClick={openEvent} />
             {!canEdit ? <p className="text-xs text-muted-foreground">Admins and social workers can add and change events.</p> : null}
           </CardContent>
         </Card>
@@ -137,7 +147,8 @@ export default function CalendarPage() {
         <CalendarList
           events={inPeriod}
           canEdit={canEdit}
-          onEdit={openEdit}
+          canEditEvent={canEditEvent}
+          onOpen={openEvent}
           toolbar={periodControl}
           emptyMessage={loading ? "Loading…" : `Nothing on the calendar for ${periodLabel(kind, window)}.`}
         />

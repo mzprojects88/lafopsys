@@ -92,6 +92,7 @@ export function MonthGrid({
                   <button
                     key={e.id}
                     type="button"
+                    // Opens for everyone: readers get the read-only view.
                     onClick={(ev) => {
                       ev.stopPropagation();
                       onEventClick(e);

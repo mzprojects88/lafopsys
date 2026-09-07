@@ -105,6 +105,13 @@ export function canEditCalendar(role: Role) {
   return role === "admin" || role === "social_worker";
 }
 
+/** Whether THIS event may be edited: the role must be allowed, and while the
+ * Google Sheet sync is on (0034) a sheet-sourced event is the sheet's to
+ * change, not the app's. */
+export function canEditCalendarEvent(role: Role, event: { source: "app" | "sheet" }, sheetSyncEnabled: boolean) {
+  return canEditCalendar(role) && (event.source !== "sheet" || !sheetSyncEnabled);
+}
+
 /** Finance and Board never see clinical detail — enforced at the component level using this flag. */
 export function canSeeClinicalDetail(role: Role) {
   return role !== "finance" && role !== "board";

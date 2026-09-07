@@ -9,16 +9,21 @@ export interface AppSettings {
   /** Minutes in a normal working day; anything beyond is overtime (0029).
    * Read by every screen that splits regular from overtime hours. */
   overtimeThresholdMinutes: number;
+  /** While true the master calendar follows the Google Sheet every two hours
+   * and sheet events are read-only in the app (0034). Off ends that. */
+  calendarSheetSyncEnabled: boolean;
 }
 
 interface AppSettingsRow {
   require_clock_in_for_inventory_roles: boolean;
   overtime_threshold_minutes: number;
+  calendar_sheet_sync_enabled: boolean;
 }
 
 const DEFAULTS: AppSettings = {
   requireClockInForInventoryRoles: false,
   overtimeThresholdMinutes: DEFAULT_OVERTIME_THRESHOLD_MINUTES,
+  calendarSheetSyncEnabled: true,
 };
 
 export const appSettingsStore = createCollection<AppSettings>({
@@ -29,7 +34,7 @@ export const appSettingsStore = createCollection<AppSettings>({
     const { data, error } = await createClient()
       .schema("shared")
       .from("app_settings")
-      .select("require_clock_in_for_inventory_roles, overtime_threshold_minutes")
+      .select("require_clock_in_for_inventory_roles, overtime_threshold_minutes, calendar_sheet_sync_enabled")
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return DEFAULTS;
@@ -37,6 +42,7 @@ export const appSettingsStore = createCollection<AppSettings>({
     return {
       requireClockInForInventoryRoles: row.require_clock_in_for_inventory_roles,
       overtimeThresholdMinutes: row.overtime_threshold_minutes,
+      calendarSheetSyncEnabled: row.calendar_sheet_sync_enabled,
     };
   },
 });
