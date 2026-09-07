@@ -104,6 +104,15 @@ export const STATUS_DOMAIN_MAP: Record<string, Record<string, StatusTone>> = {
     active: "positive",
     suspended: "negative",
   },
+  // Master calendar venues (0032). Lower-cased at lookup; free text falls to neutral.
+  venue: {
+    laf: "positive",
+    nch: "info",
+    teams: "info",
+    online: "info",
+    other: "neutral",
+    holiday: "warning",
+  },
 };
 
 export function getStatusTone(domain: string, status: string): StatusTone {

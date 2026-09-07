@@ -13,6 +13,8 @@ import {
 
 const SEGMENT_LABELS: Record<string, string> = {
   dashboard: "Dashboard",
+  calendar: "Calendar",
+  executive: "Executive",
   staff: "Staff & Time",
   roster: "Roster",
   timesheets: "Timesheets",

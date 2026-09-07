@@ -2,6 +2,7 @@ import type { Role } from "@/lib/types/common";
 import { isAllowedLandingPath as isAllowedLandingPathIn, resolveLandingPath as resolveLandingPathIn } from "@/lib/rbac/landing";
 import {
   LayoutDashboard,
+  CalendarDays,
   Clock,
   Users,
   Home,
@@ -45,6 +46,9 @@ export const LOGIN_VISIBLE_ROLES = ORG_ROLES;
 
 export const NAV_ITEMS: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, allowedRoles: ALL_ROLES },
+  // Everyone on staff reads the calendar, the kitchen included -- who is
+  // coming for lunch on Thursday is not an admin secret.
+  { title: "Calendar", href: "/calendar", icon: CalendarDays, allowedRoles: [...ALL_ROLES, ...INVENTORY_ROLES] },
   { title: "Staff & Time", href: "/staff", icon: Clock, allowedRoles: [...ALL_ROLES, ...INVENTORY_ROLES] },
   {
     title: "Patients & Admissions",
@@ -88,6 +92,12 @@ export const NAV_ITEMS: NavItem[] = [
 
 export function isNavItemVisible(item: NavItem, role: Role) {
   return item.allowedRoles === "all" || item.allowedRoles.includes(role);
+}
+
+/** The people who actually book things on the master calendar (0032). Also
+ * the RLS rule; this only decides whether the buttons render. */
+export function canEditCalendar(role: Role) {
+  return role === "admin" || role === "social_worker";
 }
 
 /** Finance and Board never see clinical detail — enforced at the component level using this flag. */
