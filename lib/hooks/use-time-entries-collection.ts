@@ -13,7 +13,6 @@ interface TimeEntryRow {
   clock_in: string | null;
   clock_out: string | null;
   flag: TimeEntryFlag;
-  gps_stamped: boolean;
   total_minutes: number | null;
   session_count: number | null;
 }
@@ -26,7 +25,6 @@ function toTimeEntry(row: TimeEntryRow): TimeEntry {
     clockIn: row.clock_in ?? undefined,
     clockOut: row.clock_out ?? undefined,
     flag: row.flag,
-    gpsStamped: row.gps_stamped,
     totalMinutes: row.total_minutes ?? 0,
     sessionCount: row.session_count ?? 0,
   };

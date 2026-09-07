@@ -29,7 +29,6 @@ export interface TimeEntry {
   clockIn?: string;
   clockOut?: string;
   flag: TimeEntryFlag;
-  gpsStamped: boolean;
   /** Minutes of completed sessions, from the punches (never from clockIn/clockOut). */
   totalMinutes: number;
   /** Clock-in sessions the day had, open ones included. */

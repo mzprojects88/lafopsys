@@ -384,8 +384,8 @@ export default function DtrPage() {
         <ShieldCheck className="size-4 shrink-0 text-primary" />
         <span>
           Staff see their own record here. Admin and Finance see everyone&apos;s — Finance because payroll is
-          reconciled against it. Punches cannot be edited or deleted after the fact; corrections go through
-          timesheet approvals. Times are Manila time; a session that crosses midnight counts toward the day it started.
+          reconciled against it. Punches cannot be edited or deleted after the fact by anyone; an admin supplying a missing
+          clock-out adds a punch marked Added, signed with their name. Times are Manila time; a session that crosses midnight counts toward the day it started.
         </span>
       </div>
 
