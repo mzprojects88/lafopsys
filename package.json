@@ -10,7 +10,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test \"tests/**/*.test.mjs\"",
-    "check:supabase": "node --env-file=.env.local scripts/check-supabase.mjs"
+    "check:supabase": "node --env-file=.env.local scripts/check-supabase.mjs",
+    "test:rls:hr": "node --env-file=.env.local scripts/rls/hr-policy-matrix.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.7.1",

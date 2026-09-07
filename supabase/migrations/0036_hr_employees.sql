@@ -74,15 +74,20 @@ create table hr.employees (
 create index employees_last_first_idx on hr.employees (last_name, first_name);
 
 -- "Me" for every own-row policy in this schema. Definer so the lookup works
--- before the caller has any policy of their own on hr.employees.
+-- before the caller has any policy of their own on hr.employees, and
+-- active-only like shared.current_staff_role() (0026): a deactivated
+-- account stops seeing its own file on its next request.
 create or replace function hr.current_employee_id()
 returns uuid
 language sql
 security definer
-set search_path = hr, pg_temp
+set search_path = hr, shared, pg_temp
 stable
 as $$
-  select id from hr.employees where staff_id = auth.uid();
+  select e.id
+  from hr.employees e
+  join shared.staff s on s.id = e.staff_id
+  where s.id = auth.uid() and s.active;
 $$;
 
 grant execute on function hr.current_employee_id() to authenticated, service_role;
