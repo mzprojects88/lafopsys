@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { format, parseISO } from "date-fns";
-import { CalendarDays, CalendarRange, Clock, Download, LogIn, MapPinOff, ShieldCheck } from "lucide-react";
+import { CalendarDays, CalendarRange, Clock, Download, LogIn, MapPinOff, PencilLine, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
+import { csvLines, downloadCsv } from "@/lib/utils/csv";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { todayIso } from "@/lib/utils/date";
 import { dayKey, effectiveStatus, formatMinutes, isLong, sessionMinutes, timeLabel, totalsFor, type DtrSession } from "@/lib/utils/dtr";
@@ -172,7 +173,24 @@ const punchColumns: ColumnDef<PunchRow>[] = [
     id: "punch",
     header: "Punch",
     accessorFn: (p) => p.punchType,
-    cell: ({ row }) => <PunchTypeBadge punchType={row.original.punchType} />,
+    cell: ({ row }) => (
+      <div className="flex items-center gap-1.5">
+        <PunchTypeBadge punchType={row.original.punchType} />
+        {/* A punch an admin supplied for a shift nobody clocked out of (0029).
+            Marked here so a corrected day is never mistaken for one that was
+            actually recorded on a device. */}
+        {row.original.source === "adjustment" ? (
+          <Badge
+            variant="outline"
+            className="gap-1 border-amber-300 text-amber-700 dark:border-amber-900 dark:text-amber-400"
+            title={row.original.adjustmentReason}
+          >
+            <PencilLine className="size-3" />
+            Added
+          </Badge>
+        ) : null}
+      </div>
+    ),
   },
   { id: "time", header: "Time", accessorFn: (p) => p.timeLabel },
   {
@@ -197,15 +215,9 @@ const punchColumns: ColumnDef<PunchRow>[] = [
   },
 ];
 
-const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
-
-function csvLines(header: string[], rows: string[][]): string {
-  return [header, ...rows].map((r) => r.map(escapeCsv).join(",")).join("\n");
-}
-
 function punchesToCsv(rows: PunchRow[]): string {
   return csvLines(
-    ["Staff", "Date", "Punch", "Time", "Location", "Location status", "Device", "Network address"],
+    ["Staff", "Date", "Punch", "Time", "Location", "Location status", "Device", "Network address", "Source", "Correction reason"],
     rows.map((r) => [
       r.staffName,
       r.dateLabel,
@@ -215,6 +227,8 @@ function punchesToCsv(rows: PunchRow[]): string {
       LOCATION_STATUS_LABELS[r.locationStatus],
       r.deviceLabel ?? "",
       r.ipAddress ?? "",
+      r.source === "adjustment" ? "Added by an admin" : "Device",
+      r.adjustmentReason ?? "",
     ])
   );
 }
@@ -224,16 +238,6 @@ function sessionsToCsv(rows: SessionRow[]): string {
     ["Staff", "Date", "In", "Out", "Duration", "Minutes", "Status"],
     rows.map((r) => [r.staffName, r.dateLabel, r.inLabel, r.outLabel, formatMinutes(r.minutes), String(r.minutes), SESSION_STATUS[r.status].label])
   );
-}
-
-function downloadCsv(content: string, filename: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 export default function DtrPage() {
