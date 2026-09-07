@@ -13,7 +13,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { useVisibleNavItems } from "@/lib/rbac/use-role";
-import { RoleSwitcher } from "@/components/layout/role-switcher";
+import { SidebarUserCard } from "@/components/layout/sidebar-user-card";
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -54,7 +54,7 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarContent>
       <SidebarFooter className="gap-2 px-2 pb-3">
-        <RoleSwitcher />
+        <SidebarUserCard />
       </SidebarFooter>
     </Sidebar>
   );
