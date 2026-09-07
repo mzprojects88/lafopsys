@@ -3,7 +3,7 @@ Cleans the real LAF cash-donation and expense spreadsheets into normalized
 JSON shaped to match lib/types/finance.ts's CashEntry.
 
 Reads from  ../DATA/2026 LAF Donation Tracker.xlsx   (sibling of this repo)
-Writes to   ../DATA/clean/cash-entries.json + finance-import-report.md
+Writes to   ../DATA/clean/cash-entries.json + bank-transactions.json + finance-import-report.md
 
 Both input and output live entirely outside the git repository. This script
 contains only transformation logic -- no financial data -- so it is safe to
@@ -331,6 +331,55 @@ def merge_cash_and_bdo(cash_rows: list[dict], bdo_rows: list[dict]) -> tuple[lis
     return entries, merged_count, flagged_pairs
 
 
+def clean_bank_transactions(ws) -> list[dict]:
+    """The Bank Statement sheet at full fidelity, for ops.bank_transactions.
+
+    clean_bank_statement() below folds the same sheet into the cash-entries
+    shape and, in doing so, throws away the two columns the CEO's monthly
+    summary actually needs: the running balance (what "cash in bank" IS) and
+    the unlabelled eighth column, a hand-written memo per line ("RIZA
+    SALARY", "BUTCH") that says what a cryptic bank description was for.
+
+    Rows with neither a debit nor a credit but a moving balance are kept
+    (there are eight -- reversal pairs the bank posted without amounts) with
+    both amounts at 0 and needsReview set, so the sum of the columns still
+    matches the summary sheet and the continuity check can show them.
+    """
+    rows = []
+    seq = 0
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        (date, branch, description, debit, credit, balance, check_no, memo) = (row + (None,) * 8)[:8]
+        balance_val = clean_amount(balance)
+        if balance_val is None and not clean_str(description):
+            continue  # blank spacer row
+        if str(date).strip().lower().startswith("posting"):
+            continue  # a header row repeated mid-sheet
+        seq += 1
+        debit_val = clean_amount(debit) or 0.0
+        credit_val = clean_amount(credit) or 0.0
+        date_str = iso_date(date)
+        date_issue = date_is_suspect(date_str)
+        amount_missing = not debit_val and not credit_val
+        rows.append({
+            "rowSeq": seq,
+            "postingDate": date_str,
+            "branch": clean_str(branch),
+            "description": clean_str(description) or "(no description)",
+            "debit": debit_val,
+            "credit": credit_val,
+            "runningBalance": balance_val,
+            "checkNumber": None if check_no in (None, 0, 0.0, "0", "0.0") else clean_str(check_no),
+            "memo": clean_str(memo),
+            "needsReview": amount_missing or bool(date_issue) or balance_val is None,
+            "reviewReason": combine_reasons(
+                "Amount missing in statement export" if amount_missing else None,
+                "Running balance missing" if balance_val is None else None,
+                date_issue,
+            ),
+        })
+    return rows
+
+
 def clean_bank_statement(ws) -> list[dict]:
     """Posting Date, Branch, Description, Debit, Credit, Running Balance, Check Number"""
     entries = []
@@ -401,6 +450,7 @@ def main():
     bdo_rows = clean_bdo_sheet(wb["BDO_CASH DONATIONS"])
     merged_donation_entries, merged_count, flagged_pairs = merge_cash_and_bdo(cash_rows, bdo_rows)
     bank_entries = clean_bank_statement(wb["Bank Statement"])
+    bank_transactions = clean_bank_transactions(wb["Bank Statement"])
     reimbursement_entries = clean_reimbursements(wb["Butch reimburments "])
 
     cash_entries = []
@@ -494,6 +544,7 @@ def main():
             json.dump(data, f, ensure_ascii=False, indent=2)
 
     write_json("cash-entries.json", cash_entries)
+    write_json("bank-transactions.json", bank_transactions)
 
     needs_review_count = sum(1 for e in cash_entries if e.get("needsReview"))
     date_issue_count = sum(
@@ -547,6 +598,11 @@ def main():
     (OUT_DIR / "finance-import-report.md").write_text("\n".join(report_lines), encoding="utf-8")
 
     print(f"Wrote {len(cash_entries)} cash entries to {OUT_DIR / 'cash-entries.json'}")
+    bank_review = sum(1 for r in bank_transactions if r["needsReview"])
+    last_bank = bank_transactions[-1] if bank_transactions else None
+    print(f"Wrote {len(bank_transactions)} bank transactions to {OUT_DIR / 'bank-transactions.json'} "
+          f"({bank_review} need review; closing balance {last_bank['runningBalance'] if last_bank else 'n/a'} "
+          f"as of {last_bank['postingDate'] if last_bank else 'n/a'})")
     print(f"  {merged_count} merged, {flagged_pairs} flagged duplicate pair(s), "
           f"{bank_flagged} bank rows + {reimb_flagged} reimbursement rows need review")
     print(f"See {OUT_DIR / 'finance-import-report.md'} for the full report.")

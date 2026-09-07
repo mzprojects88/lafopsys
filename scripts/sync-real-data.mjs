@@ -30,6 +30,8 @@ const FILES = [
   "care-cart-logs.json",
   "census-history.json",
   "calendar-events.json",
+  "bank-transactions.json",
+  "finance-month-notes.json",
 ];
 
 mkdirSync(DEST_DIR, { recursive: true });
