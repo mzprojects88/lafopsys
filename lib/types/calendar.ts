@@ -21,6 +21,12 @@ export interface CalendarEvent {
   contactInfo?: string;
   remarks?: string;
   isHoliday: boolean;
+  /** Where the row came from (0034). "sheet" rows follow the Google Sheet and
+   * are read-only in the app while the sync is on; "app" rows are the app's. */
+  source: "app" | "sheet";
+  /** Set when the sheet dropped an upcoming event; hidden from the calendar
+   * but kept, and restorable from the sync log. */
+  sheetRemovedAt?: string;
   createdBy?: string;
   updatedBy?: string;
 }

@@ -6,4 +6,4 @@ import realCalendarEvents from "@/lib/mock-data/real/calendar-events.json";
 // fallback -- this is a new dataset with no prior seeded generator; an empty
 // array (the sync script's placeholder when DATA/ isn't present) is a
 // correct, honest "no data" state rather than something to fabricate around.
-export const calendarEvents: CalendarEvent[] = realCalendarEvents as CalendarEvent[];
+export const calendarEvents: CalendarEvent[] = (realCalendarEvents as Omit<CalendarEvent, "source">[]).map((e) => ({ ...e, source: "sheet" as const }));

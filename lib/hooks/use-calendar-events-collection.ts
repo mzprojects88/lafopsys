@@ -20,6 +20,8 @@ interface CalendarEventRow {
   contact_info: string | null;
   remarks: string | null;
   is_holiday: boolean;
+  source: "app" | "sheet";
+  sheet_removed_at: string | null;
   created_by: string | null;
   updated_by: string | null;
 }
@@ -38,13 +40,15 @@ function toCalendarEvent(row: CalendarEventRow): CalendarEvent {
     contactInfo: row.contact_info ?? undefined,
     remarks: row.remarks ?? undefined,
     isHoliday: row.is_holiday,
+    source: row.source,
+    sheetRemovedAt: row.sheet_removed_at ?? undefined,
     createdBy: row.created_by ?? undefined,
     updatedBy: row.updated_by ?? undefined,
   };
 }
 
 /** What the dialog sends; the row's own bookkeeping columns are set here. */
-export type CalendarEventInput = Omit<CalendarEvent, "id" | "createdBy" | "updatedBy" | "officerStaffId">;
+export type CalendarEventInput = Omit<CalendarEvent, "id" | "createdBy" | "updatedBy" | "officerStaffId" | "source" | "sheetRemovedAt">;
 
 function toRow(input: CalendarEventInput) {
   const text = (v: string | undefined) => (v && v.trim() ? v.trim() : null);
@@ -77,6 +81,9 @@ export const calendarEventsStore = createCollection<CalendarEvent[]>({
       .schema("ops")
       .from("calendar_events")
       .select("*")
+      // Events the sheet has dropped stay in the table for the sync log and
+      // for restoring; every calendar view leaves them out here, not in RLS.
+      .is("sheet_removed_at", null)
       .order("date", { ascending: true })
       .order("time", { ascending: true, nullsFirst: true });
     if (error) throw new Error(error.message);
@@ -92,7 +99,7 @@ export function useCalendarEventsData() {
     const { error } = await createClient()
       .schema("ops")
       .from("calendar_events")
-      .insert({ ...toRow(input), created_by: staffId ?? null, updated_by: staffId ?? null });
+      .insert({ ...toRow(input), source: "app", created_by: staffId ?? null, updated_by: staffId ?? null });
     if (error) return { ok: false, error: error.message };
     await calendarEventsStore.refetch();
     return { ok: true };
