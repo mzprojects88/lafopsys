@@ -139,6 +139,11 @@ export const STATUS_DOMAIN_MAP: Record<string, Record<string, StatusTone>> = {
     due_soon: "warning",
     overdue: "negative",
   },
+  holiday: {
+    regular: "warning",
+    special: "info",
+    working: "neutral",
+  },
   rateTable: {
     in_force: "positive",
     enjoined: "warning",
