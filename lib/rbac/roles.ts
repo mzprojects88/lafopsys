@@ -6,6 +6,7 @@ import {
   CalendarDays,
   Clock,
   Users,
+  UserCog,
   Home,
   HandCoins,
   Boxes,
@@ -55,6 +56,9 @@ export const NAV_ITEMS: NavItem[] = [
   // coming for lunch on Thursday is not an admin secret.
   { title: "Calendar", href: "/calendar", icon: CalendarDays, allowedRoles: [...ALL_ROLES, ...INVENTORY_ROLES] },
   { title: "Staff & Time", href: "/staff", icon: Clock, allowedRoles: [...ALL_ROLES, ...INVENTORY_ROLES] },
+  // Everyone has payslips and leave of their own to look at (0035+); what
+  // else the page shows depends on canManageHr, not on the role alone.
+  { title: "HR", href: "/hr", icon: UserCog, allowedRoles: [...ALL_ROLES, ...INVENTORY_ROLES] },
   {
     title: "Patients & Admissions",
     href: "/patients",
@@ -110,6 +114,13 @@ export function canEditCalendar(role: Role) {
  * change, not the app's. */
 export function canEditCalendarEvent(role: Role, event: { source: "app" | "sheet" }, sheetSyncEnabled: boolean) {
   return canEditCalendar(role) && (event.source !== "sheet" || !sheetSyncEnabled);
+}
+
+/** Who runs HR: admins, plus anyone an admin flagged as HR (0035's
+ * shared.staff.is_hr). Also the RLS rule (hr.is_hr_staff()); this only
+ * decides which HR pages and buttons render. */
+export function canManageHr(role: Role, isHr: boolean) {
+  return role === "admin" || isHr;
 }
 
 /** Finance and Board never see clinical detail — enforced at the component level using this flag. */

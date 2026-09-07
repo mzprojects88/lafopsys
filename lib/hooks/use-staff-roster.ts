@@ -15,6 +15,8 @@ export interface StaffRosterEntry {
   clockInExempt: boolean;
   /** Admin-set (0031): where they go after signing in; null = role default. */
   landingPath: string | null;
+  /** Admin-set (0035): runs HR without being an admin. */
+  isHr: boolean;
 }
 
 interface StaffRow {
@@ -26,6 +28,7 @@ interface StaffRow {
   active: boolean;
   clock_in_exempt: boolean;
   landing_path: string | null;
+  is_hr: boolean;
 }
 
 export const staffRosterStore = createCollection<StaffRosterEntry[]>({
@@ -36,7 +39,7 @@ export const staffRosterStore = createCollection<StaffRosterEntry[]>({
     const { data, error } = await createClient()
       .schema("shared")
       .from("staff")
-      .select("id, first_name, last_name, role, position, active, clock_in_exempt, landing_path")
+      .select("id, first_name, last_name, role, position, active, clock_in_exempt, landing_path, is_hr")
       .order("first_name");
     if (error) throw new Error(error.message);
     return ((data ?? []) as StaffRow[]).map((row) => ({
@@ -48,6 +51,7 @@ export const staffRosterStore = createCollection<StaffRosterEntry[]>({
       active: row.active,
       clockInExempt: row.clock_in_exempt,
       landingPath: row.landing_path,
+      isHr: row.is_hr,
     }));
   },
 });

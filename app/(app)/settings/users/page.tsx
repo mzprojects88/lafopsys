@@ -19,6 +19,7 @@ interface StaffRow {
   hire_date: string;
   clock_in_exempt: boolean;
   landing_path: string | null;
+  is_hr: boolean;
 }
 
 const NAV_TITLE: Record<string, string> = Object.fromEntries(NAV_ITEMS.map((n) => [n.href, n.title]));
@@ -28,7 +29,7 @@ export default async function UsersPage() {
   const { data } = await supabase
     .schema("shared")
     .from("staff")
-    .select("id, staff_code, first_name, last_name, role, position, active, must_change_pin, hire_date, clock_in_exempt, landing_path")
+    .select("id, staff_code, first_name, last_name, role, position, active, must_change_pin, hire_date, clock_in_exempt, landing_path, is_hr")
     .order("first_name");
 
   const rows = (data ?? []) as StaffRow[];
@@ -65,6 +66,11 @@ export default async function UsersPage() {
                       No clock-in needed
                     </span>
                   )}
+                  {s.is_hr && s.role !== "admin" && (
+                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                      Runs HR
+                    </span>
+                  )}
                   {s.landing_path && (
                     <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-400">
                       Starts on {NAV_TITLE[s.landing_path] ?? s.landing_path}
@@ -84,6 +90,7 @@ export default async function UsersPage() {
                 role={s.role}
                 clockInExempt={s.clock_in_exempt}
                 landingPath={s.landing_path}
+                isHr={s.is_hr}
               />
             </div>
           ))

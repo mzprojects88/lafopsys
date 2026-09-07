@@ -20,7 +20,7 @@ import * as React from "react";
  * later swap would be a per-hook change, not a page change.
  */
 
-export type Schema = "ops" | "shared" | "inventory";
+export type Schema = "ops" | "shared" | "inventory" | "hr";
 
 /** A table a collection reads. `table` omitted means "anything in the schema"
  * (used by the inventory views, which are computed over every inventory table). */

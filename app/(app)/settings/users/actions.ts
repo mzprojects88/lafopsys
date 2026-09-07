@@ -104,10 +104,12 @@ export interface UpdateStaffAccessInput {
   clockInExempt: boolean;
   /** A nav href the person's role can see, or null for the role default. */
   landingPath: string | null;
+  /** Runs HR without being an admin (0035). Ignored for admins, who are HR anyway. */
+  isHr: boolean;
 }
 
 /**
- * Sets the two per-person access settings from 0031. Same shape as
+ * Sets the per-person access settings from 0031 and 0035. Same shape as
  * createStaffAccount: the caller's role is checked here because the admin
  * client bypasses RLS, and the guard trigger on shared.staff is the second
  * line of defence for anyone reaching the table another way.
@@ -145,7 +147,7 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
   const { error } = await admin
     .schema("shared")
     .from("staff")
-    .update({ clock_in_exempt: input.clockInExempt, landing_path: landingPath })
+    .update({ clock_in_exempt: input.clockInExempt, landing_path: landingPath, is_hr: input.isHr })
     .eq("id", input.staffId);
 
   if (error) {

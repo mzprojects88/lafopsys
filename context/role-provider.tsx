@@ -13,6 +13,9 @@ interface RoleContextValue {
    * shared.staff.id, so hooks can find "me" without their own auth round trip. */
   staffId: string | null | undefined;
   email: string | null;
+  /** Admin-set (0035): this person runs HR without being an admin. Admins
+   * are HR regardless; see canManageHr in lib/rbac/roles.ts. */
+  isHr: boolean;
   /** Sets role and user for the session that has just been established, so the
    * first render after sign-in is already correct rather than briefly showing
    * the default. The next syncFromSession() confirms it from shared.staff --
@@ -30,6 +33,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
   const [user, setUserState] = React.useState<string>("");
   const [staffId, setStaffId] = React.useState<string | null | undefined>(undefined);
   const [email, setEmail] = React.useState<string | null>(null);
+  const [isHr, setIsHr] = React.useState(false);
   const currentUserRef = React.useRef<string | null | undefined>(undefined);
 
   React.useEffect(() => {
@@ -54,13 +58,14 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         const { data: staffRow } = await supabase
           .schema("shared")
           .from("staff")
-          .select("role, first_name, last_name")
+          .select("role, first_name, last_name, is_hr")
           .eq("id", userData.user.id)
           .single();
 
         if (!cancelled && staffRow) {
           setRoleState(staffRow.role as Role);
           setUserState(`${staffRow.first_name} ${staffRow.last_name}`);
+          setIsHr(Boolean(staffRow.is_hr));
           return;
         }
       }
@@ -70,6 +75,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
       if (!cancelled) {
         setRoleState("volunteer");
         setUserState("");
+        setIsHr(false);
       }
     }
 
@@ -106,8 +112,8 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = React.useMemo(
-    () => ({ role, user, staffId, email, login }),
-    [role, user, staffId, email, login]
+    () => ({ role, user, staffId, email, isHr, login }),
+    [role, user, staffId, email, isHr, login]
   );
 
   return <RoleContext.Provider value={value}>{children}</RoleContext.Provider>;

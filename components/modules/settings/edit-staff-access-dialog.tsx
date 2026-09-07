@@ -37,25 +37,29 @@ export function EditStaffAccessDialog({
   role,
   clockInExempt,
   landingPath,
+  isHr,
 }: {
   staffId: string;
   name: string;
   role: Role;
   clockInExempt: boolean;
   landingPath: string | null;
+  isHr: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [exempt, setExempt] = React.useState(clockInExempt);
   const [landing, setLanding] = React.useState(landingPath ?? ROLE_DEFAULT);
+  const [hr, setHr] = React.useState(isHr);
   const [saving, setSaving] = React.useState(false);
 
   const choices = landingChoicesFor(role);
-  const changed = exempt !== clockInExempt || (landing === ROLE_DEFAULT ? null : landing) !== landingPath;
+  const changed = exempt !== clockInExempt || (landing === ROLE_DEFAULT ? null : landing) !== landingPath || hr !== isHr;
 
   function reset() {
     setExempt(clockInExempt);
     setLanding(landingPath ?? ROLE_DEFAULT);
+    setHr(isHr);
   }
 
   async function handleSave() {
@@ -64,6 +68,7 @@ export function EditStaffAccessDialog({
       staffId,
       clockInExempt: exempt,
       landingPath: landing === ROLE_DEFAULT ? null : landing,
+      isHr: hr,
     });
     setSaving(false);
     if (!result.ok) {
@@ -105,6 +110,18 @@ export function EditStaffAccessDialog({
             </div>
             <Switch checked={exempt} onCheckedChange={setExempt} disabled={saving} />
           </div>
+
+          {role !== "admin" ? (
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium">Runs HR</span>
+                <span className="text-xs text-muted-foreground">
+                  Employees, salaries, leave, payroll and compliance — everything under HR — without being an admin of the rest.
+                </span>
+              </div>
+              <Switch checked={hr} onCheckedChange={setHr} disabled={saving} />
+            </div>
+          ) : null}
 
           <Field>
             <FieldLabel htmlFor="landing-path">First page after signing in</FieldLabel>

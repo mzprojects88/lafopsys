@@ -18,10 +18,17 @@ const NAV_BEFORE = [
 ];
 /** ...and after the CEO page ships. */
 const NAV_AFTER = [{ href: "/executive", allowedRoles: ["admin", "board"] }, ...NAV_BEFORE];
+/** ...and once HR exists (0035): a page every role can be sent to. */
+const NAV_HR = [...NAV_AFTER, { href: "/hr", allowedRoles: [...ALL, ...INVENTORY] }];
 
 const resolve = (input, nav = NAV_AFTER) => resolveLandingPath(input, nav);
 
 describe("resolveLandingPath", () => {
+  it("lets any role, the kitchen included, start on the HR page once it exists", () => {
+    assert.equal(resolve({ role: "chef", landingPath: "/hr", next: null }, NAV_HR), "/hr");
+    assert.equal(resolve({ role: "driver", landingPath: "/hr/leave", next: null }, NAV_HR), "/hr/leave");
+  });
+
   it("honours the person's own landing page when their role can see it", () => {
     assert.equal(resolve({ role: "admin", landingPath: "/executive", next: null }), "/executive");
   });
