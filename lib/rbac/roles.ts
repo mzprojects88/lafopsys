@@ -2,6 +2,7 @@ import type { Role } from "@/lib/types/common";
 import { isAllowedLandingPath as isAllowedLandingPathIn, resolveLandingPath as resolveLandingPathIn } from "@/lib/rbac/landing";
 import {
   LayoutDashboard,
+  Briefcase,
   CalendarDays,
   Clock,
   Users,
@@ -45,6 +46,10 @@ export const ORG_ROLES: Role[] = [...ALL_ROLES, ...INVENTORY_ROLES];
 export const LOGIN_VISIBLE_ROLES = ORG_ROLES;
 
 export const NAV_ITEMS: NavItem[] = [
+  // The CEO's landing page (0031 seeds landing_path = /executive). First in
+  // the list because it is first in his day; board members see it too, since
+  // it is the summary they are shown anyway.
+  { title: "Executive", href: "/executive", icon: Briefcase, allowedRoles: ["admin", "board"] },
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, allowedRoles: ALL_ROLES },
   // Everyone on staff reads the calendar, the kitchen included -- who is
   // coming for lunch on Thursday is not an admin secret.
