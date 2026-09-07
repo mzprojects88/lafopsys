@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import type { HrSettings } from "@/lib/hooks/use-app-settings";
 
 export interface UpdateClockInRequirementResult {
   ok: boolean;
@@ -118,5 +119,72 @@ export async function updateCalendarSheetSync(enabled: boolean): Promise<UpdateC
 
   revalidatePath("/settings");
   revalidatePath("/calendar");
+  return { ok: true };
+}
+
+/**
+ * Saves the org-wide HR numbers (0038) in one go. Bounds match the columns'
+ * CHECKs so a bad value is refused with a sentence. Admin-only like the
+ * rest of this table; HR people edit reference data under /hr/settings,
+ * not the foundation's pay policy.
+ */
+export async function updateHrSettings(input: HrSettings): Promise<UpdateClockInRequirementResult> {
+  const rule = input.payDateRule;
+  if (rule.kind === "offset") {
+    if (!Number.isInteger(rule.days) || rule.days < 0 || rule.days > 15) {
+      return { ok: false, error: "Pay date offset has to be between 0 and 15 days after the cutoff." };
+    }
+  } else if (rule.kind === "fixed") {
+    for (const d of [rule.first, rule.second]) {
+      if (!Number.isInteger(d) || d < 1 || d > 31) return { ok: false, error: "Fixed pay dates have to be a day of the month (1-31)." };
+    }
+  } else {
+    return { ok: false, error: "Unknown pay date rule." };
+  }
+  if (input.contributionCutoff !== "second" && input.contributionCutoff !== "split") {
+    return { ok: false, error: "Contribution cutoff must be 'second' or 'split'." };
+  }
+  if (!Number.isInteger(input.tardinessGraceMinutes) || input.tardinessGraceMinutes < 0 || input.tardinessGraceMinutes > 60) {
+    return { ok: false, error: "Grace period has to be between 0 and 60 minutes." };
+  }
+  for (const [label, v] of [
+    ["Vacation leave", input.vlDaysPerYear],
+    ["Sick leave", input.slDaysPerYear],
+  ] as const) {
+    if (!Number.isFinite(v) || v < 0 || v > 60 || Math.round(v * 2) !== v * 2) {
+      return { ok: false, error: `${label} has to be between 0 and 60 days, in half days.` };
+    }
+  }
+  const region = input.minimumWageRegion.trim().toUpperCase();
+  if (!/^[A-Z0-9-]{1,20}$/.test(region)) return { ok: false, error: "Region should be a short code like NCR." };
+
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+  if (!caller) return { ok: false, error: "Not signed in." };
+
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") return { ok: false, error: "Only admins can change HR settings." };
+
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({
+      payroll_pay_date_rule: rule,
+      payroll_contribution_cutoff: input.contributionCutoff,
+      tardiness_grace_minutes: input.tardinessGraceMinutes,
+      leave_vl_days_per_year: input.vlDaysPerYear,
+      leave_sl_days_per_year: input.slDaysPerYear,
+      leave_vl_convertible: input.vlConvertible,
+      minimum_wage_region: region,
+      updated_at: new Date().toISOString(),
+      updated_by: caller.id,
+    })
+    .eq("id", true);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/settings");
+  revalidatePath("/hr");
   return { ok: true };
 }

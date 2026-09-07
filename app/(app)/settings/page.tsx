@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Database, Users, Bell, RotateCcw, ClipboardCheck, CalendarDays } from "lucide-react";
+import { Database, Users, Bell, RotateCcw, ClipboardCheck, CalendarDays, UserCog } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { IconCircle } from "@/components/patterns/icon-circle";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { ResetDemoDataButton } from "@/components/modules/settings/reset-demo-da
 import { ClockInRequirementToggle } from "@/components/modules/settings/clock-in-requirement-toggle";
 import { OvertimeThresholdField } from "@/components/modules/settings/overtime-threshold-field";
 import { CalendarSheetSyncToggle } from "@/components/modules/settings/calendar-sheet-sync-toggle";
+import { HrSettingsCard } from "@/components/modules/settings/hr-settings-card";
 
 const REFERENCE_TABLES = [
   { slug: "provinces", label: "Provinces & Cities" },
@@ -74,6 +75,16 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <CalendarSheetSyncToggle />
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-2">
+          <CardHeader className="flex-row items-center gap-2 space-y-0">
+            <IconCircle icon={UserCog} color="teal" size="sm" />
+            <CardTitle className="text-sm">Pay & Leave Policy</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <HrSettingsCard />
           </CardContent>
         </Card>
 
