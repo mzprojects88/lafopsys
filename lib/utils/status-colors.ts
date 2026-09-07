@@ -104,6 +104,13 @@ export const STATUS_DOMAIN_MAP: Record<string, Record<string, StatusTone>> = {
     active: "positive",
     suspended: "negative",
   },
+  // Google Sheet sync runs (0034).
+  calendarSync: {
+    running: "info",
+    success: "positive",
+    unchanged: "neutral",
+    failed: "negative",
+  },
   // Master calendar venues (0032). Lower-cased at lookup; free text falls to neutral.
   venue: {
     laf: "positive",
