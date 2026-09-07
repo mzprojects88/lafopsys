@@ -15,6 +15,8 @@ import {
   Wallet,
   ClipboardCheck,
   BookOpen,
+  CalendarRange,
+  Upload,
 } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
@@ -27,6 +29,8 @@ import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
 import { useProgramsData } from "@/lib/hooks/use-programs-collection";
 
 const SUB_NAV: ModuleSubNavItem[] = [
+  { href: "/finance/monthly-summary", label: "Monthly Summary", icon: CalendarRange, color: "indigo" },
+  { href: "/finance/bank-import", label: "Bank Import", icon: Upload, color: "teal" },
   { href: "/finance/accounts", label: "Accounts", icon: Landmark, color: "blue" },
   { href: "/finance/approvals", label: "Approvals", icon: CheckSquare, color: "amber" },
   { href: "/finance/allocation", label: "Allocation", icon: PieChart, color: "purple" },
