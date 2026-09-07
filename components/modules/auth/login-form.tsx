@@ -12,6 +12,7 @@ import { PinInput } from "@/components/patterns/pin-input";
 import { useRole } from "@/context/role-provider";
 import { createClient } from "@/lib/supabase/client";
 import type { Role } from "@/lib/types/common";
+import { resolveLandingPath } from "@/lib/rbac/roles";
 
 const PIN_LENGTH = 6;
 
@@ -54,7 +55,7 @@ export function LoginForm({ roster }: { roster: LoginRosterEntry[] }) {
     const { data: staffRow, error: staffError } = await supabase
       .schema("shared")
       .from("staff")
-      .select("role, first_name, last_name, must_change_pin")
+      .select("role, first_name, last_name, must_change_pin, landing_path")
       .eq("id", signInData.user.id)
       .single();
 
@@ -67,14 +68,23 @@ export function LoginForm({ roster }: { roster: LoginRosterEntry[] }) {
     const fullName = `${staffRow.first_name} ${staffRow.last_name}`;
     login(staffRow.role as Role, fullName);
 
+    // A bookmarked deep link (middleware's ?next=) still wins; otherwise the
+    // person's own landing page, otherwise their role's default. The PIN-change
+    // page carries the same ?next= through so the link is not lost on the way.
+    const destination = resolveLandingPath({
+      role: staffRow.role as Role,
+      landingPath: staffRow.landing_path as string | null,
+      next: searchParams.get("next"),
+    });
+
     if (staffRow.must_change_pin) {
       toast.info("This is a temporary PIN — set a new one to continue.");
-      router.push("/change-pin");
+      router.push(`/change-pin?next=${encodeURIComponent(destination)}`);
       return;
     }
 
     toast.success(`Welcome, ${fullName}`);
-    router.push(searchParams.get("next") || "/dashboard");
+    router.push(destination);
   }
 
   return (

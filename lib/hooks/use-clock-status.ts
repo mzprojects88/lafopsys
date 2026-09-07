@@ -91,7 +91,13 @@ export function useClockStatus() {
   // Non-inventory roles must always clock in, as before. Inventory roles are
   // exempt until an admin turns on the "require clock-in" setting (see
   // components/modules/settings/clock-in-requirement-toggle.tsx).
-  const clockInRequired = !me ? false : !INVENTORY_ROLES.includes(me.role) || settings.requireClockInForInventoryRoles;
+  // Per-person exemption (0031) wins over the role rule. An exempt person can
+  // still punch from /staff if they want a record; nothing here stops that.
+  const clockInRequired = !me
+    ? false
+    : me.clockInExempt
+      ? false
+      : !INVENTORY_ROLES.includes(me.role) || settings.requireClockInForInventoryRoles;
 
   async function punch(punchType: "clock_in" | "clock_out"): Promise<MutationResult | undefined> {
     if (!me) return undefined;

@@ -1,5 +1,7 @@
 import { PageHeader } from "@/components/patterns/page-header";
 import { CreateStaffDialog } from "@/components/modules/settings/create-staff-dialog";
+import { EditStaffAccessDialog } from "@/components/modules/settings/edit-staff-access-dialog";
+import { NAV_ITEMS } from "@/lib/rbac/roles";
 import { createClient } from "@/lib/supabase/server";
 import { ROLES, type Role } from "@/lib/types/common";
 
@@ -15,14 +17,18 @@ interface StaffRow {
   active: boolean;
   must_change_pin: boolean;
   hire_date: string;
+  clock_in_exempt: boolean;
+  landing_path: string | null;
 }
+
+const NAV_TITLE: Record<string, string> = Object.fromEntries(NAV_ITEMS.map((n) => [n.href, n.title]));
 
 export default async function UsersPage() {
   const supabase = await createClient();
   const { data } = await supabase
     .schema("shared")
     .from("staff")
-    .select("id, staff_code, first_name, last_name, role, position, active, must_change_pin, hire_date")
+    .select("id, staff_code, first_name, last_name, role, position, active, must_change_pin, hire_date, clock_in_exempt, landing_path")
     .order("first_name");
 
   const rows = (data ?? []) as StaffRow[];
@@ -54,6 +60,16 @@ export default async function UsersPage() {
                   {!s.active && (
                     <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Inactive</span>
                   )}
+                  {s.clock_in_exempt && (
+                    <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-400">
+                      No clock-in needed
+                    </span>
+                  )}
+                  {s.landing_path && (
+                    <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-400">
+                      Starts on {NAV_TITLE[s.landing_path] ?? s.landing_path}
+                    </span>
+                  )}
                 </div>
                 <span className="text-xs text-muted-foreground">
                   {s.position} · {s.staff_code} · Hired {s.hire_date}
@@ -62,6 +78,13 @@ export default async function UsersPage() {
               <span className="shrink-0 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
                 {ROLE_LABEL[s.role]}
               </span>
+              <EditStaffAccessDialog
+                staffId={s.id}
+                name={`${s.first_name} ${s.last_name}`}
+                role={s.role}
+                clockInExempt={s.clock_in_exempt}
+                landingPath={s.landing_path}
+              />
             </div>
           ))
         )}

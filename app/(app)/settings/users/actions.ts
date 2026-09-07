@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ORG_ROLES } from "@/lib/rbac/roles";
+import { ORG_ROLES, isAllowedLandingPath } from "@/lib/rbac/roles";
 import type { Role } from "@/lib/types/common";
 
 export interface CreateStaffInput {
@@ -93,6 +93,63 @@ export async function createStaffAccount(input: CreateStaffInput): Promise<Creat
   if (insertError) {
     await admin.auth.admin.deleteUser(created.user.id);
     return { ok: false, error: `Account creation failed: ${insertError.message}` };
+  }
+
+  revalidatePath("/settings/users");
+  return { ok: true };
+}
+
+export interface UpdateStaffAccessInput {
+  staffId: string;
+  clockInExempt: boolean;
+  /** A nav href the person's role can see, or null for the role default. */
+  landingPath: string | null;
+}
+
+/**
+ * Sets the two per-person access settings from 0031. Same shape as
+ * createStaffAccount: the caller's role is checked here because the admin
+ * client bypasses RLS, and the guard trigger on shared.staff is the second
+ * line of defence for anyone reaching the table another way.
+ *
+ * The landing path is validated against the TARGET person's role, not the
+ * caller's -- an admin can see /settings, but assigning it to a driver would
+ * only send them to a page they cannot use.
+ */
+export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<CreateStaffResult> {
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+
+  if (!caller) {
+    return { ok: false, error: "Not signed in." };
+  }
+
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") {
+    return { ok: false, error: "Only admins can change access settings." };
+  }
+
+  const admin = createAdminClient();
+  const { data: target } = await admin.schema("shared").from("staff").select("role").eq("id", input.staffId).single();
+  if (!target) {
+    return { ok: false, error: "That staff account no longer exists." };
+  }
+
+  const landingPath = input.landingPath?.trim() || null;
+  if (landingPath && !isAllowedLandingPath(target.role as Role, landingPath)) {
+    return { ok: false, error: "That page is not one this person's role can open." };
+  }
+
+  const { error } = await admin
+    .schema("shared")
+    .from("staff")
+    .update({ clock_in_exempt: input.clockInExempt, landing_path: landingPath })
+    .eq("id", input.staffId);
+
+  if (error) {
+    return { ok: false, error: error.message };
   }
 
   revalidatePath("/settings/users");

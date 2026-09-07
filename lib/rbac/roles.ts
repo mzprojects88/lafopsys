@@ -1,4 +1,5 @@
 import type { Role } from "@/lib/types/common";
+import { isAllowedLandingPath as isAllowedLandingPathIn, resolveLandingPath as resolveLandingPathIn } from "@/lib/rbac/landing";
 import {
   LayoutDashboard,
   Clock,
@@ -92,4 +93,19 @@ export function isNavItemVisible(item: NavItem, role: Role) {
 /** Finance and Board never see clinical detail — enforced at the component level using this flag. */
 export function canSeeClinicalDetail(role: Role) {
   return role !== "finance" && role !== "board";
+}
+
+/** Post-login destination for this person, against the real navigation.
+ * See lib/rbac/landing.ts for the precedence rules. */
+export function resolveLandingPath(input: { role: Role; landingPath: string | null | undefined; next: string | null | undefined }) {
+  return resolveLandingPathIn(input, NAV_ITEMS);
+}
+
+export function isAllowedLandingPath(role: Role, path: string) {
+  return isAllowedLandingPathIn(role, path, NAV_ITEMS);
+}
+
+/** Every nav href a role can be sent to -- what the landing-page picker offers. */
+export function landingChoicesFor(role: Role): { href: string; title: string }[] {
+  return NAV_ITEMS.filter((item) => isNavItemVisible(item, role)).map((item) => ({ href: item.href, title: item.title }));
 }

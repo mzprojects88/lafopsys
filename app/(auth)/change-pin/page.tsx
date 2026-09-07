@@ -1,19 +1,23 @@
 "use client";
 
 import * as React from "react";
+import { Suspense } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { ShieldCheck, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PinInput } from "@/components/patterns/pin-input";
 import { createClient } from "@/lib/supabase/client";
+import { resolveLandingPath } from "@/lib/rbac/roles";
+import type { Role } from "@/lib/types/common";
 
 const PIN_LENGTH = 6;
 
-export default function ChangePinPage() {
+function ChangePinForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [newPin, setNewPin] = React.useState("");
   const [confirmPin, setConfirmPin] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
@@ -68,7 +72,28 @@ export default function ChangePinPage() {
       toast.success("PIN updated.");
     }
 
-    router.push("/dashboard");
+    // Same destination rule as the login form. The login form already resolved
+    // it and passed it as ?next=; this re-resolves only if that is missing.
+    // Only a same-site path is followed; anything else is ignored rather than
+    // becoming an open redirect off the PIN page.
+    const next = searchParams.get("next");
+    if (next && next.startsWith("/") && !next.startsWith("//")) {
+      router.push(next);
+      return;
+    }
+    const { data: staffRow } = await supabase
+      .schema("shared")
+      .from("staff")
+      .select("role, landing_path")
+      .eq("id", userData.user.id)
+      .single();
+    router.push(
+      resolveLandingPath({
+        role: (staffRow?.role ?? "volunteer") as Role,
+        landingPath: (staffRow?.landing_path ?? null) as string | null,
+        next: null,
+      })
+    );
   }
 
   if (checkingSession) return null;
@@ -108,5 +133,15 @@ export default function ChangePinPage() {
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+/** useSearchParams needs a Suspense boundary at prerender time -- same shape
+ * as app/(auth)/login/page.tsx. */
+export default function ChangePinPage() {
+  return (
+    <Suspense fallback={null}>
+      <ChangePinForm />
+    </Suspense>
   );
 }
