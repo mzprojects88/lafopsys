@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/utils/date";
@@ -56,9 +57,9 @@ export default async function PayslipPrintPage({ params }: { params: Promise<{ i
   return (
     <div className="mx-auto max-w-2xl p-6 text-sm text-neutral-900 print:max-w-none print:p-0">
       <div className="mb-4 flex items-center justify-between print:hidden">
-        <a href="/hr/payslips" className="text-xs underline">
+        <Link href="/hr/payslips" className="text-xs underline">
           Back to payslips
-        </a>
+        </Link>
         <PrintButton />
       </div>
       <div className="rounded-xl border border-neutral-300 p-6 print:rounded-none print:border-0 print:p-0">

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileBadge } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
@@ -53,6 +53,12 @@ export function EmployeeDetail({ employeeId, privateRecord }: { employeeId: stri
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge dot domain="employee" status={employee.status} label={STATUS_LABEL[employee.status]} />
             <StatusBadge domain="employee" status={employee.employmentType} label={TYPE_LABEL[employee.employmentType]} />
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <Link href={`/hr/reports/coe/${employee.id}`} target="_blank">
+                <FileBadge className="size-3.5" />
+                Certificate of Employment
+              </Link>
+            </Button>
             <BackButton />
           </div>
         }
