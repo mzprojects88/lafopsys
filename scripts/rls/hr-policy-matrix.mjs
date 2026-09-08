@@ -1,4 +1,4 @@
-// Proves the hr schema's row-level security (migrations 0035-0037) against
+// Proves the hr schema's row-level security (migrations 0035-0041) against
 // the live database, one scenario per transaction, every transaction rolled
 // back -- nothing persists. lafopsys has a single database, so this runs
 // against production by design; RLS_ALLOW_PROD=1 acknowledges that.
@@ -227,6 +227,101 @@ async function main() {
   await scenario(ids, "board reads the leave types", "board", null, q("select id from hr.leave_types"), atLeast(8));
   await scenario(ids, "driver reads the 201 checklist", "driver", null, q("select id from hr.document_types"), atLeast(17));
 
+  // --- pay periods, timesheets, roster (0039, 0041) --------------------------------------
+  const PERIOD = "00000000-0000-4000-8000-00000000f001";
+  const withPeriod = () =>
+    client.query(`insert into hr.pay_periods (id, year, seq, starts_on, ends_on, pay_date) values ($1, 2031, 1, '2031-01-01', '2031-01-15', '2031-01-20')`, [PERIOD]);
+  await scenario(ids, "driver reads the pay-period calendar", "driver", { setup: withPeriod }, q("select id from hr.pay_periods where id = $1", [PERIOD]), rows(1));
+  await scenario(ids, "driver cannot create a pay period", "driver", null, q("insert into hr.pay_periods (year, seq, starts_on, ends_on, pay_date) values (2031, 2, '2031-01-16', '2031-01-31', '2031-02-05')"), denied);
+  await scenario(ids, "HR generates a pay period", "hr", null, q("insert into hr.pay_periods (year, seq, starts_on, ends_on, pay_date) values (2031, 2, '2031-01-16', '2031-01-31', '2031-02-05')"), rows(1));
+  await scenario(
+    ids,
+    "employee reads own period timesheet, not another's",
+    "driver",
+    {
+      setup: async () => {
+        await withPeriod();
+        await client.query(`insert into hr.period_timesheets (period_id, employee_id) values ($1, $2), ($1, $3)`, [PERIOD, EMP_A, EMP_B]);
+      },
+    },
+    q("select id from hr.period_timesheets where period_id = $1", [PERIOD]),
+    rows(1)
+  );
+  await scenario(
+    ids,
+    "employee cannot approve own timesheet",
+    "driver",
+    {
+      setup: async () => {
+        await withPeriod();
+        await client.query(`insert into hr.period_timesheets (period_id, employee_id) values ($1, $2)`, [PERIOD, EMP_A]);
+      },
+    },
+    q("update hr.period_timesheets set status = 'approved', approved_at = now() where period_id = $1", [PERIOD]),
+    rows(0)
+  );
+  await scenario(ids, "chef reads the roster view", "chef", null, q("select employee_id from hr.v_roster where employee_id in ($1, $2)", [EMP_A, EMP_B]), rows(2));
+  await scenario(ids, "chef reads everyone's schedule overrides", "chef", { setup: () => client.query(`insert into hr.schedule_overrides (employee_id, date, is_rest_day) values ($1, '2031-01-05', true)`, [EMP_B]) }, q("select id from hr.schedule_overrides where employee_id = $1", [EMP_B]), rows(1));
+  await scenario(ids, "chef cannot set an override", "chef", null, q("insert into hr.schedule_overrides (employee_id, date, is_rest_day) values ($1, '2031-01-05', true)", [EMP_A]), denied);
+  await scenario(ids, "HR sets an override", "hr", null, q("insert into hr.schedule_overrides (employee_id, date, start_time, end_time) values ($1, '2031-01-05', '22:00', '06:00')", [EMP_A]), rows(1));
+
+  // --- leave (0040) ------------------------------------------------------------------------
+  const ownLeave = (status = "pending") =>
+    q("insert into hr.leave_requests (employee_id, leave_type_id, starts_on, ends_on, days, status) values ($1, 'vl', '2031-02-02', '2031-02-03', 2, $2)", [EMP_A, status]);
+  await scenario(ids, "employee files own pending leave request", "driver", null, ownLeave(), rows(1));
+  await scenario(ids, "employee cannot file an approved request", "driver", null, ownLeave("approved"), (r) => !r.ok);
+  await scenario(ids, "employee cannot file leave for someone else", "driver", null, q("insert into hr.leave_requests (employee_id, leave_type_id, starts_on, ends_on, days) values ($1, 'vl', '2031-02-02', '2031-02-03', 2)", [EMP_B]), denied);
+  const LEAVE = "00000000-0000-4000-8000-00000000a001";
+  const seedLeave = (status) => () =>
+    client.query(
+      "insert into hr.leave_requests (id, employee_id, leave_type_id, starts_on, ends_on, days, status, decided_at) values ($1, $2, 'vl', '2031-02-02', '2031-02-03', 2, $3, case when $3 in ('approved','rejected') then now() else null end)",
+      [LEAVE, EMP_A, status]
+    );
+  await scenario(ids, "employee withdraws own pending request", "driver", { setup: seedLeave("pending") }, q("update hr.leave_requests set status = 'cancelled' where id = $1", [LEAVE]), rows(1));
+  await scenario(ids, "employee cannot approve own request", "driver", { setup: seedLeave("pending") }, q("update hr.leave_requests set status = 'approved', decided_at = now() where id = $1", [LEAVE]), denied);
+  await scenario(ids, "employee cannot stretch own pending request", "driver", { setup: seedLeave("pending") }, q("update hr.leave_requests set ends_on = '2031-02-10', days = 7 where id = $1", [LEAVE]), denied);
+  await scenario(ids, "employee cannot withdraw an approved request", "driver", { setup: seedLeave("approved") }, q("update hr.leave_requests set status = 'cancelled' where id = $1", [LEAVE]), denied);
+  await scenario(ids, "HR approves a request", "hr", { setup: seedLeave("pending") }, q("update hr.leave_requests set status = 'approved', decided_by = $2, decided_at = now() where id = $1", [LEAVE, ids.social_worker]), rows(1));
+  await scenario(
+    ids,
+    "employee reads own requests only",
+    "driver",
+    {
+      setup: async () => {
+        await seedLeave("pending")();
+        await client.query("insert into hr.leave_requests (employee_id, leave_type_id, starts_on, ends_on, days) values ($1, 'sl', '2031-03-02', '2031-03-02', 1)", [EMP_B]);
+      },
+    },
+    q("select id from hr.leave_requests where starts_on >= '2031-01-01'"),
+    rows(1)
+  );
+  await scenario(ids, "employee cannot adjust own balance", "driver", null, q("insert into hr.leave_adjustments (employee_id, leave_type_id, year, kind, days) values ($1, 'vl', 2031, 'opening', 10)", [EMP_A]), denied);
+  await scenario(ids, "HR adjusts a balance", "hr", null, q("insert into hr.leave_adjustments (employee_id, leave_type_id, year, kind, days) values ($1, 'vl', 2031, 'opening', 10)", [EMP_A]), rows(1));
+
+  // --- ops.time_entries after 0041 --------------------------------------------------------
+  const ENTRY = "00000000-0000-4000-8000-00000000d001";
+  const otherEntry = () => client.query("insert into ops.time_entries (id, staff_id, date, clock_in) values ($1, $2, '2031-01-05', '08:00')", [ENTRY, ids.admin]);
+  await scenario(ids, "driver reads another's time entry (roster)", "driver", { setup: otherEntry }, q("select id from ops.time_entries where id = $1", [ENTRY]), rows(1));
+  await scenario(ids, "driver cannot rewrite another's time entry", "driver", { setup: otherEntry }, q("update ops.time_entries set clock_in = '06:00' where id = $1", [ENTRY]), rows(0));
+  await scenario(ids, "driver cannot delete another's time entry", "driver", { setup: otherEntry }, q("delete from ops.time_entries where id = $1", [ENTRY]), rows(0));
+  await scenario(
+    ids,
+    "driver inserts, updates and deletes own time entry (punch route paths)",
+    "driver",
+    null,
+    last(
+      { sql: "insert into ops.time_entries (id, staff_id, date, clock_in) values ($1, $2, '2031-01-05', '08:00')", params: [ENTRY, ids.driver] },
+      { sql: "update ops.time_entries set clock_out = '17:00' where id = $1", params: [ENTRY] },
+      { sql: "delete from ops.time_entries where id = $1", params: [ENTRY] }
+    ),
+    rows(1)
+  );
+  await scenario(ids, "chef inserts own time entry", "chef", null, q("insert into ops.time_entries (id, staff_id, date, clock_in) values ($1, $2, '2031-01-05', '08:00')", [ENTRY, ids.chef]), rows(1));
+  await scenario(ids, "HR updates another's time entry", "hr", { setup: otherEntry }, q("update ops.time_entries set clock_out = '17:00' where id = $1", [ENTRY]), rows(1));
+  const seedPunch = () => client.query("insert into ops.time_punches (staff_id, punch_type, punched_at) values ($1, 'clock_in', '2031-01-05T08:00:00+08:00')", [ids.admin]);
+  await scenario(ids, "HR reads every punch", "hr", { setup: seedPunch }, q("select id from ops.time_punches where punched_at >= '2031-01-01'"), rows(1));
+  await scenario(ids, "plain social worker does not read others' punches", "social_worker", { setup: seedPunch }, q("select id from ops.time_punches where punched_at >= '2031-01-01'"), rows(0));
+
   // --- the flag itself ----------------------------------------------------------------
   await scenario(ids, "a person cannot flag themselves as HR", "driver", null, q("update shared.staff set is_hr = true where id = $1", [ids.driver]), denied);
   await scenario(ids, "hr.is_hr_staff() is true for an admin", "admin", null, q("select hr.is_hr_staff() as v"), value("v", true));
@@ -239,7 +334,7 @@ async function main() {
     `select coalesce(string_agg(tablename, ',' order by tablename), '') as t from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'hr'`
   )).rows[0].t.split(",");
   record("employee_private is not in the realtime publication", published.includes("employee_private") ? "FAIL" : "PASS", published.join(","));
-  for (const t of ["employees", "compensation", "work_schedules", "holidays", "rate_tables", "leave_types"]) {
+  for (const t of ["employees", "compensation", "work_schedules", "holidays", "rate_tables", "leave_types", "pay_periods", "period_timesheets", "schedule_overrides", "leave_requests", "leave_adjustments"]) {
     record(`${t} is in the realtime publication`, published.includes(t) ? "PASS" : "FAIL");
   }
   const unguarded = (await client.query(
@@ -250,6 +345,10 @@ async function main() {
   record("every hr table has RLS enabled", unguarded === "(none)" ? "PASS" : "FAIL", unguarded);
   const schemas = (await client.query(`select setconfig from pg_db_role_setting s join pg_roles r on r.oid = s.setrole where r.rolname = 'authenticator'`)).rows[0]?.setconfig?.join(" ") ?? "";
   record("PostgREST serves the hr schema", /pgrst\.db_schemas=.*\bhr\b/.test(schemas) ? "PASS" : "FAIL", schemas.slice(0, 60));
+  const retired = (await client.query(`select coalesce(string_agg(tablename, ','), '(none)') as t from pg_tables where schemaname = 'ops' and tablename in ('shifts', 'timesheet_approvals')`)).rows[0].t;
+  record("ops.shifts and ops.timesheet_approvals are gone", retired === "(none)" ? "PASS" : "FAIL", retired);
+  const blanket = (await client.query(`select count(*)::int as n from pg_policies where schemaname = 'ops' and tablename = 'time_entries' and policyname = 'lafopsys staff full access'`)).rows[0].n;
+  record("no blanket policy on ops.time_entries", blanket === 0 ? "PASS" : "FAIL");
 
   console.table(results);
   const failed = results.filter((r) => r.result === "FAIL").length;

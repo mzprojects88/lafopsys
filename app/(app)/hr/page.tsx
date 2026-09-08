@@ -11,6 +11,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { HrSubNav } from "@/components/modules/hr/hr-subnav";
 import { useEmployees } from "@/lib/hooks/use-employees-collection";
+import { useLeaveRequests } from "@/lib/hooks/use-leave-collections";
+import { usePayPeriods } from "@/lib/hooks/use-pay-periods-collection";
+import { allSchedulesStore } from "@/lib/hooks/use-roster";
+import { useCollection } from "@/lib/data/collection-store";
+import { payPeriodLabel } from "@/lib/utils/pay-period";
 import { useNow } from "@/lib/hooks/use-now";
 import { useRole } from "@/lib/rbac/use-role";
 import { canManageHr } from "@/lib/rbac/roles";
@@ -80,7 +85,13 @@ function MyRecord({ employees, loading, today }: { employees: Employee[]; loadin
           <CardTitle className="text-base">Coming next</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
-          <p>Your leave balances and requests, then your payslips, are the next two releases of this page. Ask HR if anything above is wrong.</p>
+          <p>
+            Your leave balances and requests are under{" "}
+            <Link href="/hr/leave" className="underline">
+              My Leave
+            </Link>
+            . Payslips arrive with the payroll release. Ask HR if anything above is wrong.
+          </p>
         </CardContent>
       </Card>
     </div>
@@ -88,7 +99,13 @@ function MyRecord({ employees, loading, today }: { employees: Employee[]; loadin
 }
 
 function HrOverview({ employees, loading, today }: { employees: Employee[]; loading: boolean; today: string }) {
+  const { requests } = useLeaveRequests();
+  const { periods } = usePayPeriods();
+  const { data: schedules } = useCollection(allSchedulesStore);
   const active = employees.filter((e) => e.status === "active" || e.status === "on_leave");
+  const pendingLeave = requests.filter((r) => r.status === "pending");
+  const current = periods.find((p) => p.startsOn <= today && p.endsOn >= today) ?? null;
+  const noSchedule = active.filter((e) => !schedules.some((s) => s.employeeId === e.id && s.effectiveFrom <= today && (s.effectiveTo === null || s.effectiveTo > today)));
   const probation = active
     .filter((e) => e.employmentType === "probationary")
     .map((e) => ({ e, ...probationMilestones(e.hireDate) }))
@@ -103,6 +120,60 @@ function HrOverview({ employees, loading, today }: { employees: Employee[]; load
         <KpiCard label="On probation" value={loading ? "…" : probation.length} icon={UserCheck} color="amber" sublabel="Regular by law after six months (Art. 296)" />
         <KpiCard label="Without a login" value={loading ? "…" : unlinked.length} icon={KeyRound} color="slate" sublabel="Cannot see their own payslips or leave yet" />
         <KpiCard label="Separated this year" value={loading ? "…" : employees.filter((e) => e.separationDate && e.separationDate.startsWith(today.slice(0, 4))).length} icon={FileWarning} color="rose" sublabel="Final pay within 30 days (LA 06-20)" />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">This pay period</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2 text-sm">
+            {current ? (
+              <>
+                <span className="font-medium">{payPeriodLabel({ year: current.year, seq: current.seq, from: current.startsOn, to: current.endsOn, isSecondCutoff: current.seq % 2 === 0 })}</span>
+                <span className="text-xs text-muted-foreground">Pay date {formatDate(current.payDate)} · {current.status.replace(/_/g, " ")}</span>
+                <Button asChild size="sm" variant="outline" className="w-fit">
+                  <Link href={`/hr/timesheets?period=${current.id}`}>Timesheets</Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <span className="text-muted-foreground">No pay period covers today.</span>
+                <Button asChild size="sm" variant="outline" className="w-fit">
+                  <Link href="/hr/periods">Generate the year</Link>
+                </Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Leave to decide</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2 text-sm">
+            <span className="text-2xl font-bold tabular-nums">{pendingLeave.length}</span>
+            <Button asChild size="sm" variant="outline" className="w-fit">
+              <Link href="/hr/leave">Open leave</Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Missing a schedule</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-1 text-sm">
+            {noSchedule.length === 0 ? (
+              <span className="text-muted-foreground">Everyone has a weekly schedule.</span>
+            ) : (
+              noSchedule.map((e) => (
+                <Link key={e.id} href={`/hr/employees/${e.id}`} className="underline-offset-2 hover:underline">
+                  {employeeFullName(e)}
+                </Link>
+              ))
+            )}
+            <span className="text-xs text-muted-foreground">Without one, lateness, undertime and absences cannot be judged.</span>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
