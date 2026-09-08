@@ -40,6 +40,30 @@ interface DataTableProps<TData> {
    * every table gets a usable card without it.
    */
   renderMobileCard?: (row: TData) => React.ReactNode;
+  /**
+   * Merges this column's cell across consecutive rows that share its value
+   * (a date column over a day's events). Only while the table is unsorted or
+   * sorted by that column: any other sort breaks the runs, so every row
+   * shows its own value again. Desktop table only; the cards keep theirs.
+   */
+  mergeColumnId?: string;
+}
+
+/**
+ * For each row on the page, how many rows its merged cell spans: the run
+ * length on the first row of a run, 0 on the rows that follow it.
+ */
+function mergeSpans(rows: { getValue: (id: string) => unknown }[], columnId: string): number[] {
+  const spans = new Array<number>(rows.length).fill(0);
+  let i = 0;
+  while (i < rows.length) {
+    const value = rows[i].getValue(columnId);
+    let j = i + 1;
+    while (j < rows.length && Object.is(rows[j].getValue(columnId), value)) j += 1;
+    spans[i] = j - i;
+    i = j;
+  }
+  return spans;
 }
 
 /**
@@ -62,6 +86,7 @@ export function DataTable<TData>({
   emptyMessage = "No results.",
   pageSize = 10,
   renderMobileCard,
+  mergeColumnId,
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = React.useState("");
@@ -78,6 +103,10 @@ export function DataTable<TData>({
     getPaginationRowModel: getPaginationRowModel(),
     initialState: { pagination: { pageSize } },
   });
+
+  const pageRows = table.getRowModel().rows;
+  const merging = mergeColumnId !== undefined && (sorting.length === 0 || sorting[0].id === mergeColumnId);
+  const spans = merging ? mergeSpans(pageRows, mergeColumnId) : null;
 
   const pageCount = Math.max(1, table.getPageCount());
   const pageIndex = table.getState().pagination.pageIndex;
@@ -198,20 +227,35 @@ export function DataTable<TData>({
             ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  onClick={() => onRowClick?.(row.original)}
-                  className={cn("py-2 text-sm", onRowClick && "cursor-pointer")}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="py-2.5">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+            {pageRows.length ? (
+              pageRows.map((row, index) => {
+                // Inside a merged run the divider is softened so the day reads as one block.
+                const continues = spans !== null && spans[index + 1] === 0;
+                return (
+                  <TableRow
+                    key={row.id}
+                    onClick={() => onRowClick?.(row.original)}
+                    className={cn("py-2 text-sm", onRowClick && "cursor-pointer", continues && "border-b-border/40")}
+                  >
+                    {row.getVisibleCells().map((cell) => {
+                      if (spans !== null && cell.column.id === mergeColumnId) {
+                        const span = spans[index];
+                        if (span === 0) return null;
+                        return (
+                          <TableCell key={cell.id} rowSpan={span} className="py-2.5 align-top">
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </TableCell>
+                        );
+                      }
+                      return (
+                        <TableCell key={cell.id} className="py-2.5">
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                );
+              })
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">

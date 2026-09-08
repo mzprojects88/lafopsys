@@ -18,7 +18,8 @@ export function VenueBadge({ venue }: { venue?: string }) {
 /**
  * The list view: the sheet's columns, in the sheet's order, on top of the
  * shared DataTable. The period control lives in the table's toolbar slot so
- * search and period sit on one line.
+ * search and period sit on one line. The Date cell is merged over a day's
+ * rows (events arrive ordered by date, so a day's rows are adjacent).
  */
 export function CalendarList({
   events,
@@ -105,6 +106,7 @@ export function CalendarList({
       emptyMessage={emptyMessage}
       pageSize={25}
       onRowClick={onOpen}
+      mergeColumnId="date"
     />
   );
 }
