@@ -1,4 +1,4 @@
-// Proves the hr schema's row-level security (migrations 0035-0043) against
+// Proves the hr schema's row-level security (migrations 0035-0044) against
 // the live database, one scenario per transaction, every transaction rolled
 // back -- nothing persists. lafopsys has a single database, so this runs
 // against production by design; RLS_ALLOW_PROD=1 acknowledges that.
@@ -418,6 +418,21 @@ async function main() {
   await scenario(ids, "HR records a filing with its reference", "hr", { setup: seedItem }, q("insert into hr.compliance_filings (item_id, period_key, due_on, status, filed_on, reference_no) values ($1, '2031-01', '2031-02-10', 'filed', '2031-02-09', 'PRN 123')", [ITEM]), rows(1));
   await scenario(ids, "a filing marked filed needs a date", "hr", { setup: seedItem }, q("insert into hr.compliance_filings (item_id, period_key, due_on, status) values ($1, '2031-01', '2031-02-10', 'filed')", [ITEM]), (r) => !r.ok && r.code === "23514");
   await scenario(ids, "driver cannot set the compliance settings", "driver", null, q("update shared.app_settings set compliance_pen_last_digit = 7 where id = true"), rows(0));
+  // --- the Compliances menu (0044): finance records filings, HR keeps the obligations ---------
+  const seedFiling = async () => { await seedItem(); await client.query(`insert into hr.compliance_filings (item_id, period_key, due_on, status) values ($1, '2031-01', '2031-02-10', 'in_progress')`, [ITEM]); };
+  await scenario(ids, "finance reads filings", "finance", { setup: seedFiling }, q("select id from hr.compliance_filings where item_id = $1", [ITEM]), rows(1));
+  await scenario(ids, "finance records a filing", "finance", { setup: seedItem }, q("insert into hr.compliance_filings (item_id, period_key, due_on, status, filed_on, reference_no) values ($1, '2031-02', '2031-03-10', 'filed', '2031-03-01', 'PRN 456')", [ITEM]), rows(1));
+  await scenario(ids, "finance updates a filing", "finance", { setup: seedFiling }, q("update hr.compliance_filings set notes = 'paid' where item_id = $1", [ITEM]), rows(1));
+  await scenario(ids, "finance cannot delete a filing", "finance", { setup: seedFiling }, q("delete from hr.compliance_filings where item_id = $1", [ITEM]), rows(0));
+  await scenario(ids, "finance cannot edit an obligation", "finance", { setup: seedItem }, q("update hr.compliance_items set active = true where id = $1", [ITEM]), rows(0));
+  await scenario(ids, "finance cannot add an obligation", "finance", null, q("insert into hr.compliance_items (code, agency, name, category, frequency) values ('t_fin', 'TEST', 'Finance item', 'corporate', 'annual')"), denied);
+  await scenario(ids, "chef cannot record a filing", "chef", { setup: seedItem }, q("insert into hr.compliance_filings (item_id, period_key, due_on, status) values ($1, '2031-01', '2031-02-10', 'in_progress')", [ITEM]), denied);
+  await scenario(ids, "board cannot read filings", "board", { setup: seedFiling }, q("select id from hr.compliance_filings where item_id = $1", [ITEM]), rows(0));
+  await scenario(ids, "HR adds a social-welfare obligation with a published date", "hr", null, q(`insert into hr.compliance_items (code, agency, name, category, frequency, due_rule, due_overrides) values ('t_dswd', 'DSWD', 'Test DSWD', 'social_welfare', 'annual', '{"kind": "fixed", "month": 3, "day": 31, "yearOffset": 1}', '{"2030": "2031-04-15"}') returning id`), rows(1));
+  await scenario(ids, "an override must be an object", "hr", null, q(`insert into hr.compliance_items (code, agency, name, category, frequency, due_overrides) values ('t_bad', 'X', 'Bad', 'corporate', 'annual', '[]')`), (r) => !r.ok && r.code === "23514");
+  await scenario(ids, "the seven verified obligations are seeded", "admin", null, q("select count(*)::int as n from hr.compliance_items where code in ('bir_2316_submit', 'dole_aedr', 'dole_amr', 'dswd_accomplishment', 'dswd_financial', 'dswd_license', 'dswd_solicitation')"), value("n", 7));
+  await scenario(ids, "the SEC AFS carries MC 9-2026's date for FY2025", "admin", null, q("select due_overrides->>'2025' as d from hr.compliance_items where code = 'sec_afs'"), value("d", "2026-05-29"));
+  await scenario(ids, "lead days default to 10", "admin", null, q("select compliance_lead_days as n from shared.app_settings where id = true"), value("n", 10));
   await scenario(
     ids,
     "13th-month payslip is visible to the employee only once settled",

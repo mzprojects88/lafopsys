@@ -4,25 +4,30 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { parseDueRule } from "@/lib/utils/compliance";
 import type { ComplianceApplies, ComplianceCategory, ComplianceFilingStatus, ComplianceFrequency } from "@/lib/types/hr";
-import type { ActionResult } from "../actions";
+import type { ActionResult } from "@/app/(app)/hr/actions";
 
 /** Same shape as app/(app)/hr/actions.ts hrCaller: RLS is the gate, this is the readable refusal. */
-async function hrCaller() {
+async function staffCaller(allowFinance: boolean) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in." as string, supabase: undefined, userId: undefined };
   const { data: staff } = await supabase.schema("shared").from("staff").select("role, is_hr, active").eq("id", user.id).single();
-  if (!staff?.active || !(staff.role === "admin" || staff.is_hr)) return { error: "Only admins and HR can do this." as string, supabase: undefined, userId: undefined };
+  const allowed = !!staff?.active && (staff.role === "admin" || staff.is_hr || (allowFinance && staff.role === "finance"));
+  if (!allowed) return { error: (allowFinance ? "Only admins, finance and HR can do this." : "Only admins and HR can do this.") as string, supabase: undefined, userId: undefined };
   return { error: undefined, supabase, userId: user.id };
 }
+
+/** Obligations and deleting a filing: admins and HR-flagged people (hr.is_hr_staff()). */
+const hrCaller = () => staffCaller(false);
+/** Recording a filing: the same people plus finance (0044's policies). */
+const complianceCaller = () => staffCaller(true);
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const PERIOD_RE = /^\d{4}(-\d{2}|-Q[1-4])?$/;
 const done = () => {
-  revalidatePath("/hr/compliance");
-  revalidatePath("/hr");
+  revalidatePath("/compliance");
 };
 
 export interface FilingInput {
@@ -39,7 +44,7 @@ export interface FilingInput {
 
 /** Records the state of one obligation for one period: in progress, filed with its reference, or not applicable. */
 export async function saveComplianceFiling(input: FilingInput): Promise<ActionResult> {
-  const caller = await hrCaller();
+  const caller = await complianceCaller();
   if (caller.error !== undefined) return { ok: false, error: caller.error };
   if (!PERIOD_RE.test(input.periodKey)) return { ok: false, error: "Bad period key." };
   if (!DATE_RE.test(input.dueOn)) return { ok: false, error: "Bad due date." };
@@ -84,6 +89,8 @@ export interface ComplianceItemInput {
   dueRule: unknown;
   applies: ComplianceApplies;
   active: boolean;
+  /** Agency-published dates for specific periods, keyed by period key. */
+  dueOverrides: Record<string, string>;
   portalUrl: string;
   notes: string;
 }
@@ -101,6 +108,15 @@ export async function saveComplianceItem(id: string | null, input: ComplianceIte
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Bad due rule." };
   }
+  const dueOverrides: Record<string, string> = {};
+  for (const [k, v] of Object.entries(input.dueOverrides ?? {})) {
+    const key = k.trim();
+    const date = v.trim();
+    if (!key && !date) continue;
+    if (!PERIOD_RE.test(key)) return { ok: false, error: `Override period "${key}" should look like 2025, 2026-Q2 or 2026-08.` };
+    if (!DATE_RE.test(date)) return { ok: false, error: `Override date for ${key} should be a date.` };
+    dueOverrides[key] = date;
+  }
   const row = {
     code,
     agency: input.agency.trim(),
@@ -111,6 +127,7 @@ export async function saveComplianceItem(id: string | null, input: ComplianceIte
     due_rule: dueRule,
     applies: input.applies,
     active: input.active,
+    due_overrides: dueOverrides,
     portal_url: input.portalUrl.trim() || null,
     notes: input.notes.trim() || null,
   };

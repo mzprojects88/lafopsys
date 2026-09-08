@@ -13,6 +13,7 @@ import {
   Wallet,
   BarChart3,
   FileText,
+  ShieldCheck,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -89,6 +90,10 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Wallet,
     allowedRoles: ["admin", "finance", "board"],
   },
+  // Every government deadline the foundation carries (0043/0044): the CEO
+  // and super admin keep it, finance records what was filed. HR-flagged
+  // people reach the same page through the HR sub-menu.
+  { title: "Compliances", href: "/compliance", icon: ShieldCheck, allowedRoles: ["admin", "finance"] },
   { title: "Analytics", href: "/analytics", icon: BarChart3, allowedRoles: ALL_ROLES },
   {
     title: "Reports",
@@ -121,6 +126,19 @@ export function canEditCalendarEvent(role: Role, event: { source: "app" | "sheet
  * decides which HR pages and buttons render. */
 export function canManageHr(role: Role, isHr: boolean) {
   return role === "admin" || isHr;
+}
+
+/** Who sees the Compliances tracker: admins, finance, and anyone flagged as
+ * HR. Mirrors the RLS on hr.compliance_filings (0043 + 0044). */
+export function canViewCompliance(role: Role, isHr: boolean) {
+  return role === "admin" || role === "finance" || isHr;
+}
+
+/** Who may record a filing (in progress, submitted, reference): the same
+ * people. Adding or editing an obligation, and deleting a filing, stays
+ * with canManageHr. */
+export function canRecordComplianceFilings(role: Role, isHr: boolean) {
+  return canViewCompliance(role, isHr);
 }
 
 /** Finance and Board never see clinical detail — enforced at the component level using this flag. */

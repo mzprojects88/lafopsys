@@ -9,13 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { complianceFilingsStore } from "@/lib/hooks/use-compliance-collections";
-import { deleteComplianceFiling, saveComplianceFiling, type FilingInput } from "@/app/(app)/hr/compliance/actions";
+import { deleteComplianceFiling, saveComplianceFiling, type FilingInput } from "@/app/(app)/compliance/actions";
 import { formatDate } from "@/lib/utils/date";
 import type { CalendarEntry } from "@/lib/utils/compliance";
 import type { ComplianceFiling, ComplianceFilingStatus, ComplianceItem } from "@/lib/types/hr";
 
 /** Records one obligation for one period: in progress, filed (with the reference and amount), or not applicable. */
-export function FilingDialog({ entry, close }: { entry: CalendarEntry<ComplianceFiling, ComplianceItem>; close: () => void }) {
+export function FilingDialog({ entry, close, canDelete = true }: { entry: CalendarEntry<ComplianceFiling, ComplianceItem>; close: () => void; canDelete?: boolean }) {
   const f = entry.filing;
   const [form, setForm] = React.useState<FilingInput>({
     itemId: entry.itemId,
@@ -66,7 +66,7 @@ export function FilingDialog({ entry, close }: { entry: CalendarEntry<Compliance
             {entry.item.agency} · {entry.item.name}
           </DialogTitle>
           <DialogDescription>
-            {entry.periodLabel} · due {formatDate(entry.dueOn)}
+            {entry.periodLabel} · submit by {formatDate(entry.targetOn)} · {entry.item.agency} deadline {formatDate(entry.dueOn)}
             {entry.item.form ? ` · ${entry.item.form}` : ""}
           </DialogDescription>
         </DialogHeader>
@@ -110,7 +110,7 @@ export function FilingDialog({ entry, close }: { entry: CalendarEntry<Compliance
           </Field>
         </div>
         <DialogFooter className="sm:justify-between">
-          {id ? (
+          {id && canDelete ? (
             <Button variant="ghost" className="gap-1.5 text-rose-700" onClick={handleDelete} disabled={saving}>
               <Trash2 className="size-3.5" />
               Remove

@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { complianceItemsStore } from "@/lib/hooks/use-compliance-collections";
-import { saveComplianceItem, type ComplianceItemInput } from "@/app/(app)/hr/compliance/actions";
+import { saveComplianceItem, type ComplianceItemInput } from "@/app/(app)/compliance/actions";
 import type { DueRule } from "@/lib/utils/compliance";
 import { COMPLIANCE_CATEGORIES, type ComplianceApplies, type ComplianceCategory, type ComplianceFrequency, type ComplianceItem } from "@/lib/types/hr";
 
@@ -36,9 +36,12 @@ export function ComplianceItemDialog({ item, close }: { item: ComplianceItem | n
     dueRule: r,
     applies: item?.applies ?? "yes",
     active: item?.active ?? true,
+    dueOverrides: item?.dueOverrides ?? {},
     portalUrl: item?.portalUrl ?? "",
     notes: item?.notes ?? "",
   });
+  // The agency's published dates for specific periods (SEC sets the AFS calendar by circular each year).
+  const [overrides, setOverrides] = React.useState<{ key: string; date: string }[]>(Object.entries(item?.dueOverrides ?? {}).map(([key, date]) => ({ key, date })));
   const [rule, setRule] = React.useState<{ kind: DueRule["kind"]; month: number; day: number; yearOffset: boolean; decemberOverride: boolean; decMonth: number; decDay: number; qMode: "offset" | "day" | "monthEnd"; offsetDays: number; qDay: number; firstThree: boolean }>({
     kind: r.kind,
     month: r.kind === "fixed" ? r.month : 1,
@@ -75,7 +78,7 @@ export function ComplianceItemDialog({ item, close }: { item: ComplianceItem | n
 
   async function handleSave() {
     setSaving(true);
-    const res = await saveComplianceItem(item?.id ?? null, { ...form, dueRule: builtRule() });
+    const res = await saveComplianceItem(item?.id ?? null, { ...form, dueRule: builtRule(), dueOverrides: Object.fromEntries(overrides.filter((o) => o.key.trim() || o.date).map((o) => [o.key.trim(), o.date])) });
     setSaving(false);
     if (!res.ok) {
       toast.error(res.error);
@@ -252,6 +255,27 @@ export function ComplianceItemDialog({ item, close }: { item: ComplianceItem | n
                 <Switch checked={rule.firstThree} onCheckedChange={(v) => setRule((s) => ({ ...s, firstThree: v }))} />
                 Q1-Q3 only
               </label>
+            </div>
+          ) : null}
+
+          {rule.kind !== "as_needed" ? (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Published dates that differ from the rule</span>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setOverrides((o) => [...o, { key: "", date: "" }])}>
+                  Add date
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">When the agency fixes a date for one period by circular (the SEC&apos;s yearly AFS calendar, say), enter the period and the date; the rule still applies to every other period.</p>
+              {overrides.map((o, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Input className="w-32" placeholder="2025 or 2026-Q2" value={o.key} onChange={(e) => setOverrides((all) => all.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)))} aria-label="Override period" />
+                  <Input type="date" className="w-40" value={o.date} onChange={(e) => setOverrides((all) => all.map((x, j) => (j === i ? { ...x, date: e.target.value } : x)))} aria-label="Override date" />
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setOverrides((all) => all.filter((_, j) => j !== i))} aria-label="Remove override">
+                    Remove
+                  </Button>
+                </div>
+              ))}
             </div>
           ) : null}
 
