@@ -84,4 +84,9 @@ create view hr.v_roster as
   from hr.employees
   where status in ('active', 'on_leave');
 
+-- 0035's default privileges grant INSERT/UPDATE/DELETE on every new
+-- relation in hr -- views included -- and a single-table view with a WHERE
+-- is auto-updatable, running as its owner (who bypasses RLS). Read-only,
+-- explicitly. Every future view in hr needs the same line.
+revoke insert, update, delete on hr.v_roster from authenticated, service_role;
 grant select on hr.v_roster to authenticated, service_role;

@@ -125,6 +125,7 @@ async function scenario(ids, name, actor, opts, body, expect) {
 // --- assertion helpers -------------------------------------------------------
 const denied = (r) => !r.ok && r.code === "42501";
 const exclusion = (r) => !r.ok && r.code === "23P01";
+const permissionDenied = (r) => !r.ok && r.code === "42501" && /permission denied/i.test(r.msg);
 const rows = (n) => (r) => r.ok && r.rows === n;
 const atLeast = (n) => (r) => r.ok && r.rows >= n;
 const value = (field, v) => (r) => r.ok && r.rows === 1 && r.data[0][field] === v;
@@ -261,6 +262,8 @@ async function main() {
     rows(0)
   );
   await scenario(ids, "chef reads the roster view", "chef", null, q("select employee_id from hr.v_roster where employee_id in ($1, $2)", [EMP_A, EMP_B]), rows(2));
+  await scenario(ids, "chef cannot write through the roster view", "chef", null, q("update hr.v_roster set position = 'CEO' where employee_id = $1", [EMP_B]), permissionDenied);
+  await scenario(ids, "chef cannot delete through the roster view", "chef", null, q("delete from hr.v_roster where employee_id = $1", [EMP_B]), permissionDenied);
   await scenario(ids, "chef reads everyone's schedule overrides", "chef", { setup: () => client.query(`insert into hr.schedule_overrides (employee_id, date, is_rest_day) values ($1, '2031-01-05', true)`, [EMP_B]) }, q("select id from hr.schedule_overrides where employee_id = $1", [EMP_B]), rows(1));
   await scenario(ids, "chef cannot set an override", "chef", null, q("insert into hr.schedule_overrides (employee_id, date, is_rest_day) values ($1, '2031-01-05', true)", [EMP_A]), denied);
   await scenario(ids, "HR sets an override", "hr", null, q("insert into hr.schedule_overrides (employee_id, date, start_time, end_time) values ($1, '2031-01-05', '22:00', '06:00')", [EMP_A]), rows(1));
@@ -347,6 +350,8 @@ async function main() {
   record("PostgREST serves the hr schema", /pgrst\.db_schemas=.*\bhr\b/.test(schemas) ? "PASS" : "FAIL", schemas.slice(0, 60));
   const retired = (await client.query(`select coalesce(string_agg(tablename, ','), '(none)') as t from pg_tables where schemaname = 'ops' and tablename in ('shifts', 'timesheet_approvals')`)).rows[0].t;
   record("ops.shifts and ops.timesheet_approvals are gone", retired === "(none)" ? "PASS" : "FAIL", retired);
+  const viewGrants = (await client.query(`select coalesce(string_agg(privilege_type, ',' order by privilege_type), '(none)') as t from information_schema.table_privileges where table_schema = 'hr' and table_name = 'v_roster' and grantee = 'authenticated'`)).rows[0].t;
+  record("hr.v_roster is select-only for authenticated", viewGrants === "SELECT" ? "PASS" : "FAIL", viewGrants);
   const blanket = (await client.query(`select count(*)::int as n from pg_policies where schemaname = 'ops' and tablename = 'time_entries' and policyname = 'lafopsys staff full access'`)).rows[0].n;
   record("no blanket policy on ops.time_entries", blanket === 0 ? "PASS" : "FAIL");
 

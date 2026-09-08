@@ -17,6 +17,8 @@ import { scheduleOverridesStore } from "@/lib/hooks/use-pay-periods-collection";
 import { useRole } from "@/lib/rbac/use-role";
 import { canManageHr } from "@/lib/rbac/roles";
 import { formatDate } from "@/lib/utils/date";
+import { useNow } from "@/lib/hooks/use-now";
+import { dayKey } from "@/lib/utils/dtr";
 import { deleteScheduleOverride, saveScheduleOverride } from "@/app/(app)/hr/actions";
 
 /**
@@ -29,6 +31,7 @@ export default function RosterPage() {
   const { role, isHr } = useRole();
   const manages = canManageHr(role, isHr);
   const { people, entryFor, onDay, overrides, loading } = useRoster();
+  const today = dayKey(useNow());
   const [dialog, setDialog] = React.useState<{ day: string; person: RosterPerson | null } | null>(null);
 
   const eventsFor = React.useCallback(
@@ -43,7 +46,7 @@ export default function RosterPage() {
     [onDay]
   );
 
-  const unscheduled = people.filter((p) => !entryFor(p, formatDate(new Date().toISOString(), "yyyy-MM-dd")).hasSchedule);
+  const unscheduled = people.filter((p) => !entryFor(p, today).hasSchedule);
 
   return (
     <div className="flex flex-1 flex-col gap-6">
