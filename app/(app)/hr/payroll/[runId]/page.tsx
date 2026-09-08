@@ -28,7 +28,7 @@ import { formatDate } from "@/lib/utils/date";
 import { formatAmount2, toCentavos } from "@/lib/utils/money";
 import { csvLines, downloadCsv } from "@/lib/utils/csv";
 import { payPeriodKey, payPeriodLabel } from "@/lib/utils/pay-period";
-import { approvePayrollRun, cancelPayrollRun, computeRegularRun, markPayrollRunPaid } from "../actions";
+import { approvePayrollRun, cancelPayrollRun, computeAdjustmentRun, computeRegularRun, computeThirteenthMonthRun, markPayrollRunPaid } from "../actions";
 import { employeeFullName, PAYROLL_RUN_KINDS, type Payslip } from "@/lib/types/hr";
 
 const WARNING_LABEL: Record<string, string> = {
@@ -86,9 +86,16 @@ export default function PayrollRunPage() {
   }
 
   async function recompute() {
-    if (!run?.periodId) return;
+    if (!run) return;
     setBusy("compute");
-    const r = await computeRegularRun(run.periodId);
+    const r =
+      run.kind === "regular" && run.periodId
+        ? await computeRegularRun(run.periodId)
+        : run.kind === "thirteenth_month"
+          ? await computeThirteenthMonthRun(run.year, sorted[0]?.payDate ?? today)
+          : run.kind === "adjustment" && run.periodId
+            ? await computeAdjustmentRun(run.periodId, run.notes ?? "recompute")
+            : { ok: false as const, error: "Recompute final pay from the Payroll page." };
     setBusy(null);
     if (!r.ok) {
       toast.error(r.error);
@@ -172,7 +179,7 @@ export default function PayrollRunPage() {
             <Download className="size-3.5" />
             Register CSV
           </Button>
-          {editable && run.kind === "regular" ? (
+          {editable && run.kind !== "final_pay" ? (
             <Button size="sm" variant="outline" className="gap-1.5" onClick={recompute} disabled={busy !== null}>
               <RefreshCw className="size-3.5" />
               {busy === "compute" ? "Computing…" : "Recompute"}

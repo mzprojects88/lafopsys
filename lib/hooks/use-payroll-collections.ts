@@ -302,3 +302,42 @@ export function useYtdOpenings() {
   const { data: openings, loading, error } = useCollection(ytdOpeningsStore);
   return { openings, loading, error };
 }
+
+// --- Payslips by year (reports) -------------------------------------------------
+
+export interface YearPayslip extends Payslip {
+  runStatus: PayrollRunStatus;
+  runKind: PayrollRunKind;
+  runYear: number;
+  /** The period's first day; null for a 13th-month or final-pay run. */
+  periodStartsOn: string | null;
+}
+
+interface YearPayslipRow extends PayslipRow {
+  payroll_runs: { status: PayrollRunStatus; kind: PayrollRunKind; year: number };
+  pay_periods: { starts_on: string } | null;
+}
+
+/**
+ * Every payslip of a run year with its run's status (HR only). Reports
+ * count only settled runs; the family is keyed by year because year
+ * attribution follows the RUN, not the pay date.
+ */
+export const payslipsByYearFamily = createCollectionFamily<YearPayslip[]>({
+  key: "hr.payslips:year",
+  empty: [],
+  tables: () => [
+    { schema: "hr", table: "payslips" },
+    { schema: "hr", table: "payroll_runs" },
+  ],
+  fetch: async (year) => {
+    const { data, error } = await createClient().schema("hr").from("payslips").select("*, payroll_runs!inner(status, kind, year), pay_periods(starts_on)").eq("payroll_runs.year", Number(year));
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as unknown as YearPayslipRow[]).map((r) => ({ ...toPayslip(r), runStatus: r.payroll_runs.status, runKind: r.payroll_runs.kind, runYear: r.payroll_runs.year, periodStartsOn: r.pay_periods?.starts_on ?? null }));
+  },
+});
+
+export function useYearPayslips(year: number | null) {
+  const { data: payslips, loading, error } = useCollection(year ? payslipsByYearFamily.get(String(year)) : null);
+  return { payslips, loading, error };
+}

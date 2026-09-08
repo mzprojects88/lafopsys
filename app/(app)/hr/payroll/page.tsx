@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { HrSubNav } from "@/components/modules/hr/hr-subnav";
 import { PayItemsCard } from "@/components/modules/hr/pay-items-card";
 import { YtdOpeningsCard } from "@/components/modules/hr/ytd-openings-card";
+import { YearEndCard } from "@/components/modules/hr/year-end-card";
 import { usePayPeriods, payPeriodsStore } from "@/lib/hooks/use-pay-periods-collection";
 import { usePayrollRuns, payrollRunsStore } from "@/lib/hooks/use-payroll-collections";
 import { useEmployees } from "@/lib/hooks/use-employees-collection";
@@ -68,6 +69,13 @@ export default function PayrollPage() {
   return (
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader title="Payroll" description="Compute from approved timesheets, have a second person approve, pay by bank transfer, record the reference." action={<HrSubNav />} />
+      {role === "admin" || role === "finance" ? (
+        <div className="flex justify-end">
+          <Button asChild size="sm" variant="ghost">
+            <Link href="/hr/payroll/reconcile">Bank reconciliation</Link>
+          </Button>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard label="Ready to compute" value={periodsLoading ? "…" : readyToCompute.length} icon={Calculator} color="cyan" sublabel="Periods with every timesheet approved" />
@@ -152,6 +160,7 @@ export default function PayrollPage() {
         </Card>
       ) : null}
 
+      <YearEndCard employees={employees} periods={periods} runs={runs} year={year} today={today} />
       <PayItemsCard employees={employees} periods={periods} />
       <YtdOpeningsCard employees={employees} year={year} />
     </div>

@@ -22,6 +22,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   payroll: "Payroll",
   payslips: "My Payslips",
   compliance: "Compliance",
+  reconcile: "Bank reconciliation",
   leave: "Leave",
   staff: "Staff & Time",
   roster: "Roster",
