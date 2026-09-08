@@ -1,6 +1,6 @@
 "use client";
 
-import { Users, Settings2, CalendarRange, ClipboardCheck, Wallet, FileCheck2, Palmtree } from "lucide-react";
+import { Users, Settings2, CalendarRange, ClipboardCheck, Wallet, FileCheck2, Palmtree, Receipt } from "lucide-react";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { useRole } from "@/lib/rbac/use-role";
 import { canManageHr } from "@/lib/rbac/roles";
@@ -10,7 +10,10 @@ import { canManageHr } from "@/lib/rbac/roles";
  * the management pages render only for admins and HR-flagged people
  * (canManageHr). Items for later phases are added as they ship.
  */
-const EVERYONE: ModuleSubNavItem[] = [{ href: "/hr/leave", label: "My Leave", icon: Palmtree, color: "green" }];
+const EVERYONE: ModuleSubNavItem[] = [
+  { href: "/hr/leave", label: "My Leave", icon: Palmtree, color: "green" },
+  { href: "/hr/payslips", label: "My Payslips", icon: Receipt, color: "indigo" },
+];
 
 const HR_ONLY: ModuleSubNavItem[] = [
   { href: "/hr/employees", label: "Employees", icon: Users, color: "blue" },
@@ -22,7 +25,7 @@ const HR_ONLY: ModuleSubNavItem[] = [
 ];
 
 /** Which of the HR-only pages exist yet; the rest wait for their phase. */
-const SHIPPED = new Set(["/hr/employees", "/hr/periods", "/hr/timesheets", "/hr/settings", "/hr/leave"]);
+const SHIPPED = new Set(["/hr/employees", "/hr/periods", "/hr/timesheets", "/hr/payroll", "/hr/settings", "/hr/leave", "/hr/payslips"]);
 
 export function HrSubNav() {
   const { role, isHr } = useRole();
