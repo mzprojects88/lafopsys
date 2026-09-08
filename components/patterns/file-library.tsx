@@ -79,7 +79,8 @@ export function FileLibrary({
   const [chosenSubKey, setChosenSubKey] = React.useState<string>(subKeyOptions?.[0]?.value ?? "");
   const [confirmDelete, setConfirmDelete] = React.useState<StoredFile | null>(null);
   const [busy, setBusy] = React.useState(false);
-  const ready = files.filter((f) => f.status === "ready");
+  // A fixed sub-key (a compliance period) narrows the list to that period; the record's other periods stay out of reach here.
+  const ready = files.filter((f) => f.status === "ready" && (subKey === null || f.subKey === subKey));
   const labelFor = (key: string | null) => (key ? (subKeyOptions?.find((o) => o.value === key)?.label ?? key) : null);
 
   async function uploadAll(list: FileList) {

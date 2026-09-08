@@ -56,7 +56,8 @@ export default function DocumentsPage() {
   const { role, isHr } = useRole();
   const { files, loading, error } = useAllFiles();
   const [search, setSearch] = React.useState("");
-  const [open, setOpen] = React.useState<Set<string>>(() => new Set());
+  // The six menu folders start open so the first view reads like the menu.
+  const [open, setOpen] = React.useState<Set<string>>(() => new Set(["HR", "Compliances", "Patients", "Donors", "Financial", "Reports"]));
   const [confirmDelete, setConfirmDelete] = React.useState<StoredFile | null>(null);
   const [busy, setBusy] = React.useState(false);
 
@@ -93,7 +94,7 @@ export default function DocumentsPage() {
   }
 
   function renderNode(node: Node, depth: number): React.ReactNode {
-    const expanded = q.length > 0 || open.has(node.path);
+    const expanded = node.path === "" || q.length > 0 || open.has(node.path);
     const children = [...node.children.values()].sort((a, b) => a.name.localeCompare(b.name));
     const canDelete = (f: StoredFile) => canDeleteFiles(f.module, role, isHr);
     return (
