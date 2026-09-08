@@ -2,9 +2,9 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { supabaseUrl, supabaseAnonKey } from "@/lib/supabase/env";
 
-// /api/calendar/sync checks a bearer secret itself: the scheduled job that
+// /api/calendar/sync and /api/patients/house-sheet-sync check a bearer secret themselves: the scheduled job that
 // calls it has no session, and a redirect to /login would be silent.
-const PUBLIC_PATHS = ["/login", "/impact", "/portal/login", "/api/calendar/sync"];
+const PUBLIC_PATHS = ["/login", "/impact", "/portal/login", "/api/calendar/sync", "/api/patients/house-sheet-sync"];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

@@ -111,6 +111,15 @@ export const STATUS_DOMAIN_MAP: Record<string, Record<string, StatusTone>> = {
     unchanged: "neutral",
     failed: "negative",
   },
+  // The house's Occupancy Tracker against patient records (0046).
+  houseSheet: {
+    auto_matched: "positive",
+    confirmed: "positive",
+    suggested: "info",
+    unmatched: "warning",
+    encoded: "info",
+    dismissed: "neutral",
+  },
   // HR (0036+): employee status, 201 documents, deadlines.
   employee: {
     active: "positive",

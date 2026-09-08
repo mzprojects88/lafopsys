@@ -123,6 +123,42 @@ export async function updateCalendarSheetSync(enabled: boolean): Promise<UpdateC
 }
 
 /**
+ * Turns the half-hourly reading of the house's Occupancy Tracker on or off
+ * (0046). Off: the scheduled job still fires but the route does nothing;
+ * the house-sheet page keeps what it has.
+ */
+export async function updateHouseSheetSync(enabled: boolean): Promise<UpdateClockInRequirementResult> {
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+
+  if (!caller) {
+    return { ok: false, error: "Not signed in." };
+  }
+
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+
+  if (callerStaff?.role !== "admin") {
+    return { ok: false, error: "Only admins can change this setting." };
+  }
+
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({ house_sheet_sync_enabled: enabled, updated_at: new Date().toISOString(), updated_by: caller.id })
+    .eq("id", true);
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/patients/house-sheet");
+  return { ok: true };
+}
+
+/**
  * Saves the org-wide HR numbers (0038) in one go. Bounds match the columns'
  * CHECKs so a bad value is refused with a sentence. Admin-only like the
  * rest of this table; HR people edit reference data under /hr/settings,

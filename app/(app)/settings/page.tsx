@@ -7,6 +7,7 @@ import { ResetDemoDataButton } from "@/components/modules/settings/reset-demo-da
 import { ClockInRequirementToggle } from "@/components/modules/settings/clock-in-requirement-toggle";
 import { OvertimeThresholdField } from "@/components/modules/settings/overtime-threshold-field";
 import { CalendarSheetSyncToggle } from "@/components/modules/settings/calendar-sheet-sync-toggle";
+import { HouseSheetSyncToggle } from "@/components/modules/settings/house-sheet-sync-toggle";
 import { HrSettingsCard } from "@/components/modules/settings/hr-settings-card";
 
 const REFERENCE_TABLES = [
@@ -75,6 +76,15 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <CalendarSheetSyncToggle />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">House Occupancy Tracker</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <HouseSheetSyncToggle />
           </CardContent>
         </Card>
 

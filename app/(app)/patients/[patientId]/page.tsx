@@ -24,6 +24,11 @@ import { useRole } from "@/lib/rbac/use-role";
 import { canDeleteFiles, canSeeClinicalDetail, canUploadFiles } from "@/lib/rbac/roles";
 import { FileLibrary } from "@/components/patterns/file-library";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
+import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
+import { houseSheetPatientId } from "@/lib/types/house-sheet";
+import { canReviewHouseSheet } from "@/lib/rbac/roles";
+import Link from "next/link";
+import { Home } from "lucide-react";
 import { AdmissionChecklist } from "@/components/modules/patients/admission-checklist";
 import { DischargeDialog } from "@/components/modules/patients/discharge-dialog";
 import { ExtendStayDialog } from "@/components/modules/patients/extend-stay-dialog";
@@ -35,6 +40,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   const { patients, carers, stays, appointments, loading, refetch } = usePatientsData();
   const patient = patients.find((p) => p.id === patientId);
   const { role } = useRole();
+  const { people: sheetPeople } = useHouseSheetPeople();
   const [dischargeTarget, setDischargeTarget] = useState<Stay | null>(null);
   const [extendTarget, setExtendTarget] = useState<Stay | null>(null);
   const [transferTarget, setTransferTarget] = useState<Stay | null>(null);
@@ -62,6 +68,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   const ageLabel = patient.birthDate ? `${computeAge(patient.birthDate)} yrs old · ` : "";
   const photoConsentLabel =
     patient.photoConsentGranted === undefined ? "Unknown" : patient.photoConsentGranted ? "Granted" : "Not granted";
+  const onHouseSheet = canReviewHouseSheet(role) ? sheetPeople.find((p) => p.offSheetAt === null && houseSheetPatientId(p) === patient.id && p.matchStatus !== "dismissed") : undefined;
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -77,6 +84,17 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
           { label: "Photo Consent", value: photoConsentLabel },
         ]}
       />
+
+      {onHouseSheet ? (
+        <Link href="/patients/house-sheet" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground hover:bg-muted/60">
+          <Home className="size-3.5 shrink-0" />
+          <span>
+            On the house sheet as &ldquo;{onHouseSheet.patientName}&rdquo; · {onHouseSheet.daysSeen} day{onHouseSheet.daysSeen === 1 ? "" : "s"} since {formatDate(onHouseSheet.firstSeenOn)}
+            {onHouseSheet.nextAppointmentRaw ? ` · next appointment ${onHouseSheet.nextAppointmentRaw}` : ""}
+            {onHouseSheet.matchStatus === "suggested" ? " · AI suggestion, not yet confirmed" : ""}
+          </span>
+        </Link>
+      ) : null}
 
       <Tabs defaultValue="overview">
         <TabsList>

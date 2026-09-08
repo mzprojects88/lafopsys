@@ -1,4 +1,4 @@
-// Proves the hr schema's row-level security (migrations 0035-0045) against
+// Proves the hr schema's row-level security (migrations 0035-0046) against
 // the live database, one scenario per transaction, every transaction rolled
 // back -- nothing persists. lafopsys has a single database, so this runs
 // against production by design; RLS_ALLOW_PROD=1 acknowledges that.
@@ -484,6 +484,31 @@ async function main() {
   await scenario(ids, "the uploader confirms their own pending file", "admin", { setup: seedFiles }, q("update shared.files set status = 'ready', size_bytes = 99 where id = $1", [FILE(7)]), rows(1));
   await scenario(ids, "a module must match its record type", "admin", null, q("insert into shared.files (module, record_type, record_id, object_key, folder, file_name, content_type, uploaded_by) values ('hr', 'patient', $1, 'test/new-6', 'Test', 'a.pdf', 'application/pdf', $2)", [EMP_A, ids.admin]), (r) => !r.ok && r.code === "23514");
 
+  // --- the house sheet (0046) -----------------------------------------------------------
+  const HS = (n) => `00000000-0000-4000-8000-0000000c${String(n).padStart(4, "0")}`;
+  const seedHouseSheet = async () => {
+    await client.query(
+      `insert into ops.house_sheet_people (id, name_key, patient_name, first_seen_on, last_seen_on, match_status)
+       values ($1::uuid, 'test|one', 'Test, One', '2031-01-01', '2031-01-02', 'suggested'),
+              ($2::uuid, 'test|two', 'Test, Two', '2031-01-01', '2031-01-02', 'unmatched')`,
+      [HS(1), HS(2)]
+    );
+  };
+  await scenario(ids, "social worker reads the house sheet", "social_worker", { link: false, setup: seedHouseSheet }, q("select count(*)::int as n from ops.house_sheet_people where name_key like 'test|%'"), value("n", 2));
+  await scenario(ids, "driver cannot read the house sheet", "driver", { link: false, setup: seedHouseSheet }, q("select count(*)::int as n from ops.house_sheet_people where name_key like 'test|%'"), value("n", 0));
+  await scenario(ids, "finance cannot read the house sheet", "finance", { link: false, setup: seedHouseSheet }, q("select count(*)::int as n from ops.house_sheet_people where name_key like 'test|%'"), value("n", 0));
+  await scenario(ids, "social worker confirms a match, signed", "social_worker", { link: false, setup: seedHouseSheet }, q("update ops.house_sheet_people set match_status = 'confirmed', matched_patient_id = (select id from ops.patients limit 1), reviewed_by = $2 where id = $1::uuid returning match_method", [HS(1), ids.social_worker]), value("match_method", "manual"));
+  await scenario(ids, "a review signed by someone else is refused", "social_worker", { link: false, setup: seedHouseSheet }, q("update ops.house_sheet_people set match_status = 'dismissed', reviewed_by = $2 where id = $1::uuid", [HS(1), ids.admin]), denied);
+  await scenario(ids, "a reviewer cannot set a machine status", "admin", { link: false, setup: seedHouseSheet }, q("update ops.house_sheet_people set match_status = 'auto_matched', reviewed_by = $2 where id = $1::uuid", [HS(1), ids.admin]), denied);
+  await scenario(ids, "a reviewer cannot change the sheet's own fields", "admin", { link: false, setup: seedHouseSheet }, q("update ops.house_sheet_people set patient_name = 'X' where id = $1::uuid", [HS(1)]), denied);
+  await scenario(ids, "confirming without a patient is refused", "admin", { link: false, setup: seedHouseSheet }, q("update ops.house_sheet_people set match_status = 'confirmed', reviewed_by = $2 where id = $1::uuid", [HS(2), ids.admin]), (r) => !r.ok && r.code === "23514");
+  await scenario(ids, "driver cannot review the house sheet", "driver", { link: false, setup: seedHouseSheet }, q("update ops.house_sheet_people set match_status = 'dismissed', reviewed_by = $2 where id = $1::uuid", [HS(1), ids.driver]), (r) => (r.ok && r.rows === 0) || denied(r));
+  await scenario(ids, "nobody inserts house sheet rows from the app", "admin", { link: false }, q("insert into ops.house_sheet_people (name_key, patient_name, first_seen_on, last_seen_on) values ('test|three', 'Test, Three', '2031-01-01', '2031-01-01')"), denied);
+  await scenario(ids, "nobody deletes house sheet rows from the app", "admin", { link: false, setup: seedHouseSheet }, q("delete from ops.house_sheet_people where id = $1::uuid", [HS(1)]), denied);
+  await scenario(ids, "social worker reads house sheet runs", "social_worker", { link: false, setup: async () => client.query("insert into ops.house_sheet_sync_runs (trigger, status, tab_date) values ('cron', 'unchanged', '2031-01-02')") }, q("select count(*)::int as n from ops.house_sheet_sync_runs where tab_date = '2031-01-02'"), value("n", 1));
+  await scenario(ids, "driver cannot read house sheet runs", "driver", { link: false, setup: async () => client.query("insert into ops.house_sheet_sync_runs (trigger, status, tab_date) values ('cron', 'unchanged', '2031-01-02')") }, q("select count(*)::int as n from ops.house_sheet_sync_runs where tab_date = '2031-01-02'"), value("n", 0));
+  await scenario(ids, "nobody writes house sheet runs from the app", "admin", { link: false }, q("insert into ops.house_sheet_sync_runs (trigger) values ('manual')"), denied);
+
   // --- the flag itself ----------------------------------------------------------------
   await scenario(ids, "a person cannot flag themselves as HR", "driver", null, q("update shared.staff set is_hr = true where id = $1", [ids.driver]), denied);
   await scenario(ids, "hr.is_hr_staff() is true for an admin", "admin", null, q("select hr.is_hr_staff() as v"), value("v", true));
@@ -498,6 +523,8 @@ async function main() {
   record("employee_private is not in the realtime publication", published.includes("employee_private") ? "FAIL" : "PASS", published.join(","));
   const { rows: sharedPub } = await client.query(`select coalesce(string_agg(tablename, ',' order by tablename), '') as t from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'shared'`);
   record("shared.files is in the realtime publication", sharedPub[0].t.split(",").includes("files") ? "PASS" : "FAIL");
+  const { rows: opsPub } = await client.query(`select coalesce(string_agg(tablename, ',' order by tablename), '') as t from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'ops'`);
+  for (const t of ["house_sheet_people", "house_sheet_sync_runs"]) record(`ops.${t} is in the realtime publication`, opsPub[0].t.split(",").includes(t) ? "PASS" : "FAIL");
   const { rows: filesRls } = await client.query("select relrowsecurity as on from pg_class where oid = 'shared.files'::regclass");
   record("RLS is on for shared.files", filesRls[0]?.on ? "PASS" : "FAIL");
   for (const t of ["employees", "compensation", "work_schedules", "holidays", "rate_tables", "leave_types", "pay_periods", "period_timesheets", "schedule_overrides", "leave_requests", "leave_adjustments", "pay_items", "payroll_runs", "payslips", "ytd_openings", "compliance_items", "compliance_filings"]) {

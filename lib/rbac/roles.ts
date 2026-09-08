@@ -163,6 +163,11 @@ export function canDeleteFiles(module: FileModule, role: Role, isHr: boolean) {
   return module === "compliance" ? canManageHr(role, isHr) : canUploadFiles(module, role, isHr);
 }
 
+/** Who reviews the house's Occupancy Tracker against patient records (ops.house_sheet_people, 0046): the patients module's people. */
+export function canReviewHouseSheet(role: Role) {
+  return role === "admin" || role === "social_worker";
+}
+
 /** Finance and Board never see clinical detail — enforced at the component level using this flag. */
 export function canSeeClinicalDetail(role: Role) {
   return role !== "finance" && role !== "board";

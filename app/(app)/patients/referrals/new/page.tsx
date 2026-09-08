@@ -1,6 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import * as React from "react";
+
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -14,6 +16,9 @@ import { Field, FieldError, FieldGroup, FieldLabel, FieldSeparator } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { diagnoses, treatmentPhases, provinces, hospitals } from "@/lib/mock-data";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
+import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
+import { markHouseSheetRowEncoded } from "@/app/(app)/patients/house-sheet/actions";
+import { splitName } from "@/lib/utils/house-sheet";
 import { createClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/rbac/use-role";
 import { TODAY_ISO } from "@/lib/utils/seeded-random";
@@ -41,14 +46,25 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-export default function NewReferralPage() {
+const RELATIONSHIPS = ["Mother", "Father", "Grandmother", "Aunt", "Guardian"];
+
+function NewReferralForm() {
   const router = useRouter();
   const { user } = useRole();
   const { addReferral } = useReferralsData();
+  // ?fromSheet=<row id>: the form opens pre-filled from a name on the house
+  // sheet and, once submitted, that row follows the referral.
+  const params = useSearchParams();
+  const fromSheetParam = params.get("fromSheet");
+  const fromSheet = fromSheetParam && /^[0-9a-f-]{36}$/i.test(fromSheetParam) ? fromSheetParam : null;
+  const { people: sheetPeople } = useHouseSheetPeople();
+  const sheetRow = fromSheet ? sheetPeople.find((p) => p.id === fromSheet) : undefined;
   const {
     register,
     handleSubmit,
     control,
+    reset,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -72,6 +88,26 @@ export default function NewReferralPage() {
       transcriptionNote: `Transcribed from hospital referral sheet on ${TODAY_ISO} by ${user}.`,
     },
   });
+
+  const prefilledFor = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!sheetRow || prefilledFor.current === sheetRow.id) return;
+    prefilledFor.current = sheetRow.id;
+    const { first, last } = splitName(sheetRow.patientName);
+    const rel = (sheetRow.relationship ?? "").trim().toLowerCase();
+    const relationship = RELATIONSHIPS.find((r) => r.toLowerCase() === rel) ?? (rel ? "Guardian" : "");
+    reset({
+      ...getValues(),
+      patientFirstName: first,
+      patientLastName: last,
+      rawAddress: sheetRow.address ?? "",
+      carerName: sheetRow.carerName ?? "",
+      carerRelationship: relationship,
+      carerMobile: sheetRow.phone ?? "",
+      nextAppointmentNote: [sheetRow.nextAppointmentRaw, sheetRow.treatment].filter(Boolean).join(" · "),
+      transcriptionNote: `Encoded from the house Occupancy Tracker (on the sheet since ${sheetRow.firstSeenOn}) on ${TODAY_ISO} by ${user}.`,
+    });
+  }, [sheetRow, reset, getValues, user]);
 
   async function onSubmit(values: FormValues) {
     const supabase = createClient();
@@ -108,8 +144,12 @@ export default function NewReferralPage() {
       return;
     }
 
+    if (fromSheet) {
+      const linked = await markHouseSheetRowEncoded(fromSheet, referral.id);
+      if (!linked.ok) toast.warning(`Referral saved, but the house sheet row was not linked: ${linked.error}`);
+    }
     toast.success("Referral submitted");
-    router.push("/patients/referrals");
+    router.push(fromSheet ? "/patients/house-sheet" : "/patients/referrals");
   }
 
   return (
@@ -378,5 +418,14 @@ export default function NewReferralPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/** useSearchParams needs a Suspense boundary for the static shell. */
+export default function NewReferralPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <NewReferralForm />
+    </React.Suspense>
   );
 }

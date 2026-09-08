@@ -2,7 +2,7 @@
 
 import type { ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
-import { Users, UserCheck, CalendarPlus, KanbanSquare, ListOrdered, Share2, CalendarClock, Bus, BedDouble } from "lucide-react";
+import { Users, UserCheck, CalendarPlus, KanbanSquare, ListOrdered, Share2, CalendarClock, Bus, BedDouble, Home } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
@@ -22,6 +22,7 @@ const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/patients/appointments", label: "Appointments", icon: CalendarClock, color: "cyan" },
   { href: "/patients/manifest", label: "Manifest", icon: Bus, color: "green" },
   { href: "/patients/stays", label: "Stay History", icon: BedDouble, color: "indigo" },
+  { href: "/patients/house-sheet", label: "House Sheet", icon: Home, color: "teal" },
 ];
 
 const columns: ColumnDef<Patient>[] = [

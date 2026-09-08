@@ -35,12 +35,16 @@ export interface AppSettings extends HrSettings {
   /** While true the master calendar follows the Google Sheet every two hours
    * and sheet events are read-only in the app (0034). Off ends that. */
   calendarSheetSyncEnabled: boolean;
+  /** While true the house's Occupancy Tracker is read every half hour and
+   * its names resolved to patients (0046). */
+  houseSheetSyncEnabled: boolean;
 }
 
 interface AppSettingsRow {
   require_clock_in_for_inventory_roles: boolean;
   overtime_threshold_minutes: number;
   calendar_sheet_sync_enabled: boolean;
+  house_sheet_sync_enabled: boolean;
   payroll_pay_date_rule: PayDateRule | null;
   payroll_contribution_cutoff: ContributionCutoff;
   tardiness_grace_minutes: number;
@@ -72,11 +76,12 @@ const DEFAULTS: AppSettings = {
   requireClockInForInventoryRoles: false,
   overtimeThresholdMinutes: DEFAULT_OVERTIME_THRESHOLD_MINUTES,
   calendarSheetSyncEnabled: true,
+  houseSheetSyncEnabled: true,
   ...HR_SETTINGS_DEFAULTS,
 };
 
 const SELECT =
-  "require_clock_in_for_inventory_roles, overtime_threshold_minutes, calendar_sheet_sync_enabled, " +
+  "require_clock_in_for_inventory_roles, overtime_threshold_minutes, calendar_sheet_sync_enabled, house_sheet_sync_enabled, " +
   "payroll_pay_date_rule, payroll_contribution_cutoff, tardiness_grace_minutes, " +
   "leave_vl_days_per_year, leave_sl_days_per_year, leave_vl_convertible, minimum_wage_region, " +
   "compliance_pen_last_digit, compliance_employer_initial, compliance_tracking_from, compliance_lead_days";
@@ -94,6 +99,7 @@ export const appSettingsStore = createCollection<AppSettings>({
       requireClockInForInventoryRoles: row.require_clock_in_for_inventory_roles,
       overtimeThresholdMinutes: row.overtime_threshold_minutes,
       calendarSheetSyncEnabled: row.calendar_sheet_sync_enabled,
+      houseSheetSyncEnabled: row.house_sheet_sync_enabled,
       payDateRule: row.payroll_pay_date_rule ?? HR_SETTINGS_DEFAULTS.payDateRule,
       contributionCutoff: row.payroll_contribution_cutoff,
       tardinessGraceMinutes: row.tardiness_grace_minutes,
