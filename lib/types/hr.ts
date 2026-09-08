@@ -379,3 +379,144 @@ export interface LeaveAdjustment {
   note: string | null;
   createdAt: string;
 }
+
+// --- Payroll (0042) ---------------------------------------------------------
+
+export type PayItemKind = "earning" | "deduction";
+export type PayItemCode = "allowance_taxable" | "de_minimis" | "salary_advance" | "sss_loan" | "pagibig_loan" | "retro" | "other_earning" | "other_authorized";
+
+export const PAY_ITEM_CODES: { value: PayItemCode; kind: PayItemKind; label: string; hint: string }[] = [
+  { value: "allowance_taxable", kind: "earning", label: "One-off allowance (taxable)", hint: "Anything paid on top of salary that is not de minimis." },
+  { value: "de_minimis", kind: "earning", label: "De minimis benefit", hint: "Within RR 11-2018 limits: rice, uniform, laundry, medical." },
+  { value: "retro", kind: "earning", label: "Retro / differential", hint: "Back pay for a rate change or a wage order." },
+  { value: "other_earning", kind: "earning", label: "Other earning", hint: "Taxable." },
+  { value: "salary_advance", kind: "deduction", label: "Salary advance repayment", hint: "Art. 113: needs the person's written authorisation." },
+  { value: "sss_loan", kind: "deduction", label: "SSS loan amortisation", hint: "Remitted with the month's SSS contributions." },
+  { value: "pagibig_loan", kind: "deduction", label: "Pag-IBIG loan amortisation", hint: "Remitted with the month's Pag-IBIG contributions." },
+  { value: "other_authorized", kind: "deduction", label: "Other authorised deduction", hint: "Arts. 113-116: only with written authorisation or by law." },
+];
+
+export interface PayItem {
+  id: string;
+  employeeId: string;
+  kind: PayItemKind;
+  code: PayItemCode;
+  label: string;
+  /** Per cutoff when recurring; the whole amount when one-off. */
+  amount: number;
+  periodId: string | null;
+  isRecurring: boolean;
+  startsOn: string | null;
+  endsOn: string | null;
+  /** The balance being repaid; null when not tracked. */
+  amountTotal: number | null;
+  authorizedOn: string | null;
+  reference: string | null;
+  deMinimisKind: string | null;
+  notes: string | null;
+  active: boolean;
+  createdAt: string;
+}
+
+export type PayrollRunKind = "regular" | "thirteenth_month" | "final_pay" | "adjustment";
+export type PayrollRunStatus = "draft" | "computed" | "approved" | "paid" | "closed" | "cancelled";
+
+export const PAYROLL_RUN_STATUSES: { value: PayrollRunStatus; label: string }[] = [
+  { value: "draft", label: "Draft" },
+  { value: "computed", label: "Computed" },
+  { value: "approved", label: "Approved" },
+  { value: "paid", label: "Paid" },
+  { value: "closed", label: "Closed" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
+export const PAYROLL_RUN_KINDS: Record<PayrollRunKind, string> = {
+  regular: "Regular payroll",
+  thirteenth_month: "13th month pay",
+  final_pay: "Final pay",
+  adjustment: "Adjustment",
+};
+
+export interface RateSnapshotEntry {
+  kind: RateTableKind;
+  id: string;
+  effectiveFrom: string;
+  status: RateTableStatus;
+}
+
+export interface PayrollRun {
+  id: string;
+  kind: PayrollRunKind;
+  periodId: string | null;
+  year: number;
+  employeeId: string | null;
+  status: PayrollRunStatus;
+  label: string | null;
+  computedBy: string | null;
+  computedAt: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  paidOn: string | null;
+  paidBy: string | null;
+  paidReference: string | null;
+  /** registerTotals() in pesos plus `skipped: [{employeeId, reason}]`. */
+  totals: Record<string, unknown>;
+  rateSnapshot: RateSnapshotEntry[];
+  segregationWaiver: string | null;
+  cancelReason: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Payslip {
+  id: string;
+  runId: string;
+  employeeId: string;
+  periodId: string | null;
+  payDate: string;
+  compensationId: string | null;
+  payBasis: PayBasis;
+  /** lib/utils/payroll.ts PayLine[], amounts in centavos. */
+  lines: import("@/lib/utils/payroll").PayLine[];
+  basicEarned: number;
+  gross: number;
+  taxableGross: number;
+  nonTaxable: number;
+  taxableIncome: number;
+  totalDeductions: number;
+  net: number;
+  taxWithheld: number;
+  sssEe: number;
+  sssEr: number;
+  ec: number;
+  mpfEe: number;
+  mpfEr: number;
+  philhealthEe: number;
+  philhealthEr: number;
+  pagibigEe: number;
+  pagibigEr: number;
+  employerTotal: number;
+  ytd: Record<string, number>;
+  warnings: string[];
+  acknowledgedAt: string | null;
+  bankTransactionId: string | null;
+  paidReference: string | null;
+  createdAt: string;
+}
+
+export interface YtdOpening {
+  id: string;
+  employeeId: string;
+  year: number;
+  asOf: string;
+  basicEarned: number;
+  taxableIncome: number;
+  nonTaxable: number;
+  taxWithheld: number;
+  sssEe: number;
+  philhealthEe: number;
+  pagibigEe: number;
+  thirteenthMonthPaid: number;
+  source: string | null;
+}

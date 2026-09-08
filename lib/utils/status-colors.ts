@@ -152,6 +152,19 @@ export const STATUS_DOMAIN_MAP: Record<string, Record<string, StatusTone>> = {
     approved: "positive",
     reopened: "warning",
   },
+  payrollRun: {
+    draft: "neutral",
+    computed: "warning",
+    approved: "positive",
+    paid: "positive",
+    closed: "neutral",
+    cancelled: "negative",
+  },
+  payslip: {
+    acknowledged: "positive",
+    unacknowledged: "neutral",
+    warning: "warning",
+  },
   attendance: {
     on_time: "positive",
     late: "warning",
