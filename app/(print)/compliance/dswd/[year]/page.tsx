@@ -69,7 +69,8 @@ export default async function DswdFiguresPage({ params }: { params: Promise<{ ye
     allBankRows(supabase, to),
     supabase.schema("ops").from("cash_entries").select("id, date, amount, direction, donor_name, source_sheet, approval_status, duplicate_of_id, source, currency").gte("date", from).lte("date", to),
     supabase.schema("ops").from("donors").select("name, type, tax_jurisdiction"),
-    supabase.schema("ops").from("patients").select("admitted_at, sex").gte("admitted_at", from).lt("admitted_at", `${year + 1}-01-01`),
+    // admitted_at is a timestamp: bound the year in Manila time, and hand the module Manila day keys.
+    supabase.schema("ops").from("patients").select("admitted_at, sex").gte("admitted_at", `${from}T00:00:00+08:00`).lt("admitted_at", `${year + 1}-01-01T00:00:00+08:00`),
     supabase.schema("ops").from("census_snapshots").select("date, in_house").gte("date", from).lte("date", to),
     supabase.schema("ops").from("meal_services").select("date, headcount").gte("date", from).lte("date", to),
     supabase.schema("ops").from("care_cart_logs").select("date, headcount").gte("date", from).lte("date", to),
@@ -90,7 +91,7 @@ export default async function DswdFiguresPage({ params }: { params: Promise<{ ye
   const donorList: DonorLike[] = (donors ?? []).map((d) => ({ name: d.name, type: d.type as DonorLike["type"], taxJurisdiction: d.tax_jurisdiction as DonorLike["taxJurisdiction"] }));
   const annexE = annexEFinancial(txns, cashEntries, donorList, year);
   const annexG = annexGAccomplishment(
-    (patients ?? []).map((p) => ({ admittedAt: p.admitted_at, sex: p.sex as "M" | "F" | null })),
+    (patients ?? []).map((p) => ({ admittedAt: p.admitted_at ? dayKey(new Date(p.admitted_at)) : null, sex: p.sex as "M" | "F" | null })),
     (census ?? []).map((c) => ({ date: c.date, inHouse: c.in_house })),
     (meals ?? []).map((m) => ({ date: m.date, headcount: m.headcount })),
     (careCart ?? []).map((m) => ({ date: m.date, headcount: m.headcount })),

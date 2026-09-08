@@ -48,7 +48,9 @@ function ReportsInner() {
   const { role, isHr } = useRole();
   const manages = canManageHr(role, isHr);
   const today = dayKey(useNow());
-  const initial = params.get("month") && /^\d{4}-\d{2}$/.test(params.get("month")!) ? params.get("month")! : today.slice(0, 7);
+  // ?month=YYYY-MM opens that month; ?year=YYYY (the year-end links from Compliances) opens that year's December.
+  const yearParam = params.get("year");
+  const initial = params.get("month") && /^\d{4}-\d{2}$/.test(params.get("month")!) ? params.get("month")! : yearParam && /^\d{4}$/.test(yearParam) ? `${yearParam}-12` : today.slice(0, 7);
   const [month, setMonth] = React.useState(initial);
   const year = Number(month.slice(0, 4));
   const { payslips, loading } = useYearPayslips(year);

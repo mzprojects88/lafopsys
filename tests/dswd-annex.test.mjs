@@ -82,6 +82,12 @@ describe("annexEFinancial", () => {
     assert.equal(f.unattributed, 0);
     assert.equal(f.receiptsExceedBank, true);
   });
+  it("with no bank data at all the receipts are not called duplicates", () => {
+    const f = annexEFinancial([], [entry({ date: "2026-01-05", amount: 90000, donorName: "Manny Chan" })], DONORS, 2026);
+    assert.equal(f.totalDonations, 0);
+    assert.equal(f.receiptsExceedBank, false);
+    assert.equal(f.monthsWithoutStatements.length, 12);
+  });
 });
 
 describe("annexGAccomplishment", () => {

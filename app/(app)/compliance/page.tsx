@@ -96,7 +96,8 @@ export default function CompliancePage() {
       if (range === "90") return e.dueOn >= today && e.dueOn <= addDays(today, 90);
       return e.dueOn.startsWith(String(year));
     })
-    .concat(range === "90" ? [...overdue, ...behind].filter((e) => (category === "all" || e.item.category === category) && statusMatch(e.status)) : [])
+    // Overdue rows fail the "from today" test, so the 90-day view re-adds them; behind rows still pass it and need no re-adding.
+    .concat(range === "90" ? overdue.filter((e) => (category === "all" || e.item.category === category) && statusMatch(e.status)) : [])
     .sort((a, b) => (a.targetOn < b.targetOn ? -1 : a.targetOn > b.targetOn ? 1 : 0));
   const missingSettings = settings.compliancePenLastDigit === null || !settings.complianceEmployerInitial;
   const trackingYear = Number(settings.complianceTrackingFrom.slice(0, 4)) || year;
@@ -191,6 +192,8 @@ export default function CompliancePage() {
           ) : (
             shown.map((e) => {
               const source = reportSourceFor(e.code);
+              // The payroll figures live under HR, which finance cannot open; the DSWD figures are open to everyone here.
+              const canGenerate = source !== null && (manages || !source.href(e.periodKey).startsWith("/hr/"));
               const badgeLabel =
                 e.status === "due" || e.status === "due_soon"
                   ? `${STATUS_LABEL[e.status]} · ${e.daysLeft} d to target`
@@ -231,7 +234,7 @@ export default function CompliancePage() {
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <StatusBadge dot domain="compliance" status={e.status} label={badgeLabel} />
-                    {source ? (
+                    {source && canGenerate ? (
                       <Button asChild size="sm" variant="ghost">
                         <Link href={source.href(e.periodKey)}>Generate</Link>
                       </Button>

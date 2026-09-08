@@ -74,7 +74,7 @@ export interface AnnexE {
   buckets: Record<IncomeBucket, { total: number; donors: DonorIncomeLine[] }>;
   /** Bank donations not matched to any attributed receipt (never negative). */
   unattributed: number;
-  /** True when receipts exceed the bank's donations: re-records not yet folded. */
+  /** True when receipts exceed the bank's donations (and the bank has data): re-records not yet folded. */
   receiptsExceedBank: boolean;
   /** From the bank: every debit. */
   totalExpenses: number;
@@ -160,7 +160,7 @@ export function annexEFinancial(txns: readonly BankTxnLike[], entries: readonly 
   }
   const attributed = round2(buckets.local.total + buckets.foreign.total + buckets.government.total);
   const unattributed = Math.max(0, round2(totalDonations - attributed));
-  const receiptsExceedBank = attributed > totalDonations;
+  const receiptsExceedBank = totalDonations > 0 && attributed > totalDonations;
 
   // Expenditure: the classified outflows against the bank tab, by source.
   const bySource = new Map<string, number>();
