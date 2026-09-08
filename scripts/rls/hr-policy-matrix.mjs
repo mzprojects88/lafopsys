@@ -1,4 +1,4 @@
-// Proves the hr schema's row-level security (migrations 0035-0041) against
+// Proves the hr schema's row-level security (migrations 0035-0042) against
 // the live database, one scenario per transaction, every transaction rolled
 // back -- nothing persists. lafopsys has a single database, so this runs
 // against production by design; RLS_ALLOW_PROD=1 acknowledges that.
@@ -19,7 +19,14 @@
 // rolled-back transaction. A role with no account skips its scenarios.
 //
 // Usage: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/hr-policy-matrix.mjs
+//
+// Pre-flight: pass migration files as arguments to prove them BEFORE they
+// are applied. The whole run then happens in one transaction -- the files
+// first, then every scenario under a savepoint -- and is rolled back at
+// the end, so production is untouched either way:
+//   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/hr-policy-matrix.mjs supabase/migrations/0042_hr_payroll.sql
 import { Client } from "pg";
+import { readFile } from "node:fs/promises";
 
 if (process.env.RLS_ALLOW_PROD !== "1") {
   console.error("This targets the production database (rolled back per scenario). Set RLS_ALLOW_PROD=1 to run.");
@@ -76,7 +83,7 @@ async function scenario(ids, name, actor, opts, body, expect) {
     return;
   }
   const link = opts?.link ?? true;
-  await client.query("begin");
+  await client.query(PREFLIGHT.length ? "savepoint scenario" : "begin");
   try {
     if (role) {
       // Test accounts are deactivated so they never show in a login roster;
@@ -118,7 +125,7 @@ async function scenario(ids, name, actor, opts, body, expect) {
   } catch (e) {
     record(name, "FAIL", `setup error: ${e.message}`);
   } finally {
-    await client.query("rollback");
+    await client.query(PREFLIGHT.length ? "rollback to savepoint scenario" : "rollback");
   }
 }
 
@@ -137,8 +144,17 @@ const last = (...steps) => async () => {
   return r;
 };
 
+const PREFLIGHT = process.argv.slice(2);
+
 async function main() {
   await client.connect();
+  if (PREFLIGHT.length) {
+    await client.query("begin");
+    for (const file of PREFLIGHT) {
+      await client.query(await readFile(file, "utf8"));
+      console.log("pre-flight applied (rolled back at the end):", file);
+    }
+  }
   const ids = await accountIds();
   console.log("Acting accounts:", Object.fromEntries(Object.entries(ids).map(([k, v]) => [k, v ? "yes" : "none"])));
 
@@ -325,6 +341,72 @@ async function main() {
   await scenario(ids, "HR reads every punch", "hr", { setup: seedPunch }, q("select id from ops.time_punches where punched_at >= '2031-01-01'"), rows(1));
   await scenario(ids, "plain social worker does not read others' punches", "social_worker", { setup: seedPunch }, q("select id from ops.time_punches where punched_at >= '2031-01-01'"), rows(0));
 
+  // --- payroll (0042) ----------------------------------------------------------------------
+  const RUN = "00000000-0000-4000-8000-00000000c001";
+  const SLIP_A = "00000000-0000-4000-8000-00000000c0a1";
+  const SLIP_B = "00000000-0000-4000-8000-00000000c0b1";
+  // Seeded the way the app does it: computed with its payslips, then
+  // approved by a second person (the insert guard refuses payslips on an
+  // approved run, so the order matters here too).
+  const seedRun = (status) => async () => {
+    await withPeriod();
+    await client.query(`insert into hr.payroll_runs (id, period_id, year, status, computed_by, computed_at) values ($1, $2, 2031, 'computed', $3, now())`, [RUN, PERIOD, ids.admin]);
+    await client.query(
+      `insert into hr.payslips (id, run_id, employee_id, period_id, pay_date, pay_basis, gross, total_deductions, net)
+       values ($1, $3, $4, $5, '2031-01-20', 'monthly', 10000, 1000, 9000), ($2, $3, $6, $5, '2031-01-20', 'monthly', 7500, 500, 7000)`,
+      [SLIP_A, SLIP_B, RUN, EMP_A, PERIOD, EMP_B]
+    );
+    if (status !== "computed") await client.query(`update hr.payroll_runs set status = 'approved', approved_by = $2, approved_at = now() where id = $1`, [RUN, ids.social_worker]);
+    if (status === "paid") await client.query(`update hr.payroll_runs set status = 'paid', paid_on = '2031-01-20', paid_by = $2 where id = $1`, [RUN, ids.social_worker]);
+  };
+  await scenario(ids, "employee reads own settled payslip only", "driver", { setup: seedRun("approved") }, q("select id from hr.payslips where run_id = $1", [RUN]), rows(1));
+  await scenario(ids, "employee cannot see a payslip while the run is still computed", "driver", { setup: seedRun("computed") }, q("select id from hr.payslips where run_id = $1", [RUN]), rows(0));
+  await scenario(ids, "employee cannot read the run itself", "driver", { setup: seedRun("approved") }, q("select id from hr.payroll_runs where id = $1", [RUN]), rows(0));
+  await scenario(ids, "employee acknowledges own payslip", "driver", { setup: seedRun("approved") }, q("update hr.payslips set acknowledged_at = now() where id = $1", [SLIP_A]), rows(1));
+  await scenario(ids, "employee cannot change own net", "driver", { setup: seedRun("approved") }, q("update hr.payslips set net = 9500, total_deductions = 500 where id = $1", [SLIP_A]), denied);
+  await scenario(ids, "employee cannot delete own payslip", "driver", { setup: seedRun("approved") }, q("delete from hr.payslips where id = $1", [SLIP_A]), rows(0));
+  await scenario(ids, "chef cannot read another's payslip", "chef", { setup: seedRun("approved") }, q("select id from hr.payslips where id = $1", [SLIP_B]), rows(0));
+  await scenario(ids, "HR reads every payslip in a computed run", "hr", { setup: seedRun("computed") }, q("select id from hr.payslips where run_id = $1", [RUN]), rows(2));
+  await scenario(ids, "HR rewrites a payslip while the run is computed", "hr", { setup: seedRun("computed") }, q("update hr.payslips set net = 9500, total_deductions = 500 where id = $1", [SLIP_A]), rows(1));
+  await scenario(ids, "HR deletes payslips of a computed run (recompute path)", "hr", { setup: seedRun("computed") }, q("delete from hr.payslips where run_id = $1", [RUN]), rows(2));
+  await scenario(ids, "HR cannot delete payslips of an approved run", "hr", { setup: seedRun("approved") }, q("delete from hr.payslips where run_id = $1", [RUN]), rows(0));
+  await scenario(ids, "HR cannot change an approved payslip's figures", "hr", { setup: seedRun("approved") }, q("update hr.payslips set net = 9500, total_deductions = 500 where id = $1", [SLIP_A]), denied);
+  await scenario(ids, "HR links an approved payslip to its bank row reference", "hr", { setup: seedRun("approved") }, q("update hr.payslips set paid_reference = 'BDO 42' where id = $1", [SLIP_A]), rows(1));
+  await scenario(ids, "HR cannot add a payslip to an approved run", "hr", { setup: seedRun("approved") }, q("insert into hr.payslips (run_id, employee_id, period_id, pay_date, pay_basis) values ($1, $2, $3, '2031-01-20', 'monthly')", [RUN, EMP_B, PERIOD]), denied);
+  await scenario(
+    ids,
+    "the person who computed cannot approve without a waiver",
+    "hr",
+    { setup: seedRun("computed") },
+    q("update hr.payroll_runs set status = 'approved', approved_by = computed_by, approved_at = now() where id = $1", [RUN]),
+    denied
+  );
+  await scenario(
+    ids,
+    "...but can with a logged waiver",
+    "hr",
+    { setup: seedRun("computed") },
+    q("update hr.payroll_runs set status = 'approved', approved_by = computed_by, approved_at = now(), segregation_waiver = 'single admin on duty' where id = $1", [RUN]),
+    rows(1)
+  );
+  await scenario(ids, "a second person approves without a waiver", "hr", { setup: seedRun("computed") }, q("update hr.payroll_runs set status = 'approved', approved_by = $2, approved_at = now() where id = $1", [RUN, ids.social_worker]), rows(1));
+  await scenario(ids, "an approved run cannot be cancelled", "hr", { setup: seedRun("approved") }, q("update hr.payroll_runs set status = 'cancelled', cancel_reason = 'oops' where id = $1", [RUN]), denied);
+  await scenario(ids, "an approved run cannot have its totals rewritten", "hr", { setup: seedRun("approved") }, q("update hr.payroll_runs set totals = '{\"net\": 1}'::jsonb where id = $1", [RUN]), denied);
+  await scenario(ids, "driver cannot create a payroll run", "driver", { setup: withPeriod }, q("insert into hr.payroll_runs (period_id, year) values ($1, 2031)", [PERIOD]), denied);
+  await scenario(ids, "driver cannot add a pay item", "driver", null, q("insert into hr.pay_items (employee_id, kind, code, label, amount, is_recurring, authorized_on) values ($1, 'deduction', 'salary_advance', 'Advance', 500, true, '2031-01-01')", [EMP_A]), denied);
+  await scenario(ids, "a deduction without written authorisation is refused even for HR", "hr", null, q("insert into hr.pay_items (employee_id, kind, code, label, amount, is_recurring) values ($1, 'deduction', 'salary_advance', 'Advance', 500, true)", [EMP_A]), (r) => !r.ok && r.code === "23514");
+  await scenario(ids, "HR adds an authorised deduction", "hr", null, q("insert into hr.pay_items (employee_id, kind, code, label, amount, is_recurring, authorized_on) values ($1, 'deduction', 'salary_advance', 'Advance', 500, true, '2031-01-01')", [EMP_A]), rows(1));
+  await scenario(
+    ids,
+    "employee reads own pay items only",
+    "driver",
+    { setup: () => client.query("insert into hr.pay_items (employee_id, kind, code, label, amount, is_recurring, authorized_on) values ($1, 'deduction', 'sss_loan', 'Loan', 500, true, '2031-01-01'), ($2, 'deduction', 'sss_loan', 'Loan', 500, true, '2031-01-01')", [EMP_A, EMP_B]) },
+    q("select id from hr.pay_items where employee_id in ($1, $2)", [EMP_A, EMP_B]),
+    rows(1)
+  );
+  await scenario(ids, "driver cannot set own YTD opening", "driver", null, q("insert into hr.ytd_openings (employee_id, year, as_of, tax_withheld) values ($1, 2031, '2031-06-30', 0)", [EMP_A]), denied);
+  await scenario(ids, "HR sets a YTD opening", "hr", null, q("insert into hr.ytd_openings (employee_id, year, as_of, tax_withheld) values ($1, 2031, '2031-06-30', 1234.56)", [EMP_A]), rows(1));
+
   // --- the flag itself ----------------------------------------------------------------
   await scenario(ids, "a person cannot flag themselves as HR", "driver", null, q("update shared.staff set is_hr = true where id = $1", [ids.driver]), denied);
   await scenario(ids, "hr.is_hr_staff() is true for an admin", "admin", null, q("select hr.is_hr_staff() as v"), value("v", true));
@@ -337,7 +419,7 @@ async function main() {
     `select coalesce(string_agg(tablename, ',' order by tablename), '') as t from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'hr'`
   )).rows[0].t.split(",");
   record("employee_private is not in the realtime publication", published.includes("employee_private") ? "FAIL" : "PASS", published.join(","));
-  for (const t of ["employees", "compensation", "work_schedules", "holidays", "rate_tables", "leave_types", "pay_periods", "period_timesheets", "schedule_overrides", "leave_requests", "leave_adjustments"]) {
+  for (const t of ["employees", "compensation", "work_schedules", "holidays", "rate_tables", "leave_types", "pay_periods", "period_timesheets", "schedule_overrides", "leave_requests", "leave_adjustments", "pay_items", "payroll_runs", "payslips", "ytd_openings"]) {
     record(`${t} is in the realtime publication`, published.includes(t) ? "PASS" : "FAIL");
   }
   const unguarded = (await client.query(
@@ -352,6 +434,10 @@ async function main() {
   record("ops.shifts and ops.timesheet_approvals are gone", retired === "(none)" ? "PASS" : "FAIL", retired);
   const viewGrants = (await client.query(`select coalesce(string_agg(privilege_type, ',' order by privilege_type), '(none)') as t from information_schema.table_privileges where table_schema = 'hr' and table_name = 'v_roster' and grantee = 'authenticated'`)).rows[0].t;
   record("hr.v_roster is select-only for authenticated", viewGrants === "SELECT" ? "PASS" : "FAIL", viewGrants);
+  const writableViews = (await client.query(`select coalesce(string_agg(table_name, ','), '(none)') as t from information_schema.table_privileges where table_schema = 'hr' and grantee = 'authenticated' and privilege_type in ('INSERT','UPDATE','DELETE') and table_name in (select table_name from information_schema.views where table_schema = 'hr')`)).rows[0].t;
+  record("no hr view is writable by authenticated", writableViews === "(none)" ? "PASS" : "FAIL", writableViews);
+  const noDelete = (await client.query(`select count(*)::int as n from pg_policies where schemaname = 'hr' and tablename = 'payslips' and (cmd = 'DELETE' or cmd = 'ALL') and policyname <> 'hr delete draft payslips'`)).rows[0].n;
+  record("payslips have no blanket delete or ALL policy", noDelete === 0 ? "PASS" : "FAIL", String(noDelete));
   const blanket = (await client.query(`select count(*)::int as n from pg_policies where schemaname = 'ops' and tablename = 'time_entries' and policyname = 'lafopsys staff full access'`)).rows[0].n;
   record("no blanket policy on ops.time_entries", blanket === 0 ? "PASS" : "FAIL");
 
@@ -359,6 +445,10 @@ async function main() {
   const failed = results.filter((r) => r.result === "FAIL").length;
   const skipped = results.filter((r) => r.result === "SKIP").length;
   console.log(`${results.length - failed - skipped} passed, ${failed} failed, ${skipped} skipped`);
+  if (PREFLIGHT.length) {
+    await client.query("rollback");
+    console.log("pre-flight rolled back");
+  }
   await client.end();
   process.exit(failed ? 1 : 0);
 }
