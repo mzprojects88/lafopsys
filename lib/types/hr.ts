@@ -129,6 +129,24 @@ export interface Allowance {
   deMinimisKind?: string;
 }
 
+/**
+ * hr.compensation.allowances is stored snake_case (amount_monthly,
+ * de_minimis_kind) by the action and the 201 import; everything in the app
+ * reads camelCase. The one place the two meet.
+ */
+export function allowanceFromJson(raw: unknown): Allowance {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const amount = r.amountMonthly ?? r.amount_monthly;
+  const kind = r.deMinimisKind ?? r.de_minimis_kind;
+  return {
+    code: String(r.code ?? ""),
+    label: String(r.label ?? ""),
+    amountMonthly: Number(amount ?? 0),
+    tax: r.tax === "de_minimis" ? "de_minimis" : "taxable",
+    deMinimisKind: kind ? String(kind) : undefined,
+  };
+}
+
 export interface Compensation {
   id: string;
   employeeId: string;

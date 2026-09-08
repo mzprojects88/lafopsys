@@ -56,7 +56,7 @@ function TimesheetsInner() {
   if (!manages) return <EmptyState title="HR only" description="Timesheets are reviewed by admins and HR." />;
 
   const due = period
-    ? employees.filter((e) => e.hireDate <= period.endsOn && (e.separationDate === null || e.separationDate >= period.startsOn) && e.status !== "terminated")
+    ? employees.filter((e) => (e.status === "active" || e.status === "on_leave") && e.hireDate <= period.endsOn && (e.separationDate === null || e.separationDate >= period.startsOn))
     : [];
   const byEmployee = new Map(timesheets.map((t) => [t.employeeId, t]));
   const approvedCount = due.filter((e) => byEmployee.get(e.id)?.status === "approved").length;

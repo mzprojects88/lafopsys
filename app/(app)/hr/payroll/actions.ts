@@ -6,7 +6,7 @@ import { minimumWageAt, selectTable, type RateTableRow } from "@/lib/utils/statu
 import { computePayslip, registerTotals, type PayItemLike, type PayslipComputation, type StatutoryTables, type YearToDate } from "@/lib/utils/payroll";
 import { fromCentavos } from "@/lib/utils/money";
 import type { PeriodAttendance } from "@/lib/utils/attendance";
-import type { PayItemCode, PayItemKind, RateSnapshotEntry } from "@/lib/types/hr";
+import { allowanceFromJson, type PayItemCode, type PayItemKind, type RateSnapshotEntry } from "@/lib/types/hr";
 import type { ActionResult } from "../actions";
 
 /** Same shape as app/(app)/hr/actions.ts hrCaller: RLS is the gate, this is the readable refusal. */
@@ -135,7 +135,9 @@ export async function computeRegularRun(periodId: string): Promise<ActionResult<
   // The first cutoff of this month, for a daily-paid person's monthly contributions.
   const { data: firstCutoffPeriod } = isSecondCutoff ? await supabase.schema("hr").from("pay_periods").select("id").eq("year", year).eq("seq", (period.seq as number) - 1).maybeSingle() : { data: null };
 
-  const due = (employees ?? []).filter((e) => e.hire_date <= to && (e.separation_date === null || e.separation_date >= from) && e.status !== "terminated");
+  // A regular run pays the people employed in the period; a separated
+  // person's last partial period is a final-pay run (P4).
+  const due = (employees ?? []).filter((e) => (e.status === "active" || e.status === "on_leave") && e.hire_date <= to && (e.separation_date === null || e.separation_date >= from));
   const sheetBy = new Map((sheets ?? []).map((s) => [s.employee_id as string, s]));
   const openingBy = new Map((openings ?? []).map((o) => [o.employee_id as string, o]));
 
@@ -193,7 +195,7 @@ export async function computeRegularRun(periodId: string): Promise<ActionResult<
         dailyRate: comp.daily_rate,
         daysFactor: comp.days_factor as 365 | 313 | 261,
         hoursPerDay: comp.hours_per_day,
-        allowances: (comp.allowances ?? []) as { code: string; label: string; amountMonthly: number; tax: "taxable" | "de_minimis"; deMinimisKind?: string }[],
+        allowances: ((comp.allowances ?? []) as unknown[]).map(allowanceFromJson),
         isMinimumWageEarner: comp.is_minimum_wage_earner,
       },
       attendance,

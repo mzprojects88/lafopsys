@@ -234,7 +234,11 @@ export function useRunPayslips(runId: string | null) {
 export const myPayslipsStore = createCollection<Payslip[]>({
   key: "hr.payslips:mine",
   empty: [],
-  tables: [{ schema: "hr", table: "payslips" }],
+  // payroll_runs too: an employee's payslip becomes visible when the run is approved, not when the row changes.
+  tables: [
+    { schema: "hr", table: "payslips" },
+    { schema: "hr", table: "payroll_runs" },
+  ],
   fetch: async () => {
     const { data, error } = await createClient().schema("hr").from("payslips").select("*").order("pay_date", { ascending: false }).limit(200);
     if (error) throw new Error(error.message);

@@ -2,8 +2,8 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { createCollectionFamily, useCollection } from "@/lib/data/collection-store";
+import { allowanceFromJson } from "@/lib/types/hr";
 import type {
-  Allowance,
   Compensation,
   DaysFactor,
   EmploymentEvent,
@@ -91,7 +91,7 @@ interface CompensationRow {
   daily_rate: number | string | null;
   days_factor: DaysFactor;
   hours_per_day: number | string;
-  allowances: Allowance[] | null;
+  allowances: unknown[] | null;
   is_minimum_wage_earner: boolean;
   reason: string | null;
   created_by: string | null;
@@ -111,7 +111,7 @@ export function toCompensation(row: CompensationRow): Compensation {
     dailyRate: num(row.daily_rate),
     daysFactor: row.days_factor,
     hoursPerDay: Number(row.hours_per_day),
-    allowances: row.allowances ?? [],
+    allowances: (row.allowances ?? []).map(allowanceFromJson),
     isMinimumWageEarner: row.is_minimum_wage_earner,
     reason: row.reason,
     createdBy: row.created_by,

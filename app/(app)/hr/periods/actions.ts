@@ -200,7 +200,7 @@ export async function markPeriodTimesheetsApproved(periodId: string): Promise<Ac
   ]);
   if (!period) return { ok: false, error: "That period no longer exists." };
   if (period.status !== "open") return { ok: false, error: "Only an open period can be marked." };
-  const due = (employees ?? []).filter((e) => e.hire_date <= period.ends_on && (e.separation_date === null || e.separation_date >= period.starts_on));
+  const due = (employees ?? []).filter((e) => (e.status === "active" || e.status === "on_leave") && e.hire_date <= period.ends_on && (e.separation_date === null || e.separation_date >= period.starts_on));
   const approved = new Set((sheets ?? []).filter((s) => s.status === "approved").map((s) => s.employee_id));
   const missing = due.filter((e) => !approved.has(e.id));
   if (missing.length) return { ok: false, error: `${missing.length} timesheet${missing.length === 1 ? " is" : "s are"} not approved yet.` };
