@@ -283,3 +283,99 @@ export interface LeaveType {
   active: boolean;
   sort: number;
 }
+
+// --- Pay periods, timesheets, roster (0039) ---------------------------------
+
+export type PayPeriodStatus = "open" | "timesheets_approved" | "computed" | "approved" | "paid" | "closed";
+
+export const PAY_PERIOD_STATUSES: { value: PayPeriodStatus; label: string }[] = [
+  { value: "open", label: "Open" },
+  { value: "timesheets_approved", label: "Timesheets approved" },
+  { value: "computed", label: "Computed" },
+  { value: "approved", label: "Approved" },
+  { value: "paid", label: "Paid" },
+  { value: "closed", label: "Closed" },
+];
+
+export interface PayPeriod {
+  id: string;
+  year: number;
+  /** 1-24: odd = 1st-15th, even = 16th-end. */
+  seq: number;
+  startsOn: string;
+  endsOn: string;
+  payDate: string;
+  status: PayPeriodStatus;
+  notes: string | null;
+  updatedAt: string;
+}
+
+export type PeriodTimesheetStatus = "draft" | "approved" | "reopened";
+
+export interface PeriodTimesheet {
+  id: string;
+  periodId: string;
+  employeeId: string;
+  status: PeriodTimesheetStatus;
+  /** lib/utils/attendance.ts PeriodAttendance, frozen at approval; null until computed. */
+  summary: import("@/lib/utils/attendance").PeriodAttendance | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  notes: string | null;
+  updatedAt: string;
+}
+
+/** One day's departure from the weekly pattern (a swapped rest day, a 24-hour duty). */
+export interface ScheduleOverride {
+  id: string;
+  employeeId: string;
+  date: string;
+  /** `HH:MM`; null on a rest day. */
+  start: string | null;
+  end: string | null;
+  isRestDay: boolean;
+  reason: string | null;
+}
+
+// --- Leave (0040) --------------------------------------------------------------
+
+export type LeaveRequestStatus = "pending" | "approved" | "rejected" | "cancelled";
+
+export const LEAVE_REQUEST_STATUSES: { value: LeaveRequestStatus; label: string }[] = [
+  { value: "pending", label: "Pending" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
+export interface LeaveRequest {
+  id: string;
+  employeeId: string;
+  leaveTypeId: string;
+  startsOn: string;
+  endsOn: string;
+  startHalf: boolean;
+  endHalf: boolean;
+  /** Scheduled workdays covered, computed at submission. */
+  days: number;
+  reason: string | null;
+  documentUrl: string | null;
+  status: LeaveRequestStatus;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  createdAt: string;
+}
+
+export type LeaveAdjustmentKind = "opening" | "carry_in" | "conversion" | "forfeit" | "manual";
+
+export interface LeaveAdjustment {
+  id: string;
+  employeeId: string;
+  leaveTypeId: string;
+  year: number;
+  kind: LeaveAdjustmentKind;
+  days: number;
+  note: string | null;
+  createdAt: string;
+}
