@@ -165,6 +165,15 @@ export const STATUS_DOMAIN_MAP: Record<string, Record<string, StatusTone>> = {
     unacknowledged: "neutral",
     warning: "warning",
   },
+  compliance: {
+    due: "info",
+    due_soon: "warning",
+    overdue: "negative",
+    in_progress: "warning",
+    filed: "positive",
+    late: "negative",
+    na: "neutral",
+  },
   attendance: {
     on_time: "positive",
     late: "warning",

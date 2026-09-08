@@ -538,3 +538,49 @@ export interface YtdOpening {
   thirteenthMonthPaid: number;
   source: string | null;
 }
+
+// --- Compliance (0043) ------------------------------------------------------
+
+export type ComplianceCategory = "employment" | "corporate" | "lgu" | "data_privacy" | "osh";
+export type ComplianceFrequency = "monthly" | "quarterly" | "annual" | "as_needed";
+export type ComplianceApplies = "yes" | "if_employees" | "conditional" | "not_required";
+export type ComplianceFilingStatus = "due" | "in_progress" | "filed" | "late" | "na";
+
+export const COMPLIANCE_CATEGORIES: { value: ComplianceCategory; label: string }[] = [
+  { value: "employment", label: "Employment" },
+  { value: "corporate", label: "Corporate & tax" },
+  { value: "lgu", label: "Local government" },
+  { value: "data_privacy", label: "Data privacy" },
+  { value: "osh", label: "Safety & health" },
+];
+
+export interface ComplianceItem {
+  id: string;
+  code: string;
+  agency: string;
+  name: string;
+  form: string | null;
+  category: ComplianceCategory;
+  frequency: ComplianceFrequency;
+  dueRule: import("@/lib/utils/compliance").DueRule;
+  applies: ComplianceApplies;
+  active: boolean;
+  portalUrl: string | null;
+  notes: string | null;
+  sortOrder: number;
+}
+
+export interface ComplianceFiling {
+  id: string;
+  itemId: string;
+  periodKey: string;
+  dueOn: string;
+  status: ComplianceFilingStatus;
+  filedOn: string | null;
+  referenceNo: string | null;
+  amount: number | null;
+  attachmentUrl: string | null;
+  notes: string | null;
+  filedBy: string | null;
+  updatedAt: string;
+}

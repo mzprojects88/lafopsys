@@ -17,6 +17,12 @@ export interface HrSettings {
   slDaysPerYear: number;
   vlConvertible: boolean;
   minimumWageRegion: string;
+  /** Last digit of the PhilHealth Employer Number (0043); null until set -- PhilHealth dates wait for it. */
+  compliancePenLastDigit: number | null;
+  /** First character of the registered employer name (Pag-IBIG's schedule); null until set. */
+  complianceEmployerInitial: string | null;
+  /** The compliance calendar starts here. */
+  complianceTrackingFrom: string;
 }
 
 export interface AppSettings extends HrSettings {
@@ -40,6 +46,9 @@ interface AppSettingsRow {
   leave_sl_days_per_year: number | string;
   leave_vl_convertible: boolean;
   minimum_wage_region: string;
+  compliance_pen_last_digit: number | null;
+  compliance_employer_initial: string | null;
+  compliance_tracking_from: string;
 }
 
 export const HR_SETTINGS_DEFAULTS: HrSettings = {
@@ -50,6 +59,9 @@ export const HR_SETTINGS_DEFAULTS: HrSettings = {
   slDaysPerYear: 5,
   vlConvertible: true,
   minimumWageRegion: "NCR",
+  compliancePenLastDigit: null,
+  complianceEmployerInitial: null,
+  complianceTrackingFrom: "2026-08-01",
 };
 
 const DEFAULTS: AppSettings = {
@@ -62,7 +74,8 @@ const DEFAULTS: AppSettings = {
 const SELECT =
   "require_clock_in_for_inventory_roles, overtime_threshold_minutes, calendar_sheet_sync_enabled, " +
   "payroll_pay_date_rule, payroll_contribution_cutoff, tardiness_grace_minutes, " +
-  "leave_vl_days_per_year, leave_sl_days_per_year, leave_vl_convertible, minimum_wage_region";
+  "leave_vl_days_per_year, leave_sl_days_per_year, leave_vl_convertible, minimum_wage_region, " +
+  "compliance_pen_last_digit, compliance_employer_initial, compliance_tracking_from";
 
 export const appSettingsStore = createCollection<AppSettings>({
   key: "shared.app_settings",
@@ -84,6 +97,9 @@ export const appSettingsStore = createCollection<AppSettings>({
       slDaysPerYear: Number(row.leave_sl_days_per_year),
       vlConvertible: row.leave_vl_convertible,
       minimumWageRegion: row.minimum_wage_region,
+      compliancePenLastDigit: row.compliance_pen_last_digit ?? null,
+      complianceEmployerInitial: row.compliance_employer_initial ?? null,
+      complianceTrackingFrom: row.compliance_tracking_from ?? HR_SETTINGS_DEFAULTS.complianceTrackingFrom,
     };
   },
 });

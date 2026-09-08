@@ -1,6 +1,6 @@
 "use client";
 
-import { Users, Settings2, CalendarRange, ClipboardCheck, Wallet, FileCheck2, Palmtree, Receipt } from "lucide-react";
+import { Users, Settings2, CalendarRange, ClipboardCheck, Wallet, FileCheck2, Palmtree, Receipt, BarChart3 } from "lucide-react";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { useRole } from "@/lib/rbac/use-role";
 import { canManageHr } from "@/lib/rbac/roles";
@@ -21,11 +21,12 @@ const HR_ONLY: ModuleSubNavItem[] = [
   { href: "/hr/timesheets", label: "Timesheets", icon: ClipboardCheck, color: "teal" },
   { href: "/hr/payroll", label: "Payroll", icon: Wallet, color: "purple" },
   { href: "/hr/compliance", label: "Compliance", icon: FileCheck2, color: "amber" },
+  { href: "/hr/reports", label: "Reports", icon: BarChart3, color: "indigo" },
   { href: "/hr/settings", label: "HR Settings", icon: Settings2, color: "slate" },
 ];
 
 /** Which of the HR-only pages exist yet; the rest wait for their phase. */
-const SHIPPED = new Set(["/hr/employees", "/hr/periods", "/hr/timesheets", "/hr/payroll", "/hr/settings", "/hr/leave", "/hr/payslips"]);
+const SHIPPED = new Set(["/hr/employees", "/hr/periods", "/hr/timesheets", "/hr/payroll", "/hr/compliance", "/hr/reports", "/hr/settings", "/hr/leave", "/hr/payslips"]);
 
 export function HrSubNav() {
   const { role, isHr } = useRole();

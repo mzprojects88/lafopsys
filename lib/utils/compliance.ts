@@ -239,9 +239,9 @@ export function dueDatesFor(item: ComplianceItemLike, window: { from: string; to
 
 export type CalendarStatus = "due" | "due_soon" | "overdue" | "in_progress" | "filed" | "late" | "na";
 
-export interface CalendarEntry extends Deadline {
-  item: ComplianceItemLike;
-  filing: FilingLike | null;
+export interface CalendarEntry<F extends FilingLike = FilingLike, I extends ComplianceItemLike = ComplianceItemLike> extends Deadline {
+  item: I;
+  filing: F | null;
   status: CalendarStatus;
   daysLeft: number;
 }
@@ -249,9 +249,9 @@ export interface CalendarEntry extends Deadline {
 export const DUE_SOON_DAYS = 14;
 
 /** Deadlines of every active item in the window, with the filing's state or what the calendar says about it. */
-export function complianceCalendar(items: readonly ComplianceItemLike[], filings: readonly FilingLike[], window: { from: string; to: string }, ctx: ComplianceContext, today: string): CalendarEntry[] {
+export function complianceCalendar<F extends FilingLike, I extends ComplianceItemLike>(items: readonly I[], filings: readonly F[], window: { from: string; to: string }, ctx: ComplianceContext, today: string): CalendarEntry<F, I>[] {
   const byKey = new Map(filings.map((f) => [`${f.itemId}|${f.periodKey}`, f]));
-  const out: CalendarEntry[] = [];
+  const out: CalendarEntry<F, I>[] = [];
   for (const item of items) {
     if (!item.active || item.applies === "not_required") continue;
     for (const d of dueDatesFor(item, window, ctx)) {

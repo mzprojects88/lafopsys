@@ -157,6 +157,11 @@ export async function updateHrSettings(input: HrSettings): Promise<UpdateClockIn
   }
   const region = input.minimumWageRegion.trim().toUpperCase();
   if (!/^[A-Z0-9-]{1,20}$/.test(region)) return { ok: false, error: "Region should be a short code like NCR." };
+  const pen = input.compliancePenLastDigit;
+  if (pen !== null && (!Number.isInteger(pen) || pen < 0 || pen > 9)) return { ok: false, error: "The PEN's last digit is a single digit 0-9." };
+  const initial = input.complianceEmployerInitial?.trim().toUpperCase().slice(0, 1) || null;
+  if (initial !== null && !/^[A-Z0-9]$/.test(initial)) return { ok: false, error: "The employer initial is one letter or digit." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.complianceTrackingFrom)) return { ok: false, error: "Give the date the compliance calendar starts." };
 
   const supabase = await createClient();
   const {
@@ -178,6 +183,9 @@ export async function updateHrSettings(input: HrSettings): Promise<UpdateClockIn
       leave_sl_days_per_year: input.slDaysPerYear,
       leave_vl_convertible: input.vlConvertible,
       minimum_wage_region: region,
+      compliance_pen_last_digit: pen,
+      compliance_employer_initial: initial,
+      compliance_tracking_from: input.complianceTrackingFrom,
       updated_at: new Date().toISOString(),
       updated_by: caller.id,
     })

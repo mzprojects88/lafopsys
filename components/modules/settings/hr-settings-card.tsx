@@ -109,6 +109,26 @@ function HrSettingsForm({ initial, canEdit, refetch }: { initial: HrSettings; ca
         <Input className="w-24 uppercase" value={form.minimumWageRegion} disabled={!canEdit} onChange={(e) => setForm({ ...form, minimumWageRegion: e.target.value })} aria-label="Minimum wage region" />
       </Row>
 
+      <Row label="PhilHealth Employer Number, last digit" hint="PEN ending 0-4 remits by the 15th of the following month, 5-9 by the 20th. PhilHealth dates on the compliance calendar wait for this.">
+        <Input
+          className="w-20"
+          inputMode="numeric"
+          maxLength={1}
+          value={form.compliancePenLastDigit === null ? "" : String(form.compliancePenLastDigit)}
+          disabled={!canEdit}
+          onChange={(e) => setForm({ ...form, compliancePenLastDigit: e.target.value === "" ? null : Number(e.target.value.slice(-1)) })}
+          aria-label="PEN last digit"
+        />
+      </Row>
+
+      <Row label="Employer name, first letter" hint="Pag-IBIG's remittance window runs by it: A-D by the 14th, E-L the 19th, M-Q the 24th, R-Z month-end.">
+        <Input className="w-20 uppercase" maxLength={1} value={form.complianceEmployerInitial ?? ""} disabled={!canEdit} onChange={(e) => setForm({ ...form, complianceEmployerInitial: e.target.value.slice(-1) || null })} aria-label="Employer initial" />
+      </Row>
+
+      <Row label="Compliance calendar starts" hint="Obligations for months before this are not shown as overdue; the months were handled outside the system.">
+        <Input type="date" className="w-40" value={form.complianceTrackingFrom} disabled={!canEdit} onChange={(e) => setForm({ ...form, complianceTrackingFrom: e.target.value })} aria-label="Compliance tracking from" />
+      </Row>
+
       {canEdit ? (
         <div className="flex justify-end">
           <Button size="sm" disabled={!changed || saving} onClick={handleSave}>
@@ -129,6 +149,9 @@ function pick(s: HrSettings): HrSettings {
     slDaysPerYear: s.slDaysPerYear,
     vlConvertible: s.vlConvertible,
     minimumWageRegion: s.minimumWageRegion,
+    compliancePenLastDigit: s.compliancePenLastDigit,
+    complianceEmployerInitial: s.complianceEmployerInitial,
+    complianceTrackingFrom: s.complianceTrackingFrom,
   };
 }
 
