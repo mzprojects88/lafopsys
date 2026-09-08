@@ -104,12 +104,14 @@ export async function computeRegularRun(periodId: string): Promise<ActionResult<
     supabase.schema("hr").from("period_timesheets").select("employee_id, status, summary").eq("period_id", periodId),
     supabase.schema("hr").from("pay_items").select("*").eq("active", true),
     supabase.schema("hr").from("ytd_openings").select("*").eq("year", year),
+    // The year a payslip belongs to is its RUN's year, never its pay date:
+    // the Dec 16-31 cutoff pays on Jan 5. Every year-to-date and every
+    // annual report in the module uses the same rule.
     supabase
       .schema("hr")
       .from("payslips")
-      .select("employee_id, period_id, pay_date, basic_earned, taxable_income, non_taxable, tax_withheld, sss_ee, mpf_ee, philhealth_ee, pagibig_ee, lines, payroll_runs!inner(status, kind)")
-      .gte("pay_date", `${year}-01-01`)
-      .lte("pay_date", `${year}-12-31`)
+      .select("employee_id, period_id, pay_date, basic_earned, taxable_income, non_taxable, tax_withheld, sss_ee, mpf_ee, philhealth_ee, pagibig_ee, lines, payroll_runs!inner(status, kind, year)")
+      .eq("payroll_runs.year", year)
       .neq("run_id", runId),
   ]);
 
@@ -129,7 +131,7 @@ export async function computeRegularRun(periodId: string): Promise<ActionResult<
   const contributionCutoff = (settings?.payroll_contribution_cutoff as "second" | "split" | null) ?? "second";
 
   // Only approved or paid payslips count toward the year and loan balances.
-  type PriorSlip = { employee_id: string; period_id: string | null; pay_date: string; basic_earned: string; taxable_income: string; non_taxable: string; tax_withheld: string; sss_ee: string; mpf_ee: string; philhealth_ee: string; pagibig_ee: string; lines: { payItemId?: string; kind: string; amount: number }[]; payroll_runs: { status: string; kind: string } };
+  type PriorSlip = { employee_id: string; period_id: string | null; pay_date: string; basic_earned: string; taxable_income: string; non_taxable: string; tax_withheld: string; sss_ee: string; mpf_ee: string; philhealth_ee: string; pagibig_ee: string; lines: { payItemId?: string; kind: string; amount: number }[]; payroll_runs: { status: string; kind: string; year: number } };
   const settled = ((priorSlips ?? []) as unknown as PriorSlip[]).filter((s) => ["approved", "paid", "closed"].includes(s.payroll_runs.status));
 
   // The first cutoff of this month, for a daily-paid person's monthly contributions.
@@ -156,7 +158,7 @@ export async function computeRegularRun(periodId: string): Promise<ActionResult<
     const attendance = sheet && sheet.status === "approved" && sheet.summary && "totals" in (sheet.summary as object) ? (sheet.summary as PeriodAttendance).totals : null;
 
     // Year to date: opening + settled payslips this year, before this period.
-    const mine = settled.filter((s) => s.employee_id === e.id && s.pay_date < (period.pay_date as string));
+    const mine = settled.filter((s) => s.employee_id === e.id && (s.period_id === null || s.pay_date <= (period.pay_date as string)));
     const o = openingBy.get(e.id);
     const n = (v: string | number | null | undefined) => (v === null || v === undefined ? 0 : Number(v));
     const ytd: YearToDate = {
