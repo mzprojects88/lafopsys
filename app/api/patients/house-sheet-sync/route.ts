@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { adjudicatePatientMatch, type MatchCandidate } from "@/lib/ai/openai";
 import { openaiConfigured } from "@/lib/ai/env";
+import { dayKey } from "@/lib/utils/dtr";
 import {
   houseSheetCsvUrl,
   houseSheetHtmlUrl,
@@ -34,8 +35,8 @@ const SUGGEST_MIN_CONFIDENCE = 0.6;
  *
  * Called by pg_cron every half hour with a bearer secret (0046), and by a
  * social worker's or admin's "Check now" with their session. Exempt from
- * the auth middleware for the first, so it checks here. `days` (manual
- * only) reads that many newest tabs, oldest first, to fill in a gap.
+ * the auth middleware for the first, so it checks here. `days` reads that
+ * many newest tabs, oldest first, to fill in a gap (the cron sends none).
  *
  * Deciding lives in lib/utils/house-sheet.ts and lib/ai/openai.ts; this file
  * fetches, reads, writes and records. Every tab checked leaves a run row.
@@ -74,7 +75,8 @@ export async function POST(request: Request) {
     trigger = "manual";
     triggeredBy = user.id;
   }
-  const days = trigger === "manual" && typeof body.days === "number" ? Math.max(1, Math.min(MAX_DAYS, Math.floor(body.days))) : 1;
+  // `days` fills a gap: that many newest tabs, oldest first. The cron's fixed body carries none.
+  const days = typeof body.days === "number" ? Math.max(1, Math.min(MAX_DAYS, Math.floor(body.days))) : 1;
 
   const admin = createAdminClient();
 
@@ -95,8 +97,11 @@ export async function POST(request: Request) {
   try {
     const page = await fetch(houseSheetHtmlUrl(), { cache: "no-store", redirect: "follow" });
     if (!page.ok) throw new Error(`Google returned ${page.status} for the workbook — is it still shared as "anyone with the link"?`);
-    tabs = parseTabList(await page.text()).filter((t) => t.date !== null);
-    if (tabs.length === 0) throw new Error("The workbook has no tab named as a date.");
+    // A tab made ahead for tomorrow is empty until the morning; reading it
+    // would empty the house. Only tabs up to Manila today count.
+    const today = dayKey(new Date());
+    tabs = parseTabList(await page.text()).filter((t) => t.date !== null && t.date <= today);
+    if (tabs.length === 0) throw new Error("The workbook has no tab named as a date up to today.");
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await admin.schema("ops").from("house_sheet_sync_runs").insert({ trigger, triggered_by: triggeredBy, status: "failed", finished_at: new Date().toISOString(), error: message.slice(0, 4000) });
@@ -176,6 +181,12 @@ export async function POST(request: Request) {
 
       const parsed = parseRosterCsv(csv);
       if (parsed.rows.length === 0 && parsed.problems.length > 0) throw new Error(parsed.problems[0]);
+      if (parsed.rows.length === 0) {
+        // Today's tab exists but nobody has filled it in yet: not "the house is empty".
+        await finish({ status: "success", csv_hash: hash, rows_seen: 0 });
+        results.push({ tab: tab.name, status: "success", counts: { seen: 0 }, problems: ["The tab has no names yet."] });
+        continue;
+      }
 
       const { data: dbRows, error: dbError } = await admin
         .schema("ops")
@@ -338,7 +349,7 @@ export async function POST(request: Request) {
       }
 
       // ---- the day's headcount, for the dashboards and DSWD figures ----
-      if (parsed.rows.length > 0 || parsed.problems.length === 0) {
+      {
         const { error } = await admin.schema("ops").from("census_snapshots").upsert({ date: tab.date, in_house: parsed.rows.length }, { onConflict: "date" });
         if (error) errors.push(`census ${tab.date}: ${error.message}`);
       }

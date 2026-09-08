@@ -502,7 +502,8 @@ export function reconcileRoster(input: ReconcileRosterInput): ReconcileRosterPla
   }
 
   const offSheet: string[] = [];
-  if (newest) {
+  // An empty roster is a tab nobody has filled in, not an empty house.
+  if (newest && input.roster.length > 0) {
     for (const p of input.db) {
       if (!onRoster.has(p.nameKey) && p.offSheetAt === null) offSheet.push(p.id);
     }

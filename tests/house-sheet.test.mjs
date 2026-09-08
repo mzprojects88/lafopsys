@@ -212,6 +212,9 @@ describe("reconcileRoster", () => {
   it("an older tab (backfill) never overwrites newer details or marks anyone off-sheet", () => {
     const plan = reconcileRoster({ tabDate: "2026-09-01", roster, db: [db({ address: "Leyte" }), db({ id: "gone", nameKey: "gone|x", patientName: "Gone, X" })], now: "2026-09-09T00:00:00Z" });
     assert.equal(plan.updates.find((x) => x.id === "r1"), undefined);
+  });
+  it("an empty roster marks nobody off-sheet (the route also skips it, but the plan must be safe too)", () => {
+    const plan = reconcileRoster({ tabDate: "2026-09-10", roster: [], db: [db()], now: "2026-09-10T00:00:00Z" });
     assert.deepEqual(plan.offSheet, []);
   });
 });
