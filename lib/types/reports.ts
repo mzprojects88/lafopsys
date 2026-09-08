@@ -7,14 +7,6 @@ export interface ReportDefinition {
   schedule?: "monthly" | "quarterly" | "annual" | "ad_hoc";
 }
 
-export interface DocumentRecord {
-  id: string;
-  title: string;
-  category: "Policy" | "License" | "MOA" | "Determination Letter" | "Other";
-  uploadedAt: string;
-  uploadedBy: string;
-}
-
 export interface MetricSnapshot {
   date: string;
   bedNights: number;

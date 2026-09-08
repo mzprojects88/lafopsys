@@ -1,4 +1,5 @@
 import type { Role } from "@/lib/types/common";
+import type { FileModule } from "@/lib/utils/file-paths";
 import { isAllowedLandingPath as isAllowedLandingPathIn, resolveLandingPath as resolveLandingPathIn } from "@/lib/rbac/landing";
 import {
   LayoutDashboard,
@@ -139,6 +140,27 @@ export function canViewCompliance(role: Role, isHr: boolean) {
  * with canManageHr. */
 export function canRecordComplianceFilings(role: Role, isHr: boolean) {
   return canViewCompliance(role, isHr);
+}
+
+/** Who may add files to a module's records (the SQL twin is shared.file_write_allowed, 0045). */
+export function canUploadFiles(module: FileModule, role: Role, isHr: boolean) {
+  switch (module) {
+    case "hr":
+      return canManageHr(role, isHr);
+    case "compliance":
+      return canManageHr(role, isHr) || role === "finance";
+    case "patients":
+      return role === "admin" || role === "social_worker";
+    case "donors":
+      return role === "admin" || role === "finance";
+    default:
+      return role === "admin" || role === "finance";
+  }
+}
+
+/** Who may remove files: the same people, except compliance stays with admins and HR (shared.file_delete_allowed). */
+export function canDeleteFiles(module: FileModule, role: Role, isHr: boolean) {
+  return module === "compliance" ? canManageHr(role, isHr) : canUploadFiles(module, role, isHr);
 }
 
 /** Finance and Board never see clinical detail — enforced at the component level using this flag. */

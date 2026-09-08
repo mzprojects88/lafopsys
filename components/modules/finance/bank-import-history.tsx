@@ -1,7 +1,14 @@
 "use client";
 
+import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Paperclip } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FileLibrary } from "@/components/patterns/file-library";
+import { useAllFiles } from "@/lib/hooks/use-files-collection";
+import { useRole } from "@/lib/rbac/use-role";
+import { canDeleteFiles, canUploadFiles } from "@/lib/rbac/roles";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { useBankStatementImportsData, type BankStatementImport } from "@/lib/hooks/use-bank-transactions-collection";
@@ -19,6 +26,10 @@ const SOURCE_LABEL: Record<BankStatementImport["source"], string> = {
  * the ones that added nothing, so a re-upload explains itself. */
 export function BankImportHistory() {
   const { imports, loading } = useBankStatementImportsData();
+  const { role } = useRole();
+  const { files } = useAllFiles();
+  const [filesFor, setFilesFor] = React.useState<BankStatementImport | null>(null);
+  const countFor = (id: string) => files.filter((f) => f.recordType === "bank_statement_import" && f.recordId === id).length;
 
   const columns: ColumnDef<BankStatementImport>[] = [
     { id: "when", header: "Imported", accessorFn: (i) => i.createdAt, cell: ({ row }) => formatDate(row.original.createdAt, "MMM d, yyyy HH:mm") },
@@ -34,6 +45,17 @@ export function BankImportHistory() {
           {row.original.insertedCount} new
           {row.original.skippedCount > 0 ? <span className="text-muted-foreground"> · {row.original.skippedCount} already in</span> : null}
         </span>
+      ),
+    },
+    {
+      id: "files",
+      header: "Statement file",
+      accessorFn: (i) => countFor(i.id),
+      cell: ({ row }) => (
+        <Button size="sm" variant="ghost" className="gap-1" onClick={() => setFilesFor(row.original)} aria-label="Files">
+          <Paperclip className="size-3.5" />
+          {countFor(row.original.id) || "—"}
+        </Button>
       ),
     },
     { id: "closing", header: "Closing balance", accessorFn: (i) => i.closingBalance ?? 0, cell: ({ row }) => <span className="tabular-nums">{row.original.closingBalance === undefined ? "—" : peso.format(row.original.closingBalance)}</span> },
@@ -53,5 +75,22 @@ export function BankImportHistory() {
     },
   ];
 
-  return <DataTable columns={columns} data={imports} searchPlaceholder="Search imports…" emptyMessage={loading ? "Loading…" : "No statements imported yet."} pageSize={10} />;
+  return (
+    <>
+      <DataTable columns={columns} data={imports} searchPlaceholder="Search imports…" emptyMessage={loading ? "Loading…" : "No statements imported yet."} pageSize={10} />
+      {filesFor ? (
+        <Dialog open onOpenChange={(o) => (o ? undefined : setFilesFor(null))}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Statement files</DialogTitle>
+              <DialogDescription>
+                {filesFor.fileName} · imported {formatDate(filesFor.createdAt, "MMM d, yyyy")} · kept under Financial / Bank Statements
+              </DialogDescription>
+            </DialogHeader>
+            <FileLibrary recordType="bank_statement_import" recordId={filesFor.id} canUpload={canUploadFiles("finance", role, false)} canDelete={canDeleteFiles("finance", role, false)} compact />
+          </DialogContent>
+        </Dialog>
+      ) : null}
+    </>
+  );
 }

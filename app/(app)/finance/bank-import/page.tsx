@@ -16,6 +16,7 @@ import { useRole } from "@/lib/rbac/use-role";
 import { formatDate } from "@/lib/utils/date";
 import { checkContinuity, naturalKey, parseBankCsv, summarizeBatch, type BankRow, type ContinuityWarning } from "@/lib/utils/bank-statement";
 import { importBankRows } from "./actions";
+import { uploadFileToRecord } from "@/lib/files/upload-client";
 
 /** The one account on file today (seeded by 0033). A second account is a
  * second row in ops.accounts and a picker here; nothing else changes. */
@@ -36,6 +37,7 @@ export default function BankImportPage() {
   const { transactions } = useBankTransactionsData();
 
   const [fileName, setFileName] = React.useState("");
+  const [sourceFile, setSourceFile] = React.useState<File | null>(null);
   const [rows, setRows] = React.useState<BankRow[]>([]);
   const [problems, setProblems] = React.useState<string[]>([]);
   const [importing, setImporting] = React.useState(false);
@@ -74,6 +76,7 @@ export default function BankImportPage() {
     const text = await file.text();
     const result = parseBankCsv(text);
     setFileName(file.name);
+    setSourceFile(file);
     setRows(result.rows);
     setProblems(result.problems.map((p) => p.message));
     if (result.rows.length === 0 && result.problems.length > 0) toast.error(result.problems[0].message);
@@ -94,8 +97,14 @@ export default function BankImportPage() {
         ? `Nothing new — all ${result.skipped} rows were already imported.`
         : `Imported ${result.inserted} rows for ${formatDate(result.coversFrom, "MMM d")} – ${formatDate(result.coversTo, "MMM d, yyyy")}.`
     );
+    // Archive the statement itself under Financial / Bank Statements / <year> / <month>, so the source of every figure is kept.
+    if (sourceFile && result.inserted > 0) {
+      const archived = await uploadFileToRecord("bank_statement_import", result.importId, sourceFile);
+      if (!archived.ok) toast.warning(`The rows are in, but the CSV was not archived: ${archived.error}`);
+    }
     setRows([]);
     setFileName("");
+    setSourceFile(null);
     setProblems([]);
   }
 

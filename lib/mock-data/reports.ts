@@ -1,4 +1,4 @@
-import type { AppNotification, DocumentRecord, MetricSnapshot, ReportDefinition } from "@/lib/types/reports";
+import type { AppNotification, MetricSnapshot, ReportDefinition } from "@/lib/types/reports";
 import { makeRng } from "@/lib/utils/seeded-random";
 import realMetricSnapshots from "@/lib/mock-data/real/metric-snapshots.json";
 
@@ -15,15 +15,6 @@ export const reportDefinitions: ReportDefinition[] = [
   { id: "rpt-board-pack", name: "Monthly Board Pack", category: "Board", description: "Auto-assembled board reporting pack", schedule: "monthly", lastGeneratedAt: "2026-07-28" },
   { id: "rpt-grant-1", name: "Grant Report — Compassion Fund", category: "Grant", description: "Configurable period/metric grant report", schedule: "quarterly" },
   { id: "rpt-impact", name: "Impact Report (Deck)", category: "Impact", description: "Generated version of the impact presentation deck", schedule: "quarterly", lastGeneratedAt: "2026-06-30" },
-];
-
-export const documents: DocumentRecord[] = [
-  { id: "doc-1", title: "DSWD License to Operate", category: "License", uploadedAt: "2026-01-10", uploadedBy: "Ana Del Mundo" },
-  { id: "doc-2", title: "US 501(c)(3) Determination Letter", category: "Determination Letter", uploadedAt: "2018-03-01", uploadedBy: "Marivic Fortes-Bartolome" },
-  { id: "doc-3", title: "Data Privacy Policy v2", category: "Policy", uploadedAt: "2026-05-20", uploadedBy: "Butch Bustamante" },
-  { id: "doc-4", title: "NCH Referral MOA", category: "MOA", uploadedAt: "2022-09-01", uploadedBy: "Queen Izell Spencer" },
-  { id: "doc-5", title: "Volunteer Code of Conduct", category: "Policy", uploadedAt: "2025-11-01", uploadedBy: "Ana Del Mundo" },
-  { id: "doc-6", title: "DSWD Public Solicitation Permit 2026", category: "License", uploadedAt: "2026-01-05", uploadedBy: "Desiree Loquinario" },
 ];
 
 export const notifications: AppNotification[] = [

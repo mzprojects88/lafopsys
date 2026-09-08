@@ -11,11 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { complianceFilingsStore } from "@/lib/hooks/use-compliance-collections";
 import { deleteComplianceFiling, saveComplianceFiling, type FilingInput } from "@/app/(app)/compliance/actions";
 import { formatDate } from "@/lib/utils/date";
+import { FileLibrary } from "@/components/patterns/file-library";
 import type { CalendarEntry } from "@/lib/utils/compliance";
 import type { ComplianceFiling, ComplianceFilingStatus, ComplianceItem } from "@/lib/types/hr";
 
 /** Records one obligation for one period: in progress, filed (with the reference and amount), or not applicable. */
-export function FilingDialog({ entry, close, canDelete = true }: { entry: CalendarEntry<ComplianceFiling, ComplianceItem>; close: () => void; canDelete?: boolean }) {
+export function FilingDialog({ entry, close, canDelete = true, canUploadFiles = false, canDeleteFiles = false }: { entry: CalendarEntry<ComplianceFiling, ComplianceItem>; close: () => void; canDelete?: boolean; canUploadFiles?: boolean; canDeleteFiles?: boolean }) {
   const f = entry.filing;
   const [form, setForm] = React.useState<FilingInput>({
     itemId: entry.itemId,
@@ -60,7 +61,7 @@ export function FilingDialog({ entry, close, canDelete = true }: { entry: Calend
 
   return (
     <Dialog open onOpenChange={(o) => (o ? undefined : close())}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {entry.item.agency} · {entry.item.name}
@@ -108,6 +109,10 @@ export function FilingDialog({ entry, close, canDelete = true }: { entry: Calend
             <FieldLabel htmlFor="fl-notes">Notes</FieldLabel>
             <Input id="fl-notes" value={form.notes} onChange={(e) => setForm((s) => ({ ...s, notes: e.target.value }))} />
           </Field>
+          <div className="flex flex-col gap-2 border-t pt-3">
+            <span className="text-sm font-medium">Files for this period</span>
+            <FileLibrary recordType="compliance_item" recordId={entry.itemId} subKey={entry.periodKey} canUpload={canUploadFiles} canDelete={canDeleteFiles} compact />
+          </div>
         </div>
         <DialogFooter className="sm:justify-between">
           {id && canDelete ? (

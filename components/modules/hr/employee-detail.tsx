@@ -12,7 +12,9 @@ import { Button } from "@/components/ui/button";
 import { useEmployees } from "@/lib/hooks/use-employees-collection";
 import { useNow } from "@/lib/hooks/use-now";
 import { useRole } from "@/lib/rbac/use-role";
-import { canManageHr } from "@/lib/rbac/roles";
+import { canDeleteFiles, canManageHr, canUploadFiles } from "@/lib/rbac/roles";
+import { FileLibrary } from "@/components/patterns/file-library";
+import { useDocumentTypes } from "@/lib/hooks/use-document-types-collection";
 import { dayKey } from "@/lib/utils/dtr";
 import { formatDate } from "@/lib/utils/date";
 import { probationMilestones, serviceMonths } from "@/lib/utils/employment";
@@ -34,6 +36,8 @@ export function EmployeeDetail({ employeeId, privateRecord }: { employeeId: stri
   const today = dayKey(useNow());
   const manages = canManageHr(role, isHr);
   const employee = employees.find((e) => e.id === employeeId);
+  const { documentTypes } = useDocumentTypes();
+  const documentTypeOptions = React.useMemo(() => [{ value: "other", label: "Other" }, ...documentTypes.filter((t) => t.active).map((t) => ({ value: t.id, label: t.name }))], [documentTypes]);
 
   if (error) return <EmptyState title="Couldn't load this employee" description={error} />;
   if (loading && !employee) return <p className="text-sm text-muted-foreground">Loading…</p>;
@@ -92,8 +96,18 @@ export function EmployeeDetail({ employeeId, privateRecord }: { employeeId: stri
         <TabsContent value="schedule" className="pt-4">
           <ScheduleTab employee={employee} manages={manages} />
         </TabsContent>
-        <TabsContent value="documents" className="pt-4">
+        <TabsContent value="documents" className="flex flex-col gap-6 pt-4">
           <DocumentChecklist employee={employee} manages={manages} today={today} />
+          <FileLibrary
+            recordType="employee"
+            recordId={employee.id}
+            subKeyOptions={documentTypeOptions}
+            subKeyLabel="201 document"
+            canUpload={canUploadFiles("hr", role, isHr)}
+            canDelete={canDeleteFiles("hr", role, isHr)}
+            title="201 files"
+            description={`Scans and signed copies, kept under HR / 201 Files / ${employee.lastName}, ${employee.firstName} (${employee.employeeCode}). The employee sees their own.`}
+          />
         </TabsContent>
         <TabsContent value="private" className="pt-4">
           <PrivateDetailsForm employee={employee} record={privateRecord} manages={manages} />

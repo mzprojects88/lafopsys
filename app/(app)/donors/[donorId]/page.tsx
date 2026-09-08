@@ -18,6 +18,9 @@ import { PortalAccountCard } from "@/components/modules/donors/portal-account-ca
 import { CampaignCommitmentsTab } from "@/components/modules/donors/campaign-commitments-tab";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
+import { useRole } from "@/lib/rbac/use-role";
+import { canDeleteFiles, canUploadFiles } from "@/lib/rbac/roles";
+import { FileLibrary } from "@/components/patterns/file-library";
 
 export default function DonorDetailPage({ params }: { params: Promise<{ donorId: string }> }) {
   const { donorId } = use(params);
@@ -25,6 +28,7 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
   const { receipts, generateReceipt } = useAcknowledgmentReceiptsData();
   const { certificates, generateCertificate } = useDoneeCertificatesData();
   const donor = donors.find((d) => d.id === donorId);
+  const { role } = useRole();
 
   if (!donor) {
     if (loading) return null;
@@ -136,7 +140,14 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
         </TabsContent>
 
         <TabsContent value="documents" className="pt-4">
-          <EmptyState title="No documents uploaded" description="Acknowledgment receipts and donee certificates link here." />
+          <FileLibrary
+            recordType="donor"
+            recordId={donor.id}
+            canUpload={canUploadFiles("donors", role, false)}
+            canDelete={canDeleteFiles("donors", role, false)}
+            title="Documents"
+            description={`Acknowledgment receipts, donee certificates and deeds of donation, kept under Donors / ${donor.name}. Not visible on the donor portal.`}
+          />
         </TabsContent>
       </Tabs>
     </div>

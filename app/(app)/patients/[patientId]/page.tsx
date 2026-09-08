@@ -21,7 +21,8 @@ import {
 import { computeAge } from "@/lib/utils/age";
 import { formatDate } from "@/lib/utils/date";
 import { useRole } from "@/lib/rbac/use-role";
-import { canSeeClinicalDetail } from "@/lib/rbac/roles";
+import { canDeleteFiles, canSeeClinicalDetail, canUploadFiles } from "@/lib/rbac/roles";
+import { FileLibrary } from "@/components/patterns/file-library";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { AdmissionChecklist } from "@/components/modules/patients/admission-checklist";
 import { DischargeDialog } from "@/components/modules/patients/discharge-dialog";
@@ -207,8 +208,18 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
           )}
         </TabsContent>
 
-        <TabsContent value="documents" className="pt-4">
+        <TabsContent value="documents" className="flex flex-col gap-6 pt-4">
           <AdmissionChecklist patientId={patient.id} />
+          {canSeeClinical ? (
+            <FileLibrary
+              recordType="patient"
+              recordId={patient.id}
+              canUpload={canUploadFiles("patients", role, false)}
+              canDelete={canDeleteFiles("patients", role, false)}
+              title="Case files"
+              description={`Case management forms, referrals and other scans, kept under Patients / ${patient.lastName}, ${patient.firstName} (${patient.patientNumber}).`}
+            />
+          ) : null}
         </TabsContent>
       </Tabs>
 

@@ -10,7 +10,7 @@ export interface ImportBankRowsInput {
 }
 
 export type ImportBankRowsResult =
-  | { ok: true; inserted: number; skipped: number; warnings: number; coversFrom: string; coversTo: string }
+  | { ok: true; importId: string; inserted: number; skipped: number; warnings: number; coversFrom: string; coversTo: string }
   | { ok: false; error: string };
 
 const CHUNK = 100;
@@ -123,5 +123,5 @@ export async function importBankRows(input: ImportBankRowsInput): Promise<Import
     }
   }
 
-  return { ok: true, inserted: fresh.length, skipped: rows.length - fresh.length, warnings: warnings.length, coversFrom: summary.coversFrom, coversTo: summary.coversTo };
+  return { ok: true, importId: batch.id, inserted: fresh.length, skipped: rows.length - fresh.length, warnings: warnings.length, coversFrom: summary.coversFrom, coversTo: summary.coversTo };
 }

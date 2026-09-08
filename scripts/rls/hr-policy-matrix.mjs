@@ -1,4 +1,4 @@
-// Proves the hr schema's row-level security (migrations 0035-0044) against
+// Proves the hr schema's row-level security (migrations 0035-0045) against
 // the live database, one scenario per transaction, every transaction rolled
 // back -- nothing persists. lafopsys has a single database, so this runs
 // against production by design; RLS_ALLOW_PROD=1 acknowledges that.
@@ -447,6 +447,43 @@ async function main() {
     rows(0)
   );
 
+  // --- the file library (0045, shared.files) ------------------------------------------------
+  const FILE = (n) => `00000000-0000-4000-8000-0000000f000${n}`;
+  const fileRow = (id, module, recordType, recordId, by, status = "ready", subKey = null) =>
+    client.query(
+      `insert into shared.files (id, module, record_type, record_id, sub_key, object_key, folder, file_name, content_type, size_bytes, status, uploaded_by)
+       values ($1::uuid, $2, $3, $4::uuid, $5, 'test/' || $1::text, 'Test', 'f.pdf', 'application/pdf', 10, $6, $7::uuid)`,
+      [id, module, recordType, recordId, subKey, status, by]
+    );
+  const seedFiles = async () => {
+    await fileRow(FILE(1), "hr", "employee", EMP_A, ids.admin);
+    await fileRow(FILE(2), "hr", "employee", EMP_B, ids.admin);
+    await seedItem();
+    await fileRow(FILE(3), "compliance", "compliance_item", ITEM, ids.admin, "ready", "2031-01");
+    await fileRow(FILE(4), "patients", "patient", "00000000-0000-4000-8000-0000000fa001", ids.admin);
+    await fileRow(FILE(5), "donors", "donor", "00000000-0000-4000-8000-0000000fd001", ids.admin);
+    await fileRow(FILE(6), "finance", "bank_statement_import", "00000000-0000-4000-8000-0000000fb001", ids.admin);
+    await fileRow(FILE(7), "hr", "employee", EMP_A, ids.admin, "pending");
+  };
+  const seen = (...keys) => (r) => r.ok && JSON.stringify(r.data.map((x) => x.k)) === JSON.stringify(keys);
+  await scenario(ids, "driver (linked to EMP-A) reads only their own ready 201 file", "driver", { setup: seedFiles }, q("select module || ':' || right(id::text, 1) as k from shared.files where object_key like 'test/%' order by 1"), seen("hr:1"));
+  await scenario(ids, "HR (also a social worker) reads HR, compliance and patient files, not another uploader's pending one", "hr", { link: false, setup: seedFiles }, q("select module || ':' || right(id::text, 1) as k from shared.files where object_key like 'test/%' order by 1"), seen("compliance:3", "hr:1", "hr:2", "patients:4"));
+  await scenario(ids, "admin reads every ready file and their own pending one", "admin", { setup: seedFiles }, q("select count(*)::int as n from shared.files where object_key like 'test/%'"), value("n", 7));
+  await scenario(ids, "finance reads compliance, donor and finance files only", "finance", { link: false, setup: seedFiles }, q("select module || ':' || right(id::text, 1) as k from shared.files where object_key like 'test/%' order by 1"), seen("compliance:3", "donors:5", "finance:6"));
+  await scenario(ids, "social worker reads patient files only", "social_worker", { link: false, setup: seedFiles }, q("select module || ':' || right(id::text, 1) as k from shared.files where object_key like 'test/%' order by 1"), seen("patients:4"));
+  await scenario(ids, "board reads finance files only", "board", { link: false, setup: seedFiles }, q("select module || ':' || right(id::text, 1) as k from shared.files where object_key like 'test/%' order by 1"), seen("finance:6"));
+  await scenario(ids, "chef sees no files", "chef", { link: false, setup: seedFiles }, q("select count(*)::int as n from shared.files where object_key like 'test/%'"), value("n", 0));
+  await scenario(ids, "HR adds a 201 file", "hr", null, q("insert into shared.files (module, record_type, record_id, object_key, folder, file_name, content_type, uploaded_by) values ('hr', 'employee', $1, 'test/new-1', 'Test', 'a.pdf', 'application/pdf', $2)", [EMP_A, ids.social_worker]), rows(1));
+  await scenario(ids, "driver cannot add a 201 file, even their own", "driver", null, q("insert into shared.files (module, record_type, record_id, object_key, folder, file_name, content_type, uploaded_by) values ('hr', 'employee', $1, 'test/new-2', 'Test', 'a.pdf', 'application/pdf', $2)", [EMP_A, ids.driver]), denied);
+  await scenario(ids, "a spoofed uploaded_by is refused", "hr", null, q("insert into shared.files (module, record_type, record_id, object_key, folder, file_name, content_type, uploaded_by) values ('hr', 'employee', $1, 'test/new-3', 'Test', 'a.pdf', 'application/pdf', $2)", [EMP_A, ids.admin]), denied);
+  await scenario(ids, "finance adds a compliance file", "finance", { setup: seedItem }, q("insert into shared.files (module, record_type, record_id, sub_key, object_key, folder, file_name, content_type, uploaded_by) values ('compliance', 'compliance_item', $1, '2031-01', 'test/new-4', 'Test', 'a.pdf', 'application/pdf', $2)", [ITEM, ids.finance]), rows(1));
+  await scenario(ids, "finance cannot delete a compliance file", "finance", { setup: seedFiles }, q("delete from shared.files where id = $1", [FILE(3)]), rows(0));
+  await scenario(ids, "HR deletes a compliance file", "hr", { setup: seedFiles }, q("delete from shared.files where id = $1", [FILE(3)]), rows(1));
+  await scenario(ids, "board cannot add a finance file", "board", null, q("insert into shared.files (module, record_type, record_id, object_key, folder, file_name, content_type, uploaded_by) values ('finance', 'bank_statement_import', '00000000-0000-4000-8000-0000000fb001', 'test/new-5', 'Test', 'a.csv', 'text/csv', $1)", [ids.board]), denied);
+  await scenario(ids, "social worker cannot read a donor file by id", "social_worker", { setup: seedFiles }, q("select id from shared.files where id = $1", [FILE(5)]), rows(0));
+  await scenario(ids, "the uploader confirms their own pending file", "admin", { setup: seedFiles }, q("update shared.files set status = 'ready', size_bytes = 99 where id = $1", [FILE(7)]), rows(1));
+  await scenario(ids, "a module must match its record type", "admin", null, q("insert into shared.files (module, record_type, record_id, object_key, folder, file_name, content_type, uploaded_by) values ('hr', 'patient', $1, 'test/new-6', 'Test', 'a.pdf', 'application/pdf', $2)", [EMP_A, ids.admin]), (r) => !r.ok && r.code === "23514");
+
   // --- the flag itself ----------------------------------------------------------------
   await scenario(ids, "a person cannot flag themselves as HR", "driver", null, q("update shared.staff set is_hr = true where id = $1", [ids.driver]), denied);
   await scenario(ids, "hr.is_hr_staff() is true for an admin", "admin", null, q("select hr.is_hr_staff() as v"), value("v", true));
@@ -459,6 +496,10 @@ async function main() {
     `select coalesce(string_agg(tablename, ',' order by tablename), '') as t from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'hr'`
   )).rows[0].t.split(",");
   record("employee_private is not in the realtime publication", published.includes("employee_private") ? "FAIL" : "PASS", published.join(","));
+  const { rows: sharedPub } = await client.query(`select coalesce(string_agg(tablename, ',' order by tablename), '') as t from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'shared'`);
+  record("shared.files is in the realtime publication", sharedPub[0].t.split(",").includes("files") ? "PASS" : "FAIL");
+  const { rows: filesRls } = await client.query("select relrowsecurity as on from pg_class where oid = 'shared.files'::regclass");
+  record("RLS is on for shared.files", filesRls[0]?.on ? "PASS" : "FAIL");
   for (const t of ["employees", "compensation", "work_schedules", "holidays", "rate_tables", "leave_types", "pay_periods", "period_timesheets", "schedule_overrides", "leave_requests", "leave_adjustments", "pay_items", "payroll_runs", "payslips", "ytd_openings", "compliance_items", "compliance_filings"]) {
     record(`${t} is in the realtime publication`, published.includes(t) ? "PASS" : "FAIL");
   }

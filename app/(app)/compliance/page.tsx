@@ -3,12 +3,15 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { AlertTriangle, CalendarClock, CheckCircle2, ClipboardList, ExternalLink, FileSpreadsheet, Pencil, TimerOff } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, ClipboardList, ExternalLink, FileSpreadsheet, Paperclip, Pencil, TimerOff } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { KpiCard } from "@/components/patterns/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FileLibrary } from "@/components/patterns/file-library";
+import { useAllFiles } from "@/lib/hooks/use-files-collection";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -20,7 +23,7 @@ import { useHolidays } from "@/lib/hooks/use-hr-reference-collections";
 import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { useNow } from "@/lib/hooks/use-now";
 import { useRole } from "@/lib/rbac/use-role";
-import { canManageHr, canRecordComplianceFilings, canViewCompliance } from "@/lib/rbac/roles";
+import { canDeleteFiles, canManageHr, canRecordComplianceFilings, canUploadFiles, canViewCompliance } from "@/lib/rbac/roles";
 import { dayKey, addDays } from "@/lib/utils/dtr";
 import { formatDate } from "@/lib/utils/date";
 import { complianceCalendar, reportSourceFor, type CalendarEntry, type CalendarStatus, type ComplianceContext } from "@/lib/utils/compliance";
@@ -68,6 +71,9 @@ export default function CompliancePage() {
   const [category, setCategory] = React.useState<string>("all");
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
   const [recording, setRecording] = React.useState<CalendarEntry<ComplianceFiling, ComplianceItem> | null>(null);
+  const [filesFor, setFilesFor] = React.useState<CalendarEntry<ComplianceFiling, ComplianceItem> | null>(null);
+  const { files: allFiles } = useAllFiles();
+  const fileCount = React.useCallback((itemId: string, periodKey: string) => allFiles.filter((f) => f.recordType === "compliance_item" && f.recordId === itemId && f.subKey === periodKey).length, [allFiles]);
   const [editing, setEditing] = React.useState<ComplianceItem | "new" | null>(null);
 
   if (!views) return <EmptyState title="Admins, finance and HR only" description="The Compliances tracker is kept by the CEO and super admin; finance records what was filed." />;
@@ -246,6 +252,10 @@ export default function CompliancePage() {
                         </a>
                       </Button>
                     ) : null}
+                    <Button size="sm" variant="ghost" className="gap-1" onClick={() => setFilesFor(e)} aria-label="Files">
+                      <Paperclip className="size-3.5" />
+                      {fileCount(e.itemId, e.periodKey) || ""}
+                    </Button>
                     {records ? (
                       <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setRecording(e)}>
                         <ClipboardList className="size-3.5" />
@@ -312,7 +322,22 @@ export default function CompliancePage() {
         </CardContent>
       </Card>
 
-      {recording ? <FilingDialog key={`${recording.itemId}|${recording.periodKey}`} entry={recording} close={() => setRecording(null)} canDelete={manages} /> : null}
+      {recording ? <FilingDialog key={`${recording.itemId}|${recording.periodKey}`} entry={recording} close={() => setRecording(null)} canDelete={manages} canUploadFiles={canUploadFiles("compliance", role, isHr)} canDeleteFiles={canDeleteFiles("compliance", role, isHr)} /> : null}
+      {filesFor ? (
+        <Dialog open onOpenChange={(o) => (o ? undefined : setFilesFor(null))}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {filesFor.item.agency} · {filesFor.item.name}
+              </DialogTitle>
+              <DialogDescription>
+                {filesFor.periodLabel} · kept under Compliances / {filesFor.item.agency} / {filesFor.periodKey.slice(0, 4)}
+              </DialogDescription>
+            </DialogHeader>
+            <FileLibrary recordType="compliance_item" recordId={filesFor.itemId} subKey={filesFor.periodKey} canUpload={canUploadFiles("compliance", role, isHr)} canDelete={canDeleteFiles("compliance", role, isHr)} compact />
+          </DialogContent>
+        </Dialog>
+      ) : null}
       {editing ? <ComplianceItemDialog key={editing === "new" ? "new" : editing.id} item={editing === "new" ? null : editing} close={() => setEditing(null)} /> : null}
     </div>
   );
