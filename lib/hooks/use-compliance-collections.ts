@@ -14,11 +14,19 @@ interface ItemRow {
   category: ComplianceCategory;
   frequency: ComplianceFrequency;
   due_rule: unknown;
+  due_overrides: unknown;
   applies: ComplianceApplies;
   active: boolean;
   portal_url: string | null;
   notes: string | null;
   sort_order: number;
+}
+
+function overridesFrom(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) out[k] = v;
+  return out;
 }
 
 export function toComplianceItem(r: ItemRow): ComplianceItem {
@@ -28,7 +36,7 @@ export function toComplianceItem(r: ItemRow): ComplianceItem {
   } catch {
     dueRule = { kind: "as_needed" };
   }
-  return { id: r.id, code: r.code, agency: r.agency, name: r.name, form: r.form, category: r.category, frequency: r.frequency, dueRule, applies: r.applies, active: r.active, portalUrl: r.portal_url, notes: r.notes, sortOrder: r.sort_order };
+  return { id: r.id, code: r.code, agency: r.agency, name: r.name, form: r.form, category: r.category, frequency: r.frequency, dueRule, applies: r.applies, active: r.active, dueOverrides: overridesFrom(r.due_overrides), portalUrl: r.portal_url, notes: r.notes, sortOrder: r.sort_order };
 }
 
 /** The obligations (hr.compliance_items, 0043), in the workbook's order. Readable by all staff. */

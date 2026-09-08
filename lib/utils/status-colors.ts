@@ -137,6 +137,7 @@ export const STATUS_DOMAIN_MAP: Record<string, Record<string, StatusTone>> = {
   deadline: {
     ok: "positive",
     due_soon: "warning",
+    behind: "negative",
     overdue: "negative",
   },
   payPeriod: {

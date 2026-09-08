@@ -541,7 +541,7 @@ export interface YtdOpening {
 
 // --- Compliance (0043) ------------------------------------------------------
 
-export type ComplianceCategory = "employment" | "corporate" | "lgu" | "data_privacy" | "osh";
+export type ComplianceCategory = "employment" | "corporate" | "lgu" | "data_privacy" | "osh" | "social_welfare";
 export type ComplianceFrequency = "monthly" | "quarterly" | "annual" | "as_needed";
 export type ComplianceApplies = "yes" | "if_employees" | "conditional" | "not_required";
 export type ComplianceFilingStatus = "due" | "in_progress" | "filed" | "late" | "na";
@@ -552,6 +552,7 @@ export const COMPLIANCE_CATEGORIES: { value: ComplianceCategory; label: string }
   { value: "lgu", label: "Local government" },
   { value: "data_privacy", label: "Data privacy" },
   { value: "osh", label: "Safety & health" },
+  { value: "social_welfare", label: "Social welfare (DSWD)" },
 ];
 
 export interface ComplianceItem {
@@ -565,6 +566,8 @@ export interface ComplianceItem {
   dueRule: import("@/lib/utils/compliance").DueRule;
   applies: ComplianceApplies;
   active: boolean;
+  /** Agency-published dates that differ from the rule, by period key ("2025": "2026-05-29"). */
+  dueOverrides: Record<string, string>;
   portalUrl: string | null;
   notes: string | null;
   sortOrder: number;

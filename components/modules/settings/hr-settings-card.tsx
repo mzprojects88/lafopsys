@@ -129,6 +129,13 @@ function HrSettingsForm({ initial, canEdit, refetch }: { initial: HrSettings; ca
         <Input type="date" className="w-40" value={form.complianceTrackingFrom} disabled={!canEdit} onChange={(e) => setForm({ ...form, complianceTrackingFrom: e.target.value })} aria-label="Compliance tracking from" />
       </Row>
 
+      <Row label="Submit ahead by" hint="Days before each agency's deadline the foundation aims to file; the Compliances tracker shows this earlier date as the one to work to (0 to 60).">
+        <div className="flex items-center gap-2">
+          <Input type="number" min={0} max={60} className="w-20" value={form.complianceLeadDays} disabled={!canEdit} onChange={(e) => setForm({ ...form, complianceLeadDays: Number(e.target.value) })} aria-label="Submit ahead days" />
+          <span className="text-sm text-muted-foreground">days</span>
+        </div>
+      </Row>
+
       {canEdit ? (
         <div className="flex justify-end">
           <Button size="sm" disabled={!changed || saving} onClick={handleSave}>
@@ -152,6 +159,7 @@ function pick(s: HrSettings): HrSettings {
     compliancePenLastDigit: s.compliancePenLastDigit,
     complianceEmployerInitial: s.complianceEmployerInitial,
     complianceTrackingFrom: s.complianceTrackingFrom,
+    complianceLeadDays: s.complianceLeadDays,
   };
 }
 

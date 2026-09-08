@@ -8,7 +8,13 @@
  * dates: a deadline on a Saturday is met on Monday (BIR RMC 30-2018 and
  * the agencies' practice), while pay must arrive before the weekend.
  *
- * Rules encoded (as of 2026-09):
+ * Every deadline also gets an internal TARGET: the statutory date less
+ * `leadDays` (Settings, default 10), rolled BACK to a business day, so the
+ * foundation files ahead rather than on the day. Statuses key on the
+ * target; "overdue" still means the statutory date has passed.
+ *
+ * Rules encoded (verified 2026-09-08 against the agencies' published
+ * schedules; the sources are in each item's notes):
  * - BIR 1601-C: 10th of the following month; December's return is due
  *   January 15 (RR 11-2018 s.2.81). 1604-C, the alphalist and the 2316
  *   to employees: January 31 (RR 11-2018 s.2.83). 1702Q: 60 days after
@@ -19,7 +25,13 @@
  *   employer's first letter, A-D 14th, E-L 19th, M-Q 24th, R-Z and
  *   numerals the last day of the following month (HDMF Circular 275).
  * - 13th month: paid by December 24, reported to DOLE by January 15
- *   (PD 851 IRR; DOLE LA 18-24).
+ *   (PD 851 IRR; DOLE LA 18-24). AERW: May 15 - Aug 31 window (LA 08-26).
+ *   OSH: AEDR Jan 30, AMR Mar 31 (DO 198-18 reportorial rules).
+ * - SEC AFS: 120 days after FYE by statute, but the SEC fixes a calendar
+ *   each year by MC (MC 9-2026: May 29, 2026) -- carried as a per-year
+ *   override on the item. DSWD: accomplishment + financial report within
+ *   Q1 of the following year (MC 17 s.2018 s.2.8). LGU permits Jan 20
+ *   (LGC s.167). NPC ASIR Mar 31.
  * - Headcount thresholds: SIL exempt below 10 workers (Art. 95); the
  *   maternity salary-differential exemption is available at 10 or fewer
  *   workers on application (RA 11210 IRR s.3); OSH staffing tiers by
@@ -34,7 +46,7 @@ import { isNonWorkingDay } from "./pay-period.ts";
 
 export type Frequency = "monthly" | "quarterly" | "annual" | "as_needed";
 export type Applies = "yes" | "if_employees" | "conditional" | "not_required";
-export type ComplianceCategory = "employment" | "corporate" | "lgu" | "data_privacy" | "osh";
+export type ComplianceCategory = "employment" | "corporate" | "lgu" | "data_privacy" | "osh" | "social_welfare";
 
 export type DueRule =
   /** Annual: month/day, `yearOffset` 1 when the obligation for year Y falls in Y+1 (most returns). */
@@ -64,6 +76,8 @@ export interface ComplianceItemLike {
   applies: Applies;
   /** HR's switch: CONDITIONAL items start off. */
   active: boolean;
+  /** Per-period dates the agency published that differ from the rule, keyed by period key ("2025": "2026-05-29"). */
+  dueOverrides?: Readonly<Record<string, string>>;
 }
 
 export type FilingStatus = "due" | "in_progress" | "filed" | "late" | "na";
@@ -83,7 +97,11 @@ export interface ComplianceContext {
   /** The calendar starts here: obligations that fell due before it are not shown as overdue. */
   trackingFrom: string;
   holidays: readonly HolidayLike[];
+  /** Days ahead of the statutory date the foundation aims to file (Settings, default 10). */
+  leadDays?: number;
 }
+
+export const DEFAULT_LEAD_DAYS = 10;
 
 // --- dates --------------------------------------------------------------------------
 
@@ -96,6 +114,20 @@ export function rollForward(day: string, holidays: readonly HolidayLike[]): stri
   let d = day;
   for (let i = 0; i < 10 && isNonWorkingDay(d, holidays); i++) d = addDays(d, 1);
   return d;
+}
+
+/** Back to the previous business day: the internal target must be a day someone is at work. */
+export function rollBack(day: string, holidays: readonly HolidayLike[]): string {
+  let d = day;
+  for (let i = 0; i < 10 && isNonWorkingDay(d, holidays); i++) d = addDays(d, -1);
+  return d;
+}
+
+/** The date to file by: the statutory date less the lead, on a business day, never after the statutory date itself. */
+export function targetFor(dueOn: string, ctx: Pick<ComplianceContext, "holidays" | "leadDays">): string {
+  const lead = Math.max(0, Math.min(60, ctx.leadDays ?? DEFAULT_LEAD_DAYS));
+  const t = rollBack(addDays(dueOn, -lead), ctx.holidays);
+  return t > dueOn ? dueOn : t;
 }
 
 export function parseDueRule(raw: unknown): DueRule {
@@ -164,6 +196,10 @@ export interface Deadline {
   /** The rule's date before rolling. */
   dueRaw: string;
   dueOn: string;
+  /** The foundation's own date to file by (see targetFor). */
+  targetOn: string;
+  /** True when dueRaw came from the item's per-period overrides rather than the rule. */
+  overridden: boolean;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -181,9 +217,12 @@ export function dueDatesFor(item: ComplianceItemLike, window: { from: string; to
   // The tracking start cuts by DUE date, not period: an obligation that fell
   // due after the foundation started tracking is shown even when its period
   // (last year's annual report, say) ended before.
-  const push = (periodKey: string, periodLabel: string, dueRaw: string) => {
+  const push = (periodKey: string, periodLabel: string, ruleDate: string) => {
+    const override = item.dueOverrides?.[periodKey];
+    const dueRaw = override && /^\d{4}-\d{2}-\d{2}$/.test(override) ? override : ruleDate;
     if (dueRaw < ctx.trackingFrom) return;
-    out.push({ itemId: item.id, code: item.code, periodKey, periodLabel, dueRaw, dueOn: rollForward(dueRaw, ctx.holidays) });
+    const dueOn = rollForward(dueRaw, ctx.holidays);
+    out.push({ itemId: item.id, code: item.code, periodKey, periodLabel, dueRaw, dueOn, targetOn: targetFor(dueOn, ctx), overridden: dueRaw !== ruleDate });
   };
   const fromY = Number(window.from.slice(0, 4));
   const toY = Number(window.to.slice(0, 4));
@@ -243,13 +282,21 @@ export function dueDatesFor(item: ComplianceItemLike, window: { from: string; to
 
 // --- the calendar -------------------------------------------------------------------
 
-export type CalendarStatus = "due" | "due_soon" | "overdue" | "in_progress" | "filed" | "late" | "na";
+/**
+ * due: more than DUE_SOON_DAYS before the target; due_soon: within them;
+ * behind: past the target but before the statutory date; overdue: past the
+ * statutory date. in_progress / filed / late / na come from the filing.
+ */
+export type CalendarStatus = "due" | "due_soon" | "behind" | "overdue" | "in_progress" | "filed" | "late" | "na";
 
 export interface CalendarEntry<F extends FilingLike = FilingLike, I extends ComplianceItemLike = ComplianceItemLike> extends Deadline {
   item: I;
   filing: F | null;
   status: CalendarStatus;
+  /** Days until the internal target (negative = past it). */
   daysLeft: number;
+  /** Days until the statutory date (negative = past it). */
+  daysToDeadline: number;
 }
 
 export const DUE_SOON_DAYS = 14;
@@ -262,16 +309,18 @@ export function complianceCalendar<F extends FilingLike, I extends ComplianceIte
     if (!item.active || item.applies === "not_required") continue;
     for (const d of dueDatesFor(item, window, ctx)) {
       const filing = byKey.get(`${item.id}|${d.periodKey}`) ?? null;
-      const daysLeft = daysBetweenKeys(today, d.dueOn);
+      const daysLeft = daysBetweenKeys(today, d.targetOn);
+      const daysToDeadline = daysBetweenKeys(today, d.dueOn);
       let status: CalendarStatus;
       if (filing?.status === "filed") status = filing.filedOn && filing.filedOn > d.dueOn ? "late" : "filed";
       else if (filing?.status === "na") status = "na";
       else if (filing?.status === "late") status = "late";
-      else if (daysLeft < 0) status = "overdue";
+      else if (daysToDeadline < 0) status = "overdue";
       else if (filing?.status === "in_progress") status = "in_progress";
+      else if (daysLeft < 0) status = "behind";
       else if (daysLeft <= DUE_SOON_DAYS) status = "due_soon";
       else status = "due";
-      out.push({ ...d, item, filing, status, daysLeft });
+      out.push({ ...d, item, filing, status, daysLeft, daysToDeadline });
     }
   }
   return out.sort((a, b) => (a.dueOn < b.dueOn ? -1 : a.dueOn > b.dueOn ? 1 : a.item.agency.localeCompare(b.item.agency)));
@@ -293,7 +342,44 @@ export const PAYROLL_ITEM_CODES = {
   annualReturn: "bir_1604c",
   alphalist: "bir_alphalist",
   certificates: "bir_2316",
+  certificatesToBir: "bir_2316_submit",
 } as const;
+
+/** The DSWD items whose figures the system drafts (Annex E financial report, Annex G accomplishment report). */
+export const DSWD_ITEM_CODES = { accomplishment: "dswd_accomplishment", financial: "dswd_financial" } as const;
+
+export interface ReportSource {
+  /** What the system can produce for this obligation. */
+  label: string;
+  /** Where to produce it, for one period key ("2026-08", "2026-Q3", "2026"). */
+  href: (periodKey: string) => string;
+}
+
+const yearOf = (periodKey: string) => periodKey.slice(0, 4);
+
+/**
+ * Obligations whose figures come out of the system, by item code. A month
+ * key opens that month's remittance figures; a year key opens the year's
+ * alphalist / 2316 / 13th-month figures, or the DSWD annual figures.
+ * Anything not listed here is filed from records kept outside the system.
+ */
+export const REPORT_SOURCES: Readonly<Record<string, ReportSource>> = {
+  [PAYROLL_ITEM_CODES.withholding]: { label: "1601-C figures from payroll", href: (k) => `/hr/reports?month=${k}` },
+  [PAYROLL_ITEM_CODES.sss]: { label: "SSS remittance list from payroll", href: (k) => `/hr/reports?month=${k}` },
+  [PAYROLL_ITEM_CODES.philhealth]: { label: "PhilHealth remittance list from payroll", href: (k) => `/hr/reports?month=${k}` },
+  [PAYROLL_ITEM_CODES.pagibig]: { label: "Pag-IBIG remittance list from payroll", href: (k) => `/hr/reports?month=${k}` },
+  [PAYROLL_ITEM_CODES.annualReturn]: { label: "1604-C figures from payroll", href: (k) => `/hr/reports?year=${yearOf(k)}` },
+  [PAYROLL_ITEM_CODES.alphalist]: { label: "Alphalist CSV from payroll", href: (k) => `/hr/reports?year=${yearOf(k)}` },
+  [PAYROLL_ITEM_CODES.certificates]: { label: "2316 figures per employee", href: (k) => `/hr/reports?year=${yearOf(k)}` },
+  [PAYROLL_ITEM_CODES.certificatesToBir]: { label: "2316 figures per employee", href: (k) => `/hr/reports?year=${yearOf(k)}` },
+  [PAYROLL_ITEM_CODES.thirteenth]: { label: "13th month figures from payroll", href: (k) => `/hr/reports?year=${yearOf(k)}` },
+  [DSWD_ITEM_CODES.accomplishment]: { label: "Annex G figures from patients, census and meals", href: (k) => `/compliance/dswd/${yearOf(k)}` },
+  [DSWD_ITEM_CODES.financial]: { label: "Annex E figures from the bank and receipts", href: (k) => `/compliance/dswd/${yearOf(k)}` },
+};
+
+export function reportSourceFor(code: string): ReportSource | null {
+  return REPORT_SOURCES[code] ?? null;
+}
 
 /** For one month of payroll: the four remittance deadlines it creates (no PEN/initial -> null dates). */
 export function monthlyRemittanceDeadlines(year: number, month: number, ctx: ComplianceContext): { code: string; dueOn: string | null }[] {

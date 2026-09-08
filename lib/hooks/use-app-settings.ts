@@ -23,6 +23,8 @@ export interface HrSettings {
   complianceEmployerInitial: string | null;
   /** The compliance calendar starts here. */
   complianceTrackingFrom: string;
+  /** Days ahead of each statutory deadline the foundation aims to file (0-60). */
+  complianceLeadDays: number;
 }
 
 export interface AppSettings extends HrSettings {
@@ -49,6 +51,7 @@ interface AppSettingsRow {
   compliance_pen_last_digit: number | null;
   compliance_employer_initial: string | null;
   compliance_tracking_from: string;
+  compliance_lead_days: number | null;
 }
 
 export const HR_SETTINGS_DEFAULTS: HrSettings = {
@@ -62,6 +65,7 @@ export const HR_SETTINGS_DEFAULTS: HrSettings = {
   compliancePenLastDigit: null,
   complianceEmployerInitial: null,
   complianceTrackingFrom: "2026-08-01",
+  complianceLeadDays: 10,
 };
 
 const DEFAULTS: AppSettings = {
@@ -75,7 +79,7 @@ const SELECT =
   "require_clock_in_for_inventory_roles, overtime_threshold_minutes, calendar_sheet_sync_enabled, " +
   "payroll_pay_date_rule, payroll_contribution_cutoff, tardiness_grace_minutes, " +
   "leave_vl_days_per_year, leave_sl_days_per_year, leave_vl_convertible, minimum_wage_region, " +
-  "compliance_pen_last_digit, compliance_employer_initial, compliance_tracking_from";
+  "compliance_pen_last_digit, compliance_employer_initial, compliance_tracking_from, compliance_lead_days";
 
 export const appSettingsStore = createCollection<AppSettings>({
   key: "shared.app_settings",
@@ -100,6 +104,7 @@ export const appSettingsStore = createCollection<AppSettings>({
       compliancePenLastDigit: row.compliance_pen_last_digit ?? null,
       complianceEmployerInitial: row.compliance_employer_initial ?? null,
       complianceTrackingFrom: row.compliance_tracking_from ?? HR_SETTINGS_DEFAULTS.complianceTrackingFrom,
+      complianceLeadDays: row.compliance_lead_days ?? HR_SETTINGS_DEFAULTS.complianceLeadDays,
     };
   },
 });

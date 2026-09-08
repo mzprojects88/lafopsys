@@ -162,6 +162,8 @@ export async function updateHrSettings(input: HrSettings): Promise<UpdateClockIn
   const initial = input.complianceEmployerInitial?.trim().toUpperCase().slice(0, 1) || null;
   if (initial !== null && !/^[A-Z0-9]$/.test(initial)) return { ok: false, error: "The employer initial is one letter or digit." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.complianceTrackingFrom)) return { ok: false, error: "Give the date the compliance calendar starts." };
+  const lead = input.complianceLeadDays;
+  if (!Number.isInteger(lead) || lead < 0 || lead > 60) return { ok: false, error: "Submit-ahead days must be a whole number from 0 to 60." };
 
   const supabase = await createClient();
   const {
@@ -186,6 +188,7 @@ export async function updateHrSettings(input: HrSettings): Promise<UpdateClockIn
       compliance_pen_last_digit: pen,
       compliance_employer_initial: initial,
       compliance_tracking_from: input.complianceTrackingFrom,
+      compliance_lead_days: lead,
       updated_at: new Date().toISOString(),
       updated_by: caller.id,
     })
