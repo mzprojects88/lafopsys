@@ -1,4 +1,4 @@
-// Proves the hr schema's row-level security (migrations 0035-0042) against
+// Proves the hr schema's row-level security (migrations 0035-0043) against
 // the live database, one scenario per transaction, every transaction rolled
 // back -- nothing persists. lafopsys has a single database, so this runs
 // against production by design; RLS_ALLOW_PROD=1 acknowledges that.
@@ -407,6 +407,31 @@ async function main() {
   await scenario(ids, "driver cannot set own YTD opening", "driver", null, q("insert into hr.ytd_openings (employee_id, year, as_of, tax_withheld) values ($1, 2031, '2031-06-30', 0)", [EMP_A]), denied);
   await scenario(ids, "HR sets a YTD opening", "hr", null, q("insert into hr.ytd_openings (employee_id, year, as_of, tax_withheld) values ($1, 2031, '2031-06-30', 1234.56)", [EMP_A]), rows(1));
 
+  // --- compliance (0043) -------------------------------------------------------------------
+  const ITEM = "00000000-0000-4000-8000-00000000e001";
+  const seedItem = () => client.query(`insert into hr.compliance_items (id, code, agency, name, category, frequency, due_rule, applies, active) values ($1, 't_item', 'TEST', 'Test item', 'employment', 'monthly', '{"kind": "day_of_month", "day": 10}', 'conditional', false)`, [ITEM]);
+  await scenario(ids, "driver reads the compliance items", "driver", { setup: seedItem }, q("select id from hr.compliance_items where id = $1", [ITEM]), rows(1));
+  await scenario(ids, "driver cannot switch a conditional item on", "driver", { setup: seedItem }, q("update hr.compliance_items set active = true where id = $1", [ITEM]), rows(0));
+  await scenario(ids, "HR switches a conditional item on", "hr", { setup: seedItem }, q("update hr.compliance_items set active = true where id = $1", [ITEM]), rows(1));
+  await scenario(ids, "driver cannot read filings", "driver", { setup: async () => { await seedItem(); await client.query(`insert into hr.compliance_filings (item_id, period_key, due_on, status) values ($1, '2031-01', '2031-02-10', 'in_progress')`, [ITEM]); } }, q("select id from hr.compliance_filings where item_id = $1", [ITEM]), rows(0));
+  await scenario(ids, "driver cannot record a filing", "driver", { setup: seedItem }, q("insert into hr.compliance_filings (item_id, period_key, due_on, status) values ($1, '2031-01', '2031-02-10', 'in_progress')", [ITEM]), denied);
+  await scenario(ids, "HR records a filing with its reference", "hr", { setup: seedItem }, q("insert into hr.compliance_filings (item_id, period_key, due_on, status, filed_on, reference_no) values ($1, '2031-01', '2031-02-10', 'filed', '2031-02-09', 'PRN 123')", [ITEM]), rows(1));
+  await scenario(ids, "a filing marked filed needs a date", "hr", { setup: seedItem }, q("insert into hr.compliance_filings (item_id, period_key, due_on, status) values ($1, '2031-01', '2031-02-10', 'filed')", [ITEM]), (r) => !r.ok && r.code === "23514");
+  await scenario(ids, "driver cannot set the compliance settings", "driver", null, q("update shared.app_settings set compliance_pen_last_digit = 7 where id = true"), rows(0));
+  await scenario(
+    ids,
+    "13th-month payslip is visible to the employee only once settled",
+    "driver",
+    {
+      setup: async () => {
+        await client.query(`insert into hr.payroll_runs (id, kind, year, status, computed_by, computed_at, label) values ($1, 'thirteenth_month', 2031, 'computed', $2, now(), '13th 2031')`, [RUN, ids.admin]);
+        await client.query(`insert into hr.payslips (id, run_id, employee_id, pay_date, pay_basis, gross, total_deductions, net, non_taxable) values ($1, $2, $3, '2031-12-15', 'monthly', 5000, 0, 5000, 5000)`, [SLIP_A, RUN, EMP_A]);
+      },
+    },
+    q("select id from hr.payslips where id = $1", [SLIP_A]),
+    rows(0)
+  );
+
   // --- the flag itself ----------------------------------------------------------------
   await scenario(ids, "a person cannot flag themselves as HR", "driver", null, q("update shared.staff set is_hr = true where id = $1", [ids.driver]), denied);
   await scenario(ids, "hr.is_hr_staff() is true for an admin", "admin", null, q("select hr.is_hr_staff() as v"), value("v", true));
@@ -419,7 +444,7 @@ async function main() {
     `select coalesce(string_agg(tablename, ',' order by tablename), '') as t from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'hr'`
   )).rows[0].t.split(",");
   record("employee_private is not in the realtime publication", published.includes("employee_private") ? "FAIL" : "PASS", published.join(","));
-  for (const t of ["employees", "compensation", "work_schedules", "holidays", "rate_tables", "leave_types", "pay_periods", "period_timesheets", "schedule_overrides", "leave_requests", "leave_adjustments", "pay_items", "payroll_runs", "payslips", "ytd_openings"]) {
+  for (const t of ["employees", "compensation", "work_schedules", "holidays", "rate_tables", "leave_types", "pay_periods", "period_timesheets", "schedule_overrides", "leave_requests", "leave_adjustments", "pay_items", "payroll_runs", "payslips", "ytd_openings", "compliance_items", "compliance_filings"]) {
     record(`${t} is in the realtime publication`, published.includes(t) ? "PASS" : "FAIL");
   }
   const unguarded = (await client.query(
