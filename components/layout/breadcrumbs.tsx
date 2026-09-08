@@ -19,7 +19,6 @@ const SEGMENT_LABELS: Record<string, string> = {
   staff: "Staff & Time",
   roster: "Roster",
   timesheets: "Timesheets",
-  "payroll-export": "Payroll Export",
   volunteers: "Volunteers",
   patients: "Patients & Admissions",
   referrals: "Referrals",
