@@ -7,12 +7,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { IconCircle } from "@/components/patterns/icon-circle";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
-import { useShiftsData } from "@/lib/hooks/use-shifts-collection";
+import { useRoster } from "@/lib/hooks/use-roster";
 import { useClockStatus } from "@/lib/hooks/use-clock-status";
 import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
 import { todayIso } from "@/lib/utils/date";
 import { formatMinutes } from "@/lib/utils/dtr";
-import { TODAY_ISO } from "@/lib/utils/seeded-random";
 import { EmptyState } from "@/components/patterns/empty-state";
 
 function nowLabel() {
@@ -21,7 +20,7 @@ function nowLabel() {
 
 export function ClockWidget() {
   const { me, todayEntry, openEntry, clockedIn, loading, clockIn, clockOut } = useClockStatus();
-  const { shifts } = useShiftsData();
+  const { people, entryFor } = useRoster();
   // Live hours from the punches; an open session keeps ticking on its own.
   const { totals } = useDtrSessions({ staffIds: me ? [me.id] : [] });
   // A punch waits on a GPS fix (up to 8s), so the button has to say so — an
@@ -39,7 +38,8 @@ export function ClockWidget() {
     );
   }
 
-  const todayShift = shifts.find((s) => s.staffId === me.id && s.date === TODAY_ISO);
+  const mePerson = people.find((p) => p.staffId === me.id) ?? null;
+  const todayShift = mePerson ? entryFor(mePerson, todayIso()).shift : null;
 
   async function handleClockIn() {
     setPunching(true);
@@ -119,7 +119,7 @@ export function ClockWidget() {
             <div className="flex flex-col">
               <span className="text-xs text-muted-foreground">Scheduled Shift</span>
               <span className="text-sm font-medium">
-                {todayShift ? `${todayShift.label} (${todayShift.startTime}–${todayShift.endTime})` : "—"}
+                {todayShift ? `${todayShift.start}–${todayShift.end}` : mePerson ? "Rest day" : "—"}
               </span>
             </div>
           </div>

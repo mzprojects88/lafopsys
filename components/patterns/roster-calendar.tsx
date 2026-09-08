@@ -5,7 +5,7 @@ import { addDays, format, isSameDay, parseISO, startOfWeek } from "date-fns";
 import { CalendarIcon, ChevronLeft, ChevronRight, CalendarX2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { TODAY_ISO } from "@/lib/utils/seeded-random";
+import { todayIso } from "@/lib/utils/date";
 
 export interface CalendarEvent {
   id: string;
@@ -16,8 +16,12 @@ export interface CalendarEvent {
 }
 
 interface RosterCalendarProps {
-  events: CalendarEvent[];
+  events?: CalendarEvent[];
+  /** Computes a day's events on demand (the HR roster derives them from schedules); wins over `events`. */
+  eventsFor?: (dayIso: string) => CalendarEvent[];
   onEventClick?: (event: CalendarEvent) => void;
+  /** Called with the day's `yyyy-MM-dd` when an empty area of a day is clicked. */
+  onDayClick?: (dayIso: string) => void;
   legend?: { label: string; tone: NonNullable<CalendarEvent["tone"]> }[];
   className?: string;
 }
@@ -36,8 +40,10 @@ const DOT_CLASSES: Record<NonNullable<CalendarEvent["tone"]>, string> = {
   neutral: "bg-slate-400",
 };
 
-export function RosterCalendar({ events, onEventClick, legend, className }: RosterCalendarProps) {
-  const [weekStart, setWeekStart] = React.useState(() => startOfWeek(parseISO(TODAY_ISO)));
+export function RosterCalendar({ events = [], eventsFor, onEventClick, onDayClick, legend, className }: RosterCalendarProps) {
+  // The live Manila day, Monday-first like the rest of the DTR (WEEK_STARTS_ON).
+  const today = todayIso();
+  const [weekStart, setWeekStart] = React.useState(() => startOfWeek(parseISO(today), { weekStartsOn: 1 }));
   const days = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
 
   return (
@@ -51,7 +57,7 @@ export function RosterCalendar({ events, onEventClick, legend, className }: Rost
           <Button variant="outline" size="icon" className="size-8" onClick={() => setWeekStart((d) => addDays(d, -7))}>
             <ChevronLeft className="size-4" />
           </Button>
-          <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={() => setWeekStart(startOfWeek(parseISO(TODAY_ISO)))}>
+          <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={() => setWeekStart(startOfWeek(parseISO(today), { weekStartsOn: 1 }))}>
             Today
           </Button>
           <Button variant="outline" size="icon" className="size-8" onClick={() => setWeekStart((d) => addDays(d, 7))}>
@@ -62,15 +68,18 @@ export function RosterCalendar({ events, onEventClick, legend, className }: Rost
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-7">
         {days.map((day) => {
-          const dayEvents = events.filter((e) => isSameDay(parseISO(e.date), day));
-          const isToday = isSameDay(day, parseISO(TODAY_ISO));
+          const dayIso = format(day, "yyyy-MM-dd");
+          const dayEvents = eventsFor ? eventsFor(dayIso) : events.filter((e) => isSameDay(parseISO(e.date), day));
+          const isToday = dayIso === today;
           return (
             <div
               key={day.toISOString()}
               className={cn(
                 "flex min-h-44 flex-col gap-2 rounded-xl border bg-card p-2.5",
-                isToday && "border-primary/40 ring-1 ring-primary/20"
+                isToday && "border-primary/40 ring-1 ring-primary/20",
+                onDayClick && "cursor-pointer hover:bg-accent/30"
               )}
+              onClick={() => onDayClick?.(dayIso)}
             >
               <div className={cn("flex items-center justify-between px-0.5 text-xs", isToday && "font-semibold text-primary")}>
                 <span>{format(day, "EEE")}</span>
@@ -86,7 +95,10 @@ export function RosterCalendar({ events, onEventClick, legend, className }: Rost
                   dayEvents.map((e) => (
                     <button
                       key={e.id}
-                      onClick={() => onEventClick?.(e)}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        onEventClick?.(e);
+                      }}
                       className={cn(
                         "rounded-lg border px-2 py-1.5 text-left text-[11px] leading-tight",
                         TONE_CLASSES[e.tone ?? "neutral"],

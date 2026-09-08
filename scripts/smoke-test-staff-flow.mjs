@@ -1,9 +1,9 @@
 // Regression smoke test for Phase 5 (Staff/Reference Data). Exercises the
 // exact insert/update shapes used by use-time-entries-collection.ts,
-// use-shifts-collection.ts, use-timesheet-approvals-collection.ts,
 // use-volunteers-collection.ts, use-reference-table-collection.ts, and
 // use-diagnoses-reference-collection.ts against the live DB, then deletes
-// everything it created.
+// everything it created. (ops.shifts and ops.timesheet_approvals were
+// retired by 0041; the roster and approvals live in the hr schema.)
 //
 // Usage: node --env-file=.env.local scripts/smoke-test-staff-flow.mjs
 
@@ -18,14 +18,6 @@ async function main() {
   const { data: staffRows } = await admin.schema("shared").from("staff").select("id").limit(1);
   if (!staffRows?.length) { console.error("Missing shared.staff reference data."); process.exit(1); }
   const staffId = staffRows[0].id;
-
-  // 1. Shift.
-  const shiftId = randomUUID();
-  const { error: shiftError } = await admin.schema("ops").from("shifts").insert({
-    id: shiftId, staff_id: staffId, date: "2026-08-18", start_time: "06:00", end_time: "14:00", label: "AM",
-  });
-  if (shiftError) { console.error("Shift insert failed:", shiftError.message); process.exit(1); }
-  console.log("[ok] shift inserted");
 
   // 2. Time entry -- clock in then clock out (mirrors useTimeEntriesData.clockIn/clockOut).
   const entryId = randomUUID();
@@ -43,16 +35,6 @@ async function main() {
   });
   if (!dupError) { console.error("Expected unique(staff_id, date) violation, insert succeeded."); process.exit(1); }
   console.log("[ok] unique(staff_id, date) constraint enforced");
-
-  // 3. Timesheet approval.
-  const approvalId = randomUUID();
-  const { error: approvalError } = await admin.schema("ops").from("timesheet_approvals").insert({
-    id: approvalId, time_entry_id: entryId, staff_id: staffId, status: "pending",
-  });
-  if (approvalError) { console.error("Timesheet approval insert failed:", approvalError.message); process.exit(1); }
-  const { error: approveUpdateError } = await admin.schema("ops").from("timesheet_approvals").update({ status: "approved" }).eq("id", approvalId);
-  if (approveUpdateError) { console.error("Approval status update failed:", approveUpdateError.message); process.exit(1); }
-  console.log("[ok] timesheet approval inserted and approved");
 
   // 4. Volunteer + certificate increment.
   const volunteerId = randomUUID();
@@ -85,9 +67,7 @@ async function main() {
   console.log(`[ok] ops.metric_snapshots readable (${snapshotCount} rows)`);
 
   // Cleanup.
-  await admin.schema("ops").from("timesheet_approvals").delete().eq("id", approvalId);
   await admin.schema("ops").from("time_entries").delete().eq("id", entryId);
-  await admin.schema("ops").from("shifts").delete().eq("id", shiftId);
   await admin.schema("ops").from("volunteers").delete().eq("id", volunteerId);
   await admin.schema("ops").from("provinces").delete().eq("id", provinceId);
   await admin.schema("ops").from("diagnoses").delete().eq("id", diagnosisId);

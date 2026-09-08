@@ -507,3 +507,50 @@ export async function updateDocumentType(id: string, input: { name: string; requ
   revalidatePath("/hr/settings");
   return { ok: true };
 }
+
+// --- Roster overrides (0039) -----------------------------------------------------
+
+export interface ScheduleOverrideInput {
+  employeeId: string;
+  date: string;
+  /** null with isRestDay = true is a rest day. */
+  start: string | null;
+  end: string | null;
+  isRestDay: boolean;
+  reason?: string | null;
+}
+
+/** One day's departure from the weekly pattern: a swapped rest day, a 24-hour duty, a night shift. Upsert on (employee, date). */
+export async function saveScheduleOverride(input: ScheduleOverrideInput): Promise<ActionResult> {
+  if (!isDate(input.date)) return { ok: false, error: "Date is required." };
+  if (!input.isRestDay) {
+    if (!input.start || !input.end || !TIME_RE.test(input.start) || !TIME_RE.test(input.end)) return { ok: false, error: "Start and end times (HH:MM) are required for a working day." };
+    if (input.start === input.end) return { ok: false, error: "Start and end are the same time." };
+  }
+  const caller = await hrCaller();
+  if (caller.error !== undefined) return { ok: false, error: caller.error };
+  const { error } = await caller.supabase.schema("hr").from("schedule_overrides").upsert(
+    {
+      employee_id: input.employeeId,
+      date: input.date,
+      start_time: input.isRestDay ? null : input.start,
+      end_time: input.isRestDay ? null : input.end,
+      is_rest_day: input.isRestDay,
+      reason: text(input.reason),
+      created_by: caller.userId,
+    },
+    { onConflict: "employee_id,date" }
+  );
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/staff/roster");
+  return { ok: true };
+}
+
+export async function deleteScheduleOverride(id: string): Promise<ActionResult> {
+  const caller = await hrCaller();
+  if (caller.error !== undefined) return { ok: false, error: caller.error };
+  const { error } = await caller.supabase.schema("hr").from("schedule_overrides").delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/staff/roster");
+  return { ok: true };
+}

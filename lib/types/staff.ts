@@ -11,15 +11,6 @@ export interface Staff {
   hireDate: string;
 }
 
-export interface Shift {
-  id: string;
-  staffId: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  label: "AM" | "PM" | "Night" | "24hr";
-}
-
 export type TimeEntryFlag = "on_time" | "late" | "early_out" | "missed_punch";
 
 export interface TimeEntry {
@@ -75,17 +66,6 @@ export interface TimePunch {
   /** Set only on an adjustment: the admin who supplied it, from their session
    * rather than from the request. */
   adjustedBy?: string;
-}
-
-export type TimesheetStatus = "pending" | "approved" | "flagged" | "rejected";
-
-export interface TimesheetApproval {
-  id: string;
-  timeEntryId: string;
-  staffId: string;
-  status: TimesheetStatus;
-  adjustmentReason?: string;
-  reviewedBy?: string;
 }
 
 export interface Volunteer {

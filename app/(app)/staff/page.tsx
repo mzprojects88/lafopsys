@@ -8,11 +8,11 @@ import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/modul
 import { ClockWidget } from "@/components/modules/staff/clock-widget";
 import { ClockInRequiredDialog } from "@/components/modules/staff/clock-in-required-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
-import { useShiftsData } from "@/lib/hooks/use-shifts-collection";
+import { useRoster } from "@/lib/hooks/use-roster";
 import { useTimeEntriesData } from "@/lib/hooks/use-time-entries-collection";
-import { TODAY_ISO } from "@/lib/utils/seeded-random";
-import { todayIso } from "@/lib/utils/date";
+import { useNow } from "@/lib/hooks/use-now";
+import { dayKey } from "@/lib/utils/dtr";
+import { formatDate } from "@/lib/utils/date";
 
 const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/staff/dtr", label: "Daily Time Record", icon: Fingerprint, color: "cyan" },
@@ -22,13 +22,13 @@ const SUB_NAV: ModuleSubNavItem[] = [
 ];
 
 export default function StaffPage() {
-  const { staff } = useStaffRoster();
-  const { shifts } = useShiftsData();
+  const { onDay, loading } = useRoster();
   const { entries: timeEntries } = useTimeEntriesData();
-  // Shifts stay on the frozen demo date (that's what the seeded roster is built
-  // around), but clock entries are real records written under the real date.
-  const todayShifts = shifts.filter((s) => s.date === TODAY_ISO);
-  const todayEntries = timeEntries.filter((t) => t.date === todayIso());
+  // The live Manila day: who the schedules (HR) put on duty today, and
+  // whether each has clocked in.
+  const today = dayKey(useNow());
+  const todayRoster = onDay(today);
+  const todayEntries = timeEntries.filter((t) => t.date === today);
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -44,32 +44,29 @@ export default function StaffPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Today&apos;s Roster — {TODAY_ISO}</CardTitle>
+            <CardTitle className="text-base">Today&apos;s Roster — {formatDate(today, "EEE, MMM d")}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
-            {todayShifts.length === 0 && (
-              <p className="text-sm text-muted-foreground">No shifts scheduled today.</p>
-            )}
-            {todayShifts.map((shift) => {
-              const person = staff.find((s) => s.id === shift.staffId);
-              const entry = todayEntries.find((t) => t.staffId === shift.staffId);
-              const name = `${person?.firstName} ${person?.lastName}`;
+            {todayRoster.length === 0 && <p className="text-sm text-muted-foreground">{loading ? "Loading…" : "Nobody is scheduled today."}</p>}
+            {todayRoster.map((e) => {
+              const entry = e.person.staffId ? todayEntries.find((t) => t.staffId === e.person.staffId) : undefined;
+              const name = `${e.person.firstName} ${e.person.lastName}`;
               return (
-                <div
-                  key={shift.id}
-                  className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm"
-                >
+                <div key={e.person.employeeId} className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm">
                   <div className="flex items-center gap-3">
                     <PersonAvatar name={name} size="sm" />
                     <div className="flex flex-col">
                       <span className="font-medium">{name}</span>
-                      <span className="text-xs text-muted-foreground">{person?.position} · {shift.label} shift ({shift.startTime}–{shift.endTime})</span>
+                      <span className="text-xs text-muted-foreground">
+                        {e.person.position} · {e.shift!.start}–{e.shift!.end}
+                        {e.overridden ? " · changed for today" : ""}
+                      </span>
                     </div>
                   </div>
-                  {entry ? (
-                    <StatusBadge dot domain="timesheet" status={entry.flag === "on_time" ? "approved" : "flagged"} label={entry.flag.replace("_", " ")} />
+                  {entry?.clockIn ? (
+                    <StatusBadge dot domain="timesheet" status={entry.clockOut ? "approved" : "pending"} label={entry.clockOut ? `Out ${entry.clockOut}` : `In ${entry.clockIn}`} />
                   ) : (
-                    <StatusBadge dot domain="timesheet" status="pending" label="Not clocked in" />
+                    <StatusBadge dot domain="timesheet" status="flagged" label="Not clocked in" />
                   )}
                 </div>
               );

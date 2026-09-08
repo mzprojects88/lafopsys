@@ -36,7 +36,7 @@ import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useCensusData } from "@/lib/hooks/use-census-collection";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
-import { useTimesheetApprovalsData } from "@/lib/hooks/use-timesheet-approvals-collection";
+import { useLeaveRequests } from "@/lib/hooks/use-leave-collections";
 import { useExpiringLots, useStockSummary } from "@/lib/hooks/use-inventory-views";
 import { inventoryAppHref } from "@/lib/utils/inventory-app";
 import { formatCurrency } from "@/lib/utils/currency";
@@ -52,13 +52,14 @@ export default function DashboardPage() {
   const { history: censusHistory } = useCensusData();
   const { donations, donors } = useDonorsData();
   const { entries: cashEntries } = useCashEntriesData();
-  const { approvals: timesheetApprovals } = useTimesheetApprovalsData();
+  // Pending leave: every request for HR/admins, the person's own for anyone else (RLS).
+  const { requests: leaveRequests } = useLeaveRequests();
   const { rows: stockSummary } = useStockSummary();
   const { rows: expiringLots } = useExpiringLots();
 
   const today = censusHistory[censusHistory.length - 1];
   const inHouseNow = today?.inHouse ?? 0;
-  const pendingApprovals = timesheetApprovals.filter((a) => a.status === "pending").length;
+  const pendingApprovals = leaveRequests.filter((a) => a.status === "pending").length;
   const pendingReferrals = referrals.filter((r) => r.status === "submitted").length;
   const expiringSoon = expiringLots.filter((l) => l.days_left >= 0 && l.days_left <= 14).length;
   const cashIn = cashEntries.filter((e) => e.direction === "inflow").reduce((s, e) => s + e.amount, 0);
@@ -113,10 +114,10 @@ export default function DashboardPage() {
     .slice(0, 5);
 
   const urgentApprovals = [
-    ...timesheetApprovals
+    ...leaveRequests
       .filter((a) => a.status === "pending")
       .slice(0, 2)
-      .map((a) => ({ title: "Timesheet Adjustment", subtitle: a.adjustmentReason ?? "Pending review", priority: "Medium" as const })),
+      .map((a) => ({ title: "Leave request", subtitle: `${a.startsOn}${a.endsOn !== a.startsOn ? ` – ${a.endsOn}` : ""} · ${a.days} day(s)`, priority: "Medium" as const })),
     ...cashEntries
       .filter((e) => e.approvalStatus === "pending")
       .slice(0, 2)

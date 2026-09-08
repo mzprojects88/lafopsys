@@ -2,19 +2,22 @@
 
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { toast } from "sonner";
-import { AlertTriangle } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
-import { ApprovalQueue, type ApprovalQueueItem } from "@/components/patterns/approval-queue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { useTimeEntriesData } from "@/lib/hooks/use-time-entries-collection";
-import { useTimesheetApprovalsData } from "@/lib/hooks/use-timesheet-approvals-collection";
-import { dayKey, formatMinutes, splitOvertime } from "@/lib/utils/dtr";
+import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
+import { useRoster } from "@/lib/hooks/use-roster";
+import { useHolidays } from "@/lib/hooks/use-hr-reference-collections";
+import { dayKey, formatMinutes } from "@/lib/utils/dtr";
+import { dayAttendance, type DayFlag } from "@/lib/utils/attendance";
 import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { useRole } from "@/lib/rbac/use-role";
+import { canManageHr } from "@/lib/rbac/roles";
 import { Button } from "@/components/ui/button";
 import { CloseTimeEntryDialog, type OpenDay } from "@/components/modules/staff/close-time-entry-dialog";
 
@@ -22,12 +25,26 @@ interface FlagRow {
   id: string;
   staffName: string;
   date: string;
-  flag: string;
+  flag: DayFlag;
   clockIn?: string;
   clockOut?: string;
   totalMinutes: number;
   overtimeMinutes: number;
+  lateMinutes: number;
+  undertimeMinutes: number;
 }
+
+const FLAG_LABEL: Record<DayFlag, string> = {
+  on_time: "On time",
+  late: "Late",
+  early_out: "Left early",
+  missed_punch: "Missed punch",
+  absent: "Absent",
+  rest_day: "Rest day",
+  holiday: "Holiday",
+  on_leave: "On leave",
+  unscheduled: "No schedule",
+};
 
 const columns: ColumnDef<FlagRow>[] = [
   { accessorKey: "staffName", header: "Staff" },
@@ -35,7 +52,14 @@ const columns: ColumnDef<FlagRow>[] = [
   {
     accessorKey: "flag",
     header: "Flag",
-    cell: ({ row }) => <StatusBadge dot domain="timesheet" status={row.original.flag === "on_time" ? "approved" : "flagged"} label={row.original.flag.replace("_", " ")} />,
+    cell: ({ row }) => (
+      <StatusBadge
+        dot
+        domain="attendance"
+        status={row.original.flag}
+        label={`${FLAG_LABEL[row.original.flag]}${row.original.lateMinutes ? ` ${row.original.lateMinutes}m` : ""}${row.original.undertimeMinutes ? ` −${row.original.undertimeMinutes}m` : ""}`}
+      />
+    ),
   },
   { accessorKey: "clockIn", header: "Clock In", cell: ({ row }) => row.original.clockIn ?? "—" },
   { accessorKey: "clockOut", header: "Clock Out", cell: ({ row }) => row.original.clockOut ?? "—" },
@@ -57,9 +81,12 @@ const columns: ColumnDef<FlagRow>[] = [
 export default function TimesheetsPage() {
   const { staff } = useStaffRoster();
   const { entries: timeEntries } = useTimeEntriesData();
-  const { approvals, updateStatus } = useTimesheetApprovalsData();
-  const { overtimeThresholdMinutes } = useAppSettings();
-  const { role } = useRole();
+  const { sessions, now } = useDtrSessions();
+  const { people, entryFor } = useRoster();
+  const { holidays } = useHolidays();
+  const { overtimeThresholdMinutes, tardinessGraceMinutes } = useAppSettings();
+  const { role, isHr } = useRole();
+  const manages = canManageHr(role, isHr);
   const [closing, setClosing] = React.useState<OpenDay | null>(null);
 
   const staffLabel = (staffId: string) => {
@@ -77,36 +104,46 @@ export default function TimesheetsPage() {
     .filter((t) => !!t.clockIn && !t.clockOut && t.date < today)
     .sort((a, b) => b.date.localeCompare(a.date));
 
-  const pending: ApprovalQueueItem[] = approvals
-    .filter((a) => a.status === "pending")
-    .map((a) => {
-      const entry = timeEntries.find((t) => t.id === a.timeEntryId);
-      const person = staff.find((s) => s.id === a.staffId);
-      return {
-        id: a.id,
-        title: `${person?.firstName} ${person?.lastName} — ${entry?.date}`,
-        subtitle: `${entry?.flag.replace("_", " ")}${a.adjustmentReason ? " · " + a.adjustmentReason : ""}`,
-      };
-    });
-
+  // Every recorded day, judged against the person's schedule (HR) rather than
+  // the stored flag -- late, left early, rest day worked, holiday worked -- so
+  // the list agrees with what the pay-period timesheet will say. Days with
+  // nothing to flag are left out.
   const flaggedRows: FlagRow[] = timeEntries
-    .filter((t) => t.flag !== "on_time")
     .map((t) => {
+      const person = people.find((p) => p.staffId === t.staffId) ?? null;
+      const entry = person ? entryFor(person, t.date) : null;
+      const day = dayAttendance({
+        day: t.date,
+        // The roster already resolved pattern + override into today's shift;
+        // hand it over as a one-day override so the judgement is the same.
+        schedule: null,
+        overrides: entry?.shift ? [{ date: t.date, start: entry.shift.start, end: entry.shift.end, isRestDay: false }] : entry?.restDay ? [{ date: t.date, start: null, end: null, isRestDay: true }] : [],
+        sessions: sessions.filter((s) => s.staffId === t.staffId),
+        holidays,
+        leaves: [],
+        overtimeThresholdMinutes,
+        graceMinutes: tardinessGraceMinutes,
+        now,
+      });
       return {
         id: t.id,
         staffName: staffLabel(t.staffId),
         date: t.date,
-        flag: t.flag,
+        flag: day.flag,
         clockIn: t.clockIn,
         clockOut: t.clockOut,
-        totalMinutes: t.totalMinutes,
-        overtimeMinutes: splitOvertime(t.totalMinutes, overtimeThresholdMinutes).overtime,
+        totalMinutes: day.paidMinutes,
+        overtimeMinutes: day.overtimeMinutes,
+        lateMinutes: day.lateMinutes,
+        undertimeMinutes: day.undertimeMinutes,
       };
-    });
+    })
+    .filter((r) => r.flag !== "on_time" && r.flag !== "unscheduled")
+    .sort((a, b) => b.date.localeCompare(a.date));
 
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <PageHeader title="Timesheets" description="Days that need attention, flags, and the approval queue." />
+      <PageHeader title="Timesheets" description="Days that need attention: missing clock-outs, lateness, undertime, rest days and holidays worked." />
 
       {openDays.length > 0 ? (
         <Card className="border-rose-200 dark:border-rose-900/60">
@@ -156,24 +193,19 @@ export default function TimesheetsPage() {
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Pending Approval</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ApprovalQueue
-            items={pending}
-            onApprove={(id, reason) => {
-              updateStatus(id, "approved", reason || undefined);
-              toast.success("Timesheet approved");
-            }}
-            onReject={(id, reason) => {
-              updateStatus(id, "rejected", reason);
-              toast.error("Timesheet rejected");
-            }}
-          />
-        </CardContent>
-      </Card>
+      {manages ? (
+        <Card>
+          <CardContent className="flex flex-wrap items-center justify-between gap-2 pt-6">
+            <p className="text-sm text-muted-foreground">Approval is per pay period: each person&apos;s attendance summary is computed, checked and frozen for payroll under HR.</p>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/hr/timesheets">
+                Pay-period timesheets
+                <ArrowRight />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
