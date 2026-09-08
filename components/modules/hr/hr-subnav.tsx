@@ -21,7 +21,7 @@ const HR_ONLY: ModuleSubNavItem[] = [
 ];
 
 /** Which of the HR-only pages exist yet; the rest wait for their phase. */
-const SHIPPED = new Set(["/hr/employees", "/hr/periods", "/hr/settings"]);
+const SHIPPED = new Set(["/hr/employees", "/hr/periods", "/hr/settings", "/hr/leave"]);
 
 export function HrSubNav() {
   const { role, isHr } = useRole();
