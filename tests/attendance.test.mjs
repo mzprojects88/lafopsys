@@ -92,6 +92,12 @@ describe("dayAttendance on an ordinary workday", () => {
     assert.equal(d.flag, "missed_punch");
   });
 
+  it("a session still running earns no minutes yet (the DTR page's rule), and is not a missed punch", () => {
+    const d = base("2026-09-08", [session("2026-09-08", "08:00", null, "open")], { now: "2026-09-08T10:00:00+08:00" });
+    assert.equal(d.workedMinutes, 0);
+    assert.equal(d.missedPunch, false);
+  });
+
   it("two sessions in a day are summed, late from the first, undertime from the last", () => {
     const d = base("2026-09-08", [session("2026-09-08", "08:05", "12:00"), session("2026-09-08", "13:00", "16:45")]);
     assert.equal(d.workedMinutes, 460);

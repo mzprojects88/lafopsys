@@ -198,9 +198,14 @@ export function dayAttendance(input: DayAttendanceInput): DayAttendance {
   let lastOut: number | null = null;
   const spans: [number, number][] = [];
   for (const s of sessions) {
-    const mins = sessionMinutes(s, now);
     const status: SessionStatus = s.status === "open" && s.clockInAt && ms(now) - ms(s.clockInAt) > 25 * 60 * 60_000 ? "missed_out" : s.status;
     if (status === "missed_out") missedPunch = true;
+    // A session still running earns nothing yet: the same rule as the DTR
+    // page (entryTotals counts closed sessions only), and the only rule
+    // under which a period summary frozen at approval cannot contain a
+    // partial day. Recompute after the clock-out.
+    if (s.status === "open") continue;
+    const mins = sessionMinutes(s, now);
     if (!s.clockInAt || mins === 0) continue;
     const from = (ms(s.clockInAt) - dayStart) / 60_000;
     spans.push([from, from + mins]);
