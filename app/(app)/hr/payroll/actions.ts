@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { minimumWageAt, selectTable, type RateTableRow } from "@/lib/utils/statutory";
 import { computeDifferential, computeFinalPay, computePayslip, computeThirteenthMonth, rates, registerTotals, type PayItemLike, type PayslipComputation, type SeparationCause, type StatutoryTables, type YearToDate } from "@/lib/utils/payroll";
-import { fromCentavos } from "@/lib/utils/money";
+import { fromCentavos, halves, toCentavos } from "@/lib/utils/money";
 import { serviceYears } from "@/lib/utils/employment";
 import type { PeriodAttendance } from "@/lib/utils/attendance";
 import { allowanceFromJson, type PayItemCode, type PayItemKind, type RateSnapshotEntry } from "@/lib/types/hr";
@@ -89,22 +89,20 @@ type Skipped = { employeeId: string; employeeCode: string; reason: string };
 const n = (v: string | number | null | undefined) => (v === null || v === undefined ? 0 : Number(v));
 
 // Only approved or paid payslips count toward the year and loan balances.
-type PriorSlip = { employee_id: string; period_id: string | null; pay_date: string; basic_earned: string; taxable_income: string; non_taxable: string; tax_withheld: string; sss_ee: string; mpf_ee: string; philhealth_ee: string; pagibig_ee: string; lines: { code?: string; payItemId?: string; kind: string; amount: number }[]; payroll_runs: { status: string; kind: string; year: number } };
+type PriorSlip = { run_id: string; employee_id: string; period_id: string | null; pay_date: string; basic_earned: string; taxable_income: string; non_taxable: string; tax_withheld: string; sss_ee: string; mpf_ee: string; philhealth_ee: string; pagibig_ee: string; lines: { code?: string; payItemId?: string; kind: string; amount: number }[]; payroll_runs: { status: string; kind: string; year: number } };
 
 /**
  * The year a payslip belongs to is its RUN's year, never its pay date:
  * the Dec 16-31 cutoff pays on Jan 5. Every year-to-date and every annual
  * report in the module uses the same rule. Settled = approved, paid, closed.
  */
-async function settledSlipsOfYear(supabase: Supabase, year: number, excludeRunId: string | null): Promise<PriorSlip[]> {
-  let q = supabase
+async function settledSlipsOfYear(supabase: Supabase, year: number, excludeRunIds: readonly string[]): Promise<PriorSlip[]> {
+  const { data } = await supabase
     .schema("hr")
     .from("payslips")
-    .select("employee_id, period_id, pay_date, basic_earned, taxable_income, non_taxable, tax_withheld, sss_ee, mpf_ee, philhealth_ee, pagibig_ee, lines, payroll_runs!inner(status, kind, year)")
+    .select("run_id, employee_id, period_id, pay_date, basic_earned, taxable_income, non_taxable, tax_withheld, sss_ee, mpf_ee, philhealth_ee, pagibig_ee, lines, payroll_runs!inner(status, kind, year)")
     .eq("payroll_runs.year", year);
-  if (excludeRunId) q = q.neq("run_id", excludeRunId);
-  const { data } = await q;
-  return ((data ?? []) as unknown as PriorSlip[]).filter((s) => ["approved", "paid", "closed"].includes(s.payroll_runs.status));
+  return ((data ?? []) as unknown as PriorSlip[]).filter((s) => !excludeRunIds.includes(s.run_id) && ["approved", "paid", "closed"].includes(s.payroll_runs.status));
 }
 
 function ytdFor(opening: Record<string, unknown> | undefined, slips: PriorSlip[]): YearToDate {
@@ -131,8 +129,9 @@ async function computePeriodPayslips(
   supabase: Supabase,
   userId: string,
   period: PeriodRow,
-  excludeRunId: string | null,
-  onlyEmployeeId: string | null
+  excludeRunIds: readonly string[],
+  onlyEmployeeId: string | null,
+  opts: { annualise?: boolean } = {}
 ): Promise<{ ok: true; computed: Computed[]; skipped: Skipped[]; snapshot: RateSnapshotEntry[] } | { ok: false; error: string }> {
   const periodId = period.id;
   const from = period.starts_on;
@@ -149,7 +148,7 @@ async function computePeriodPayslips(
     supabase.schema("hr").from("period_timesheets").select("employee_id, status, summary").eq("period_id", periodId),
     supabase.schema("hr").from("pay_items").select("*").eq("active", true),
     supabase.schema("hr").from("ytd_openings").select("*").eq("year", year),
-    settledSlipsOfYear(supabase, year, excludeRunId),
+    settledSlipsOfYear(supabase, year, excludeRunIds),
   ]);
 
   const rows = (tableRows ?? []).map((r) => toRateTableRow(r as RateTableDbRow));
@@ -231,7 +230,8 @@ async function computePeriodPayslips(
       contributionCutoff,
       firstCutoff: firstSlip ? { basicEarned: Number(firstSlip.basic_earned), taxableGross: Number(firstSlip.taxable_income) } : null,
       ytd,
-      annualise: isDecember && isSecondCutoff,
+      // The year's tax is trued up on the last pay of the year (RR 11-2018 s.2.79(B)(5)): December's second cutoff, or a final pay whenever it falls.
+      annualise: opts.annualise ?? (isDecember && isSecondCutoff),
     });
     if (e.staff_id === userId) result.warnings.push("approver_is_payee");
     computed.push({ employeeId: e.id, compensationId: comp.id, payBasis: comp.pay_basis as "monthly" | "daily", result, ytd });
@@ -325,7 +325,7 @@ export async function computeRegularRun(periodId: string): Promise<ActionResult<
     runId = created.id;
   }
 
-  const r = await computePeriodPayslips(supabase, userId, period as PeriodRow, runId, null);
+  const r = await computePeriodPayslips(supabase, userId, period as PeriodRow, [runId], null);
   if (!r.ok) return r;
   const err = await writeRun(supabase, userId, runId, periodId, period.pay_date, r.computed, r.skipped, r.snapshot);
   if (err) return { ok: false, error: err };
@@ -337,7 +337,11 @@ export async function computeRegularRun(periodId: string): Promise<ActionResult<
 
 /**
  * The year's 13th month (PD 851): total basic earned in the year / 12,
- * less what was paid in advance, for everyone employed. The exempt part
+ * less what was paid in advance, for everyone employed. It is 1/12 of the
+ * WHOLE calendar year's basic, and it is paid by Dec 24, so the cutoffs
+ * not yet settled (December's, usually) are projected for a monthly-paid
+ * person at half their basic each; the payslip carries an info line and a
+ * `projected_basic` warning so the approver sees it. The exempt part
  * (within the 90,000 ceiling with other benefits) is non-taxable; the
  * excess is taxable compensation that December's annualisation picks up
  * -- which is why December's second cutoff waits for this run.
@@ -358,11 +362,12 @@ export async function computeThirteenthMonthRun(year: number, payDate: string): 
     runId = created.id;
   }
 
-  const [{ data: employees }, { data: comps }, { data: openings }, settled] = await Promise.all([
+  const [{ data: employees }, { data: comps }, { data: openings }, { data: periods }, settled] = await Promise.all([
     supabase.schema("hr").from("employees").select("id, employee_code, status, hire_date, separation_date"),
-    supabase.schema("hr").from("compensation").select("id, employee_id, effective_from, effective_to, pay_basis").is("effective_to", null),
+    supabase.schema("hr").from("compensation").select("id, employee_id, effective_from, effective_to, pay_basis, basic_monthly").is("effective_to", null),
     supabase.schema("hr").from("ytd_openings").select("*").eq("year", year),
-    settledSlipsOfYear(supabase, year, runId),
+    supabase.schema("hr").from("pay_periods").select("id, starts_on, ends_on").eq("year", year),
+    settledSlipsOfYear(supabase, year, [runId]),
   ]);
   const openingBy = new Map((openings ?? []).map((o) => [o.employee_id as string, o]));
   const due = (employees ?? []).filter((e) => e.status === "active" || e.status === "on_leave");
@@ -371,10 +376,16 @@ export async function computeThirteenthMonthRun(year: number, payDate: string): 
   for (const e of due) {
     const comp = (comps ?? []).find((c) => c.employee_id === e.id);
     const mine = settled.filter((s) => s.employee_id === e.id);
-    const ytd = ytdFor(openingBy.get(e.id), mine);
-    const t = computeThirteenthMonth({ basicEarnedYear: ytd.basicEarned, alreadyPaid: ytd.thirteenthMonthPaid, otherBenefitsYear: 0 });
+    const opening = openingBy.get(e.id);
+    const ytd = ytdFor(opening, mine);
+    // Cutoffs of the year within this person's employment, after the opening figure, with no settled regular payslip: projected at half the monthly basic.
+    const openingTo = (opening?.as_of as string | undefined) ?? "";
+    const paidPeriods = new Set(mine.map((s) => s.period_id).filter((id): id is string => id !== null));
+    const unpaid = comp && comp.pay_basis === "monthly" && comp.basic_monthly !== null ? (periods ?? []).filter((p) => p.starts_on > openingTo && p.ends_on >= e.hire_date && (e.separation_date === null || p.starts_on <= e.separation_date) && !paidPeriods.has(p.id)) : [];
+    const projectedBasic = unpaid.length > 0 ? fromCentavos(halves(toCentavos(Number(comp!.basic_monthly)))[0] * unpaid.length) : 0;
+    const t = computeThirteenthMonth({ basicEarnedYear: ytd.basicEarned, alreadyPaid: ytd.thirteenthMonthPaid, otherBenefitsYear: 0, projectedBasic, projectedCutoffs: unpaid.length });
     if (t.payable <= 0) {
-      skipped.push({ employeeId: e.id, employeeCode: e.employee_code, reason: ytd.basicEarned <= 0 ? "No basic salary earned this year" : "Already paid in full" });
+      skipped.push({ employeeId: e.id, employeeCode: e.employee_code, reason: ytd.basicEarned + projectedBasic <= 0 ? "No basic salary earned this year" : "Already paid in full" });
       continue;
     }
     const result: PayslipComputation = {
@@ -388,7 +399,7 @@ export async function computeThirteenthMonthRun(year: number, payDate: string): 
       net: t.payable,
       statutory: { sssEe: 0, sssEr: 0, ec: 0, mpfEe: 0, mpfEr: 0, philhealthEe: 0, philhealthEr: 0, pagibigEe: 0, pagibigEr: 0, taxWithheld: 0 },
       employerTotal: 0,
-      warnings: [],
+      warnings: unpaid.length > 0 ? ["projected_basic"] : [],
       rates: { monthly: 0, daily: 0, hourly: 0, hoursPerDay: 8 },
     };
     computed.push({ employeeId: e.id, compensationId: comp?.id ?? null, payBasis: (comp?.pay_basis as "monthly" | "daily") ?? "monthly", result, ytd });
@@ -414,7 +425,12 @@ export interface FinalPayInputForm {
  * last partial period from its approved timesheet, the pro-rated 13th
  * month, VL conversion when the policy allows, separation pay by cause
  * (Arts. 298-299), less accountabilities. The year's tax is annualised
- * against the annual table because this is their last pay of the year.
+ * against the annual table because this is their last pay of the year
+ * (when the last period was already paid by a regular run, that run's
+ * withholding stands and nothing here is re-taxed). Known limit: the
+ * taxable excess of the 13th month over 90,000 and of VL conversion over
+ * 10 days is shown as taxable but not withheld on; HR withholds on the
+ * final 1601-C by hand.
  */
 export async function computeFinalPayRun(input: FinalPayInputForm): Promise<ActionResult<{ runId: string }>> {
   const caller = await hrCaller();
@@ -445,14 +461,16 @@ export async function computeFinalPayRun(input: FinalPayInputForm): Promise<Acti
   const { data: paidAlready } = await supabase.schema("hr").from("payslips").select("id, payroll_runs!inner(status, kind)").eq("employee_id", e.id).eq("period_id", period.id).neq("run_id", runId);
   const alreadyInRegular = (paidAlready ?? []).some((s) => ["approved", "paid", "closed"].includes((s.payroll_runs as unknown as { status: string }).status));
 
-  const r = await computePeriodPayslips(supabase, userId, period as PeriodRow, runId, e.id);
+  const r = await computePeriodPayslips(supabase, userId, period as PeriodRow, [runId], e.id, { annualise: !alreadyInRegular });
   if (!r.ok) return r;
   const c = r.computed[0];
   if (!c) return { ok: false, error: r.skipped[0]?.reason ?? "Nothing to compute." };
 
-  // The last partial period: nothing if a regular run already paid it.
-  const last = alreadyInRegular ? { ...c.result, lines: [] as PayslipComputation["lines"], gross: 0, totalDeductions: 0, net: 0 } : c.result;
-  const settled = await settledSlipsOfYear(supabase, year, runId);
+  // The last partial period: nothing at all if a regular run already paid it (its contributions and tax stand there).
+  const zeroStatutory: PayslipComputation["statutory"] = { sssEe: 0, sssEr: 0, ec: 0, mpfEe: 0, mpfEr: 0, philhealthEe: 0, philhealthEr: 0, pagibigEe: 0, pagibigEr: 0, taxWithheld: 0 };
+  if (alreadyInRegular) c.result = { ...c.result, lines: [], basicEarned: 0, gross: 0, taxableGross: 0, nonTaxable: 0, taxableIncome: 0, totalDeductions: 0, net: 0, statutory: zeroStatutory, employerTotal: 0 };
+  const last = c.result;
+  const settled = await settledSlipsOfYear(supabase, year, [runId]);
   const { data: opening } = await supabase.schema("hr").from("ytd_openings").select("*").eq("year", year).eq("employee_id", e.id).maybeSingle();
   const ytd = ytdFor(opening ?? undefined, settled.filter((s) => s.employee_id === e.id));
   const thirteenth = computeThirteenthMonth({ basicEarnedYear: ytd.basicEarned + (alreadyInRegular ? 0 : fromCentavos(c.result.basicEarned)), alreadyPaid: ytd.thirteenthMonthPaid, otherBenefitsYear: 0 });
@@ -490,7 +508,10 @@ export async function computeFinalPayRun(input: FinalPayInputForm): Promise<Acti
  * An adjustment run for a period whose regular run is approved: every
  * payslip recomputed with today's compensation rows and tables (a wage
  * order lifted from enjoined, a corrected rate), and only the DIFFERENCE
- * paid, as lines on a new run. The original stays as it was approved.
+ * paid, as lines on a new run. The baseline is everything already settled
+ * for the period (the regular run AND earlier adjustments), so a second
+ * adjustment pays only what the first did not. The originals stay as they
+ * were approved.
  */
 export async function computeAdjustmentRun(periodId: string, reason: string): Promise<ActionResult<{ runId: string; count: number }>> {
   if (!reason.trim()) return { ok: false, error: "Say what changed." };
@@ -508,10 +529,22 @@ export async function computeAdjustmentRun(periodId: string, reason: string): Pr
     if (error || !created) return { ok: false, error: error?.message ?? "Could not create the run." };
     runId = created.id;
   }
-  const { data: originals } = await supabase.schema("hr").from("payslips").select("employee_id, lines").eq("run_id", regular.id);
-  const originalBy = new Map((originals ?? []).map((o) => [o.employee_id as string, (o.lines ?? []) as PayslipComputation["lines"]]));
-  // Recompute against everything settled EXCEPT the original run, so the diff is against a clean year.
-  const r = await computePeriodPayslips(supabase, userId, period as PeriodRow, regular.id, null);
+  const { data: originals } = await supabase
+    .schema("hr")
+    .from("payslips")
+    .select("run_id, employee_id, lines, payroll_runs!inner(status, kind)")
+    .eq("period_id", periodId)
+    .neq("run_id", runId)
+    .in("payroll_runs.status", ["approved", "paid", "closed"])
+    .neq("payroll_runs.kind", "final_pay");
+  const originalBy = new Map<string, PayslipComputation["lines"]>();
+  const baselineRuns = new Set<string>([regular.id]);
+  for (const o of originals ?? []) {
+    baselineRuns.add(o.run_id as string);
+    originalBy.set(o.employee_id as string, [...(originalBy.get(o.employee_id as string) ?? []), ...((o.lines ?? []) as PayslipComputation["lines"])]);
+  }
+  // Recompute against everything settled EXCEPT this period's runs, so the diff is against a clean year.
+  const r = await computePeriodPayslips(supabase, userId, period as PeriodRow, [...baselineRuns], null);
   if (!r.ok) return r;
   const computed: Computed[] = [];
   for (const c of r.computed) {

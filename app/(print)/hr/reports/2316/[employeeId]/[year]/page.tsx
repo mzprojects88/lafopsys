@@ -41,7 +41,9 @@ export default async function Form2316Page({ params }: { params: Promise<{ emplo
   const sum = (pick: (s: Slip) => number) => rows.reduce((a, s) => a + pick(s), 0);
   const thirteenth = n(opening?.thirteenth_month_paid) + sum((s) => (s.lines ?? []).filter((l) => l.code === "thirteenth_month").reduce((b, l) => b + l.amount / 100, 0));
   const basic = n(opening?.basic_earned) + sum((s) => n(s.basic_earned));
-  const gross = n(opening?.basic_earned) + n(opening?.non_taxable) + n(opening?.taxable_income) + n(opening?.sss_ee) + n(opening?.philhealth_ee) + n(opening?.pagibig_ee) + sum((s) => n(s.gross));
+  // The opening's gross: its taxable income is net of contributions, so add them back, plus the non-taxable part (basic is inside taxable income already).
+  const openingGross = n(opening?.taxable_income) + n(opening?.sss_ee) + n(opening?.philhealth_ee) + n(opening?.pagibig_ee) + n(opening?.non_taxable);
+  const gross = openingGross + sum((s) => n(s.gross));
   const contributions = n(opening?.sss_ee) + n(opening?.philhealth_ee) + n(opening?.pagibig_ee) + sum((s) => n(s.sss_ee) + n(s.mpf_ee) + n(s.philhealth_ee) + n(s.pagibig_ee));
   const nonTaxableOther = Math.max(0, n(opening?.non_taxable) + sum((s) => n(s.non_taxable)) - thirteenth);
   const taxable = n(opening?.taxable_income) + sum((s) => n(s.taxable_income));

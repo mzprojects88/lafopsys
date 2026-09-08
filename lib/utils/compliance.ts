@@ -80,7 +80,7 @@ export interface ComplianceContext {
   penLastDigit: number | null;
   /** First character of the employer's registered name; null until set. */
   employerInitial: string | null;
-  /** The calendar starts here: periods ending before it are not shown as overdue. */
+  /** The calendar starts here: obligations that fell due before it are not shown as overdue. */
   trackingFrom: string;
   holidays: readonly HolidayLike[];
 }
@@ -178,10 +178,16 @@ export function dueDatesFor(item: ComplianceItemLike, window: { from: string; to
   const out: Deadline[] = [];
   const rule = item.dueRule;
   if (rule.kind === "as_needed") return out;
-  const push = (periodKey: string, periodLabel: string, dueRaw: string) => out.push({ itemId: item.id, code: item.code, periodKey, periodLabel, dueRaw, dueOn: rollForward(dueRaw, ctx.holidays) });
+  // The tracking start cuts by DUE date, not period: an obligation that fell
+  // due after the foundation started tracking is shown even when its period
+  // (last year's annual report, say) ended before.
+  const push = (periodKey: string, periodLabel: string, dueRaw: string) => {
+    if (dueRaw < ctx.trackingFrom) return;
+    out.push({ itemId: item.id, code: item.code, periodKey, periodLabel, dueRaw, dueOn: rollForward(dueRaw, ctx.holidays) });
+  };
   const fromY = Number(window.from.slice(0, 4));
   const toY = Number(window.to.slice(0, 4));
-  const start = ctx.trackingFrom > window.from ? ctx.trackingFrom : window.from;
+  const start = window.from;
 
   for (let y = fromY - 1; y <= toY; y++) {
     if (rule.kind === "fixed") {

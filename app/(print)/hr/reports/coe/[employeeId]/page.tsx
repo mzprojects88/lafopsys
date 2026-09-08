@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/utils/date";
+import { dayKey } from "@/lib/utils/dtr";
 import { serviceMonths } from "@/lib/utils/employment";
 import { PrintButton } from "@/app/(print)/hr/payslips/[id]/print/print-button";
 
@@ -18,7 +19,7 @@ export default async function CoePage({ params, searchParams }: { params: Promis
   const supabase = await createClient();
   const { data: e } = await supabase.schema("hr").from("employees").select("employee_code, first_name, middle_name, last_name, suffix, position, department, employment_type, status, hire_date, separation_date").eq("id", employeeId).maybeSingle();
   if (!e) notFound();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dayKey(new Date());
   const issued = q.date && /^\d{4}-\d{2}-\d{2}$/.test(q.date) ? q.date : today;
   const name = `${e.first_name}${e.middle_name ? ` ${e.middle_name}` : ""} ${e.last_name}${e.suffix ? ` ${e.suffix}` : ""}`;
   const separated = e.separation_date && e.separation_date <= issued;

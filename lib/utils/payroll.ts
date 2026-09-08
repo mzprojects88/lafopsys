@@ -143,7 +143,7 @@ export interface Statutory {
   taxWithheld: Centavos;
 }
 
-export type PayslipWarning = "below_minimum_wage" | "mwe_flag_mismatch" | "negative_net" | "no_approved_timesheet" | "missed_punches" | "approver_is_payee";
+export type PayslipWarning = "below_minimum_wage" | "mwe_flag_mismatch" | "negative_net" | "no_approved_timesheet" | "missed_punches" | "approver_is_payee" | "projected_basic";
 
 export interface PayslipComputation {
   lines: PayLine[];
@@ -451,11 +451,20 @@ export interface ThirteenthMonthInput {
   alreadyPaid: number;
   /** Other benefits counted against the 90k ceiling, pesos. */
   otherBenefitsYear: number;
+  /**
+   * Basic salary of the cutoffs not yet paid when the 13th month is computed
+   * (PD 851 is 1/12 of the WHOLE calendar year's basic; paying by Dec 24
+   * means the December cutoffs are projected at the current rate), pesos.
+   */
+  projectedBasic?: number;
+  /** How many cutoffs the projection covers, for the info line. */
+  projectedCutoffs?: number;
 }
 
-/** Total basic earned / 12, pro-rated by construction (a month not worked earned nothing). */
+/** Total basic earned (plus the projected remainder of the year) / 12, pro-rated by construction (a month not worked earned nothing). */
 export function computeThirteenthMonth(input: ThirteenthMonthInput): { total: Centavos; payable: Centavos; exempt: Centavos; taxable: Centavos; lines: PayLine[] } {
-  const total = roundHalfUp(toCentavos(input.basicEarnedYear) / 12);
+  const projected = toCentavos(input.projectedBasic ?? 0);
+  const total = roundHalfUp((toCentavos(input.basicEarnedYear) + projected) / 12);
   const payable = Math.max(0, total - toCentavos(input.alreadyPaid));
   const ceiling = toCentavos(THIRTEENTH_MONTH_EXEMPT_CEILING);
   const roomLeft = Math.max(0, ceiling - toCentavos(input.otherBenefitsYear) - toCentavos(input.alreadyPaid));
@@ -464,10 +473,14 @@ export function computeThirteenthMonth(input: ThirteenthMonthInput): { total: Ce
   const lines: PayLine[] = [];
   if (exempt > 0) lines.push({ code: "thirteenth_month", label: "13th month pay (PD 851)", kind: "earning", amount: exempt, taxable: false });
   if (taxable > 0) lines.push({ code: "thirteenth_month:excess", label: "13th month pay over the 90,000 exemption", kind: "earning", amount: taxable, taxable: true });
+  if (projected > 0) lines.push({ code: "thirteenth_month:projected", label: `Basic salary projected for ${input.projectedCutoffs ?? 0} cutoff${input.projectedCutoffs === 1 ? "" : "s"} not yet paid`, kind: "info", amount: projected });
   return { total, payable, exempt, taxable, lines };
 }
 
 // --- final pay (LA 06-20; Arts. 298-299 for separation pay) -----------------------
+
+/** Days of monetised unused VL that are de minimis (RR 11-2018 s.2.78.1(A)(3)). */
+export const VL_CONVERSION_DE_MINIMIS_DAYS = 10;
 
 export type SeparationCause = "resignation" | "end_of_contract" | "redundancy" | "retrenchment" | "closure" | "disease" | "just_cause" | "retirement" | "death";
 
@@ -505,7 +518,11 @@ export function computeFinalPay(input: FinalPayInput): { lines: PayLine[]; gross
   const lines: PayLine[] = [...input.lastPayslip.lines.filter((l) => l.kind !== "employer")];
   lines.push(...input.thirteenth.lines.map((l) => ({ ...l, label: `${l.label}, pro-rated` })));
   const daily = toCentavos(input.dailyRate);
-  if (input.vlDays > 0) lines.push(rateLine("vl_conversion", "Unused vacation leave converted to cash", "earning", daily, input.vlDays, 1, { taxable: true }));
+  // Monetised unused VL of a private employee is de minimis up to 10 days (RR 11-2018 s.2.78.1(A)(3)); only the excess is taxable.
+  const vlExempt = Math.min(input.vlDays, VL_CONVERSION_DE_MINIMIS_DAYS);
+  const vlTaxable = Math.max(0, input.vlDays - VL_CONVERSION_DE_MINIMIS_DAYS);
+  if (vlExempt > 0) lines.push(rateLine("vl_conversion", "Unused vacation leave converted to cash (de minimis)", "earning", daily, vlExempt, 1, { taxable: false }));
+  if (vlTaxable > 0) lines.push(rateLine("vl_conversion:excess", "Unused vacation leave over 10 days converted to cash", "earning", daily, vlTaxable, 1, { taxable: true }));
   const sep = separationPay(input.cause, toCentavos(input.monthlyRate), input.serviceYears);
   if (sep > 0) lines.push({ code: "separation_pay", label: "Separation pay (Art. 298)", kind: "earning", amount: sep, taxable: false });
   const acc = toCentavos(input.accountabilities);

@@ -62,9 +62,12 @@ describe("dueDatesFor", () => {
     assert.equal(d[0].periodKey, "2026");
     assert.equal(d[0].dueOn, "2027-02-01");
   });
-  it("tracking start hides periods that ended before it", () => {
+  it("tracking start hides obligations that fell due before it, by due date not period", () => {
     const d = dueDatesFor(item("bir_1601c", { kind: "day_of_month", day: 10 }), WINDOW, ctx({ trackingFrom: "2026-09-01" }));
-    assert.deepEqual(d.map((x) => x.periodKey), ["2026-09", "2026-10", "2026-11", "2026-12"]);
+    assert.deepEqual(d.map((x) => x.periodKey), ["2026-08", "2026-09", "2026-10", "2026-11", "2026-12"]);
+    // Last year's annual report, due this August, is still shown.
+    const aerw = dueDatesFor(item("dole_aerw", { kind: "fixed", month: 8, day: 31, yearOffset: 1 }, { frequency: "annual" }), { from: "2025-01-01", to: "2026-12-31" }, ctx({ trackingFrom: "2026-08-01" }));
+    assert.deepEqual(aerw.map((x) => x.periodKey), ["2025", "2026"]);
   });
   it("as-needed items produce nothing", () => {
     assert.equal(dueDatesFor(item("sec_amend", { kind: "as_needed" }, { frequency: "as_needed" }), WINDOW, ctx()).length, 0);

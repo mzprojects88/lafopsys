@@ -262,6 +262,15 @@ describe("13th month, final pay, differential", () => {
     assert.equal(r.exempt, 733871);
     assert.equal(r.taxable, 0);
   });
+  it("projects the cutoffs not yet paid: 8 settled cutoffs of 10,000 + 16 projected -> 20,000, with an info line", () => {
+    const r = computeThirteenthMonth({ basicEarnedYear: 80000, alreadyPaid: 0, otherBenefitsYear: 0, projectedBasic: 160000, projectedCutoffs: 16 });
+    assert.equal(r.total, 2000000);
+    assert.equal(r.exempt, 2000000);
+    const info = r.lines.find((l) => l.code === "thirteenth_month:projected");
+    assert.equal(info.kind, "info");
+    assert.equal(info.amount, 16000000);
+    assert.match(info.label, /16 cutoffs/);
+  });
   it("over the 90k ceiling the excess is taxable", () => {
     const r = computeThirteenthMonth({ basicEarnedYear: 1200000, alreadyPaid: 0, otherBenefitsYear: 5000 });
     assert.equal(r.total, 10000000);
@@ -287,11 +296,35 @@ describe("13th month, final pay, differential", () => {
       serviceYears: 2,
       accountabilities: 1200,
     });
-    assert.equal(f.lines.find((l) => l.code === "vl_conversion").amount, 173753);
+    const vl = f.lines.find((l) => l.code === "vl_conversion");
+    assert.equal(vl.amount, 173753);
+    assert.equal(vl.taxable, false);
+    assert.equal(f.lines.find((l) => l.code === "vl_conversion:excess"), undefined);
     assert.equal(f.lines.find((l) => l.code === "accountabilities").amount, 120000);
     assert.equal(f.lines.find((l) => l.code === "separation_pay"), undefined);
     assert.equal(f.net, f.gross - f.totalDeductions);
     assert.equal(f.gross, last.gross + 1250000 + 173753);
+  });
+  it("VL conversion is de minimis up to 10 days; the excess is taxable", () => {
+    const last = second(monthly(21140), totals());
+    const f = computeFinalPay({
+      lastPayslip: last,
+      thirteenth: computeThirteenthMonth({ basicEarnedYear: 0, alreadyPaid: 0, otherBenefitsYear: 0 }),
+      vlDays: 12,
+      dailyRate: 695.01,
+      monthlyRate: 21140,
+      cause: "resignation",
+      serviceYears: 2,
+      accountabilities: 0,
+    });
+    const exempt = f.lines.find((l) => l.code === "vl_conversion");
+    const excess = f.lines.find((l) => l.code === "vl_conversion:excess");
+    assert.equal(exempt.qty, 10);
+    assert.equal(exempt.amount, 695010);
+    assert.equal(exempt.taxable, false);
+    assert.equal(excess.qty, 2);
+    assert.equal(excess.amount, 139002);
+    assert.equal(excess.taxable, true);
   });
   it("NCR-26 -> NCR-27 differential: only the changed lines, by the difference", () => {
     const before = base(daily(695), totals({}, { ordinary: { minutes: 5280, days: 11 } }));

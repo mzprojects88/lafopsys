@@ -14,6 +14,7 @@ import { useYearPayslips, payslipsByYearFamily } from "@/lib/hooks/use-payroll-c
 import { useBankTransactionsData } from "@/lib/hooks/use-bank-transactions-collection";
 import { useEmployees } from "@/lib/hooks/use-employees-collection";
 import { useNow } from "@/lib/hooks/use-now";
+import { canManageHr } from "@/lib/rbac/roles";
 import { useRole } from "@/lib/rbac/use-role";
 import { dayKey, addDays } from "@/lib/utils/dtr";
 import { formatDate } from "@/lib/utils/date";
@@ -30,7 +31,7 @@ const WINDOW_DAYS = 10;
  * because the statement itself is (0033).
  */
 export default function ReconcilePage() {
-  const { role } = useRole();
+  const { role, isHr } = useRole();
   const today = dayKey(useNow());
   const [year, setYear] = React.useState(Number(today.slice(0, 4)));
   const { payslips, loading } = useYearPayslips(year);
@@ -40,6 +41,7 @@ export default function ReconcilePage() {
   const [choice, setChoice] = React.useState<Record<string, string>>({});
 
   if (role !== "admin" && role !== "finance") return <EmptyState title="Admins and finance only" description="The bank statement is read by finance; linking payslips to it happens here." />;
+  if (!canManageHr(role, isHr)) return <EmptyState title="Needs the HR flag" description="Payslips are visible only to admins and people flagged as HR in Settings, so a finance account needs the flag to reconcile them." />;
 
   const byEmployee = new Map(employees.map((e) => [e.id, e]));
   const settled = payslips.filter((p) => ["approved", "paid", "closed"].includes(p.runStatus)).sort((a, b) => (a.payDate < b.payDate ? 1 : -1));

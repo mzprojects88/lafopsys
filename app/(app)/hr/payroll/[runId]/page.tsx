@@ -38,6 +38,7 @@ const WARNING_LABEL: Record<string, string> = {
   no_approved_timesheet: "No approved timesheet: paid as a full period",
   missed_punches: "Missed punches in the timesheet",
   approver_is_payee: "The person computing is on this payroll",
+  projected_basic: "Cutoffs not yet paid were projected at the current basic",
 };
 
 /**

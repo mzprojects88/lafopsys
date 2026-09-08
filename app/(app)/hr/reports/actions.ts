@@ -172,6 +172,8 @@ export async function alphalistCsv(year: number): Promise<ActionResult<{ csv: st
     t.philhealth_ee = (t.philhealth_ee ?? 0) + n(o.philhealth_ee);
     t.pagibig_ee = (t.pagibig_ee ?? 0) + n(o.pagibig_ee);
     t.thirteenth_exempt = (t.thirteenth_exempt ?? 0) + n(o.thirteenth_month_paid);
+    // The opening's gross: taxable income (net of contributions) + contributions + non-taxable; the same derivation as the 2316 page.
+    t.gross = (t.gross ?? 0) + n(o.taxable_income) + n(o.sss_ee) + n(o.philhealth_ee) + n(o.pagibig_ee) + n(o.non_taxable);
     totals.set(o.employee_id, t);
   }
   const who = await people(caller.supabase, [...totals.keys()]);
@@ -182,7 +184,7 @@ export async function alphalistCsv(year: number): Promise<ActionResult<{ csv: st
     const contrib = (t.sss_ee ?? 0) + (t.mpf_ee ?? 0) + (t.philhealth_ee ?? 0) + (t.pagibig_ee ?? 0);
     const thirteenth = t.thirteenth_exempt ?? 0;
     const otherNonTax = Math.max(0, (t.non_taxable ?? 0) - thirteenth);
-    const gross = (t.gross ?? 0) + (t.basic_earned && !t.gross ? t.basic_earned : 0);
+    const gross = t.gross ?? 0;
     const from = p ? (p.hire_date > `${year}-01-01` ? p.hire_date : `${year}-01-01`) : "";
     const to = p?.separation_date && p.separation_date <= `${year}-12-31` ? p.separation_date : `${year}-12-31`;
     return [String(i + 1), p?.tin ?? "", p ? fullName(p) : id, p?.employee_code ?? "", from, to, money(gross), money(thirteenth), money(otherNonTax), money(contrib), money(thirteenth + otherNonTax + contrib), money(t.taxable_income ?? 0), money(t.tax_withheld ?? 0)];
