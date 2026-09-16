@@ -9,7 +9,6 @@ import {
   PLAN_W,
   clampCentre,
   roomAtPoint,
-  roomCentroid,
   snapPx,
   toNorm,
   toPx,
@@ -191,7 +190,9 @@ export function FloorPlanCanvas({
         {rooms.map((room) => {
           if (!room.bounds) return null;
           const points = room.bounds.map(([x, y]) => `${x * PLAN_W},${y * PLAN_H}`).join(" ");
-          const c = toPx(roomCentroid(room.bounds));
+          // label in the top-left corner, where beds are least likely to cover it
+          const minX = Math.min(...room.bounds.map(([x]) => x)) * PLAN_W;
+          const minY = Math.min(...room.bounds.map(([, y]) => y)) * PLAN_H;
           const active = hoverRoom === room.id;
           return (
             <g key={room.id} pointerEvents="none">
@@ -202,7 +203,7 @@ export function FloorPlanCanvas({
                 strokeWidth={active ? 3 : 2}
                 strokeDasharray="8 5"
               />
-              <text x={c.x} y={c.y - 8} textAnchor="middle" fontSize={16} fontWeight={700} fill="rgba(30,64,175,0.7)">
+              <text x={minX + 10} y={minY + 22} fontSize={16} fontWeight={700} fill="rgba(30,64,175,0.7)">
                 {room.name.toUpperCase()}
               </text>
             </g>
