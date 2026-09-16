@@ -1,13 +1,4 @@
-import type {
-  ActivitySession,
-  BedPosition,
-  CareCartLog,
-  CensusSnapshot,
-  MealService,
-  Room,
-  Trip,
-  Unit,
-} from "@/lib/types/house-ops";
+import type { ActivitySession, CareCartLog, CensusSnapshot, MealService, Trip } from "@/lib/types/house-ops";
 import { makeRng, TODAY_ISO } from "@/lib/utils/seeded-random";
 import realPatients from "@/lib/mock-data/real/patients.json";
 import realMealServices from "@/lib/mock-data/real/meal-services.json";
@@ -16,40 +7,12 @@ import realCensusHistory from "@/lib/mock-data/real/census-history.json";
 
 const rng = makeRng(303);
 
-// Placeholder floor-plan structure — see LAF House Beds Layout.jfif for the
-// real physical arrangement; this distribution (5/4/4 across 3 rooms) is an
-// inference from the spec text and should be confirmed before this screen
-// is treated as pixel-faithful.
-export const rooms: Room[] = [
-  { id: "room-1", name: "Room 1" },
-  { id: "room-2", name: "Room 2" },
-  { id: "room-3", name: "Room 3" },
-];
-
-const roomAssignment: Record<string, number> = {
-  B1: 1, B2: 1, B3: 1, B4: 1, B5: 1,
-  B6: 2, B7: 2, B8: 2, B9: 2,
-  B10: 3, B11: 3, B12: 3, B13: 3,
-};
-
-export const units: Unit[] = Object.entries(roomAssignment).map(([code, roomN]) => ({
-  id: `unit-${code}`,
-  code,
-  roomId: `room-${roomN}`,
-  status: rng.pick(["occupied", "occupied", "occupied", "available", "maintenance"] as const),
-  sharedUnit: rng.bool(0.35),
-}));
-
-export const bedPositions: BedPosition[] = units.flatMap((u) =>
-  (["A", "B", "C", "D"] as const).map((label) => ({
-    id: `${u.id}-${label}`,
-    unitId: u.id,
-    label,
-  }))
-);
+// Rooms, beds and positions are no longer mocked: the floor plan and the
+// admission dialogs read ops.rooms / ops.units / ops.bed_positions live
+// (lib/hooks/use-house-layout-collection.ts, 0047).
 
 // Sourced directly from the real patients JSON (not from ./patients.ts) to avoid
-// a circular import -- patients.ts already imports `bedPositions` from this file.
+// a circular import.
 const patientIdPool = (realPatients as { id: string }[]).map((p) => p.id);
 
 export const trips: Trip[] = Array.from({ length: 18 }).map((_, i) => {

@@ -1,16 +1,40 @@
 export interface Room {
   id: string;
   name: string;
+  /** Normalised polygon over the plan image, [[x, y], ...]; null = not drawn yet (0047). */
+  bounds: [number, number][] | null;
+  sortOrder: number;
 }
 
-export type UnitStatus = "available" | "occupied" | "maintenance" | "blocked";
+/** The stored lock state. 'occupied' is never stored -- see BedStatus. */
+export type UnitStatus = "available" | "maintenance" | "blocked";
 
+/** What the floor plan and the dialogs show: the stored lock, or occupancy
+ * derived from active stays (lib/utils/beds.ts). */
+export type BedStatus = UnitStatus | "occupied";
+
+/** A physical bed (0047). One admission slot by default (capacity 1); the
+ * A-D positions underneath are where ops.stays point. */
 export interface Unit {
   id: string;
-  code: string; // B1..B13
-  roomId: string;
+  code: string; // B1..B13, B14+ once added
+  roomId: string | null;
   status: UnitStatus;
   sharedUnit: boolean;
+  /** Bed centre, normalised 0..1 against the plan image; null = not placed yet (in the tray). */
+  x: number | null;
+  y: number | null;
+  /** Size, normalised against the plan image. */
+  w: number;
+  h: number;
+  /** Rotation about the centre, 0..359. */
+  rotationDeg: number;
+  capacity: number;
+  active: boolean;
+  retiredAt?: string;
+  lockReason?: string;
+  statusChangedAt?: string;
+  statusChangedBy?: string;
 }
 
 export interface BedPosition {

@@ -11,10 +11,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { units, bedPositions, rooms } from "@/lib/mock-data";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
+import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
+import { assignableBeds, unitForBedPosition } from "@/lib/utils/beds";
 import type { Stay } from "@/lib/types/patient";
 
 interface TransferBedDialogProps {
@@ -26,36 +27,28 @@ interface TransferBedDialogProps {
 
 export function TransferBedDialog({ stay, patientName, onOpenChange, onTransferred }: TransferBedDialogProps) {
   const { stays, updateStay } = usePatientsData();
-  const [bedPositionId, setBedPositionId] = React.useState("");
+  const { rooms, units, bedPositions } = useHouseLayout();
+  const [unitId, setUnitId] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
 
-  // Same "genuinely free" computation as ConfirmArrivalDialog -- unit not under
-  // maintenance/blocked AND no other active stay already references that bed.
-  const availablePositions = bedPositions.filter((pos) => {
-    if (pos.id === stay?.bedPositionId) return false;
-    const unit = units.find((u) => u.id === pos.unitId);
-    if (!unit || unit.status === "maintenance" || unit.status === "blocked") return false;
-    const occupied = stays.some((s) => s.bedPositionId === pos.id && (s.status === "in_house" || s.status === "overdue"));
-    return !occupied;
-  });
-
-  function unitLabel(unitId: string) {
-    const unit = units.find((u) => u.id === unitId);
-    const room = unit ? rooms.find((r) => r.id === unit.roomId) : undefined;
-    return unit ? `${unit.code} · ${room?.name ?? ""}` : "";
-  }
+  // Same rule as ConfirmArrivalDialog (lib/utils/beds.ts), minus the bed the
+  // patient is already in.
+  const currentUnit = stay ? unitForBedPosition(stay.bedPositionId, units, bedPositions) : undefined;
+  const beds = assignableBeds(units, bedPositions, stays, rooms, { excludeUnitId: currentUnit?.id });
+  const unplaced = beds.filter((b) => b.unit.x === null).length;
 
   async function handleConfirm() {
-    if (!stay || !bedPositionId) return;
+    const target = beds.find((b) => b.unit.id === unitId);
+    if (!stay || !target) return;
     setSubmitting(true);
-    const result = await updateStay(stay.id, { bedPositionId });
+    const result = await updateStay(stay.id, { bedPositionId: target.position.id });
     setSubmitting(false);
     if (!result.ok) {
       toast.error(`Couldn't transfer the bed: ${result.error}`);
       return;
     }
-    toast.success(`${patientName} transferred to a new bed`);
-    setBedPositionId("");
+    toast.success(`${patientName} transferred to ${target.unit.code}`);
+    setUnitId("");
     onTransferred();
     onOpenChange(false);
   }
@@ -69,26 +62,31 @@ export function TransferBedDialog({ stay, patientName, onOpenChange, onTransferr
         </DialogHeader>
 
         <Field>
-          <FieldLabel htmlFor="newBed">New bed position</FieldLabel>
-          <Select value={bedPositionId} onValueChange={setBedPositionId}>
+          <FieldLabel htmlFor="newBed">New bed</FieldLabel>
+          <Select value={unitId} onValueChange={setUnitId}>
             <SelectTrigger id="newBed" className="w-full">
-              <SelectValue placeholder={availablePositions.length ? "Select an available bed" : "No beds available"} />
+              <SelectValue placeholder={beds.length ? "Select an available bed" : "No beds available"} />
             </SelectTrigger>
             <SelectContent>
-              {availablePositions.map((pos) => (
-                <SelectItem key={pos.id} value={pos.id}>
-                  {unitLabel(pos.unitId)} — Bed {pos.label}
+              {beds.map((b) => (
+                <SelectItem key={b.unit.id} value={b.unit.id}>
+                  {b.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {unplaced > 0 && (
+            <FieldDescription>
+              {unplaced} {unplaced === 1 ? "bed is" : "beds are"} not yet placed on the floor plan.
+            </FieldDescription>
+          )}
         </Field>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button disabled={!bedPositionId || submitting} onClick={handleConfirm}>
+          <Button disabled={!unitId || submitting} onClick={handleConfirm}>
             {submitting ? "Transferring…" : "Confirm Transfer"}
           </Button>
         </DialogFooter>

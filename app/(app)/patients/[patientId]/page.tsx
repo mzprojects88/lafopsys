@@ -10,14 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  cities,
-  provinces,
-  diagnoses,
-  treatmentPhases,
-  bedPositions,
-  units,
-} from "@/lib/mock-data";
+import { cities, provinces, diagnoses, treatmentPhases } from "@/lib/mock-data";
+import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
+import { unitForBedPosition } from "@/lib/utils/beds";
 import { computeAge } from "@/lib/utils/age";
 import { formatDate } from "@/lib/utils/date";
 import { useRole } from "@/lib/rbac/use-role";
@@ -38,6 +33,7 @@ import type { Stay } from "@/lib/types/patient";
 export default function PatientDetailPage({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = use(params);
   const { patients, carers, stays, appointments, loading, refetch } = usePatientsData();
+  const { units, bedPositions } = useHouseLayout();
   const patient = patients.find((p) => p.id === patientId);
   const { role } = useRole();
   const { people: sheetPeople } = useHouseSheetPeople();
@@ -142,7 +138,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
           ) : (
             <div className="flex flex-col gap-2">
               {patientStays.map((stay) => {
-                const unit = units.find((u) => u.id === bedPositions.find((b) => b.id === stay.bedPositionId)?.unitId);
+                const unit = unitForBedPosition(stay.bedPositionId, units, bedPositions);
                 const isActive = stay.status === "in_house" || stay.status === "overdue";
                 return (
                   <Card key={stay.id}>

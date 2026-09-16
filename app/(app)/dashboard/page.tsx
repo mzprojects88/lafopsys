@@ -34,6 +34,8 @@ import { useRole } from "@/lib/rbac/use-role";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useCensusData } from "@/lib/hooks/use-census-collection";
+import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
+import { houseCapacity } from "@/lib/utils/beds";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
 import { useLeaveRequests } from "@/lib/hooks/use-leave-collections";
@@ -43,13 +45,12 @@ import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
 import type { CategoryColor } from "@/lib/utils/category-colors";
 
-const HOUSE_CAPACITY = 20; // placeholder pending the spec's open question on licensed capacity
-
 export default function DashboardPage() {
   const { role } = useRole();
   const { referrals } = useReferralsData();
   const { patients, stays } = usePatientsData();
   const { history: censusHistory } = useCensusData();
+  const { units } = useHouseLayout();
   const { donations, donors } = useDonorsData();
   const { entries: cashEntries } = useCashEntriesData();
   // Pending leave: every request for HR/admins, the person's own for anyone else (RLS).
@@ -64,8 +65,10 @@ export default function DashboardPage() {
   const expiringSoon = expiringLots.filter((l) => l.days_left >= 0 && l.days_left <= 14).length;
   const cashIn = cashEntries.filter((e) => e.direction === "inflow").reduce((s, e) => s + e.amount, 0);
 
-  const occupiedPct = Math.round((inHouseNow / HOUSE_CAPACITY) * 100);
-  const availableSlots = Math.max(0, HOUSE_CAPACITY - inHouseNow);
+  // The beds drawn on the floor plan (0047), one admission slot each by default.
+  const capacity = houseCapacity(units);
+  const occupiedPct = capacity > 0 ? Math.round((inHouseNow / capacity) * 100) : 0;
+  const availableSlots = Math.max(0, capacity - inHouseNow);
 
   // v_stock_summary is per item per House; count distinct items at their worst status.
   const stockByItem = new Map<string, "ok" | "low" | "out">();
@@ -249,7 +252,7 @@ export default function DashboardPage() {
             <div className="flex flex-col gap-2 text-sm">
               <LegendRow color="bg-blue-500" label="In-House Now" value={inHouseNow} />
               <LegendRow color="bg-blue-200" label="Available Slots" value={availableSlots} />
-              <LegendRow color="bg-slate-300" label="Total Capacity" value={HOUSE_CAPACITY} />
+              <LegendRow color="bg-slate-300" label="Total Capacity" value={capacity || "—"} />
             </div>
           </CardContent>
           <Link href="/house-ops" className="mx-4 mb-4 flex items-center gap-1 text-xs font-medium text-primary hover:underline">
@@ -381,7 +384,7 @@ function OccupancyRing({ percent }: { percent: number }) {
   );
 }
 
-function LegendRow({ color, label, value }: { color: string; label: string; value: number }) {
+function LegendRow({ color, label, value }: { color: string; label: string; value: number | string }) {
   return (
     <div className="flex items-center gap-2">
       <span className={`size-2.5 shrink-0 rounded-full ${color}`} />

@@ -10,11 +10,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { units, bedPositions, rooms } from "@/lib/mock-data";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
+import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
+import { assignableBeds } from "@/lib/utils/beds";
 import { TODAY_ISO } from "@/lib/utils/seeded-random";
 import type { Referral } from "@/lib/types/patient";
 
@@ -26,27 +27,19 @@ interface ConfirmArrivalDialogProps {
 
 export function ConfirmArrivalDialog({ referral, onOpenChange, onAdmitted }: ConfirmArrivalDialogProps) {
   const { stays, addPatient, addCarer, addStay } = usePatientsData();
-  const [bedPositionId, setBedPositionId] = React.useState<string>("");
+  const { rooms, units, bedPositions } = useHouseLayout();
+  const [unitId, setUnitId] = React.useState<string>("");
   const [submitting, setSubmitting] = React.useState(false);
 
-  // A bed is only genuinely free if its unit isn't under maintenance/blocked AND no
-  // active stay currently references that exact bed position — Unit.status alone
-  // can't be trusted (it's independent seed data, not derived from real occupancy).
-  const availablePositions = bedPositions.filter((pos) => {
-    const unit = units.find((u) => u.id === pos.unitId);
-    if (!unit || unit.status === "maintenance" || unit.status === "blocked") return false;
-    const occupied = stays.some((s) => s.bedPositionId === pos.id && (s.status === "in_house" || s.status === "overdue"));
-    return !occupied;
-  });
-
-  function unitLabel(unitId: string) {
-    const unit = units.find((u) => u.id === unitId);
-    const room = unit ? rooms.find((r) => r.id === unit.roomId) : undefined;
-    return unit ? `${unit.code} · ${room?.name ?? ""}` : "";
-  }
+  // The beds drawn on the floor plan, minus the locked and the full ones;
+  // each comes with the position the admission would take (0047).
+  const beds = assignableBeds(units, bedPositions, stays, rooms);
+  const unplaced = beds.filter((b) => b.unit.x === null).length;
 
   async function handleConfirm() {
-    if (!referral || !bedPositionId) return;
+    const target = beds.find((b) => b.unit.id === unitId);
+    if (!referral || !target) return;
+    const bedPositionId = target.position.id;
     setSubmitting(true);
 
     const patientId = crypto.randomUUID();
@@ -106,7 +99,7 @@ export function ConfirmArrivalDialog({ referral, onOpenChange, onAdmitted }: Con
 
     setSubmitting(false);
     onAdmitted(patientId);
-    setBedPositionId("");
+    setUnitId("");
     onOpenChange(false);
   }
 
@@ -121,25 +114,30 @@ export function ConfirmArrivalDialog({ referral, onOpenChange, onAdmitted }: Con
           </DialogDescription>
         </DialogHeader>
         <Field>
-          <FieldLabel htmlFor="bed">Bed position</FieldLabel>
-          <Select value={bedPositionId} onValueChange={setBedPositionId}>
+          <FieldLabel htmlFor="bed">Bed</FieldLabel>
+          <Select value={unitId} onValueChange={setUnitId}>
             <SelectTrigger id="bed" className="w-full">
-              <SelectValue placeholder={availablePositions.length ? "Select an available bed" : "No beds available"} />
+              <SelectValue placeholder={beds.length ? "Select an available bed" : "No beds available"} />
             </SelectTrigger>
             <SelectContent>
-              {availablePositions.map((pos) => (
-                <SelectItem key={pos.id} value={pos.id}>
-                  {unitLabel(pos.unitId)} — Bed {pos.label}
+              {beds.map((b) => (
+                <SelectItem key={b.unit.id} value={b.unit.id}>
+                  {b.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {unplaced > 0 && (
+            <FieldDescription>
+              {unplaced} {unplaced === 1 ? "bed is" : "beds are"} not yet placed on the floor plan.
+            </FieldDescription>
+          )}
         </Field>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button disabled={!bedPositionId || submitting} onClick={handleConfirm}>
+          <Button disabled={!unitId || submitting} onClick={handleConfirm}>
             {submitting ? "Admitting…" : "Confirm & Admit"}
           </Button>
         </DialogFooter>

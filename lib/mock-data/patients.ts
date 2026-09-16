@@ -1,6 +1,5 @@
 import type { Appointment, Carer, Patient, PatientStatus, Stay } from "@/lib/types/patient";
 import { makeRng, TODAY_ISO } from "@/lib/utils/seeded-random";
-import { bedPositions } from "@/lib/mock-data/house-ops";
 import realPatients from "@/lib/mock-data/real/patients.json";
 import realCarers from "@/lib/mock-data/real/carers.json";
 import realDswdDelta from "@/lib/mock-data/real/patients-dswd-delta.json";
@@ -84,7 +83,11 @@ export const carers: Carer[] = realCarers as Carer[];
 
 const carerIdByPatientId = new Map(carers.map((c) => [c.patientId, c.id]));
 
-const availablePositions = bedPositions;
+// The position ids 0004 seeds (B1..B13 x A..D); the real rows live in
+// ops.bed_positions and are read by lib/hooks/use-house-layout-collection.ts.
+const availablePositions = Array.from({ length: 13 }, (_, i) => `unit-B${i + 1}`).flatMap((unitId) =>
+  (["A", "B", "C", "D"] as const).map((label) => ({ id: `${unitId}-${label}`, unitId, label }))
+);
 
 function addDays(iso: string, days: number) {
   const d = new Date(`${iso}T00:00:00Z`);

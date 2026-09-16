@@ -6,15 +6,17 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { BoardColumns, type BoardColumn } from "@/components/patterns/board-columns";
 import { Card, CardContent } from "@/components/ui/card";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
-import { bedPositions, units } from "@/lib/mock-data";
 import type { Stay } from "@/lib/types/patient";
 import { TODAY_ISO } from "@/lib/utils/seeded-random";
 import { formatDate } from "@/lib/utils/date";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
+import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
+import { unitForBedPosition } from "@/lib/utils/beds";
 
 export default function TodayBoardPage() {
   const router = useRouter();
   const { patients, stays } = usePatientsData();
+  const { units, bedPositions } = useHouseLayout();
 
   const arrivals = stays.filter((s) => s.checkInAt === TODAY_ISO);
   const departures = stays.filter((s) => s.checkOutAt === TODAY_ISO);
@@ -36,7 +38,7 @@ export default function TodayBoardPage() {
         getItemKey={(s) => s.id}
         renderItem={(stay) => {
           const patient = patients.find((p) => p.id === stay.patientId);
-          const unit = units.find((u) => u.id === bedPositions.find((b) => b.id === stay.bedPositionId)?.unitId);
+          const unit = unitForBedPosition(stay.bedPositionId, units, bedPositions);
           const name = `${patient?.firstName} ${patient?.lastName}`;
           return (
             <Card className="cursor-pointer" onClick={() => router.push(`/patients/${stay.patientId}`)}>

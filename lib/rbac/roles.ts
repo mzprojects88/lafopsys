@@ -168,6 +168,19 @@ export function canReviewHouseSheet(role: Role) {
   return role === "admin" || role === "social_worker";
 }
 
+/** Who draws the floor plan (place, rotate, add, retire beds; 0047). The
+ * guard trigger on ops.units is the rule; this only decides whether the
+ * edit tools render. */
+export function canEditFloorPlan(role: Role) {
+  return role === "admin";
+}
+
+/** Who may lock a bed for maintenance, or block it, with a reason: the
+ * people in the house. Mirrors ops.guard_unit_columns (0047). */
+export function canLockBeds(role: Role) {
+  return role === "admin" || role === "social_worker" || role === "house_staff";
+}
+
 /** Finance and Board never see clinical detail — enforced at the component level using this flag. */
 export function canSeeClinicalDetail(role: Role) {
   return role !== "finance" && role !== "board";

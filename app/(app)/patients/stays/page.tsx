@@ -9,17 +9,15 @@ import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
-import { bedPositions, units } from "@/lib/mock-data";
 import type { Patient, Stay } from "@/lib/types/patient";
+import type { BedPosition, Unit } from "@/lib/types/house-ops";
+import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
+import { unitForBedPosition } from "@/lib/utils/beds";
 import { formatDate } from "@/lib/utils/date";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 
-function unitCodeFor(bedPositionId: string) {
-  const unit = units.find((u) => u.id === bedPositions.find((b) => b.id === bedPositionId)?.unitId);
-  return unit?.code ?? "—";
-}
-
-function buildColumns(patients: Patient[]): ColumnDef<Stay>[] {
+function buildColumns(patients: Patient[], units: Unit[], bedPositions: BedPosition[]): ColumnDef<Stay>[] {
+  const unitCodeFor = (bedPositionId: string) => unitForBedPosition(bedPositionId, units, bedPositions)?.code ?? "—";
   return [
     {
       id: "patient",
@@ -85,7 +83,8 @@ function buildColumns(patients: Patient[]): ColumnDef<Stay>[] {
 export default function StayHistoryPage() {
   const router = useRouter();
   const { patients, stays } = usePatientsData();
-  const columns = buildColumns(patients);
+  const { units, bedPositions } = useHouseLayout();
+  const columns = buildColumns(patients, units, bedPositions);
 
   const inHouseCount = stays.filter((s) => s.status === "in_house").length;
   const discharged = stays.filter((s) => s.status === "checked_out").length;
