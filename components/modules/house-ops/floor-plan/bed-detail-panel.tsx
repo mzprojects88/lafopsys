@@ -1,80 +1,38 @@
 "use client";
 
 import * as React from "react";
-import { Lock, LockOpen, RotateCw, Trash2, X } from "lucide-react";
+import { Lock, LockOpen, RotateCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useIsMobile } from "@/hooks/use-mobile";
 import type { Room } from "@/lib/types/house-ops";
+import { BED_DEFAULT_SIZE, PLAN_H, PLAN_W } from "@/lib/utils/floor-plan-geometry";
 import type { BedView } from "./bed-view";
 import { BedSummary } from "./bed-summary";
 
 const UNPLACED = "__unplaced__";
 
 interface BedDetailPanelProps {
-  bed: BedView | null;
+  bed: BedView;
   rooms: Room[];
   editing: boolean;
   canLock: boolean;
   canEdit: boolean;
   canSeeClinical: boolean;
-  onClose: () => void;
   onLock: (bed: BedView) => void;
   onUnlock: (bed: BedView) => Promise<void>;
   onRotate: (bed: BedView, deltaDeg: number) => void;
   onSetRotation: (bed: BedView, deg: number) => void;
+  /** Width and length in plan units (px of the plan image); the view normalises and clamps. */
+  onSetSize: (bed: BedView, wPx: number, hPx: number) => void;
   onSetRoom: (bed: BedView, roomId: string | null) => void;
   onSetCapacity: (bed: BedView, capacity: number) => void;
   onRetire: (bed: BedView) => void;
 }
 
-/**
- * The selected bed, with the actions a role may take. Inline beside the
- * plan on desktop; a bottom sheet on phones, where hover does not exist.
- */
-export function BedDetailPanel(props: BedDetailPanelProps) {
-  const isMobile = useIsMobile();
-  const { bed, onClose } = props;
-
-  if (isMobile) {
-    return (
-      <Sheet open={!!bed} onOpenChange={(open) => !open && onClose()}>
-        <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto">
-          <SheetHeader className="sr-only">
-            <SheetTitle>Bed {bed?.code}</SheetTitle>
-            <SheetDescription>Bed details and actions</SheetDescription>
-          </SheetHeader>
-          {bed && <PanelBody {...props} bed={bed} />}
-        </SheetContent>
-      </Sheet>
-    );
-  }
-
-  return (
-    <aside className="flex flex-col gap-3 rounded-lg border p-4">
-      {bed ? (
-        <>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Selected bed</span>
-            <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close">
-              <X className="size-4" />
-            </Button>
-          </div>
-          <PanelBody {...props} bed={bed} />
-        </>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          Hover a bed for who is in it; click one for its details and actions.
-        </p>
-      )}
-    </aside>
-  );
-}
-
-function PanelBody({
+/** The selected bed, with the actions a role may take. */
+export function BedDetailPanel({
   bed,
   rooms,
   editing,
@@ -85,23 +43,44 @@ function PanelBody({
   onUnlock,
   onRotate,
   onSetRotation,
+  onSetSize,
   onSetRoom,
   onSetCapacity,
   onRetire,
-}: BedDetailPanelProps & { bed: BedView }) {
+}: BedDetailPanelProps) {
   const [unlocking, setUnlocking] = React.useState(false);
   const [rotationText, setRotationText] = React.useState(String(bed.rotationDeg));
+  const [wText, setWText] = React.useState(String(Math.round(bed.w * PLAN_W)));
+  const [hText, setHText] = React.useState(String(Math.round(bed.h * PLAN_H)));
 
   React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- mirrors the bed's rotation into the field when it changes elsewhere (R key, drag)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mirrors the bed into the fields when it changes elsewhere (R key, drag, handle)
     setRotationText(String(bed.rotationDeg));
-  }, [bed.id, bed.rotationDeg]);
+    setWText(String(Math.round(bed.w * PLAN_W)));
+    setHText(String(Math.round(bed.h * PLAN_H)));
+  }, [bed.id, bed.rotationDeg, bed.w, bed.h]);
 
   function commitRotation() {
     const n = Number(rotationText);
     if (Number.isFinite(n)) onSetRotation(bed, n);
     else setRotationText(String(bed.rotationDeg));
   }
+
+  function commitSize() {
+    const w = Number(wText);
+    const h = Number(hText);
+    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) onSetSize(bed, w, h);
+    else {
+      setWText(String(Math.round(bed.w * PLAN_W)));
+      setHText(String(Math.round(bed.h * PLAN_H)));
+    }
+  }
+
+  const enterCommits = (commit: () => void) => (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") commit();
+  };
+
+  const isStandard = bed.w === BED_DEFAULT_SIZE.w && bed.h === BED_DEFAULT_SIZE.h;
 
   return (
     <div className="flex flex-col gap-4">
@@ -147,9 +126,7 @@ function PanelBody({
                 value={rotationText}
                 onChange={(e) => setRotationText(e.target.value)}
                 onBlur={commitRotation}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commitRotation();
-                }}
+                onKeyDown={enterCommits(commitRotation)}
                 disabled={bed.x === null}
               />
             </Field>
@@ -157,6 +134,42 @@ function PanelBody({
               <RotateCw className="size-3.5" /> 90°
             </Button>
           </div>
+          <div className="flex items-end gap-2">
+            <Field className="flex-1">
+              <FieldLabel htmlFor="bed-w">Width</FieldLabel>
+              <Input
+                id="bed-w"
+                inputMode="numeric"
+                value={wText}
+                onChange={(e) => setWText(e.target.value)}
+                onBlur={commitSize}
+                onKeyDown={enterCommits(commitSize)}
+                disabled={bed.x === null}
+              />
+            </Field>
+            <Field className="flex-1">
+              <FieldLabel htmlFor="bed-h">Length</FieldLabel>
+              <Input
+                id="bed-h"
+                inputMode="numeric"
+                value={hText}
+                onChange={(e) => setHText(e.target.value)}
+                onBlur={commitSize}
+                onKeyDown={enterCommits(commitSize)}
+                disabled={bed.x === null}
+              />
+            </Field>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onSetSize(bed, BED_DEFAULT_SIZE.w * PLAN_W, BED_DEFAULT_SIZE.h * PLAN_H)}
+              disabled={bed.x === null || isStandard}
+              title={`${Math.round(BED_DEFAULT_SIZE.w * PLAN_W)} x ${Math.round(BED_DEFAULT_SIZE.h * PLAN_H)}`}
+            >
+              Standard
+            </Button>
+          </div>
+          <FieldDescription className="-mt-2">Plan units; drag the corner handle on the bed to size it by eye.</FieldDescription>
           <Field>
             <FieldLabel htmlFor="bed-room-select">Room</FieldLabel>
             <Select value={bed.roomId ?? UNPLACED} onValueChange={(v) => onSetRoom(bed, v === UNPLACED ? null : v)}>

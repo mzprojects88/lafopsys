@@ -2,12 +2,14 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import type { Room } from "@/lib/types/house-ops";
+import type { FloorPlanLabel, Room } from "@/lib/types/house-ops";
 import {
   GRID_PX,
   PLAN_H,
   PLAN_W,
+  clamp01,
   clampCentre,
+  resizeFromPointer,
   roomAtPoint,
   snapPx,
   toNorm,
@@ -16,22 +18,32 @@ import {
 } from "@/lib/utils/floor-plan-geometry";
 import type { BedView } from "./bed-view";
 import { BedGlyph } from "./bed-glyph";
+import { LabelGlyph } from "./label-glyph";
 
 export const PLAN_IMAGE = "/floor-plan/actual-floor-plan.png";
+
+export type Selection = { kind: "bed"; id: string } | { kind: "label"; id: string } | null;
 
 interface FloorPlanCanvasProps {
   rooms: Room[];
   beds: BedView[];
-  selectedId: string | null;
+  labels: FloorPlanLabel[];
+  dirtyLabelIds: Set<string>;
+  selection: Selection;
   editing: boolean;
   canSeeClinical: boolean;
-  onSelect: (id: string | null) => void;
+  onSelect: (selection: Selection) => void;
   /** Edit mode: the bed's centre moved (normalised, snapped, clamped). */
   onMove: (bed: BedView, centre: Pt) => void;
   /** Edit mode: a drag ended -- the room under the centre is decided here. */
   onDrop: (bed: BedView, centre: Pt) => void;
+  /** Edit mode: the corner handle was dragged; the centre is already re-clamped. */
+  onResize: (bed: BedView, w: number, h: number, centre: Pt) => void;
   onRotate: (bed: BedView, deltaDeg: number) => void;
   onRetireRequest: (bed: BedView) => void;
+  onMoveLabel: (label: FloorPlanLabel, centre: Pt) => void;
+  onRotateLabel: (label: FloorPlanLabel, deltaDeg: number) => void;
+  onDeleteLabel: (label: FloorPlanLabel) => void;
 }
 
 function clientToSvg(svg: SVGSVGElement, clientX: number, clientY: number): Pt {
@@ -42,6 +54,8 @@ function clientToSvg(svg: SVGSVGElement, clientX: number, clientY: number): Pt {
 }
 
 interface DragState {
+  kind: "bed" | "label";
+  mode: "move" | "resize";
   id: string;
   pointerId: number;
   startPointer: Pt; // svg px
@@ -49,23 +63,31 @@ interface DragState {
   moved: boolean;
 }
 
+const refKey = (kind: "bed" | "label", id: string) => `${kind}:${id}`;
+
 /**
- * The plan image with the room polygons and one glyph per placed bed, in
- * the image's own pixel space (viewBox = 1087 x 1447). Pointer positions are
- * mapped back through the SVG's screen matrix, so dragging is exact at any
- * rendered width.
+ * The plan image with the room polygons, one glyph per placed bed and one
+ * per label, in the image's own pixel space (viewBox = 1087 x 1447).
+ * Pointer positions are mapped back through the SVG's screen matrix, so
+ * dragging and resizing are exact at any rendered width.
  */
 export function FloorPlanCanvas({
   rooms,
   beds,
-  selectedId,
+  labels,
+  dirtyLabelIds,
+  selection,
   editing,
   canSeeClinical,
   onSelect,
   onMove,
   onDrop,
+  onResize,
   onRotate,
   onRetireRequest,
+  onMoveLabel,
+  onRotateLabel,
+  onDeleteLabel,
 }: FloorPlanCanvasProps) {
   const svgRef = React.useRef<SVGSVGElement>(null);
   const glyphRefs = React.useRef(new Map<string, SVGGElement>());
@@ -73,21 +95,21 @@ export function FloorPlanCanvas({
   const [hoverRoom, setHoverRoom] = React.useState<string | null>(null);
 
   const setGlyphRef = React.useCallback(
-    (id: string) => (el: SVGGElement | null) => {
-      if (el) glyphRefs.current.set(id, el);
-      else glyphRefs.current.delete(id);
+    (key: string) => (el: SVGGElement | null) => {
+      if (el) glyphRefs.current.set(key, el);
+      else glyphRefs.current.delete(key);
     },
     []
   );
 
-  // Selecting a bed in edit mode also focuses it, so the keyboard works at once.
+  // Selecting something in edit mode also focuses it, so the keyboard works at once.
   React.useEffect(() => {
-    if (!editing || !selectedId) return;
-    const el = glyphRefs.current.get(selectedId);
+    if (!editing || !selection) return;
+    const el = glyphRefs.current.get(refKey(selection.kind, selection.id));
     if (el && document.activeElement !== el) el.focus({ preventScroll: true });
-  }, [editing, selectedId]);
+  }, [editing, selection]);
 
-  function moveTo(bed: BedView, centrePx: Pt) {
+  function moveBedTo(bed: BedView, centrePx: Pt) {
     const snapped = { x: snapPx(centrePx.x), y: snapPx(centrePx.y) };
     const centre = clampCentre(toNorm(snapped), bed.w, bed.h, bed.rotationDeg);
     setHoverRoom(roomAtPoint(rooms, centre));
@@ -95,135 +117,221 @@ export function FloorPlanCanvas({
     return centre;
   }
 
-  function handlePointerDown(bed: BedView) {
-    return (e: React.PointerEvent<SVGGElement>) => {
-      if (!editing || e.button !== 0 || bed.x === null || bed.y === null || !svgRef.current) return;
-      e.currentTarget.setPointerCapture(e.pointerId);
-      setDrag({
-        id: bed.id,
-        pointerId: e.pointerId,
-        startPointer: clientToSvg(svgRef.current, e.clientX, e.clientY),
-        startCentre: toPx({ x: bed.x, y: bed.y }),
-        moved: false,
-      });
-      onSelect(bed.id);
-    };
+  function moveLabelTo(label: FloorPlanLabel, centrePx: Pt) {
+    const snapped = toNorm({ x: snapPx(centrePx.x), y: snapPx(centrePx.y) });
+    const centre = { x: clamp01(snapped.x), y: clamp01(snapped.y) };
+    onMoveLabel(label, centre);
+    return centre;
   }
 
-  function handlePointerMove(bed: BedView) {
-    return (e: React.PointerEvent<SVGGElement>) => {
-      if (!drag || drag.id !== bed.id || drag.pointerId !== e.pointerId || !svgRef.current) return;
-      const p = clientToSvg(svgRef.current, e.clientX, e.clientY);
-      const dx = p.x - drag.startPointer.x;
-      const dy = p.y - drag.startPointer.y;
-      if (!drag.moved && Math.hypot(dx, dy) < 3) return;
+  function beginDrag(kind: "bed" | "label", id: string, centre: Pt, e: React.PointerEvent<SVGGElement>) {
+    if (!editing || e.button !== 0 || !svgRef.current) return;
+    const mode: DragState["mode"] = (e.target as Element).closest("[data-handle='resize']") ? "resize" : "move";
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag({
+      kind,
+      mode,
+      id,
+      pointerId: e.pointerId,
+      startPointer: clientToSvg(svgRef.current, e.clientX, e.clientY),
+      startCentre: toPx(centre),
+      moved: false,
+    });
+    onSelect({ kind, id });
+  }
+
+  function pointerDelta(e: React.PointerEvent<SVGGElement>, d: DragState): Pt | null {
+    if (!svgRef.current) return null;
+    const p = clientToSvg(svgRef.current, e.clientX, e.clientY);
+    const dx = p.x - d.startPointer.x;
+    const dy = p.y - d.startPointer.y;
+    if (!d.moved && Math.hypot(dx, dy) < 3) return null;
+    if (!d.moved) setDrag({ ...d, moved: true });
+    return { x: dx, y: dy };
+  }
+
+  function endDrag(e: React.PointerEvent<SVGGElement>) {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    setDrag(null);
+    setHoverRoom(null);
+  }
+
+  // ---- beds ----
+
+  const bedPointerDown = (bed: BedView) => (e: React.PointerEvent<SVGGElement>) => {
+    if (bed.x === null || bed.y === null) return;
+    beginDrag("bed", bed.id, { x: bed.x, y: bed.y }, e);
+  };
+
+  const bedPointerMove = (bed: BedView) => (e: React.PointerEvent<SVGGElement>) => {
+    if (!drag || drag.kind !== "bed" || drag.id !== bed.id || drag.pointerId !== e.pointerId || bed.x === null || bed.y === null) return;
+    if (drag.mode === "resize") {
+      if (!svgRef.current) return;
       if (!drag.moved) setDrag({ ...drag, moved: true });
-      moveTo(bed, { x: drag.startCentre.x + dx, y: drag.startCentre.y + dy });
-    };
-  }
+      const p = clientToSvg(svgRef.current, e.clientX, e.clientY);
+      const size = resizeFromPointer({ x: bed.x, y: bed.y }, bed.rotationDeg, p);
+      const centre = clampCentre({ x: bed.x, y: bed.y }, size.w, size.h, bed.rotationDeg);
+      onResize(bed, size.w, size.h, centre);
+      return;
+    }
+    const d = pointerDelta(e, drag);
+    if (!d) return;
+    moveBedTo(bed, { x: drag.startCentre.x + d.x, y: drag.startCentre.y + d.y });
+  };
 
-  function handlePointerUp(bed: BedView) {
-    return (e: React.PointerEvent<SVGGElement>) => {
-      if (!drag || drag.id !== bed.id) return;
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
-      if (drag.moved && bed.x !== null && bed.y !== null) {
-        onDrop(bed, { x: bed.x, y: bed.y });
-      }
-      setDrag(null);
-      setHoverRoom(null);
-    };
-  }
+  const bedPointerUp = (bed: BedView) => (e: React.PointerEvent<SVGGElement>) => {
+    if (!drag || drag.kind !== "bed" || drag.id !== bed.id) return;
+    if (drag.mode === "move" && drag.moved && bed.x !== null && bed.y !== null) onDrop(bed, { x: bed.x, y: bed.y });
+    endDrag(e);
+  };
 
-  function handleKeyDown(bed: BedView) {
-    return (e: React.KeyboardEvent<SVGGElement>) => {
-      if (e.key === "Escape") {
-        onSelect(null);
-        (e.currentTarget as SVGGElement).blur();
-        return;
-      }
-      if (!editing || bed.x === null || bed.y === null) return;
-      const step = (e.shiftKey ? 5 : 1) * GRID_PX;
-      const px = toPx({ x: bed.x, y: bed.y });
-      let handled = true;
-      switch (e.key) {
-        case "ArrowUp":
-          onDrop(bed, moveTo(bed, { x: px.x, y: px.y - step }));
-          break;
-        case "ArrowDown":
-          onDrop(bed, moveTo(bed, { x: px.x, y: px.y + step }));
-          break;
-        case "ArrowLeft":
-          onDrop(bed, moveTo(bed, { x: px.x - step, y: px.y }));
-          break;
-        case "ArrowRight":
-          onDrop(bed, moveTo(bed, { x: px.x + step, y: px.y }));
-          break;
-        case "r":
-        case "R":
-          onRotate(bed, e.shiftKey ? -90 : 90);
-          break;
-        case "Delete":
-        case "Backspace":
-          onRetireRequest(bed);
-          break;
-        default:
-          handled = false;
-      }
-      if (handled) e.preventDefault();
-      setHoverRoom(null);
-    };
-  }
+  const bedKeyDown = (bed: BedView) => (e: React.KeyboardEvent<SVGGElement>) => {
+    if (e.key === "Escape") {
+      onSelect(null);
+      e.currentTarget.blur();
+      return;
+    }
+    if (!editing || bed.x === null || bed.y === null) return;
+    const step = (e.shiftKey ? 5 : 1) * GRID_PX;
+    const px = toPx({ x: bed.x, y: bed.y });
+    let handled = true;
+    switch (e.key) {
+      case "ArrowUp":
+        onDrop(bed, moveBedTo(bed, { x: px.x, y: px.y - step }));
+        break;
+      case "ArrowDown":
+        onDrop(bed, moveBedTo(bed, { x: px.x, y: px.y + step }));
+        break;
+      case "ArrowLeft":
+        onDrop(bed, moveBedTo(bed, { x: px.x - step, y: px.y }));
+        break;
+      case "ArrowRight":
+        onDrop(bed, moveBedTo(bed, { x: px.x + step, y: px.y }));
+        break;
+      case "r":
+      case "R":
+        onRotate(bed, e.shiftKey ? -90 : 90);
+        break;
+      case "Delete":
+      case "Backspace":
+        onRetireRequest(bed);
+        break;
+      default:
+        handled = false;
+    }
+    if (handled) e.preventDefault();
+    setHoverRoom(null);
+  };
+
+  // ---- labels ----
+
+  const labelPointerDown = (label: FloorPlanLabel) => (e: React.PointerEvent<SVGGElement>) => {
+    beginDrag("label", label.id, { x: label.x, y: label.y }, e);
+  };
+
+  const labelPointerMove = (label: FloorPlanLabel) => (e: React.PointerEvent<SVGGElement>) => {
+    if (!drag || drag.kind !== "label" || drag.id !== label.id || drag.pointerId !== e.pointerId) return;
+    const d = pointerDelta(e, drag);
+    if (!d) return;
+    moveLabelTo(label, { x: drag.startCentre.x + d.x, y: drag.startCentre.y + d.y });
+  };
+
+  const labelPointerUp = (label: FloorPlanLabel) => (e: React.PointerEvent<SVGGElement>) => {
+    if (!drag || drag.kind !== "label" || drag.id !== label.id) return;
+    endDrag(e);
+  };
+
+  const labelKeyDown = (label: FloorPlanLabel) => (e: React.KeyboardEvent<SVGGElement>) => {
+    if (e.key === "Escape") {
+      onSelect(null);
+      e.currentTarget.blur();
+      return;
+    }
+    if (!editing) return;
+    const step = (e.shiftKey ? 5 : 1) * GRID_PX;
+    const px = toPx({ x: label.x, y: label.y });
+    let handled = true;
+    switch (e.key) {
+      case "ArrowUp":
+        moveLabelTo(label, { x: px.x, y: px.y - step });
+        break;
+      case "ArrowDown":
+        moveLabelTo(label, { x: px.x, y: px.y + step });
+        break;
+      case "ArrowLeft":
+        moveLabelTo(label, { x: px.x - step, y: px.y });
+        break;
+      case "ArrowRight":
+        moveLabelTo(label, { x: px.x + step, y: px.y });
+        break;
+      case "r":
+      case "R":
+        onRotateLabel(label, e.shiftKey ? -90 : 90);
+        break;
+      case "Delete":
+      case "Backspace":
+        onDeleteLabel(label);
+        break;
+      default:
+        handled = false;
+    }
+    if (handled) e.preventDefault();
+  };
 
   return (
     <div className="relative overflow-hidden rounded-lg border bg-white">
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${PLAN_W} ${PLAN_H}`}
-        className={cn("block h-auto w-full select-none", editing && "touch-none")}
-        onPointerDown={(e) => {
-          if (e.target === e.currentTarget) onSelect(null);
-        }}
-      >
+      <svg ref={svgRef} viewBox={`0 0 ${PLAN_W} ${PLAN_H}`} className={cn("block h-auto w-full select-none", editing && "touch-none")}>
         <image href={PLAN_IMAGE} x={0} y={0} width={PLAN_W} height={PLAN_H} preserveAspectRatio="none" />
         <rect x={0} y={0} width={PLAN_W} height={PLAN_H} fill="transparent" onPointerDown={() => onSelect(null)} />
 
         {rooms.map((room) => {
           if (!room.bounds) return null;
           const points = room.bounds.map(([x, y]) => `${x * PLAN_W},${y * PLAN_H}`).join(" ");
-          // label in the top-left corner, where beds are least likely to cover it
-          const minX = Math.min(...room.bounds.map(([x]) => x)) * PLAN_W;
-          const minY = Math.min(...room.bounds.map(([, y]) => y)) * PLAN_H;
           const active = hoverRoom === room.id;
           return (
-            <g key={room.id} pointerEvents="none">
-              <polygon
-                points={points}
-                fill={active ? "rgba(59,130,246,0.16)" : "rgba(59,130,246,0.05)"}
-                stroke={active ? "#2563eb" : "rgba(37,99,235,0.55)"}
-                strokeWidth={active ? 3 : 2}
-                strokeDasharray="8 5"
-              />
-              <text x={minX + 10} y={minY + 22} fontSize={16} fontWeight={700} fill="rgba(30,64,175,0.7)">
-                {room.name.toUpperCase()}
-              </text>
-            </g>
+            <polygon
+              key={room.id}
+              pointerEvents="none"
+              points={points}
+              fill={active ? "rgba(59,130,246,0.16)" : "rgba(59,130,246,0.05)"}
+              stroke={active ? "#2563eb" : "rgba(37,99,235,0.55)"}
+              strokeWidth={active ? 3 : 2}
+              strokeDasharray="8 5"
+            />
           );
         })}
+
+        {labels.map((label) => (
+          <LabelGlyph
+            key={label.id}
+            ref={setGlyphRef(refKey("label", label.id))}
+            label={label}
+            selected={selection?.kind === "label" && selection.id === label.id}
+            editing={editing}
+            dirty={dirtyLabelIds.has(label.id)}
+            dragging={drag?.kind === "label" && drag.id === label.id && drag.moved}
+            onPointerDown={labelPointerDown(label)}
+            onPointerMove={labelPointerMove(label)}
+            onPointerUp={labelPointerUp(label)}
+            onKeyDown={labelKeyDown(label)}
+            onClick={() => onSelect({ kind: "label", id: label.id })}
+          />
+        ))}
 
         {beds.map((bed) => (
           <BedGlyph
             key={bed.id}
-            ref={setGlyphRef(bed.id)}
+            ref={setGlyphRef(refKey("bed", bed.id))}
             bed={bed}
-            selected={bed.id === selectedId}
+            selected={selection?.kind === "bed" && selection.id === bed.id}
             editing={editing}
-            dragging={drag?.id === bed.id && drag.moved}
+            dragging={drag?.kind === "bed" && drag.id === bed.id && drag.moved}
             canSeeClinical={canSeeClinical}
-            onPointerDown={handlePointerDown(bed)}
-            onPointerMove={handlePointerMove(bed)}
-            onPointerUp={handlePointerUp(bed)}
-            onKeyDown={handleKeyDown(bed)}
-            onClick={() => onSelect(bed.id)}
+            onPointerDown={bedPointerDown(bed)}
+            onPointerMove={bedPointerMove(bed)}
+            onPointerUp={bedPointerUp(bed)}
+            onKeyDown={bedKeyDown(bed)}
+            onClick={() => onSelect({ kind: "bed", id: bed.id })}
           />
         ))}
       </svg>

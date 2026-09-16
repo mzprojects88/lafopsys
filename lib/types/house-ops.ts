@@ -43,6 +43,19 @@ export interface BedPosition {
   label: "A" | "B" | "C" | "D";
 }
 
+/** Free text an admin writes on the plan (0048). Centre normalised 0..1,
+ * like a bed. The id is "tmp-<uuid>" while the label is unsaved in the editor. */
+export interface FloorPlanLabel {
+  id: string;
+  text: string; // 1..60 chars
+  x: number;
+  y: number;
+  rotationDeg: number; // 0..359
+  fontSize: number; // 8..48
+}
+
+export const LABEL_DEFAULTS = { rotationDeg: 0, fontSize: 16 } as const;
+
 export type TripDirection = "to_hospital" | "from_hospital" | "errand" | "other";
 export type TripStatus = "scheduled" | "in_progress" | "completed";
 

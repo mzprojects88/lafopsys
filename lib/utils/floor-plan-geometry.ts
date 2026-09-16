@@ -107,3 +107,106 @@ export function nextBedCode(codes: string[]): string {
   }
   return `B${max + 1}`;
 }
+
+// ---- bed size (0047 columns w/h; the editor resizes them, increment 2) ----
+
+export const BED_MIN_SIZE = 0.03; // normalised; ~33 x 43 plan px
+export const BED_MAX_SIZE = 0.4;
+export const BED_DEFAULT_SIZE = { w: 0.08, h: 0.12 } as const;
+
+export function clampSize(v: number): number {
+  return Math.min(BED_MAX_SIZE, Math.max(BED_MIN_SIZE, v));
+}
+
+/** The columns are numeric(6,5); rounding keeps a re-read row equal to what was drafted. */
+export function round5(v: number): number {
+  return Math.round(v * 1e5) / 1e5;
+}
+
+/**
+ * Pointer (plan px) -> the bed's local frame -> a new size, for any rotation.
+ * The dragged corner is the bottom-right in the bed's own frame; |local|
+ * keeps it symmetric, so dragging past the centre never yields a negative
+ * size. Snapped to the grid, then clamped (so the minimum wins over the snap).
+ */
+export function resizeFromPointer(centre: Pt, rotationDeg: number, pointerPx: Pt): { w: number; h: number } {
+  const c = toPx(centre);
+  const rad = (-rotationDeg * Math.PI) / 180;
+  const dx = pointerPx.x - c.x;
+  const dy = pointerPx.y - c.y;
+  const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
+  const ly = dx * Math.sin(rad) + dy * Math.cos(rad);
+  const wPx = snapPx(2 * Math.abs(lx));
+  const hPx = snapPx(2 * Math.abs(ly));
+  return { w: round5(clampSize(wPx / PLAN_W)), h: round5(clampSize(hPx / PLAN_H)) };
+}
+
+/** Where the resize handle sits: the bottom-right corner in the bed's rotated frame (plan px). */
+export function resizeHandleLocal(w: number, h: number): Pt {
+  return { x: (w * PLAN_W) / 2, y: (h * PLAN_H) / 2 };
+}
+
+// ---- custom labels (ops.floor_plan_labels, 0048) ----
+
+export interface FloorPlanLabelLike {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  rotationDeg: number;
+  fontSize: number;
+}
+
+export interface LabelChanges<L extends FloorPlanLabelLike = FloorPlanLabelLike> {
+  inserts: Omit<L, "id">[];
+  /** The draft ids of `inserts`, in the same order, so a failed insert can stay dirty. */
+  insertTmpIds: string[];
+  updates: L[];
+  deletes: string[];
+}
+
+export function isTmpLabelId(id: string): boolean {
+  return id.startsWith("tmp-");
+}
+
+export function sameLabel(a: FloorPlanLabelLike, b: FloorPlanLabelLike): boolean {
+  return a.text === b.text && a.x === b.x && a.y === b.y && a.rotationDeg === b.rotationDeg && a.fontSize === b.fontSize;
+}
+
+/**
+ * What the canvas draws while editing: the live rows with the draft laid
+ * over them, deleted ones hidden, added (tmp) ones appended. A draft edit
+ * of a label that is no longer live is dropped, never resurrected.
+ */
+export function mergeLabels<L extends FloorPlanLabelLike>(live: L[], draft: Map<string, L>, deleted: Set<string>): L[] {
+  const out: L[] = [];
+  for (const l of live) {
+    if (deleted.has(l.id)) continue;
+    out.push(draft.get(l.id) ?? l);
+  }
+  for (const [id, l] of draft) {
+    if (isTmpLabelId(id) && !deleted.has(id)) out.push(l);
+  }
+  return out;
+}
+
+/** What Save layout must write for the labels. */
+export function diffLabels<L extends FloorPlanLabelLike>(live: L[], draft: Map<string, L>, deleted: Set<string>): LabelChanges<L> {
+  const inserts: Omit<L, "id">[] = [];
+  const insertTmpIds: string[] = [];
+  const updates: L[] = [];
+  for (const [id, l] of draft) {
+    if (deleted.has(id)) continue;
+    if (isTmpLabelId(id)) {
+      const { id: _drop, ...rest } = l;
+      void _drop;
+      inserts.push(rest);
+      insertTmpIds.push(id);
+      continue;
+    }
+    const base = live.find((b) => b.id === id);
+    if (base && !sameLabel(base, l)) updates.push(l);
+  }
+  const deletes = [...deleted].filter((id) => live.some((b) => b.id === id));
+  return { inserts, insertTmpIds, updates, deletes };
+}

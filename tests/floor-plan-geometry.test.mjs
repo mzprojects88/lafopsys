@@ -108,3 +108,89 @@ describe("nextBedCode", () => {
     assert.equal(nextBedCode(["B7", "B99"]), "B100");
   });
 });
+
+// ---- increment 2: bed size, custom labels ----
+import {
+  BED_MAX_SIZE,
+  BED_MIN_SIZE,
+  clampSize,
+  diffLabels,
+  mergeLabels,
+  resizeFromPointer,
+  resizeHandleLocal,
+} from "../lib/utils/floor-plan-geometry.ts";
+
+describe("resizeFromPointer", () => {
+  const centre = { x: 0.5, y: 0.5 };
+  const c = toPx(centre);
+  it("reads the corner in the bed's own frame at rotation 0", () => {
+    const s = resizeFromPointer(centre, 0, { x: c.x + 44, y: c.y + 88 });
+    assert.ok(Math.abs(s.w - 88 / PLAN_W) < 1e-5);
+    assert.ok(Math.abs(s.h - 176 / PLAN_H) < 1e-5);
+  });
+  it("gives the same size at 90 degrees from the rotated corner", () => {
+    // at 90°, the bed's local +x points down the page and local +y points left
+    const s = resizeFromPointer(centre, 90, { x: c.x - 88, y: c.y + 44 });
+    assert.ok(Math.abs(s.w - 88 / PLAN_W) < 1e-5);
+    assert.ok(Math.abs(s.h - 176 / PLAN_H) < 1e-5);
+  });
+  it("is symmetric: dragging past the centre never goes negative", () => {
+    const a = resizeFromPointer(centre, 0, { x: c.x + 44, y: c.y + 88 });
+    const b = resizeFromPointer(centre, 180, { x: c.x + 44, y: c.y + 88 });
+    assert.deepEqual(a, b);
+  });
+  it("clamps to the minimum near the centre and the maximum far away", () => {
+    assert.deepEqual(resizeFromPointer(centre, 0, { x: c.x + 1, y: c.y + 1 }), { w: BED_MIN_SIZE, h: BED_MIN_SIZE });
+    assert.deepEqual(resizeFromPointer(centre, 0, { x: c.x + 5000, y: c.y + 5000 }), { w: BED_MAX_SIZE, h: BED_MAX_SIZE });
+    // at 45° a pointer on the diagonal has no local y; one off the diagonal fills both axes
+    const s45 = resizeFromPointer(centre, 45, { x: c.x + 5000, y: c.y + 500 });
+    assert.deepEqual(s45, { w: BED_MAX_SIZE, h: BED_MAX_SIZE });
+  });
+  it("rounds to five decimals", () => {
+    const s = resizeFromPointer(centre, 0, { x: c.x + 50, y: c.y + 100 });
+    assert.equal(s.w, Math.round(s.w * 1e5) / 1e5);
+    assert.equal(s.h, Math.round(s.h * 1e5) / 1e5);
+  });
+  it("places the handle at the bottom-right corner", () => {
+    const p = resizeHandleLocal(0.08, 0.12);
+    assert.ok(Math.abs(p.x - 43.48) < 0.01 && Math.abs(p.y - 86.82) < 0.01);
+    assert.equal(clampSize(0.001), BED_MIN_SIZE);
+    assert.equal(clampSize(0.9), BED_MAX_SIZE);
+  });
+  it("a resized bed near the corner is pulled back inside by clampCentre", () => {
+    const c2 = clampCentre({ x: 0.95, y: 0.95 }, 0.4, 0.4, 0);
+    assert.ok(c2.x < 0.95 && c2.y < 0.95);
+    assert.ok(Math.abs(c2.x - 0.8) < 1e-9 && Math.abs(c2.y - 0.8) < 1e-9);
+  });
+});
+
+describe("labels draft", () => {
+  const l = (id, over = {}) => ({ id, text: "Nurse", x: 0.5, y: 0.5, rotationDeg: 0, fontSize: 16, ...over });
+  const live = [l("a"), l("b"), l("c")];
+  it("diffs inserts, updates and deletes", () => {
+    const draft = new Map([
+      ["tmp-1", l("tmp-1", { text: "Exit" })],
+      ["a", l("a", { x: 0.1 })],
+      ["b", l("b")],
+      ["gone", l("gone")],
+      ["tmp-2", l("tmp-2")],
+    ]);
+    const deleted = new Set(["c", "tmp-2", "never"]);
+    const d = diffLabels(live, draft, deleted);
+    assert.deepEqual(d.insertTmpIds, ["tmp-1"]);
+    assert.deepEqual(d.inserts, [{ text: "Exit", x: 0.5, y: 0.5, rotationDeg: 0, fontSize: 16 }]);
+    assert.deepEqual(d.updates.map((u) => u.id), ["a"]);
+    assert.deepEqual(d.deletes, ["c"]);
+  });
+  it("merges for drawing: deleted hidden, edits overlaid, tmp appended, orphans dropped", () => {
+    const draft = new Map([
+      ["a", l("a", { x: 0.1 })],
+      ["gone", l("gone")],
+      ["tmp-1", l("tmp-1", { text: "Exit" })],
+      ["tmp-2", l("tmp-2")],
+    ]);
+    const merged = mergeLabels(live, draft, new Set(["c", "tmp-2"]));
+    assert.deepEqual(merged.map((m) => m.id), ["a", "b", "tmp-1"]);
+    assert.equal(merged[0].x, 0.1);
+  });
+});

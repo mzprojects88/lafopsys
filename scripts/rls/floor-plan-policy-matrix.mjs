@@ -1,5 +1,6 @@
 // Proves the floor-plan rules of 0047 (ops.units / ops.rooms guard triggers,
-// column grants, ops.create_bed / ops.retire_bed) against the live database,
+// column grants, ops.create_bed / ops.retire_bed) and 0048 (ops.floor_plan_labels:
+// everyone reads, only admins write) against the live database,
 // one scenario per transaction, every transaction rolled back -- nothing
 // persists. lafopsys has a single database, so this runs against production
 // by design; RLS_ALLOW_PROD=1 acknowledges that.
@@ -163,7 +164,7 @@ async function main() {
   await scenario(ids, "driver cannot move a bed", "driver", null, q(move), denied);
   // RLS hides every row from a session without a staff role: 0 rows, no error.
   await scenario(ids, "no session cannot move a bed", null, null, q(move), rows(0));
-  await scenario(ids, "admin cannot place x without y", "admin", null, q("update ops.units set x = 0.5 where id = 'unit-B1'"), checkFailed);
+  await scenario(ids, "admin cannot place x without y", "admin", null, q("update ops.units set x = 0.5, y = null where id = 'unit-B1'"), checkFailed);
   await scenario(ids, "admin cannot place a bed off the plan", "admin", null, q("update ops.units set x = 1.5, y = 0.5 where id = 'unit-B1'"), checkFailed);
   await scenario(ids, "admin changes capacity", "admin", null, q("update ops.units set capacity = 2 where id = 'unit-B1'"), rows(1));
   await scenario(ids, "social worker cannot change capacity", "social_worker", null, q("update ops.units set capacity = 2 where id = 'unit-B1'"), denied);
@@ -231,6 +232,33 @@ async function main() {
   await scenario(ids, "social worker cannot redraw a room", "social_worker", null, q(bounds), denied);
   await scenario(ids, "a room polygon needs three points", "admin", null, q(`update ops.rooms set bounds = '[[0,0],[1,1]]' where id = 'room-1'`), checkFailed);
   await scenario(ids, "admin cannot add a room by hand", "admin", null, q("insert into ops.rooms (id, name) values ('room-9', 'Room 9')"), denied);
+
+  // --- custom labels (0048) ------------------------------------------------------------
+  // The fixture is stamped a minute in the past: the whole run is one
+  // transaction, so now() is frozen and a default-stamped row could never
+  // read as "bumped" after an update.
+  const LABEL = "00000000-0000-4000-8000-0000000000c1";
+  const seedLabel = () =>
+    client.query(
+      "insert into ops.floor_plan_labels (id, text, x, y, created_at, updated_at) values ($1, 'Nurse station', 0.5, 0.5, now() - interval '1 minute', now() - interval '1 minute')",
+      [LABEL]
+    );
+  const insertLabel = "insert into ops.floor_plan_labels (text, x, y) values ('Exit', 0.1, 0.9) returning id";
+  const editLabel = "update ops.floor_plan_labels set text = 'Nurse desk', rotation_deg = 90, font_size = 20 where id = $1";
+  await scenario(ids, "social worker reads the labels", "social_worker", { setup: seedLabel }, q("select id from ops.floor_plan_labels where id = $1", [LABEL]), rows(1));
+  await scenario(ids, "driver reads the labels", "driver", { setup: seedLabel }, q("select id from ops.floor_plan_labels where id = $1", [LABEL]), rows(1));
+  await scenario(ids, "no session reads no labels", null, { setup: seedLabel }, q("select id from ops.floor_plan_labels where id = $1", [LABEL]), rows(0));
+  await scenario(ids, "admin adds a label", "admin", null, q(insertLabel), rows(1));
+  await scenario(ids, "admin edits a label", "admin", { setup: seedLabel }, q(editLabel, [LABEL]), rows(1));
+  await scenario(ids, "admin deletes a label", "admin", { setup: seedLabel }, q("delete from ops.floor_plan_labels where id = $1", [LABEL]), rows(1));
+  await scenario(ids, "social worker cannot add a label", "social_worker", null, q(insertLabel), denied);
+  await scenario(ids, "house staff cannot add a label", "house_staff", null, q(insertLabel), denied);
+  await scenario(ids, "social worker cannot edit a label", "social_worker", { setup: seedLabel }, q(editLabel, [LABEL]), rows(0));
+  await scenario(ids, "social worker cannot delete a label", "social_worker", { setup: seedLabel }, q("delete from ops.floor_plan_labels where id = $1", [LABEL]), rows(0));
+  await scenario(ids, "a label needs text", "admin", null, q("insert into ops.floor_plan_labels (text, x, y) values ('   ', 0.1, 0.1)"), checkFailed);
+  await scenario(ids, "a label stays on the plan", "admin", null, q("insert into ops.floor_plan_labels (text, x, y) values ('Off', 1.5, 0.1)"), checkFailed);
+  await scenario(ids, "a label's font size is bounded", "admin", null, q("insert into ops.floor_plan_labels (text, x, y, font_size) values ('Big', 0.1, 0.1, 60)"), checkFailed);
+  await scenario(ids, "editing a label stamps updated_at", "admin", { setup: seedLabel }, q("update ops.floor_plan_labels set text = 'x' where id = $1 returning updated_at > created_at as bumped", [LABEL]), value("bumped", true));
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();

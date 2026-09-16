@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Plus, Save, Undo2, X } from "lucide-react";
+import { Pencil, Plus, Save, Tag, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface FloorPlanToolbarProps {
@@ -12,9 +12,20 @@ interface FloorPlanToolbarProps {
   onSave: () => void;
   onDiscard: () => void;
   onAddBed: () => void;
+  onAddLabel: () => void;
 }
 
-export function FloorPlanToolbar({ canEdit, editing, dirtyCount, saving, onToggleEdit, onSave, onDiscard, onAddBed }: FloorPlanToolbarProps) {
+export function FloorPlanToolbar({
+  canEdit,
+  editing,
+  dirtyCount,
+  saving,
+  onToggleEdit,
+  onSave,
+  onDiscard,
+  onAddBed,
+  onAddLabel,
+}: FloorPlanToolbarProps) {
   if (!canEdit) return null;
   if (!editing) {
     return (
@@ -25,11 +36,12 @@ export function FloorPlanToolbar({ canEdit, editing, dirtyCount, saving, onToggl
   }
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs text-muted-foreground">
-        Drag to move · R rotates · arrows nudge · Delete retires
-      </span>
+      <span className="text-xs text-muted-foreground">Drag to move · corner handle resizes · R rotates · arrows nudge · Delete removes</span>
       <Button variant="outline" size="sm" onClick={onAddBed} disabled={saving}>
         <Plus className="size-3.5" /> Add bed
+      </Button>
+      <Button variant="outline" size="sm" onClick={onAddLabel} disabled={saving}>
+        <Tag className="size-3.5" /> Add label
       </Button>
       <Button variant="outline" size="sm" onClick={onDiscard} disabled={saving || dirtyCount === 0}>
         <Undo2 className="size-3.5" /> Discard
