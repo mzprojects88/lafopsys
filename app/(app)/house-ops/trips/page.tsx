@@ -24,8 +24,7 @@ import { useTripsData } from "@/lib/hooks/use-trips-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import type { Trip, TripDirection } from "@/lib/types/house-ops";
-import { formatDate } from "@/lib/utils/date";
-import { TODAY_ISO } from "@/lib/utils/seeded-random";
+import { formatDate, todayIso } from "@/lib/utils/date";
 
 const columns: ColumnDef<Trip>[] = [
   { accessorKey: "date", header: "Date", cell: ({ row }) => formatDate(row.original.date) },
@@ -70,7 +69,7 @@ export default function TripsPage() {
   async function handleCreate() {
     setSubmitting(true);
     const result = await addTrip({
-      date: TODAY_ISO,
+      date: todayIso(),
       direction,
       driverId: driverStaffId,
       vehicle,

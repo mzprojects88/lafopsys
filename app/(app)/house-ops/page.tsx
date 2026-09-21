@@ -7,7 +7,7 @@ import { Users, Home, Share2, Percent, Car, Utensils, LayoutGrid, HeartPulse, Sp
 import { useCensusData } from "@/lib/hooks/use-census-collection";
 import { useTripsData } from "@/lib/hooks/use-trips-collection";
 import { useMealServicesData } from "@/lib/hooks/use-meal-services-collection";
-import { TODAY_ISO } from "@/lib/utils/seeded-random";
+import { todayIso } from "@/lib/utils/date";
 
 const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/house-ops/floor-plan", label: "Floor Plan", icon: LayoutGrid, color: "blue" },
@@ -22,12 +22,12 @@ export default function HouseOpsPage() {
   const { trips } = useTripsData();
   const { meals } = useMealServicesData();
 
-  const today = history.find((c) => c.date === TODAY_ISO) ?? history[history.length - 1];
+  const today = history.find((c) => c.date === todayIso()) ?? history[history.length - 1];
   const yesterday = today ? history[history.findIndex((c) => c.date === today.date) - 1] : undefined;
   const utilization =
     today?.unitsOccupied !== undefined && today ? Math.round((today.unitsOccupied / today.totalUnits) * 100) : undefined;
-  const todaysTrips = trips.filter((t) => t.date === TODAY_ISO).length;
-  const todaysMeals = meals.filter((m) => m.date === TODAY_ISO).length;
+  const todaysTrips = trips.filter((t) => t.date === todayIso()).length;
+  const todaysMeals = meals.filter((m) => m.date === todayIso()).length;
 
   return (
     <div className="flex flex-1 flex-col gap-6">

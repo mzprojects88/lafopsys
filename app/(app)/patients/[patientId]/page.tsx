@@ -2,7 +2,7 @@
 
 import { use, useState } from "react";
 import { notFound } from "next/navigation";
-import { ShieldAlert, LogOut, CalendarClock, ArrowRightLeft } from "lucide-react";
+import { ShieldAlert, LogOut, CalendarClock, ArrowRightLeft, BedDouble } from "lucide-react";
 import { EntityDetailHeader } from "@/components/patterns/entity-detail-header";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { EmptyState } from "@/components/patterns/empty-state";
@@ -12,7 +12,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cities, provinces, diagnoses, treatmentPhases } from "@/lib/mock-data";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
-import { unitForBedPosition } from "@/lib/utils/beds";
 import { computeAge } from "@/lib/utils/age";
 import { formatDate } from "@/lib/utils/date";
 import { useRole } from "@/lib/rbac/use-role";
@@ -21,13 +20,15 @@ import { FileLibrary } from "@/components/patterns/file-library";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
 import { houseSheetPatientId } from "@/lib/types/house-sheet";
-import { canReviewHouseSheet } from "@/lib/rbac/roles";
+import { canCheckIn, canReviewHouseSheet } from "@/lib/rbac/roles";
 import Link from "next/link";
 import { Home } from "lucide-react";
 import { AdmissionChecklist } from "@/components/modules/patients/admission-checklist";
 import { DischargeDialog } from "@/components/modules/patients/discharge-dialog";
 import { ExtendStayDialog } from "@/components/modules/patients/extend-stay-dialog";
 import { TransferBedDialog } from "@/components/modules/patients/transfer-bed-dialog";
+import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
+import { isActiveStay, unitForBedPosition } from "@/lib/utils/beds";
 import type { Stay } from "@/lib/types/patient";
 
 export default function PatientDetailPage({ params }: { params: Promise<{ patientId: string }> }) {
@@ -40,6 +41,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   const [dischargeTarget, setDischargeTarget] = useState<Stay | null>(null);
   const [extendTarget, setExtendTarget] = useState<Stay | null>(null);
   const [transferTarget, setTransferTarget] = useState<Stay | null>(null);
+  const [checkingIn, setCheckingIn] = useState(false);
 
   if (!patient) {
     if (loading) return null;
@@ -50,6 +52,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   const patientCarers = carers.filter((c) => c.patientId === patient.id);
   const patientStays = stays.filter((s) => s.patientId === patient.id);
   const patientAppointments = appointments.filter((a) => a.patientId === patient.id);
+  const showCheckIn = canCheckIn(role) && patient.status !== "expired" && !patientStays.some(isActiveStay);
 
   const diagnosisLabel = patient.diagnosisIds
     .map((id) => diagnoses.find((d) => d.id === id)?.name)
@@ -132,7 +135,13 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
           </div>
         </TabsContent>
 
-        <TabsContent value="stays" className="pt-4">
+        <TabsContent value="stays" className="flex flex-col gap-3 pt-4">
+          {showCheckIn && (
+            <Button className="w-fit gap-1.5" onClick={() => setCheckingIn(true)}>
+              <BedDouble className="size-4" />
+              Check in
+            </Button>
+          )}
           {patientStays.length === 0 ? (
             <EmptyState title="No stays recorded" />
           ) : (
@@ -237,6 +246,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
         </TabsContent>
       </Tabs>
 
+      <CheckInDialog
+        key={checkingIn ? "open" : "closed"}
+        target={checkingIn ? { patient } : null}
+        onOpenChange={(open) => !open && setCheckingIn(false)}
+      />
       <DischargeDialog
         stay={dischargeTarget}
         patientName={`${patient.firstName} ${patient.lastName}`}

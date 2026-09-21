@@ -31,7 +31,7 @@ export function TransferBedDialog({ stay, patientName, onOpenChange, onTransferr
   const [unitId, setUnitId] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
 
-  // Same rule as ConfirmArrivalDialog (lib/utils/beds.ts), minus the bed the
+  // Same rule as CheckInDialog (lib/utils/beds.ts), minus the bed the
   // patient is already in.
   const currentUnit = stay ? unitForBedPosition(stay.bedPositionId, units, bedPositions) : undefined;
   const beds = assignableBeds(units, bedPositions, stays, rooms, { excludeUnitId: currentUnit?.id });

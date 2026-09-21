@@ -21,7 +21,7 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useCampaignsData } from "@/lib/hooks/use-campaigns-collection";
 import { formatCurrency } from "@/lib/utils/currency";
-import { TODAY_ISO } from "@/lib/utils/seeded-random";
+import { todayIso } from "@/lib/utils/date";
 
 export default function CampaignsPage() {
   const { campaigns, addCampaign } = useCampaignsData();
@@ -33,7 +33,7 @@ export default function CampaignsPage() {
   async function handleCreate() {
     if (!name.trim() || !targetAmount) return;
     setSubmitting(true);
-    const result = await addCampaign({ name: name.trim(), targetAmount: Number(targetAmount), startDate: TODAY_ISO });
+    const result = await addCampaign({ name: name.trim(), targetAmount: Number(targetAmount), startDate: todayIso() });
     setSubmitting(false);
     if (!result.ok) {
       toast.error(`Couldn't create the campaign: ${result.error}`);

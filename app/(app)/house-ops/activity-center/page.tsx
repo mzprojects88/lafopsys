@@ -20,8 +20,7 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useActivitySessionsData } from "@/lib/hooks/use-activity-sessions-collection";
 import type { ActivitySession } from "@/lib/types/house-ops";
-import { formatDate } from "@/lib/utils/date";
-import { TODAY_ISO } from "@/lib/utils/seeded-random";
+import { formatDate, todayIso } from "@/lib/utils/date";
 
 const columns: ColumnDef<ActivitySession>[] = [
   { accessorKey: "date", header: "Date", cell: ({ row }) => formatDate(row.original.date) },
@@ -54,7 +53,7 @@ export default function ActivityCenterPage() {
     if (!title.trim()) return;
     setSubmitting(true);
     const result = await addSession({
-      date: TODAY_ISO,
+      date: todayIso(),
       title: title.trim(),
       participants: Number(participants) || 0,
       volunteerCount: Number(volunteerCount) || 0,

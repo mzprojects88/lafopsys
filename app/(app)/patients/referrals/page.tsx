@@ -7,7 +7,7 @@ import { Plus, Inbox, CheckCircle2, Clock, XCircle, BedDouble, Building2 } from 
 import { PageHeader } from "@/components/patterns/page-header";
 import { BoardColumns, type BoardColumn } from "@/components/patterns/board-columns";
 import { ReasonDialog } from "@/components/patterns/reason-dialog";
-import { ConfirmArrivalDialog } from "@/components/modules/patients/confirm-arrival-dialog";
+import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { hospitals } from "@/lib/mock-data";
@@ -15,7 +15,6 @@ import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import type { Referral, ReferralStatus } from "@/lib/types/patient";
 import type { CategoryColor } from "@/lib/utils/category-colors";
 import { formatDate } from "@/lib/utils/date";
-import { TODAY_ISO } from "@/lib/utils/seeded-random";
 import type { LucideIcon } from "lucide-react";
 
 const STATUSES: { id: ReferralStatus; title: string; color: CategoryColor; icon: LucideIcon }[] = [
@@ -111,7 +110,7 @@ export default function ReferralsPage() {
                   <div className="flex gap-1.5 pt-1">
                     <Button size="sm" className="h-6 flex-1 gap-1 text-[11px]" onClick={() => setArrivalTarget(r.id)}>
                       <BedDouble className="size-3" />
-                      Confirm Arrival & Admit
+                      Check in
                     </Button>
                   </div>
                 )}
@@ -131,24 +130,10 @@ export default function ReferralsPage() {
         onConfirm={(reason) => declineTarget && setStatus(declineTarget, "declined", reason)}
       />
 
-      <ConfirmArrivalDialog
-        referral={arrivalReferral}
+      <CheckInDialog
+        key={arrivalReferral?.id}
+        target={arrivalReferral ? { referral: arrivalReferral } : null}
         onOpenChange={(open) => !open && setArrivalTarget(null)}
-        onAdmitted={async (patientId) => {
-          if (!arrivalTarget) return;
-          const result = await updateReferral(arrivalTarget, {
-            status: "admitted",
-            admittedPatientId: patientId,
-            admittedAt: TODAY_ISO,
-          });
-          if (!result.ok) {
-            toast.error(`Patient admitted, but couldn't update the referral record: ${result.error}`);
-            setArrivalTarget(null);
-            return;
-          }
-          toast.success(`${arrivalReferral?.patientName} admitted to LAF House`);
-          setArrivalTarget(null);
-        }}
       />
     </div>
   );

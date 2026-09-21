@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
-import { TODAY_ISO } from "@/lib/utils/seeded-random";
+import { todayIso } from "@/lib/utils/date";
 import type { Stay } from "@/lib/types/patient";
 
 // Org-confirmed candidate list (2026-08-18) — the plan's proposed categories,
@@ -56,7 +56,7 @@ export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged 
     setSubmitting(true);
 
     const result = await updateStay(stay.id, {
-      checkOutAt: TODAY_ISO,
+      checkOutAt: todayIso(),
       checkOutReason: reason,
       destination: destination || undefined,
       followUpDate: scheduleFollowUp && followUpDate ? followUpDate : undefined,

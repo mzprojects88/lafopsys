@@ -12,7 +12,7 @@ import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/modul
 import { cities, diagnoses } from "@/lib/mock-data";
 import type { Patient } from "@/lib/types/patient";
 import { computeAge } from "@/lib/utils/age";
-import { TODAY_ISO } from "@/lib/utils/seeded-random";
+import { todayIso } from "@/lib/utils/date";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 
 const SUB_NAV: ModuleSubNavItem[] = [
@@ -74,7 +74,7 @@ export default function PatientsPage() {
   const { patients } = usePatientsData();
   const ongoingCount = patients.filter((p) => p.status === "ongoing").length;
   const admittedThisMonth = patients.filter(
-    (p) => p.admittedAt.slice(0, 7) === TODAY_ISO.slice(0, 7)
+    (p) => p.admittedAt.slice(0, 7) === todayIso().slice(0, 7)
   ).length;
 
   return (

@@ -6,13 +6,12 @@ import { PersonAvatar } from "@/components/patterns/person-avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
-import { makeRng } from "@/lib/utils/seeded-random";
-
-const rng = makeRng(808);
-const tomorrow = rng.daysFromNow(1);
+import { addDays, format, parseISO } from "date-fns";
+import { todayIso } from "@/lib/utils/date";
 
 export default function ManifestPage() {
   const { patients, appointments, carers } = usePatientsData();
+  const tomorrow = format(addDays(parseISO(todayIso()), 1), "yyyy-MM-dd");
 
   const manifestRows = appointments
     .filter((a) => a.date === tomorrow && a.needsTransport)

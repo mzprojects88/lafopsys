@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
-import { Check, ClipboardList, FilePlus2, Home, RotateCcw, Search, Sparkles, UserCheck, UserX, Users, X } from "lucide-react";
+import { BedDouble, Check, ClipboardList, FilePlus2, Home, RotateCcw, Search, Sparkles, UserCheck, UserX, Users, X } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { EmptyState } from "@/components/patterns/empty-state";
@@ -18,11 +18,13 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { HouseSheetStatus } from "@/components/modules/patients/house-sheet-status";
+import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
 import { confirmHouseSheetMatch, dismissHouseSheetRow, reopenHouseSheetRow } from "@/app/(app)/patients/house-sheet/actions";
 import { houseSheetPeopleStore, useHouseSheetPeople, useHouseSheetRuns } from "@/lib/hooks/use-house-sheet-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useRole } from "@/lib/rbac/use-role";
-import { canReviewHouseSheet } from "@/lib/rbac/roles";
+import { canCheckIn, canReviewHouseSheet } from "@/lib/rbac/roles";
+import { isActiveStay } from "@/lib/utils/beds";
 import { formatDate } from "@/lib/utils/date";
 import { HOUSE_SHEET_STATUS_LABELS, houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
 import type { Patient } from "@/lib/types/patient";
@@ -40,12 +42,20 @@ export default function HouseSheetPage() {
   const canReview = canReviewHouseSheet(role);
   const { people, loading, error } = useHouseSheetPeople();
   const { runs } = useHouseSheetRuns();
-  const { patients } = usePatientsData();
+  const { patients, stays } = usePatientsData();
   const [showOff, setShowOff] = React.useState(false);
   const [picker, setPicker] = React.useState<HouseSheetPerson | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
+  const [checkingIn, setCheckingIn] = React.useState<Patient | null>(null);
 
   const patientById = React.useMemo(() => new Map(patients.map((p) => [p.id, p])), [patients]);
+  const inHouse = React.useMemo(() => new Set(stays.filter(isActiveStay).map((s) => s.patientId)), [stays]);
+  /** On today's sheet, settled to a patient, but with no bed in the system yet. */
+  const needsCheckIn = (p: HouseSheetPerson): Patient | undefined => {
+    if (p.offSheetAt !== null || !["auto_matched", "confirmed", "encoded"].includes(p.matchStatus)) return undefined;
+    const patient = patientById.get(houseSheetPatientId(p) ?? "");
+    return patient && patient.status !== "expired" && !inHouse.has(patient.id) ? patient : undefined;
+  };
   const onSheet = React.useMemo(() => people.filter((p) => p.offSheetAt === null), [people]);
   const shown = showOff ? people : onSheet;
   const toReview = onSheet.filter((p) => p.matchStatus === "suggested").length;
@@ -174,8 +184,14 @@ export default function HouseSheetPage() {
               const p = row.original;
               const b = busy === p.id;
               const encodeHref = `/patients/referrals/new?fromSheet=${p.id}`;
+              const toCheckIn = canCheckIn(role) ? needsCheckIn(p) : undefined;
               return (
                 <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                  {toCheckIn ? (
+                    <Button size="sm" className="h-7 gap-1" disabled={b} onClick={() => setCheckingIn(toCheckIn)}>
+                      <BedDouble className="size-3.5" /> Check in
+                    </Button>
+                  ) : null}
                   {p.matchStatus === "suggested" && p.matchedPatientId ? (
                     <Button size="sm" variant="outline" className="h-7 gap-1" disabled={b} onClick={() => act(p.id, () => confirmHouseSheetMatch(p.id, p.matchedPatientId!), "Confirmed.")}>
                       <Check className="size-3.5" /> Confirm
@@ -276,6 +292,11 @@ export default function HouseSheetPage() {
         </CardContent>
       </Card>
 
+      <CheckInDialog
+        key={checkingIn?.id}
+        target={checkingIn ? { patient: checkingIn } : null}
+        onOpenChange={(open) => !open && setCheckingIn(null)}
+      />
       <PatientPicker
         person={picker}
         patients={patients}

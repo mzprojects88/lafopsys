@@ -1,7 +1,7 @@
-import { TODAY_ISO } from "@/lib/utils/seeded-random";
+import { todayIso } from "@/lib/utils/date";
 
 /** Age is always computed from birth_date, never stored — see spec §M2. */
-export function computeAge(birthDate: string, asOf: string = TODAY_ISO): number {
+export function computeAge(birthDate: string, asOf: string = todayIso()): number {
   const birth = new Date(birthDate);
   const ref = new Date(asOf);
   let age = ref.getUTCFullYear() - birth.getUTCFullYear();

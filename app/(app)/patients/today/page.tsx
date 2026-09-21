@@ -7,8 +7,7 @@ import { BoardColumns, type BoardColumn } from "@/components/patterns/board-colu
 import { Card, CardContent } from "@/components/ui/card";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
 import type { Stay } from "@/lib/types/patient";
-import { TODAY_ISO } from "@/lib/utils/seeded-random";
-import { formatDate } from "@/lib/utils/date";
+import { formatDate, todayIso } from "@/lib/utils/date";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { unitForBedPosition } from "@/lib/utils/beds";
@@ -18,8 +17,8 @@ export default function TodayBoardPage() {
   const { patients, stays } = usePatientsData();
   const { units, bedPositions } = useHouseLayout();
 
-  const arrivals = stays.filter((s) => s.checkInAt === TODAY_ISO);
-  const departures = stays.filter((s) => s.checkOutAt === TODAY_ISO);
+  const arrivals = stays.filter((s) => s.checkInAt === todayIso());
+  const departures = stays.filter((s) => s.checkOutAt === todayIso());
   const inHouse = stays.filter((s) => s.status === "in_house");
   const overdue = stays.filter((s) => s.status === "overdue");
 
@@ -32,7 +31,7 @@ export default function TodayBoardPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <PageHeader title="Today Board" description={`${TODAY_ISO} — arrivals, departures, in-house, and overdue at a glance.`} />
+      <PageHeader title="Today Board" description={`${todayIso()} — arrivals, departures, in-house, and overdue at a glance.`} />
       <BoardColumns
         columns={columns}
         getItemKey={(s) => s.id}

@@ -21,7 +21,7 @@ import { markHouseSheetRowEncoded } from "@/app/(app)/patients/house-sheet/actio
 import { splitName } from "@/lib/utils/house-sheet";
 import { createClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/rbac/use-role";
-import { TODAY_ISO } from "@/lib/utils/seeded-random";
+import { todayIso } from "@/lib/utils/date";
 import type { Referral } from "@/lib/types/patient";
 
 const schema = z.object({
@@ -85,7 +85,7 @@ function NewReferralForm() {
       carerRelationship: "",
       carerMobile: "",
       nextAppointmentNote: "",
-      transcriptionNote: `Transcribed from hospital referral sheet on ${TODAY_ISO} by ${user}.`,
+      transcriptionNote: `Transcribed from hospital referral sheet on ${todayIso()} by ${user}.`,
     },
   });
 
@@ -105,7 +105,7 @@ function NewReferralForm() {
       carerRelationship: relationship,
       carerMobile: sheetRow.phone ?? "",
       nextAppointmentNote: [sheetRow.nextAppointmentRaw, sheetRow.treatment].filter(Boolean).join(" · "),
-      transcriptionNote: `Encoded from the house Occupancy Tracker (on the sheet since ${sheetRow.firstSeenOn}) on ${TODAY_ISO} by ${user}.`,
+      transcriptionNote: `Encoded from the house Occupancy Tracker (on the sheet since ${sheetRow.firstSeenOn}) on ${todayIso()} by ${user}.`,
     });
   }, [sheetRow, reset, getValues, user]);
 
@@ -119,7 +119,7 @@ function NewReferralForm() {
       referringPerson: values.referringPerson,
       department: values.department,
       urgency: values.urgency,
-      date: TODAY_ISO,
+      date: todayIso(),
       status: "submitted",
       hospitalId: values.hospitalId,
       submittedByStaffId: userData.user?.id,

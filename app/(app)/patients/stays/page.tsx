@@ -13,7 +13,7 @@ import type { Patient, Stay } from "@/lib/types/patient";
 import type { BedPosition, Unit } from "@/lib/types/house-ops";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { unitForBedPosition } from "@/lib/utils/beds";
-import { formatDate } from "@/lib/utils/date";
+import { formatDate, todayIso } from "@/lib/utils/date";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 
 function buildColumns(patients: Patient[], units: Unit[], bedPositions: BedPosition[]): ColumnDef<Stay>[] {
@@ -62,7 +62,7 @@ function buildColumns(patients: Patient[], units: Unit[], bedPositions: BedPosit
       header: "Length of Stay",
       cell: ({ row }) => {
         const start = parseISO(row.original.checkInAt);
-        const end = row.original.checkOutAt ? parseISO(row.original.checkOutAt) : new Date("2026-08-04T00:00:00Z");
+        const end = row.original.checkOutAt ? parseISO(row.original.checkOutAt) : parseISO(todayIso());
         const days = Math.max(0, differenceInCalendarDays(end, start));
         return `${days} day${days === 1 ? "" : "s"}`;
       },
@@ -91,7 +91,7 @@ export default function StayHistoryPage() {
   const avgLengthDays = Math.round(
     stays.reduce((sum, s) => {
       const start = parseISO(s.checkInAt);
-      const end = s.checkOutAt ? parseISO(s.checkOutAt) : new Date("2026-08-04T00:00:00Z");
+      const end = s.checkOutAt ? parseISO(s.checkOutAt) : parseISO(todayIso());
       return sum + Math.max(0, differenceInCalendarDays(end, start));
     }, 0) / (stays.length || 1)
   );

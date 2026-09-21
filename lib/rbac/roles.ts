@@ -168,6 +168,11 @@ export function canReviewHouseSheet(role: Role) {
   return role === "admin" || role === "social_worker";
 }
 
+/** Who checks a patient into a bed (ops.check_in, 0049, is the rule). */
+export function canCheckIn(role: Role) {
+  return role === "admin" || role === "social_worker";
+}
+
 /** Who draws the floor plan (place, rotate, add, retire beds; 0047). The
  * guard trigger on ops.units is the rule; this only decides whether the
  * edit tools render. */
