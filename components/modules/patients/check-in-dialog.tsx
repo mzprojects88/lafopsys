@@ -40,6 +40,7 @@ interface CheckInDialogProps {
 const norm = (s: string | undefined) => (s ?? "").trim().toLowerCase();
 
 /** Patients already on file who could be the referral's child: same last name and first name (first word). */
+// ponytail: exact-name match only; reuse the house sheet matcher (lib/utils/house-sheet) if duplicate records pile up.
 function possibleMatches(referral: Referral, patients: Patient[]): Patient[] {
   const last = norm(referral.patientLastName ?? referral.patientName.split(" ").slice(-1)[0]);
   const first = norm(referral.patientFirstName ?? referral.patientName).split(/\s+/)[0];
