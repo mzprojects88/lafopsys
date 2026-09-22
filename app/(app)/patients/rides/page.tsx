@@ -49,6 +49,7 @@ export default function RidesPage() {
 
   const ridersOf = (rideId: string) =>
     stays.filter((s) => s.arrivalRideId === rideId).map((s) => ({ stay: s, patient: patients.find((p) => p.id === s.patientId) }));
+  // ponytail: loads every file the person can read to count receipts; a per-ride query if the library grows past a few thousand rows.
   const receipts = (rideId: string) => files.filter((f) => f.recordType === "ride" && f.recordId === rideId && f.status === "ready").length;
   const staffName = (id?: string) => {
     const s = staff.find((x) => x.id === id);

@@ -51,7 +51,8 @@ export function ArrivalFields({ value, onChange, arrivalDate, excludeStayId }: {
 }) {
   const { rides } = useArrivalRides();
   const { patients, stays } = usePatientsData();
-  const sameDay = rides.filter((r) => r.rideDate === arrivalDate && !r.reimbursedAt);
+  // Rides that day still open to riders, plus the stay's own ride even if it was paid back since.
+  const sameDay = rides.filter((r) => (r.rideDate === arrivalDate && !r.reimbursedAt) || r.id === value.ride);
   const ridersOf = (rideId: string) =>
     stays
       .filter((s) => s.arrivalRideId === rideId && s.id !== excludeStayId)
