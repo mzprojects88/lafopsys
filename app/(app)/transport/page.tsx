@@ -34,7 +34,11 @@ const time = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("en
  */
 export default function TransportPage() {
   const { staffId } = useRole();
-  const canEdit = useModuleAccess().canEdit("transport");
+  const access = useModuleAccess();
+  const canEdit = access.canEdit("transport");
+  // Building a manifest reads NCH's sheet, which is Patients data: drivers
+  // tick, depart and arrive, but the social worker builds (0053).
+  const canBuild = canEdit && access.canView("patients");
   const { pickups, loading } = usePickups();
   const { staff } = useStaffRoster();
   const [creating, setCreating] = React.useState(false);
@@ -55,7 +59,7 @@ export default function TransportPage() {
         title="LAF HOPE Transport"
         description="Pick-ups from NCH. The manifest comes from NCH's list; the driver ticks each family on board."
         action={
-          canEdit ? (
+          canBuild ? (
             <Button onClick={() => setCreating(true)}>
               <Plus /> New pick-up
             </Button>
@@ -66,9 +70,9 @@ export default function TransportPage() {
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-muted-foreground">Today · {formatDate(today)}</h2>
         {todays.length === 0 ? (
-          <EmptyState icon={Bus} title={loading ? "Loading…" : "No pick-up today"} description={canEdit ? "Start one with New pick-up." : undefined} />
+          <EmptyState icon={Bus} title={loading ? "Loading…" : "No pick-up today"} description={canBuild ? "Start one with New pick-up." : undefined} />
         ) : (
-          todays.map((p) => <PickupCard key={p.id} pickup={p} mine={p.driverId === staffId} driverName={driverName(p.driverId)} canEdit={canEdit} />)
+          todays.map((p) => <PickupCard key={p.id} pickup={p} mine={p.driverId === staffId} driverName={driverName(p.driverId)} canEdit={canEdit} canBuild={canBuild} />)
         )}
       </section>
 
@@ -76,7 +80,7 @@ export default function TransportPage() {
         <section className="flex flex-col gap-3">
           <h2 className="text-sm font-semibold text-muted-foreground">Coming up</h2>
           {upcoming.map((p) => (
-            <PickupCard key={p.id} pickup={p} mine={p.driverId === staffId} driverName={driverName(p.driverId)} canEdit={canEdit} />
+            <PickupCard key={p.id} pickup={p} mine={p.driverId === staffId} driverName={driverName(p.driverId)} canEdit={canEdit} canBuild={canBuild} />
           ))}
         </section>
       )}
@@ -103,7 +107,7 @@ export default function TransportPage() {
   );
 }
 
-function PickupCard({ pickup: p, mine, driverName, canEdit }: { pickup: Pickup; mine: boolean; driverName: string; canEdit: boolean }) {
+function PickupCard({ pickup: p, mine, driverName, canEdit, canBuild }: { pickup: Pickup; mine: boolean; driverName: string; canEdit: boolean; canBuild: boolean }) {
   const { setBoarded, removeFromManifest, addToManifest, setStatus } = usePickups();
   const candidates = useManifestCandidates(p.date);
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -158,7 +162,7 @@ function PickupCard({ pickup: p, mine, driverName, canEdit }: { pickup: Pickup; 
                   </span>
                 </span>
               </button>
-              {canEdit && p.status === "scheduled" && !on && (
+              {canBuild && p.status === "scheduled" && !on && (
                 <Button size="icon" variant="ghost" aria-label={`Take ${m.name} off this trip`} disabled={busy === m.id} onClick={() => run(m.id, () => removeFromManifest(m.id))}>
                   <X className="size-4" />
                 </Button>
@@ -167,7 +171,7 @@ function PickupCard({ pickup: p, mine, driverName, canEdit }: { pickup: Pickup; 
           );
         })}
 
-        {canEdit && open && addable.length > 0 && (
+        {canBuild && open && addable.length > 0 && (
           <Select value="" onValueChange={(id) => {
             const row = addable.find((c) => c.id === id);
             if (row) void run("add", () => addToManifest(p.id, row), `${row.patientName} added`);
