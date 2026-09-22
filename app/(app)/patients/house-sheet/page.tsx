@@ -187,7 +187,7 @@ export default function HouseSheetPage() {
                   ) : null}
                   {p.matchStatus === "unmatched" || p.matchStatus === "suggested" ? (
                     <Button size="sm" variant="ghost" className="h-7 gap-1" disabled={b} onClick={() => router.push(encodeHref)}>
-                      <FilePlus2 className="size-3.5" /> Admit new
+                      <FilePlus2 className="size-3.5" /> {p.matchStatus === "suggested" ? "Not them, admit new" : "Admit new"}
                     </Button>
                   ) : null}
                   {p.matchStatus !== "dismissed" && p.matchStatus !== "encoded" ? (
