@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { isHiddenPath } from "@/lib/rbac/hidden";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
@@ -70,7 +71,7 @@ export default function RosterPage() {
           { label: "Overnight", tone: "info" },
         ]}
       />
-      {manages && unscheduled.length > 0 ? (
+      {manages && unscheduled.length > 0 && !isHiddenPath("/hr") ? (
         <p className="text-xs text-muted-foreground">
           No schedule yet: {unscheduled.map((p) => `${p.firstName} ${p.lastName}`).join(", ")} — set one on{" "}
           <Link href="/hr/employees" className="underline">

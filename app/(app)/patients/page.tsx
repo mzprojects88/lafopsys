@@ -2,7 +2,7 @@
 
 import type { ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
-import { Users, UserCheck, CalendarPlus, KanbanSquare, ListOrdered, Share2, CalendarClock, Bus, BedDouble, Home } from "lucide-react";
+import { Users, UserCheck, CalendarPlus, KanbanSquare, ListOrdered, Share2, CalendarClock, Bus, BedDouble, Home, LayoutGrid } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
@@ -16,6 +16,7 @@ import { todayIso } from "@/lib/utils/date";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 
 const SUB_NAV: ModuleSubNavItem[] = [
+  { href: "/patients/floor-plan", label: "Floor Plan", icon: LayoutGrid, color: "teal" },
   { href: "/patients/today", label: "Today Board", icon: KanbanSquare, color: "blue" },
   { href: "/patients/waitlist", label: "Waitlist", icon: ListOrdered, color: "amber" },
   { href: "/patients/referrals", label: "Referrals", icon: Share2, color: "purple" },

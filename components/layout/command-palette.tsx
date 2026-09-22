@@ -12,6 +12,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { useVisibleNavItems } from "@/lib/rbac/use-role";
+import { isHiddenPath } from "@/lib/rbac/hidden";
 import { useStockSummary } from "@/lib/hooks/use-inventory-views";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
@@ -65,7 +66,7 @@ export function CommandPalette({ externalOpen, onExternalOpenChange }: CommandPa
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Patients">
-          {patients.map((p) => (
+          {(isHiddenPath("/patients") ? [] : patients).map((p) => (
             <CommandItem key={p.id} onSelect={() => go(`/patients/${p.id}`)}>
               <span>{p.firstName} {p.lastName}</span>
               <span className="ml-auto text-xs text-muted-foreground">{p.patientNumber}</span>
@@ -74,7 +75,7 @@ export function CommandPalette({ externalOpen, onExternalOpenChange }: CommandPa
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Donors">
-          {donors.map((d) => (
+          {(isHiddenPath("/donors") ? [] : donors).map((d) => (
             <CommandItem key={d.id} onSelect={() => go(`/donors/${d.id}`)}>
               <span>{d.name}</span>
             </CommandItem>
@@ -82,7 +83,7 @@ export function CommandPalette({ externalOpen, onExternalOpenChange }: CommandPa
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Inventory">
-          {inventoryItems.map((i) => (
+          {(isHiddenPath("/inventory") ? [] : inventoryItems).map((i) => (
             <CommandItem key={i.item_id} onSelect={() => go(`/inventory/${i.item_id}`)}>
               <span>{i.name}</span>
             </CommandItem>

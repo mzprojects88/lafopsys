@@ -40,6 +40,7 @@ import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
 import { useLeaveRequests } from "@/lib/hooks/use-leave-collections";
 import { useExpiringLots, useStockSummary } from "@/lib/hooks/use-inventory-views";
+import { isHiddenPath } from "@/lib/rbac/hidden";
 import { inventoryAppHref } from "@/lib/utils/inventory-app";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
@@ -138,7 +139,7 @@ export default function DashboardPage() {
     { label: "New Cash Entry", href: "/finance/entry", icon: FileSignature, color: "blue" as CategoryColor },
     { label: "Request Approval", href: "/finance/approvals", icon: CheckCircle2, color: "amber" as CategoryColor },
     { label: "Generate Report", href: "/reports/builder", icon: BarChart3, color: "indigo" as CategoryColor },
-  ];
+  ].filter((a) => !isHiddenPath(a.href));
 
   const chartConfig: ChartConfig = { amount: { label: "Donations", color: "var(--chart-1)" } };
 
@@ -166,10 +167,10 @@ export default function DashboardPage() {
         {(role === "admin" || role === "social_worker") && (
           <KpiCard label="Enrolled Patients" value={patients.length} sublabel="Total" icon={UserCheck} color="cyan" />
         )}
-        {(role === "admin" || role === "finance" || role === "board") && (
+        {(role === "admin" || role === "finance" || role === "board") && !isHiddenPath("/donors") && (
           <KpiCard label="Cash Donations" value={formatCurrency(cashIn)} sublabel="This period" icon={Wallet} color="green" />
         )}
-        {(role === "admin" || role === "finance") && (
+        {(role === "admin" || role === "finance") && !isHiddenPath("/finance") && (
           <KpiCard label="Pending Approvals" value={pendingApprovals} sublabel="Items" icon={ClipboardList} color="amber" />
         )}
         {(role === "admin" || role === "social_worker") && (
@@ -178,38 +179,40 @@ export default function DashboardPage() {
         {(role === "admin" || role === "house_staff") && (
           <KpiCard label="Items Expiring ≤14d" value={expiringSoon} sublabel="Items" icon={PackageX} color="rose" />
         )}
-        {role === "volunteer" && <KpiCard label="Donations Recorded" value={donations.length} icon={HandCoins} color="green" />}
+        {role === "volunteer" && !isHiddenPath("/donors") && <KpiCard label="Donations Recorded" value={donations.length} icon={HandCoins} color="green" />}
       </KpiGrid>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">Donations Trend (This Period)</CardTitle>
-            <span className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs text-muted-foreground">
-              Last 30 days <ChevronDown className="size-3" />
-            </span>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="size-2 rounded-full bg-[var(--chart-1)]" />
-              Cash Donations (₱)
-            </div>
-            <ChartContainer config={chartConfig} className="h-56 w-full">
-              <AreaChart data={donationChart}>
-                <defs>
-                  <linearGradient id="donationFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--color-amount)" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="var(--color-amount)" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid vertical={false} />
-                <XAxis dataKey="date" tickFormatter={(d: string) => d.slice(5)} fontSize={11} tickLine={false} axisLine={false} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Area type="monotone" dataKey="amount" stroke="var(--color-amount)" fill="url(#donationFill)" strokeWidth={2} />
-              </AreaChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
+        {!isHiddenPath("/donors") && (
+          <Card>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base">Donations Trend (This Period)</CardTitle>
+              <span className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs text-muted-foreground">
+                Last 30 days <ChevronDown className="size-3" />
+              </span>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="size-2 rounded-full bg-[var(--chart-1)]" />
+                Cash Donations (₱)
+              </div>
+              <ChartContainer config={chartConfig} className="h-56 w-full">
+                <AreaChart data={donationChart}>
+                  <defs>
+                    <linearGradient id="donationFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--color-amount)" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="var(--color-amount)" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="date" tickFormatter={(d: string) => d.slice(5)} fontSize={11} tickLine={false} axisLine={false} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Area type="monotone" dataKey="amount" stroke="var(--color-amount)" fill="url(#donationFill)" strokeWidth={2} />
+                </AreaChart>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0">
@@ -255,8 +258,8 @@ export default function DashboardPage() {
               <LegendRow color="bg-slate-300" label="Total Capacity" value={capacity || "—"} />
             </div>
           </CardContent>
-          <Link href="/house-ops" className="mx-4 mb-4 flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-            View house operations <ChevronRight className="size-3.5" />
+          <Link href="/patients/floor-plan" className="mx-4 mb-4 flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+            View floor plan <ChevronRight className="size-3.5" />
           </Link>
         </Card>
 
@@ -297,35 +300,37 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">Urgent Approvals</CardTitle>
-            <Badge className="rounded-full">{urgentApprovals.length}</Badge>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {urgentApprovals.map((a, i) => (
-              <div key={i} className="flex items-center justify-between gap-2">
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">{a.title}</span>
-                  <span className="text-xs text-muted-foreground">{a.subtitle}</span>
+        {!isHiddenPath("/finance") && (
+          <Card>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base">Urgent Approvals</CardTitle>
+              <Badge className="rounded-full">{urgentApprovals.length}</Badge>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {urgentApprovals.map((a, i) => (
+                <div key={i} className="flex items-center justify-between gap-2">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium">{a.title}</span>
+                    <span className="text-xs text-muted-foreground">{a.subtitle}</span>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={
+                      a.priority === "High"
+                        ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400"
+                        : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400"
+                    }
+                  >
+                    {a.priority}
+                  </Badge>
                 </div>
-                <Badge
-                  variant="outline"
-                  className={
-                    a.priority === "High"
-                      ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400"
-                      : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400"
-                  }
-                >
-                  {a.priority}
-                </Badge>
-              </div>
-            ))}
-            <Link href="/finance/approvals" className="mt-1 flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-              View all approvals <ChevronRight className="size-3.5" />
-            </Link>
-          </CardContent>
-        </Card>
+              ))}
+              <Link href="/finance/approvals" className="mt-1 flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                View all approvals <ChevronRight className="size-3.5" />
+              </Link>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="lg:col-span-2">
           <CardHeader>

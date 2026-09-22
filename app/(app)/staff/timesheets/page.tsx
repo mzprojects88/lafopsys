@@ -3,6 +3,7 @@
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
+import { isHiddenPath } from "@/lib/rbac/hidden";
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
@@ -193,7 +194,7 @@ export default function TimesheetsPage() {
         </Card>
       ) : null}
 
-      {manages ? (
+      {manages && !isHiddenPath("/hr") ? (
         <Card>
           <CardContent className="flex flex-wrap items-center justify-between gap-2 pt-6">
             <p className="text-sm text-muted-foreground">Approval is per pay period: each person&apos;s attendance summary is computed, checked and frozen for payroll under HR.</p>

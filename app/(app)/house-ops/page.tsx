@@ -3,14 +3,13 @@
 import { PageHeader } from "@/components/patterns/page-header";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
-import { Users, Home, Share2, Percent, Car, Utensils, LayoutGrid, HeartPulse, Sparkles } from "lucide-react";
+import { Users, Home, Share2, Percent, Car, Utensils, HeartPulse, Sparkles } from "lucide-react";
 import { useCensusData } from "@/lib/hooks/use-census-collection";
 import { useTripsData } from "@/lib/hooks/use-trips-collection";
 import { useMealServicesData } from "@/lib/hooks/use-meal-services-collection";
 import { todayIso } from "@/lib/utils/date";
 
 const SUB_NAV: ModuleSubNavItem[] = [
-  { href: "/house-ops/floor-plan", label: "Floor Plan", icon: LayoutGrid, color: "blue" },
   { href: "/house-ops/meals", label: "Meals", icon: Utensils, color: "green" },
   { href: "/house-ops/trips", label: "Trips", icon: Car, color: "cyan" },
   { href: "/house-ops/care-cart", label: "Care Cart", icon: HeartPulse, color: "rose" },

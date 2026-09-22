@@ -28,6 +28,7 @@ import { dayKey, addDays } from "@/lib/utils/dtr";
 import { formatDate } from "@/lib/utils/date";
 import { complianceCalendar, reportSourceFor, type CalendarEntry, type CalendarStatus, type ComplianceContext } from "@/lib/utils/compliance";
 import { setComplianceItemActive } from "./actions";
+import { isHiddenPath } from "@/lib/rbac/hidden";
 import { COMPLIANCE_CATEGORIES, type ComplianceFiling, type ComplianceItem } from "@/lib/types/hr";
 
 type StatusFilter = "all" | "open" | "behind" | "in_progress" | "filed" | "overdue";
@@ -199,7 +200,7 @@ export default function CompliancePage() {
             shown.map((e) => {
               const source = reportSourceFor(e.code);
               // The payroll figures live under HR, which finance cannot open; the DSWD figures are open to everyone here.
-              const canGenerate = source !== null && (manages || !source.href(e.periodKey).startsWith("/hr/"));
+              const canGenerate = source !== null && !isHiddenPath(source.href(e.periodKey)) && (manages || !source.href(e.periodKey).startsWith("/hr/"));
               const badgeLabel =
                 e.status === "due" || e.status === "due_soon"
                   ? `${STATUS_LABEL[e.status]} · ${e.daysLeft} d to target`

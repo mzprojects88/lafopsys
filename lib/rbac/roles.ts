@@ -1,5 +1,6 @@
 import type { Role } from "@/lib/types/common";
 import type { FileModule } from "@/lib/utils/file-paths";
+import { isHiddenPath } from "@/lib/rbac/hidden";
 import { isAllowedLandingPath as isAllowedLandingPathIn, resolveLandingPath as resolveLandingPathIn } from "@/lib/rbac/landing";
 import {
   LayoutDashboard,
@@ -105,7 +106,11 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Settings", href: "/settings", icon: Settings, allowedRoles: ["admin"] },
 ];
 
+/** The nav minus modules hidden on this deployment (lib/rbac/hidden.ts): a landing page there would 404. */
+const SHOWN_NAV_ITEMS = NAV_ITEMS.filter((item) => !isHiddenPath(item.href));
+
 export function isNavItemVisible(item: NavItem, role: Role) {
+  if (isHiddenPath(item.href)) return false;
   return item.allowedRoles === "all" || item.allowedRoles.includes(role);
 }
 
@@ -194,11 +199,11 @@ export function canSeeClinicalDetail(role: Role) {
 /** Post-login destination for this person, against the real navigation.
  * See lib/rbac/landing.ts for the precedence rules. */
 export function resolveLandingPath(input: { role: Role; landingPath: string | null | undefined; next: string | null | undefined }) {
-  return resolveLandingPathIn(input, NAV_ITEMS);
+  return resolveLandingPathIn(input, SHOWN_NAV_ITEMS);
 }
 
 export function isAllowedLandingPath(role: Role, path: string) {
-  return isAllowedLandingPathIn(role, path, NAV_ITEMS);
+  return isAllowedLandingPathIn(role, path, SHOWN_NAV_ITEMS);
 }
 
 /** Every nav href a role can be sent to -- what the landing-page picker offers. */

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { IconCircle } from "@/components/patterns/icon-circle";
 import type { CategoryColor } from "@/lib/utils/category-colors";
+import { isHiddenPath } from "@/lib/rbac/hidden";
 
 export interface ModuleSubNavItem {
   href: string;
@@ -18,7 +19,7 @@ export function ModuleSubNav({ items }: { items: ModuleSubNavItem[] }) {
     // dissolves this wrapper on larger screens so the links stay direct children of
     // PageHeader's action flex row and desktop layout is unchanged.
     <div className="no-scrollbar flex w-full gap-2 overflow-x-auto sm:contents">
-      {items.map((item) => (
+      {items.filter((item) => !isHiddenPath(item.href)).map((item) => (
         <Link
           key={item.href}
           href={item.href}
