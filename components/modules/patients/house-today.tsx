@@ -15,6 +15,8 @@ import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
 import { useBedNights } from "@/lib/hooks/use-bed-nights-collection";
 import { usePickups } from "@/lib/hooks/use-pickups-collection";
+import { useAllOrientationChecks } from "@/lib/hooks/use-orientation-topics";
+import { orientationProgress } from "@/lib/utils/admission-tasks";
 import { assignableBeds, isActiveStay, unitForBedPosition } from "@/lib/utils/beds";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
@@ -41,6 +43,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const { rooms, units, bedPositions } = useHouseLayout();
   const { nights, confirmNight } = useBedNights();
   const { pickups } = usePickups();
+  const { topics, checks } = useAllOrientationChecks();
   const [checkIn, setCheckIn] = React.useState<{ patient: Patient; sheetRow: HouseSheetPerson } | null>(null);
   const [discharge, setDischarge] = React.useState<{ stay: Stay; name: string; on: string } | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -178,6 +181,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
             {tonight.map((s) => {
               const night = tonightNight(s);
               const moves = assignableBeds(units, bedPositions, stays, rooms, { excludeUnitId: unitForBedPosition(s.bedPositionId, units, bedPositions)?.id });
+              const tasks = orientationProgress(s, stays, topics, checks);
               return (
                 <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2 text-sm">
                   <div className="flex min-w-0 flex-col">
@@ -186,6 +190,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                     </Link>
                     <span className="text-xs text-muted-foreground">
                       Bed {bedOf(s.bedPositionId)} · {night ? "confirmed for tonight" : "not confirmed yet"}
+                      {tasks.total > 0 && tasks.done < tasks.total ? ` · orientation ${tasks.done}/${tasks.total}` : ""}
                     </span>
                   </div>
                   {canEdit && !night ? (

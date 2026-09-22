@@ -172,10 +172,13 @@ export interface OrientationTopic {
   id: string;
   topic: string;
   sortOrder: number;
+  /** Covered again with a returning family: the shorter list for a second stay (0054). */
+  returneeToo: boolean;
 }
 
-export interface PatientOrientationCheck {
-  patientId: string;
+/** One topic ticked on one stay -- a family is oriented at every admission (0054). */
+export interface StayOrientationCheck {
+  stayId: string;
   topicId: string;
   coveredAt: string;
   coveredByStaffId?: string;

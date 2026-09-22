@@ -11,11 +11,14 @@ import { formatDate, todayIso } from "@/lib/utils/date";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { unitForBedPosition } from "@/lib/utils/beds";
+import { useAllOrientationChecks } from "@/lib/hooks/use-orientation-topics";
+import { orientationProgress } from "@/lib/utils/admission-tasks";
 
 export default function TodayBoardPage() {
   const router = useRouter();
   const { patients, stays } = usePatientsData();
   const { units, bedPositions } = useHouseLayout();
+  const { topics, checks } = useAllOrientationChecks();
 
   const arrivals = stays.filter((s) => s.checkInAt === todayIso());
   const departures = stays.filter((s) => s.checkOutAt === todayIso());
@@ -37,6 +40,7 @@ export default function TodayBoardPage() {
         getItemKey={(s) => s.id}
         renderItem={(stay) => {
           const patient = patients.find((p) => p.id === stay.patientId);
+          const tasks = orientationProgress(stay, stays, topics, checks);
           const unit = unitForBedPosition(stay.bedPositionId, units, bedPositions);
           const name = `${patient?.firstName} ${patient?.lastName}`;
           return (
@@ -48,6 +52,11 @@ export default function TodayBoardPage() {
                   <span className="text-[11px] text-muted-foreground">
                     Bed {unit?.code ?? "—"} · Expected {stay.expectedCheckoutAt ? formatDate(stay.expectedCheckoutAt) : "—"}
                   </span>
+                  {tasks.total > 0 && tasks.done < tasks.total && (
+                    <span className="text-[11px] text-amber-700 dark:text-amber-400">
+                      Orientation {tasks.done}/{tasks.total} — {tasks.firstStay ? "first stay" : "returning"}
+                    </span>
+                  )}
                 </div>
               </CardContent>
             </Card>

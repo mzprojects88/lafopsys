@@ -10,11 +10,19 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { usePatientDocuments, DOCUMENT_TYPES, DOCUMENT_TYPE_LABELS } from "@/lib/hooks/use-patient-documents";
 import { useOrientationTopics } from "@/lib/hooks/use-orientation-topics";
 import { formatDate } from "@/lib/utils/date";
+import { Switch } from "@/components/ui/switch";
+import type { Stay } from "@/lib/types/patient";
 
-/** `canEdit` is Patients edit (0050); view-only access sees the checklist and opens files. */
-export function AdmissionChecklist({ patientId, canEdit }: { patientId: string; canEdit: boolean }) {
+/**
+ * The social worker's admission tasks. Documents belong to the patient (an ID
+ * is collected once); the orientation belongs to the STAY (0054) -- the whole
+ * list the first time, the shorter one when a family comes back.
+ * `canEdit` is Patients edit (0050); view-only access sees it and opens files.
+ */
+export function AdmissionChecklist({ patientId, canEdit, stay, firstStay }: { patientId: string; canEdit: boolean; stay: Stay | null; firstStay: boolean }) {
   const { documents, markCollected, uploadFile, getSignedUrl } = usePatientDocuments(patientId);
-  const { topics, checks, addTopic, removeTopic, toggleCheck } = useOrientationTopics(patientId);
+  const { topics, checks, addTopic, removeTopic, setReturneeToo, toggleCheck } = useOrientationTopics(stay?.id, firstStay);
+  const covered = topics.filter((t) => checks.some((c) => c.topicId === t.id)).length;
   const [newTopic, setNewTopic] = React.useState("");
   const fileInputs = React.useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -124,7 +132,14 @@ export function AdmissionChecklist({ patientId, canEdit }: { patientId: string; 
       </div>
 
       <div>
-        <h4 className="mb-2 text-sm font-semibold text-muted-foreground">Orientation Topics Covered</h4>
+        <h4 className="mb-1 text-sm font-semibold text-muted-foreground">
+          House rules orientation{" "}
+          <span className="font-normal">
+            {stay
+              ? `(${firstStay ? "first stay: the full list" : "returning family: the short list"} — ${covered} of ${topics.length} covered)`
+              : "(ticks start when the family is checked in)"}
+          </span>
+        </h4>
         {topics.length === 0 ? (
           <p className="text-xs italic text-muted-foreground">
             No orientation topics defined yet. Add the real topics your team covers with families on arrival day below.
@@ -132,11 +147,19 @@ export function AdmissionChecklist({ patientId, canEdit }: { patientId: string; 
         ) : (
           <div className="flex flex-col gap-1.5">
             {topics.map((t) => {
-              const covered = checks.some((c) => c.topicId === t.id);
+              const isCovered = checks.some((c) => c.topicId === t.id);
               return (
-                <label key={t.id} className="flex items-center gap-2 rounded-md border p-2 text-sm">
-                  <Checkbox checked={covered} disabled={!canEdit} onCheckedChange={(v) => toggleCheck(t.id, !!v)} />
-                  <span className="flex-1">{t.topic}</span>
+                <div key={t.id} className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm">
+                  <label className="flex flex-1 items-center gap-2">
+                    <Checkbox checked={isCovered} disabled={!canEdit || !stay} onCheckedChange={(v) => toggleCheck(t.id, !!v)} />
+                    <span>{t.topic}</span>
+                  </label>
+                  {canEdit && (
+                    <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <Switch checked={t.returneeToo} onCheckedChange={(v) => setReturneeToo(t.id, v)} aria-label={`Cover "${t.topic}" with returning families too`} />
+                      Returnees too
+                    </label>
+                  )}
                   {canEdit && (
                     <Button
                       size="icon"
@@ -148,7 +171,7 @@ export function AdmissionChecklist({ patientId, canEdit }: { patientId: string; 
                       <X className="size-3.5" />
                     </Button>
                   )}
-                </label>
+                </div>
               );
             })}
           </div>

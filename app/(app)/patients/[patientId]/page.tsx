@@ -30,6 +30,7 @@ import { TransferBedDialog } from "@/components/modules/patients/transfer-bed-di
 import { ArrivalDialog } from "@/components/modules/patients/arrival-fields";
 import { useArrivalRides } from "@/lib/hooks/use-arrival-rides-collection";
 import { arrivalLabel } from "@/lib/utils/arrival";
+import { isFirstStay } from "@/lib/utils/admission-tasks";
 import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
 import { isActiveStay, unitForBedPosition } from "@/lib/utils/beds";
 import type { Stay } from "@/lib/types/patient";
@@ -59,6 +60,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   const patientCarers = carers.filter((c) => c.patientId === patient.id);
   const patientStays = stays.filter((s) => s.patientId === patient.id);
   const patientAppointments = appointments.filter((a) => a.patientId === patient.id);
+  // The orientation belongs to the newest stay (0054).
+  const latestStay = [...patientStays].sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0] ?? null;
   const showCheckIn = canEdit && patient.status !== "expired" && !patientStays.some(isActiveStay);
 
   const diagnosisLabel = patient.diagnosisIds
@@ -247,7 +250,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
         </TabsContent>
 
         <TabsContent value="documents" className="flex flex-col gap-6 pt-4">
-          <AdmissionChecklist patientId={patient.id} canEdit={canEdit} />
+          <AdmissionChecklist patientId={patient.id} canEdit={canEdit} stay={latestStay} firstStay={latestStay ? isFirstStay(latestStay, stays) : true} />
           {canSeeClinical ? (
             <FileLibrary
               recordType="patient"
