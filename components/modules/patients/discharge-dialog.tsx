@@ -34,12 +34,16 @@ interface DischargeDialogProps {
   patientName: string;
   onOpenChange: (open: boolean) => void;
   onDischarged: () => void;
+  /** Pre-filled check-out day, e.g. the day after a child left NCH's sheet (0051). Defaults to today. */
+  defaultCheckOutAt?: string;
 }
 
-export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged }: DischargeDialogProps) {
+export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged, defaultCheckOutAt }: DischargeDialogProps) {
   const { updateStay, addAppointment } = usePatientsData();
   const [reason, setReason] = React.useState<string>("");
   const [destination, setDestination] = React.useState("");
+  const [checkOutAtInput, setCheckOutAtInput] = React.useState("");
+  const checkOutAt = checkOutAtInput || defaultCheckOutAt || todayIso();
   const [scheduleFollowUp, setScheduleFollowUp] = React.useState(false);
   const [followUpDate, setFollowUpDate] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
@@ -47,6 +51,7 @@ export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged 
   function reset() {
     setReason("");
     setDestination("");
+    setCheckOutAtInput("");
     setScheduleFollowUp(false);
     setFollowUpDate("");
   }
@@ -56,7 +61,7 @@ export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged 
     setSubmitting(true);
 
     const result = await updateStay(stay.id, {
-      checkOutAt: todayIso(),
+      checkOutAt,
       checkOutReason: reason,
       destination: destination || undefined,
       followUpDate: scheduleFollowUp && followUpDate ? followUpDate : undefined,
@@ -120,6 +125,18 @@ export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged 
         </Field>
 
         <Field>
+          <FieldLabel htmlFor="checkOutAt">Checked out on</FieldLabel>
+          <Input
+            id="checkOutAt"
+            type="date"
+            min={stay?.checkInAt}
+            max={todayIso()}
+            value={checkOutAt}
+            onChange={(e) => setCheckOutAtInput(e.target.value)}
+          />
+        </Field>
+
+        <Field>
           <FieldLabel htmlFor="destination">Destination (optional)</FieldLabel>
           <Input id="destination" placeholder="e.g. Home, referring hospital" value={destination} onChange={(e) => setDestination(e.target.value)} />
         </Field>
@@ -140,7 +157,7 @@ export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged 
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button disabled={!reason || submitting} onClick={handleConfirm}>
+          <Button disabled={!reason || !checkOutAt || submitting} onClick={handleConfirm}>
             {submitting ? "Discharging…" : "Confirm Discharge"}
           </Button>
         </DialogFooter>

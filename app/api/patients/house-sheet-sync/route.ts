@@ -381,5 +381,14 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ ok: !anyFailed, tabs: results });
+  // In-house children's next appointment follows the sheet (0051), so the
+  // transport manifest needs no typing. Hand-made appointments are untouched.
+  const { data: appointmentsChanged, error: apptError } = await admin.schema("ops").rpc("sync_sheet_appointments");
+  if (apptError) anyFailed = true;
+
+  return NextResponse.json({
+    ok: !anyFailed,
+    tabs: results,
+    appointments: apptError ? { error: apptError.message } : { changed: appointmentsChanged },
+  });
 }

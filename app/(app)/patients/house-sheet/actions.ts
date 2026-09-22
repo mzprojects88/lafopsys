@@ -63,9 +63,3 @@ export async function dismissHouseSheetRow(rowId: string): Promise<ActionResult>
 export async function reopenHouseSheetRow(rowId: string): Promise<ActionResult> {
   return review(rowId, { match_status: "unmatched", matched_patient_id: null, match_method: null, referral_id: null });
 }
-
-/** The row was encoded as a new referral; it follows that referral from here. */
-export async function markHouseSheetRowEncoded(rowId: string, referralId: string): Promise<ActionResult> {
-  if (!UUID_RE.test(referralId)) return { ok: false, error: "Bad referral id." };
-  return review(rowId, { match_status: "encoded", matched_patient_id: null, match_method: null, referral_id: referralId });
-}

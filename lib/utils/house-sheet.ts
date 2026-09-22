@@ -388,6 +388,8 @@ export interface NewSheetPerson {
   laf_flag: boolean;
   phone: string | null;
   first_seen_on: string;
+  /** First day of the current unbroken run on the sheet: the arrival date of this stay (0051). */
+  run_started_on: string;
   last_seen_on: string;
   days_seen: number;
   off_sheet_at: null;
@@ -407,6 +409,7 @@ export interface SheetPersonPatch {
   last_seen_on?: string;
   days_seen?: number;
   off_sheet_at?: string | null;
+  run_started_on?: string;
   row_no?: number | null;
 }
 
@@ -460,6 +463,7 @@ export function reconcileRoster(input: ReconcileRosterInput): ReconcileRosterPla
         laf_flag: r.lafFlag,
         phone: r.phone,
         first_seen_on: input.tabDate,
+        run_started_on: input.tabDate,
         last_seen_on: input.tabDate,
         days_seen: 1,
         off_sheet_at: null,
@@ -492,12 +496,14 @@ export function reconcileRoster(input: ReconcileRosterInput): ReconcileRosterPla
       if (r.rowNo !== null) patch.row_no = r.rowNo;
       if (existing.offSheetAt !== null && (newest || newDay)) {
         patch.off_sheet_at = null;
+        // Back after a gap: a new stay starts today (the check-in's arrival date).
+        if (newDay) patch.run_started_on = input.tabDate;
         returned += 1;
       }
     }
     if (Object.keys(patch).length > 0) {
       updates.push({ id: existing.id, patch });
-      if (Object.keys(patch).some((k) => !["last_seen_on", "days_seen", "row_no"].includes(k))) updated += 1;
+      if (Object.keys(patch).some((k) => !["last_seen_on", "days_seen", "row_no", "run_started_on"].includes(k))) updated += 1;
     }
   }
 

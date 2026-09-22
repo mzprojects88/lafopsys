@@ -18,6 +18,7 @@ interface PersonRow {
   laf_flag: boolean;
   phone: string | null;
   first_seen_on: string;
+  run_started_on: string;
   last_seen_on: string;
   days_seen: number;
   off_sheet_at: string | null;
@@ -51,6 +52,7 @@ function toPerson(r: PersonRow): HouseSheetPerson {
     lafFlag: r.laf_flag,
     phone: r.phone,
     firstSeenOn: r.first_seen_on,
+    runStartedOn: r.run_started_on,
     lastSeenOn: r.last_seen_on,
     daysSeen: r.days_seen,
     offSheetAt: r.off_sheet_at,

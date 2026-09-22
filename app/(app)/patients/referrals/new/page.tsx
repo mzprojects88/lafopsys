@@ -17,11 +17,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { diagnoses, treatmentPhases, provinces, hospitals } from "@/lib/mock-data";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
-import { markHouseSheetRowEncoded } from "@/app/(app)/patients/house-sheet/actions";
 import { splitName } from "@/lib/utils/house-sheet";
 import { createClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/rbac/use-role";
-import { todayIso } from "@/lib/utils/date";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
+import { patientsStore, usePatientsData } from "@/lib/hooks/use-patients-collection";
+import { referralsStore } from "@/lib/hooks/use-referrals-collection";
+import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
+import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
+import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
+import { assignableBeds } from "@/lib/utils/beds";
+import { EmptyState } from "@/components/patterns/empty-state";
+import { formatDate, todayIso } from "@/lib/utils/date";
 import type { Referral } from "@/lib/types/patient";
 
 const schema = z.object({
@@ -59,6 +66,17 @@ function NewReferralForm() {
   const fromSheet = fromSheetParam && /^[0-9a-f-]{36}$/i.test(fromSheetParam) ? fromSheetParam : null;
   const { people: sheetPeople } = useHouseSheetPeople();
   const sheetRow = fromSheet ? sheetPeople.find((p) => p.id === fromSheet) : undefined;
+  const { canEdit: canEditModule, loading: accessLoading } = useModuleAccess();
+  const canEdit = canEditModule("patients");
+  // From NCH's sheet the child is already at the house: this form admits
+  // them in the same save (ops.admit_from_sheet, 0051) -- bed and arrival day.
+  const { stays } = usePatientsData();
+  const { rooms, units, bedPositions } = useHouseLayout();
+  const beds = assignableBeds(units, bedPositions, stays, rooms);
+  const [unitId, setUnitId] = React.useState("");
+  const [checkInAt, setCheckInAt] = React.useState("");
+  const [expectedCheckoutAt, setExpectedCheckoutAt] = React.useState("");
+  const arrivedOn = checkInAt || (sheetRow && sheetRow.runStartedOn <= todayIso() ? sheetRow.runStartedOn : todayIso());
   const {
     register,
     handleSubmit,
@@ -105,12 +123,58 @@ function NewReferralForm() {
       carerRelationship: relationship,
       carerMobile: sheetRow.phone ?? "",
       nextAppointmentNote: [sheetRow.nextAppointmentRaw, sheetRow.treatment].filter(Boolean).join(" · "),
+      hospitalId: "hosp-nch",
+      referringPerson: "NCH Occupancy Tracker",
+      department: "Medical Social Service",
       transcriptionNote: `Encoded from the house Occupancy Tracker (on the sheet since ${sheetRow.firstSeenOn}) on ${todayIso()} by ${user}.`,
     });
   }, [sheetRow, reset, getValues, user]);
 
   async function onSubmit(values: FormValues) {
     const supabase = createClient();
+    if (fromSheet) {
+      if (!unitId) {
+        toast.error("Pick tonight's bed.");
+        return;
+      }
+      const { data, error } = await supabase.schema("ops").rpc("admit_from_sheet", {
+        p_sheet_row_id: fromSheet,
+        p_unit_id: unitId,
+        p_check_in_at: arrivedOn,
+        p_patient_id: null,
+        p_referral: {
+          patient_first_name: values.patientFirstName,
+          patient_last_name: values.patientLastName,
+          patient_birth_date: values.patientBirthDate,
+          patient_sex: values.patientSex,
+          treatment_phase_id: values.treatmentPhaseId,
+          province_id: values.provinceId,
+          raw_address: values.rawAddress,
+          carer_name: values.carerName,
+          carer_relationship: values.carerRelationship,
+          carer_mobile: values.carerMobile,
+          next_appointment_note: values.nextAppointmentNote || null,
+          hospital_id: values.hospitalId,
+          department: values.department,
+          referring_person: values.referringPerson,
+          urgency: values.urgency,
+          diagnosis_ids: [values.diagnosisId],
+        },
+        p_carer_id: null,
+        p_carer_name: null,
+        p_carer_relationship: null,
+        p_carer_mobile: null,
+        p_expected_checkout_at: expectedCheckoutAt || null,
+      });
+      if (error) {
+        toast.error(`Couldn't admit: ${error.message}`);
+        return;
+      }
+      await Promise.all([patientsStore.refetch(), referralsStore.refetch(), houseSheetPeopleStore.refetch(), bedNightsStore.refetch()]);
+      toast.success(`${values.patientFirstName} ${values.patientLastName} admitted`);
+      router.push(`/patients/${(data as { patient_id: string }).patient_id}`);
+      return;
+    }
     const { data: userData } = await supabase.auth.getUser();
 
     const referral: Referral = {
@@ -144,19 +208,23 @@ function NewReferralForm() {
       return;
     }
 
-    if (fromSheet) {
-      const linked = await markHouseSheetRowEncoded(fromSheet, referral.id);
-      if (!linked.ok) toast.warning(`Referral saved, but the house sheet row was not linked: ${linked.error}`);
-    }
     toast.success("Referral submitted");
-    router.push(fromSheet ? "/patients/house-sheet" : "/patients/referrals");
+    router.push("/patients/referrals");
+  }
+
+  if (!accessLoading && !canEdit) {
+    return <EmptyState title="Your access to Patients is view only" description="Ask an admin if you should be encoding referrals." />;
   }
 
   return (
     <div className="flex max-w-2xl flex-1 flex-col gap-6">
       <PageHeader
-        title="New Referral"
-        description="Transcribe the patient and carer from the hospital's referral sheet — LAF House will approve and admit on arrival."
+        title={fromSheet ? "Admit New Child" : "New Referral"}
+        description={
+          fromSheet
+            ? `From NCH's Occupancy Tracker${sheetRow ? ` (on the sheet since ${formatDate(sheetRow.runStartedOn)})` : ""}. Complete what the sheet does not carry, pick tonight's bed, and save once.`
+            : "Transcribe the patient and carer from the hospital's referral sheet — LAF House will approve and admit on arrival."
+        }
       />
       <Card>
         <CardContent className="pt-6">
@@ -398,19 +466,54 @@ function NewReferralForm() {
                 <FieldError errors={[errors.carerMobile]} />
               </Field>
 
-              <FieldSeparator />
+              {fromSheet ? (
+                <>
+                  <FieldSeparator />
+                  <span className="text-sm font-semibold text-muted-foreground">Admission</span>
+                  <Field>
+                    <FieldLabel htmlFor="bed">Tonight&apos;s bed</FieldLabel>
+                    <Select value={unitId} onValueChange={setUnitId}>
+                      <SelectTrigger id="bed" className="w-full">
+                        <SelectValue placeholder={beds.length ? "Select an available bed" : "No beds available"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {beds.map((b) => (
+                          <SelectItem key={b.unit.id} value={b.unit.id}>
+                            {b.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field>
+                      <FieldLabel htmlFor="checkInAt">Arrived on</FieldLabel>
+                      <Input id="checkInAt" type="date" max={todayIso()} value={arrivedOn} onChange={(e) => setCheckInAt(e.target.value)} />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="expectedCheckoutAt">Expected check-out (optional)</FieldLabel>
+                      <Input id="expectedCheckoutAt" type="date" min={arrivedOn} value={expectedCheckoutAt} onChange={(e) => setExpectedCheckoutAt(e.target.value)} />
+                    </Field>
+                  </div>
+                </>
+              ) : null}
 
-              <Field>
-                <FieldLabel htmlFor="transcriptionNote">Transcription Note</FieldLabel>
-                <Textarea id="transcriptionNote" rows={2} {...register("transcriptionNote")} />
-              </Field>
+              {fromSheet ? null : (
+                <>
+                  <FieldSeparator />
+                  <Field>
+                    <FieldLabel htmlFor="transcriptionNote">Transcription Note</FieldLabel>
+                    <Textarea id="transcriptionNote" rows={2} {...register("transcriptionNote")} />
+                  </Field>
+                </>
+              )}
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => router.back()}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Submitting…" : "Submit Referral"}
+                  {isSubmitting ? "Saving…" : fromSheet ? "Admit" : "Submit Referral"}
                 </Button>
               </div>
             </FieldGroup>

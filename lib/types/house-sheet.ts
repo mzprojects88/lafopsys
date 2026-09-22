@@ -22,6 +22,8 @@ export interface HouseSheetPerson {
   lafFlag: boolean;
   phone: string | null;
   firstSeenOn: string;
+  /** First day of the current unbroken run: this stay's arrival date (0051). */
+  runStartedOn: string;
   lastSeenOn: string;
   daysSeen: number;
   offSheetAt: string | null;

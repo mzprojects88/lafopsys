@@ -191,6 +191,7 @@ describe("reconcileRoster", () => {
     const plan = reconcileRoster({ tabDate: "2026-09-09", roster, db: [db(), db({ id: "gone", nameKey: "gone|x", patientName: "Gone, X" })], now: "2026-09-09T00:00:00Z" });
     assert.equal(plan.inserts.length, 3);
     assert.equal(plan.inserts[0].first_seen_on, "2026-09-09");
+    assert.equal(plan.inserts[0].run_started_on, "2026-09-09");
     const u = plan.updates.find((x) => x.id === "r1");
     assert.deepEqual(u.patch, { last_seen_on: "2026-09-09", days_seen: 2, row_no: 1 });
     assert.deepEqual(plan.offSheet, ["gone"]);
@@ -206,6 +207,7 @@ describe("reconcileRoster", () => {
     const u = plan.updates.find((x) => x.id === "r1");
     assert.equal(u.patch.address, "Samar");
     assert.equal(u.patch.off_sheet_at, null);
+    assert.equal(u.patch.run_started_on, "2026-09-09", "a return starts a new stay");
     assert.equal(plan.counts.returned, 1);
     assert.equal(plan.counts.updated, 1);
   });

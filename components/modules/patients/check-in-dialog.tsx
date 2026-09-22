@@ -18,18 +18,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { createClient } from "@/lib/supabase/client";
 import { patientsStore, usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { referralsStore } from "@/lib/hooks/use-referrals-collection";
+import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
+import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { assignableBeds } from "@/lib/utils/beds";
-import { todayIso } from "@/lib/utils/date";
+import { formatDate, todayIso } from "@/lib/utils/date";
 import type { Patient, Referral } from "@/lib/types/patient";
+import type { HouseSheetPerson } from "@/lib/types/house-sheet";
 
 const NEW_RECORD = "new";
 const NEW_CARER = "new";
 const REFERRAL_CARER = "referral";
+const SHEET_CARER = "sheet";
 const RELATIONSHIPS = ["Mother", "Father", "Grandmother", "Grandfather", "Aunt", "Uncle", "Sibling", "Guardian"];
 
-/** What to check in: a patient on file, an approved referral, or a referral for someone on file. */
-export type CheckInTarget = { patient: Patient; referral?: undefined } | { referral: Referral; patient?: undefined };
+/** What to check in: a patient on file (optionally as their name on NCH's
+ * Occupancy Tracker, 0051), an approved referral, or a referral for someone on file. */
+export type CheckInTarget =
+  | { patient: Patient; sheetRow?: HouseSheetPerson; referral?: undefined }
+  | { referral: Referral; patient?: undefined; sheetRow?: undefined };
 
 interface CheckInDialogProps {
   target: CheckInTarget | null;
@@ -37,7 +44,13 @@ interface CheckInDialogProps {
   onCheckedIn?: (patientId: string) => void;
 }
 
-const norm = (s: string | undefined) => (s ?? "").trim().toLowerCase();
+const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+
+/** The sheet's free-text relationship ("mother", "Grand mother") as one of the form's choices. */
+function relationshipFromSheet(raw: string | null): string {
+  const r = norm(raw).replace(/\s/g, "");
+  return RELATIONSHIPS.find((x) => x.toLowerCase() === r) ?? (r ? "Guardian" : "");
+}
 
 /** Patients already on file who could be the referral's child: same last name and first name (first word). */
 // ponytail: exact-name match only; reuse the house sheet matcher (lib/utils/house-sheet) if duplicate records pile up.
@@ -57,11 +70,13 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
   const { patients, carers, stays } = usePatientsData();
   const { rooms, units, bedPositions } = useHouseLayout();
   const referral = target?.referral;
+  const sheetRow = target?.sheetRow;
   const matches = referral ? possibleMatches(referral, patients) : [];
 
   const [recordId, setRecordId] = React.useState<string>(target?.patient?.id ?? NEW_RECORD);
   const [unitId, setUnitId] = React.useState("");
-  const [checkInAt, setCheckInAt] = React.useState(todayIso());
+  // From the sheet: the first day of this unbroken run is the arrival.
+  const [checkInAt, setCheckInAt] = React.useState(sheetRow && sheetRow.runStartedOn <= todayIso() ? sheetRow.runStartedOn : todayIso());
   const [expectedCheckoutAt, setExpectedCheckoutAt] = React.useState("");
   const [carerChoice, setCarerChoice] = React.useState<string>("");
   const [carerName, setCarerName] = React.useState("");
@@ -76,12 +91,17 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
   const patientId = recordId === NEW_RECORD ? null : recordId;
   const patient = patientId ? patients.find((p) => p.id === patientId) : undefined;
   const onFile = patientId ? carers.filter((c) => c.patientId === patientId && !c.effectiveTo) : [];
+  // The sheet's carer, when they are already on the record, is that record.
+  const sheetCarerOnFile = sheetRow?.carerName ? onFile.find((c) => norm(c.name) === norm(sheetRow.carerName)) : undefined;
   const carerOptions = [
     ...onFile.map((c) => ({ value: c.id, label: `${c.name}${c.relationship ? ` (${c.relationship})` : ""}` })),
     ...(referral?.carerName ? [{ value: REFERRAL_CARER, label: `${referral.carerName} (from the referral)` }] : []),
+    ...(sheetRow?.carerName && !sheetCarerOnFile
+      ? [{ value: SHEET_CARER, label: `${sheetRow.carerName}${sheetRow.relationship ? ` (${sheetRow.relationship})` : ""} (from the sheet)` }]
+      : []),
     { value: NEW_CARER, label: "Someone else…" },
   ];
-  const carer = carerChoice || carerOptions[0].value;
+  const carer = carerChoice || sheetCarerOnFile?.id || (sheetRow?.carerName && !sheetCarerOnFile ? SHEET_CARER : carerOptions[0].value);
   const beds = assignableBeds(units, bedPositions, stays, rooms);
   const unplaced = beds.filter((b) => b.unit.x === null).length;
   const name = patient ? `${patient.firstName} ${patient.lastName}` : referral?.patientName ?? "";
@@ -97,32 +117,48 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
     if (!target || !ready) return;
     setSubmitting(true);
     const newCarer = carer === NEW_CARER && carerName.trim();
-    const { data, error } = await createClient()
-      .schema("ops")
-      .rpc("check_in", {
-        p_unit_id: unitId,
-        p_check_in_at: checkInAt,
-        p_patient_id: patientId,
-        p_referral_id: referral?.id ?? null,
-        p_carer_id: carer !== NEW_CARER && carer !== REFERRAL_CARER ? carer : null,
-        // "" (not null) when "Someone else" is left blank: no carer, rather
-        // than the function falling back to the referral's.
-        p_carer_name: carer === NEW_CARER ? carerName.trim() : null,
-        p_carer_relationship: newCarer ? carerRelationship : null,
-        p_carer_mobile: newCarer ? carerMobile.trim() || null : null,
-        p_expected_checkout_at: expectedCheckoutAt || null,
-        p_appt_date: apptDate || null,
-        p_appt_time: apptDate ? apptTime : null,
-        p_appt_clinic: apptDate ? apptClinic.trim() : null,
-        p_appt_purpose: null,
-        p_appt_needs_transport: apptDate ? needsTransport : false,
-      });
+    const fromSheet = carer === SHEET_CARER && sheetRow;
+    const { data, error } = sheetRow
+      ? await createClient()
+          .schema("ops")
+          .rpc("admit_from_sheet", {
+            p_sheet_row_id: sheetRow.id,
+            p_unit_id: unitId,
+            p_check_in_at: checkInAt,
+            p_patient_id: patientId,
+            p_referral: null,
+            p_carer_id: carer !== NEW_CARER && carer !== SHEET_CARER ? carer : null,
+            p_carer_name: fromSheet ? sheetRow.carerName : newCarer ? carerName.trim() : carer === NEW_CARER ? "" : null,
+            p_carer_relationship: fromSheet ? relationshipFromSheet(sheetRow.relationship) || "Guardian" : newCarer ? carerRelationship : null,
+            p_carer_mobile: fromSheet ? sheetRow.phone : newCarer ? carerMobile.trim() || null : null,
+            p_expected_checkout_at: expectedCheckoutAt || null,
+          })
+      : await createClient()
+          .schema("ops")
+          .rpc("check_in", {
+            p_unit_id: unitId,
+            p_check_in_at: checkInAt,
+            p_patient_id: patientId,
+            p_referral_id: referral?.id ?? null,
+            p_carer_id: carer !== NEW_CARER && carer !== REFERRAL_CARER ? carer : null,
+            // "" (not null) when "Someone else" is left blank: no carer, rather
+            // than the function falling back to the referral's.
+            p_carer_name: carer === NEW_CARER ? carerName.trim() : null,
+            p_carer_relationship: newCarer ? carerRelationship : null,
+            p_carer_mobile: newCarer ? carerMobile.trim() || null : null,
+            p_expected_checkout_at: expectedCheckoutAt || null,
+            p_appt_date: apptDate || null,
+            p_appt_time: apptDate ? apptTime : null,
+            p_appt_clinic: apptDate ? apptClinic.trim() : null,
+            p_appt_purpose: null,
+            p_appt_needs_transport: apptDate ? needsTransport : false,
+          });
     setSubmitting(false);
     if (error) {
       toast.error(`Couldn't check in: ${error.message}`);
       return;
     }
-    await Promise.all([patientsStore.refetch(), referralsStore.refetch()]);
+    await Promise.all([patientsStore.refetch(), referralsStore.refetch(), houseSheetPeopleStore.refetch(), bedNightsStore.refetch()]);
     toast.success(`${name} checked in`);
     onCheckedIn?.((data as { patient_id: string }).patient_id);
     onOpenChange(false);
@@ -241,34 +277,42 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
             </div>
           )}
 
-          <div className="flex flex-col gap-3 rounded-md border p-3">
-            <span className="text-sm font-medium">Next hospital appointment (optional)</span>
-            {referral?.nextAppointmentNote && (
-              <span className="text-xs text-muted-foreground">From the referral: {referral.nextAppointmentNote}</span>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <Field>
-                <FieldLabel htmlFor="apptDate">Date</FieldLabel>
-                <Input id="apptDate" type="date" value={apptDate} onChange={(e) => setApptDate(e.target.value)} />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="apptTime">Time</FieldLabel>
-                <Input id="apptTime" type="time" value={apptTime} onChange={(e) => setApptTime(e.target.value)} />
-              </Field>
-            </div>
-            {apptDate && (
-              <>
+          {sheetRow ? (
+            <p className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+              {sheetRow.nextAppointmentOn
+                ? `Next appointment from NCH's sheet: ${formatDate(sheetRow.nextAppointmentOn)}. It is added with the ride box ticked, and follows the sheet if NCH changes it.`
+                : "NCH's sheet has no dated next appointment yet; it is added when they fill it in."}
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3 rounded-md border p-3">
+              <span className="text-sm font-medium">Next hospital appointment (optional)</span>
+              {referral?.nextAppointmentNote && (
+                <span className="text-xs text-muted-foreground">From the referral: {referral.nextAppointmentNote}</span>
+              )}
+              <div className="grid grid-cols-2 gap-3">
                 <Field>
-                  <FieldLabel htmlFor="apptClinic">Clinic</FieldLabel>
-                  <Input id="apptClinic" placeholder="e.g. NCH Pediatric Oncology" value={apptClinic} onChange={(e) => setApptClinic(e.target.value)} />
+                  <FieldLabel htmlFor="apptDate">Date</FieldLabel>
+                  <Input id="apptDate" type="date" value={apptDate} onChange={(e) => setApptDate(e.target.value)} />
                 </Field>
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox checked={needsTransport} onCheckedChange={(v) => setNeedsTransport(!!v)} />
-                  Needs a ride (goes on the transport manifest)
-                </label>
-              </>
-            )}
-          </div>
+                <Field>
+                  <FieldLabel htmlFor="apptTime">Time</FieldLabel>
+                  <Input id="apptTime" type="time" value={apptTime} onChange={(e) => setApptTime(e.target.value)} />
+                </Field>
+              </div>
+              {apptDate && (
+                <>
+                  <Field>
+                    <FieldLabel htmlFor="apptClinic">Clinic</FieldLabel>
+                    <Input id="apptClinic" placeholder="e.g. NCH Pediatric Oncology" value={apptClinic} onChange={(e) => setApptClinic(e.target.value)} />
+                  </Field>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={needsTransport} onCheckedChange={(v) => setNeedsTransport(!!v)} />
+                    Needs a ride (goes on the transport manifest)
+                  </label>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         <DialogFooter>
