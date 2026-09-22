@@ -27,7 +27,8 @@ import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
 import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { assignableBeds } from "@/lib/utils/beds";
-import { ArrivalFields, EMPTY_ARRIVAL, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
+import { ArrivalFields, arrivalFromPickups, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
+import { usePickups } from "@/lib/hooks/use-pickups-collection";
 import { recordArrival } from "@/lib/hooks/use-arrival-rides-collection";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { formatDate, todayIso } from "@/lib/utils/date";
@@ -78,7 +79,12 @@ function NewReferralForm() {
   const [unitId, setUnitId] = React.useState("");
   const [checkInAt, setCheckInAt] = React.useState("");
   const [expectedCheckoutAt, setExpectedCheckoutAt] = React.useState("");
-  const [arrival, setArrival] = React.useState<ArrivalDraft>(EMPTY_ARRIVAL);
+  const { pickups } = usePickups();
+  // Until someone changes it, the arrival follows the pick-ups: on board a
+  // LAF HOPE trip = arrived by it (the data may load after the form).
+  const [arrivalEdited, setArrivalEdited] = React.useState<ArrivalDraft | null>(null);
+  const arrival = arrivalEdited ?? arrivalFromPickups(pickups, sheetRow);
+  const setArrival = setArrivalEdited;
   const arrivedOn = checkInAt || (sheetRow && sheetRow.runStartedOn <= todayIso() ? sheetRow.runStartedOn : todayIso());
   const {
     register,

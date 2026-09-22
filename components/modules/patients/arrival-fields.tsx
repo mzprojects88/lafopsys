@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { recordArrival, useArrivalRides, type ArrivalInput } from "@/lib/hooks/use-arrival-rides-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
+import { usePickups, type Pickup } from "@/lib/hooks/use-pickups-collection";
+import type { HouseSheetPerson } from "@/lib/types/house-sheet";
 import { ARRIVAL_APP_LABELS, ARRIVAL_MODE_LABELS } from "@/lib/utils/arrival";
 import { formatCurrency } from "@/lib/utils/currency";
 import type { ArrivalApp, ArrivalMode, Stay } from "@/lib/types/patient";
@@ -21,9 +23,19 @@ export interface ArrivalDraft {
   ride: string;
   app: ArrivalApp | "";
   fare: string;
+  /** laf_hope: the pick-up's trip id, or NO_TRIP. */
+  trip: string;
 }
 
-export const EMPTY_ARRIVAL: ArrivalDraft = { mode: "", ride: NEW_RIDE, app: "", fare: "" };
+const NO_TRIP = "none";
+export const EMPTY_ARRIVAL: ArrivalDraft = { mode: "", ride: NEW_RIDE, app: "", fare: "", trip: NO_TRIP };
+
+/** A sheet name ticked on board a LAF HOPE pick-up arrived by it: the arrival starts filled in (0053). */
+export function arrivalFromPickups(pickups: Pickup[], sheetRow: HouseSheetPerson | undefined): ArrivalDraft {
+  if (!sheetRow) return EMPTY_ARRIVAL;
+  const trip = pickups.find((p) => p.date >= sheetRow.runStartedOn && p.manifest.some((m) => m.sheetRowId === sheetRow.id && m.boardedAt));
+  return trip ? { ...EMPTY_ARRIVAL, mode: "laf_hope", trip: trip.id } : EMPTY_ARRIVAL;
+}
 
 export function arrivalReady(d: ArrivalDraft): boolean {
   if (!d.mode) return false;
@@ -32,6 +44,7 @@ export function arrivalReady(d: ArrivalDraft): boolean {
 }
 
 export function arrivalInput(d: ArrivalDraft): ArrivalInput {
+  if (d.mode === "laf_hope") return { mode: "laf_hope", tripId: d.trip !== NO_TRIP ? d.trip : undefined };
   if (d.mode !== "ride_app") return { mode: d.mode as ArrivalMode };
   if (d.ride !== NEW_RIDE) return { mode: "ride_app", rideId: d.ride };
   const fare = d.fare.trim() === "" ? null : Number(d.fare);
@@ -51,6 +64,8 @@ export function ArrivalFields({ value, onChange, arrivalDate, excludeStayId }: {
 }) {
   const { rides } = useArrivalRides();
   const { patients, stays } = usePatientsData();
+  const { pickups } = usePickups();
+  const tripsThatDay = pickups.filter((p) => p.date === arrivalDate || p.id === value.trip);
   // Rides that day still open to riders, plus the stay's own ride even if it was paid back since.
   const sameDay = rides.filter((r) => (r.rideDate === arrivalDate && !r.reimbursedAt) || r.id === value.ride);
   const ridersOf = (rideId: string) =>
@@ -75,6 +90,25 @@ export function ArrivalFields({ value, onChange, arrivalDate, excludeStayId }: {
           </SelectContent>
         </Select>
       </Field>
+
+      {value.mode === "laf_hope" && (
+        <Field>
+          <FieldLabel htmlFor="arrivalTrip">Which pick-up</FieldLabel>
+          <Select value={value.trip} onValueChange={(v) => onChange({ ...value, trip: v })}>
+            <SelectTrigger id="arrivalTrip" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_TRIP}>Not on a recorded pick-up</SelectItem>
+              {tripsThatDay.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  Pick-up {p.departureTime} · {p.manifest.filter((m) => m.boardedAt).length} on board
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      )}
 
       {value.mode === "ride_app" && (
         <>
@@ -144,6 +178,7 @@ export function ArrivalDialog({ stay, patientName, onOpenChange }: { stay: Stay 
     ...EMPTY_ARRIVAL,
     mode: stay?.arrivalMode ?? "",
     ride: stay?.arrivalRideId ?? NEW_RIDE,
+    trip: stay?.arrivalTripId ?? NO_TRIP,
   }));
   const [saving, setSaving] = React.useState(false);
 

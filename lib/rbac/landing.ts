@@ -24,6 +24,8 @@ export const ROLE_DEFAULT_LANDING: Partial<Record<Role, string>> = {
   inventory_staff: "/staff",
   inventory_lead: "/staff",
   nutritionist: "/staff",
+  // Their day is the LAF HOPE pick-ups (0053).
+  driver: "/transport",
 };
 
 /** Paths that mean "no particular place" -- middleware appends ?next= for any
@@ -61,5 +63,9 @@ export function resolveLandingPath(
   const own = input.landingPath?.trim();
   if (own && isAllowedLandingPath(input.role, own, nav)) return own;
 
-  return ROLE_DEFAULT_LANDING[input.role] ?? DEFAULT_LANDING;
+  // A role's default only if that role can open it (an admin may have set the
+  // module to None, or it may be hidden on this deployment).
+  const roleDefault = ROLE_DEFAULT_LANDING[input.role];
+  if (roleDefault && isAllowedLandingPath(input.role, roleDefault, nav)) return roleDefault;
+  return DEFAULT_LANDING;
 }

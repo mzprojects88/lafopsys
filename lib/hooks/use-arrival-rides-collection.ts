@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
 import { patientsStore } from "@/lib/hooks/use-patients-collection";
+import { pickupsStore } from "@/lib/hooks/use-pickups-collection";
 import type { ArrivalApp, ArrivalMode, ArrivalRide } from "@/lib/types/patient";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -56,6 +57,8 @@ export interface ArrivalInput {
   rideId?: string;
   /** ride_app, new ride: the fare, if known yet. */
   fare?: number | null;
+  /** laf_hope: the pick-up that brought them (0053). */
+  tripId?: string;
 }
 
 /** How a stay's family reached the house (ops.record_arrival). */
@@ -68,9 +71,10 @@ export async function recordArrival(stayId: string, input: ArrivalInput): Promis
       p_app: input.mode === "ride_app" && !input.rideId ? (input.app ?? null) : null,
       p_ride_id: input.mode === "ride_app" ? (input.rideId ?? null) : null,
       p_fare: input.mode === "ride_app" && !input.rideId ? (input.fare ?? null) : null,
+      p_trip_id: input.mode === "laf_hope" ? (input.tripId ?? null) : null,
     });
   if (error) return { ok: false, error: error.message };
-  await Promise.all([arrivalRidesStore.refetch(), patientsStore.refetch()]);
+  await Promise.all([arrivalRidesStore.refetch(), patientsStore.refetch(), input.tripId ? pickupsStore.refetch() : null]);
   return { ok: true };
 }
 

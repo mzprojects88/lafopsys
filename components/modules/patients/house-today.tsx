@@ -14,6 +14,7 @@ import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
 import { useBedNights } from "@/lib/hooks/use-bed-nights-collection";
+import { usePickups } from "@/lib/hooks/use-pickups-collection";
 import { assignableBeds, isActiveStay, unitForBedPosition } from "@/lib/utils/beds";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
@@ -39,6 +40,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const { patients, stays } = usePatientsData();
   const { rooms, units, bedPositions } = useHouseLayout();
   const { nights, confirmNight } = useBedNights();
+  const { pickups } = usePickups();
   const [checkIn, setCheckIn] = React.useState<{ patient: Patient; sheetRow: HouseSheetPerson } | null>(null);
   const [discharge, setDischarge] = React.useState<{ stay: Stay; name: string; on: string } | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -114,6 +116,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                     <span className="truncate font-medium">{p.patientName}</span>
                     <span className="text-xs text-muted-foreground">
                       {patient ? `#${patient.patientNumber} · on file` : p.matchStatus === "suggested" ? "AI suggests a record" : "Not on file"} · since {formatDate(p.runStartedOn, "MMM d")}
+                      {pickups.some((t) => t.date >= p.runStartedOn && t.manifest.some((m) => m.sheetRowId === p.id && m.boardedAt)) ? " · came on LAF HOPE" : ""}
                     </span>
                   </div>
                   {canEdit ? (

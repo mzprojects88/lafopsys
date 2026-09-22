@@ -39,6 +39,12 @@ describe("resolveLandingPath", () => {
     assert.equal(resolve({ role: "admin", landingPath: "/executive", next: null }, NAV_BEFORE), "/dashboard");
   });
 
+  it("a driver starts on the LAF HOPE pick-ups when they can open them, else the dashboard", () => {
+    const withTransport = [...NAV_AFTER, { href: "/transport", allowedRoles: ["admin", "social_worker", "driver"] }];
+    assert.equal(resolve({ role: "driver", landingPath: null, next: null }, withTransport), "/transport");
+    assert.equal(resolve({ role: "driver", landingPath: null, next: null }), "/dashboard");
+  });
+
   it("ignores a landing page the role cannot open", () => {
     assert.equal(resolve({ role: "driver", landingPath: "/settings", next: null }), "/dashboard");
     assert.equal(resolve({ role: "driver", landingPath: "/finance/monthly-summary", next: null }), "/dashboard");

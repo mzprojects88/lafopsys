@@ -22,7 +22,8 @@ import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
 import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { assignableBeds } from "@/lib/utils/beds";
-import { ArrivalFields, EMPTY_ARRIVAL, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
+import { ArrivalFields, arrivalFromPickups, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
+import { usePickups } from "@/lib/hooks/use-pickups-collection";
 import { recordArrival } from "@/lib/hooks/use-arrival-rides-collection";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import type { Patient, Referral } from "@/lib/types/patient";
@@ -88,7 +89,8 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
   const [apptTime, setApptTime] = React.useState("08:00");
   const [apptClinic, setApptClinic] = React.useState("");
   const [needsTransport, setNeedsTransport] = React.useState(true);
-  const [arrival, setArrival] = React.useState<ArrivalDraft>(EMPTY_ARRIVAL);
+  const { pickups } = usePickups();
+  const [arrival, setArrival] = React.useState<ArrivalDraft>(() => arrivalFromPickups(pickups, target?.sheetRow));
   const [submitting, setSubmitting] = React.useState(false);
 
   const patientId = recordId === NEW_RECORD ? null : recordId;

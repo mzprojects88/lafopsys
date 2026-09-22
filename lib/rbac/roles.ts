@@ -17,6 +17,7 @@ import {
   FileText,
   ShieldCheck,
   Settings,
+  Bus,
   type LucideIcon,
 } from "lucide-react";
 
@@ -36,7 +37,8 @@ export type ModuleKey =
   | "compliance"
   | "analytics"
   | "reports"
-  | "settings";
+  | "settings"
+  | "transport";
 
 export type AccessLevel = "none" | "view" | "edit";
 
@@ -90,6 +92,7 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Staff & Time", href: "/staff", icon: Clock, module: "staff", note: "Everyone keeps their own clock; Edit adds volunteers." },
   { title: "HR", href: "/hr", icon: UserCog, module: "hr", viewOnly: true, note: "Own leave and payslips. Running HR follows the HR flag in Users." },
   { title: "Patients & Admissions", href: "/patients", icon: Users, module: "patients", note: "Includes the floor plan and the house sheet." },
+  { title: "LAF HOPE Transport", href: "/transport", icon: Bus, module: "transport", note: "Pick-ups from NCH: the manifest and the driver's on-board ticks." },
   { title: "House Operations", href: "/house-ops", icon: Home, module: "house_ops", note: "Also reads resident names, for trips and meals." },
   { title: "Donors & Donations", href: "/donors", icon: HandCoins, module: "donors" },
   { title: "Inventory", href: "/inventory", icon: Boxes, module: "inventory", viewOnly: true, note: "Stock is changed in the LAF Inventory app." },
