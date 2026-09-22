@@ -42,10 +42,11 @@ export async function createDonorPortalAccount(donorId: string): Promise<CreateD
     return { ok: false, error: "Not signed in." };
   }
 
-  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
-
-  if (callerStaff?.role !== "admin" && callerStaff?.role !== "finance") {
-    return { ok: false, error: "Only admins or finance staff can create donor portal accounts." };
+  // Donors edit in Settings -> Roles & Access (0050). The account is created
+  // with the service key below, so this check is the only gate on that write.
+  const { data: canEdit } = await supabase.schema("shared").rpc("module_editable", { p_module: "donors" });
+  if (canEdit !== true) {
+    return { ok: false, error: "Your access to Donors is view only." };
   }
 
   const { data: donor } = await supabase
