@@ -22,6 +22,8 @@ import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
 import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { assignableBeds } from "@/lib/utils/beds";
+import { ArrivalFields, EMPTY_ARRIVAL, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
+import { recordArrival } from "@/lib/hooks/use-arrival-rides-collection";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import type { Patient, Referral } from "@/lib/types/patient";
 import type { HouseSheetPerson } from "@/lib/types/house-sheet";
@@ -86,6 +88,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
   const [apptTime, setApptTime] = React.useState("08:00");
   const [apptClinic, setApptClinic] = React.useState("");
   const [needsTransport, setNeedsTransport] = React.useState(true);
+  const [arrival, setArrival] = React.useState<ArrivalDraft>(EMPTY_ARRIVAL);
   const [submitting, setSubmitting] = React.useState(false);
 
   const patientId = recordId === NEW_RECORD ? null : recordId;
@@ -109,6 +112,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
 
   const ready =
     !!unitId &&
+    arrivalReady(arrival) &&
     !!checkInAt &&
     (carer !== NEW_CARER || !carerName.trim() || !!carerRelationship) &&
     (!apptDate || !!apptClinic.trim());
@@ -153,11 +157,15 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
             p_appt_purpose: null,
             p_appt_needs_transport: apptDate ? needsTransport : false,
           });
-    setSubmitting(false);
     if (error) {
+      setSubmitting(false);
       toast.error(`Couldn't check in: ${error.message}`);
       return;
     }
+    // How they came is its own step (0052); the stay stands either way.
+    const arrived = await recordArrival((data as { stay_id: string }).stay_id, arrivalInput(arrival));
+    setSubmitting(false);
+    if (!arrived.ok) toast.warning(`Checked in, but how they arrived was not saved: ${arrived.error}. Set it on the patient's Stays tab.`);
     await Promise.all([patientsStore.refetch(), referralsStore.refetch(), houseSheetPeopleStore.refetch(), bedNightsStore.refetch()]);
     toast.success(`${name} checked in`);
     onCheckedIn?.((data as { patient_id: string }).patient_id);
@@ -232,6 +240,8 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
               />
             </Field>
           </div>
+
+          <ArrivalFields value={arrival} onChange={setArrival} arrivalDate={checkInAt} />
 
           <Field>
             <FieldLabel htmlFor="carer">Carer staying with them</FieldLabel>

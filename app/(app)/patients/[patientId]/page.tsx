@@ -27,6 +27,9 @@ import { AdmissionChecklist } from "@/components/modules/patients/admission-chec
 import { DischargeDialog } from "@/components/modules/patients/discharge-dialog";
 import { ExtendStayDialog } from "@/components/modules/patients/extend-stay-dialog";
 import { TransferBedDialog } from "@/components/modules/patients/transfer-bed-dialog";
+import { ArrivalDialog } from "@/components/modules/patients/arrival-fields";
+import { useArrivalRides } from "@/lib/hooks/use-arrival-rides-collection";
+import { arrivalLabel } from "@/lib/utils/arrival";
 import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
 import { isActiveStay, unitForBedPosition } from "@/lib/utils/beds";
 import type { Stay } from "@/lib/types/patient";
@@ -43,6 +46,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   const [dischargeTarget, setDischargeTarget] = useState<Stay | null>(null);
   const [extendTarget, setExtendTarget] = useState<Stay | null>(null);
   const [transferTarget, setTransferTarget] = useState<Stay | null>(null);
+  const [arrivalTarget, setArrivalTarget] = useState<Stay | null>(null);
+  const { rides } = useArrivalRides();
   const [checkingIn, setCheckingIn] = useState(false);
 
   if (!patient) {
@@ -160,6 +165,14 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
                           {formatDate(stay.checkInAt)} — {stay.checkOutAt ? formatDate(stay.checkOutAt) : "current"}
                           {stay.expectedCheckoutAt && !stay.checkOutAt && ` · expected ${formatDate(stay.expectedCheckoutAt)}`}
                         </span>
+                        <span className="text-xs text-muted-foreground">
+                          Arrived by {arrivalLabel(stay.arrivalMode, rides.find((r) => r.id === stay.arrivalRideId)?.app)}
+                          {canEdit && (
+                            <button type="button" className="ml-1.5 text-primary hover:underline" onClick={() => setArrivalTarget(stay)}>
+                              {stay.arrivalMode ? "Change" : "Set"}
+                            </button>
+                          )}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <StatusBadge domain="stay" status={stay.status} />
@@ -265,6 +278,12 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
         patientName={`${patient.firstName} ${patient.lastName}`}
         onOpenChange={(open) => !open && setExtendTarget(null)}
         onExtended={refetch}
+      />
+      <ArrivalDialog
+        key={arrivalTarget?.id}
+        stay={arrivalTarget}
+        patientName={`${patient.firstName} ${patient.lastName}`}
+        onOpenChange={(open) => !open && setArrivalTarget(null)}
       />
       <TransferBedDialog
         stay={transferTarget}

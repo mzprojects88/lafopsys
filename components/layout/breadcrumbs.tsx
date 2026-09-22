@@ -39,6 +39,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   "house-ops": "House Operations",
   "floor-plan": "Floor Plan",
   access: "Roles & Access",
+  rides: "Rides",
   meals: "Meals",
   trips: "Trips",
   "care-cart": "Care Cart",

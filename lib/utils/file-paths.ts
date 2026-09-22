@@ -7,6 +7,7 @@
  *   Compliances/SEC/2026/Annual/<file>             (annual)
  *   Compliances/BIR/2026/Q3/<file>                 (quarterly)
  *   Patients/Santos, Ana (PT-0012)/<file>
+ *   Patients/Arrival Rides/2026/09 September/<file>   (ride receipts, 0052)
  *   Donors/Manny Chan/<file>
  *   Financial/Bank Statements/2026/08 August/<file>
  *   Reports/<category>/<file>
@@ -22,7 +23,7 @@
  */
 
 export type FileModule = "hr" | "compliance" | "patients" | "donors" | "finance" | "reports";
-export type FileRecordType = "employee" | "compliance_item" | "patient" | "donor" | "bank_statement_import" | "general";
+export type FileRecordType = "employee" | "compliance_item" | "patient" | "donor" | "bank_statement_import" | "general" | "ride";
 
 export const MODULE_OF_RECORD: Readonly<Record<FileRecordType, FileModule>> = {
   employee: "hr",
@@ -31,6 +32,7 @@ export const MODULE_OF_RECORD: Readonly<Record<FileRecordType, FileModule>> = {
   donor: "donors",
   bank_statement_import: "finance",
   general: "reports",
+  ride: "patients",
 };
 
 export type FolderContext =
@@ -39,7 +41,8 @@ export type FolderContext =
   | { kind: "patient"; patientNumber: string; firstName: string; lastName: string }
   | { kind: "donor"; name: string }
   | { kind: "bank_statement_import"; coversTo: string | null; createdAt: string }
-  | { kind: "general"; category: string };
+  | { kind: "general"; category: string }
+  | { kind: "ride"; rideDate: string };
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const MAX_SEGMENT = 80;
@@ -93,6 +96,8 @@ export function folderFor(ctx: FolderContext): string {
     }
     case "general":
       return `Reports/${sanitiseSegment(ctx.category)}`;
+    case "ride":
+      return `Patients/Arrival Rides/${periodFolder(ctx.rideDate.slice(0, 7))}`;
   }
 }
 

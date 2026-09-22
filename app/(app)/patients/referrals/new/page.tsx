@@ -27,6 +27,8 @@ import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
 import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { assignableBeds } from "@/lib/utils/beds";
+import { ArrivalFields, EMPTY_ARRIVAL, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
+import { recordArrival } from "@/lib/hooks/use-arrival-rides-collection";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import type { Referral } from "@/lib/types/patient";
@@ -76,6 +78,7 @@ function NewReferralForm() {
   const [unitId, setUnitId] = React.useState("");
   const [checkInAt, setCheckInAt] = React.useState("");
   const [expectedCheckoutAt, setExpectedCheckoutAt] = React.useState("");
+  const [arrival, setArrival] = React.useState<ArrivalDraft>(EMPTY_ARRIVAL);
   const arrivedOn = checkInAt || (sheetRow && sheetRow.runStartedOn <= todayIso() ? sheetRow.runStartedOn : todayIso());
   const {
     register,
@@ -137,6 +140,10 @@ function NewReferralForm() {
         toast.error("Pick tonight's bed.");
         return;
       }
+      if (!arrivalReady(arrival)) {
+        toast.error("Say how they arrived.");
+        return;
+      }
       const { data, error } = await supabase.schema("ops").rpc("admit_from_sheet", {
         p_sheet_row_id: fromSheet,
         p_unit_id: unitId,
@@ -170,6 +177,8 @@ function NewReferralForm() {
         toast.error(`Couldn't admit: ${error.message}`);
         return;
       }
+      const arrived = await recordArrival((data as { stay_id: string }).stay_id, arrivalInput(arrival));
+      if (!arrived.ok) toast.warning(`Admitted, but how they arrived was not saved: ${arrived.error}. Set it on the patient's Stays tab.`);
       await Promise.all([patientsStore.refetch(), referralsStore.refetch(), houseSheetPeopleStore.refetch(), bedNightsStore.refetch()]);
       toast.success(`${values.patientFirstName} ${values.patientLastName} admitted`);
       router.push(`/patients/${(data as { patient_id: string }).patient_id}`);
@@ -485,6 +494,7 @@ function NewReferralForm() {
                       </SelectContent>
                     </Select>
                   </Field>
+                  <ArrivalFields value={arrival} onChange={setArrival} arrivalDate={arrivedOn} />
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Field>
                       <FieldLabel htmlFor="checkInAt">Arrived on</FieldLabel>

@@ -100,6 +100,26 @@ export interface Referral {
 
 export type StayStatus = "in_house" | "checked_out" | "overdue";
 
+/** How the family reached LAF House (0052). */
+export type ArrivalMode = "laf_hope" | "ride_app" | "own_transport" | "hospital_vehicle";
+export type ArrivalApp = "grab" | "joyride" | "indrive" | "moveit" | "angkas";
+
+/** One ride-app booking that brought one or more families (ops.v_arrival_rides). */
+export interface ArrivalRide {
+  id: string;
+  rideDate: string;
+  app: ArrivalApp;
+  fare: number | null;
+  notes?: string;
+  reimbursedAt?: string;
+  reimbursedAmount?: number;
+  reimbursedTo?: string;
+  reimbursedBy?: string;
+  riders: number;
+  /** 2+ riders and not Angkas -- the database's rule. */
+  reimbursable: boolean;
+}
+
 export interface Stay {
   id: string;
   patientId: string;
@@ -112,6 +132,9 @@ export interface Stay {
   destination?: string;
   followUpDate?: string;
   status: StayStatus;
+  arrivalMode?: ArrivalMode;
+  arrivalRideId?: string;
+  arrivalTripId?: string;
 }
 
 export interface Appointment {

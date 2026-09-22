@@ -67,6 +67,10 @@ async function folderContext(supabase: Supabase, recordType: FileRecordType, rec
     }
     case "general":
       return { ok: true, ctx: { kind: "general", category: sanitiseSegment(recordId || "General") } };
+    case "ride": {
+      const { data } = await supabase.schema("ops").from("arrival_rides").select("ride_date").eq("id", recordId).maybeSingle();
+      return data ? { ok: true, ctx: { kind: "ride", rideDate: data.ride_date } } : { ok: false, error: "No such ride." };
+    }
   }
 }
 
