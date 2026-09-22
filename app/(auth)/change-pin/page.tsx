@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PinInput } from "@/components/patterns/pin-input";
 import { createClient } from "@/lib/supabase/client";
 import { resolveLandingPath } from "@/lib/rbac/roles";
+import { fetchModuleAccess } from "@/lib/hooks/use-module-access";
 import type { Role } from "@/lib/types/common";
 
 const PIN_LENGTH = 6;
@@ -88,11 +89,14 @@ function ChangePinForm() {
       .eq("id", userData.user.id)
       .single();
     router.push(
-      resolveLandingPath({
-        role: (staffRow?.role ?? "volunteer") as Role,
-        landingPath: (staffRow?.landing_path ?? null) as string | null,
-        next: null,
-      })
+      resolveLandingPath(
+        {
+          role: (staffRow?.role ?? "volunteer") as Role,
+          landingPath: (staffRow?.landing_path ?? null) as string | null,
+          next: null,
+        },
+        await fetchModuleAccess()
+      )
     );
   }
 

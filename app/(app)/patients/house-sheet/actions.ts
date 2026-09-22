@@ -17,9 +17,9 @@ async function caller() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in." as string, supabase: undefined, userId: undefined };
-  const { data: staff } = await supabase.schema("shared").from("staff").select("role, active").eq("id", user.id).maybeSingle();
-  if (!staff?.active) return { error: "This staff account is inactive." as string, supabase: undefined, userId: undefined };
-  if (!["admin", "social_worker"].includes(staff.role)) return { error: "Only admins and social workers review the house sheet." as string, supabase: undefined, userId: undefined };
+  // Patients edit in Settings -> Roles & Access (0050); an inactive account has no role, so no level.
+  const { data: canEdit } = await supabase.schema("shared").rpc("module_editable", { p_module: "patients" });
+  if (canEdit !== true) return { error: "Your access to Patients is view only." as string, supabase: undefined, userId: undefined };
   return { error: undefined, supabase, userId: user.id };
 }
 

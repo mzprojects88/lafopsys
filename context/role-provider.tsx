@@ -16,6 +16,9 @@ interface RoleContextValue {
   /** Admin-set (0035): this person runs HR without being an admin. Admins
    * are HR regardless; see canManageHr in lib/rbac/roles.ts. */
   isHr: boolean;
+  /** True once the role has been read from shared.staff (or found missing);
+   * until then `role` is the placeholder, not a fact to gate pages on. */
+  ready: boolean;
   /** Sets role and user for the session that has just been established, so the
    * first render after sign-in is already correct rather than briefly showing
    * the default. The next syncFromSession() confirms it from shared.staff --
@@ -34,6 +37,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
   const [staffId, setStaffId] = React.useState<string | null | undefined>(undefined);
   const [email, setEmail] = React.useState<string | null>(null);
   const [isHr, setIsHr] = React.useState(false);
+  const [ready, setReady] = React.useState(false);
   const currentUserRef = React.useRef<string | null | undefined>(undefined);
 
   React.useEffect(() => {
@@ -66,6 +70,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
           setRoleState(staffRow.role as Role);
           setUserState(`${staffRow.first_name} ${staffRow.last_name}`);
           setIsHr(Boolean(staffRow.is_hr));
+          setReady(true);
           return;
         }
       }
@@ -76,6 +81,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         setRoleState("volunteer");
         setUserState("");
         setIsHr(false);
+        setReady(true);
       }
     }
 
@@ -92,6 +98,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
       resetAllCollections();
       setStaffId(next);
       setEmail(session?.user?.email ?? null);
+      setReady(false);
       // Supabase warns against calling other client methods synchronously
       // inside this callback; defer the re-sync to the next tick.
       setTimeout(() => {
@@ -112,8 +119,8 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = React.useMemo(
-    () => ({ role, user, staffId, email, isHr, login }),
-    [role, user, staffId, email, isHr, login]
+    () => ({ role, user, staffId, email, isHr, ready, login }),
+    [role, user, staffId, email, isHr, ready, login]
   );
 
   return <RoleContext.Provider value={value}>{children}</RoleContext.Provider>;

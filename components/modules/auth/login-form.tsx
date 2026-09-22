@@ -13,6 +13,7 @@ import { useRole } from "@/context/role-provider";
 import { createClient } from "@/lib/supabase/client";
 import type { Role } from "@/lib/types/common";
 import { resolveLandingPath } from "@/lib/rbac/roles";
+import { fetchModuleAccess } from "@/lib/hooks/use-module-access";
 
 const PIN_LENGTH = 6;
 
@@ -71,11 +72,14 @@ export function LoginForm({ roster }: { roster: LoginRosterEntry[] }) {
     // A bookmarked deep link (middleware's ?next=) still wins; otherwise the
     // person's own landing page, otherwise their role's default. The PIN-change
     // page carries the same ?next= through so the link is not lost on the way.
-    const destination = resolveLandingPath({
-      role: staffRow.role as Role,
-      landingPath: staffRow.landing_path as string | null,
-      next: searchParams.get("next"),
-    });
+    const destination = resolveLandingPath(
+      {
+        role: staffRow.role as Role,
+        landingPath: staffRow.landing_path as string | null,
+        next: searchParams.get("next"),
+      },
+      await fetchModuleAccess()
+    );
 
     if (staffRow.must_change_pin) {
       toast.info("This is a temporary PIN — set a new one to continue.");

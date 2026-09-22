@@ -9,11 +9,13 @@ import { CATEGORY_COLOR_CLASSES } from "@/lib/utils/category-colors";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { formatDate, daysUntil } from "@/lib/utils/date";
 import { cn } from "@/lib/utils";
 
 export default function WaitlistPage() {
   const { referrals, updateReferral } = useReferralsData();
+  const canEdit = useModuleAccess().canEdit("patients");
   const waitlisted = referrals
     .filter((r) => r.status === "waitlisted")
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -59,18 +61,20 @@ export default function WaitlistPage() {
                     <span className={cn("rounded-full px-3 py-1 text-xs font-medium", tint.bg, tint.text)}>
                       {waitingDays}d wait
                     </span>
-                    <Button
-                      onClick={async () => {
-                        const result = await updateReferral(r.id, { status: "approved" });
-                        if (!result.ok) {
-                          toast.error(`Couldn't approve: ${result.error}`);
-                          return;
-                        }
-                        toast.success(`${r.patientName} approved from waitlist`);
-                      }}
-                    >
-                      Approve
-                    </Button>
+                    {canEdit && (
+                      <Button
+                        onClick={async () => {
+                          const result = await updateReferral(r.id, { status: "approved" });
+                          if (!result.ok) {
+                            toast.error(`Couldn't approve: ${result.error}`);
+                            return;
+                          }
+                          toast.success(`${r.patientName} approved from waitlist`);
+                        }}
+                      >
+                        Approve
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>

@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { countLayoutChanges, useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useRole } from "@/lib/rbac/use-role";
-import { canEditFloorPlan, canLockBeds, canSeeClinicalDetail } from "@/lib/rbac/roles";
+import { canEditFloorPlan, canSeeClinicalDetail } from "@/lib/rbac/roles";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { bedCounts } from "@/lib/utils/beds";
 import {
   PLAN_H,
@@ -55,7 +56,7 @@ export function FloorPlanView() {
   const [addingLabel, setAddingLabel] = React.useState(false);
 
   const canEdit = canEditFloorPlan(role);
-  const canLock = canLockBeds(role);
+  const canLock = useModuleAccess().canEdit("patients");
   const canSeeClinical = canSeeClinicalDetail(role);
   const editing = canEdit && editor.editing;
 

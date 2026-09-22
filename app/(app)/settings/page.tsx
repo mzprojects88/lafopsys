@@ -43,8 +43,9 @@ export default function SettingsPage() {
             <IconCircle icon={Users} color="purple" size="sm" />
             <CardTitle className="text-sm">Users & Roles</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-1.5">
             <Link href="/settings/users" className="text-sm text-primary hover:underline">Manage users</Link>
+            <Link href="/settings/access" className="text-sm text-primary hover:underline">Roles &amp; access by module</Link>
           </CardContent>
         </Card>
 

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { hospitals } from "@/lib/mock-data";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import type { Referral, ReferralStatus } from "@/lib/types/patient";
 import type { CategoryColor } from "@/lib/utils/category-colors";
 import { formatDate } from "@/lib/utils/date";
@@ -27,6 +28,7 @@ const STATUSES: { id: ReferralStatus; title: string; color: CategoryColor; icon:
 
 export default function ReferralsPage() {
   const { referrals, updateReferral } = useReferralsData();
+  const canEdit = useModuleAccess().canEdit("patients");
   const [declineTarget, setDeclineTarget] = React.useState<string | null>(null);
   const [arrivalTarget, setArrivalTarget] = React.useState<string | null>(null);
 
@@ -55,12 +57,14 @@ export default function ReferralsPage() {
         title="Referrals"
         description="Partner hospital referral intake — approve, waitlist, decline, or confirm arrival with reason captured."
         action={
-          <Button asChild>
-            <Link href="/patients/referrals/new">
-              <Plus />
-              New Referral
-            </Link>
-          </Button>
+          canEdit && (
+            <Button asChild>
+              <Link href="/patients/referrals/new">
+                <Plus />
+                New Referral
+              </Link>
+            </Button>
+          )
         }
       />
 
@@ -93,7 +97,7 @@ export default function ReferralsPage() {
                   </span>
                 )}
                 {r.reason && <span className="text-[11px] italic text-muted-foreground">{r.reason}</span>}
-                {r.status === "submitted" && (
+                {canEdit && r.status === "submitted" && (
                   <div className="flex gap-1.5 pt-1">
                     <Button size="sm" className="h-6 flex-1 text-[11px]" onClick={() => setStatus(r.id, "approved")}>
                       Approve
@@ -106,7 +110,7 @@ export default function ReferralsPage() {
                     </Button>
                   </div>
                 )}
-                {r.status === "approved" && (
+                {canEdit && r.status === "approved" && (
                   <div className="flex gap-1.5 pt-1">
                     <Button size="sm" className="h-6 flex-1 gap-1 text-[11px]" onClick={() => setArrivalTarget(r.id)}>
                       <BedDouble className="size-3" />

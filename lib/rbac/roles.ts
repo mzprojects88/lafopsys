@@ -20,11 +20,43 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+/** One row per main menu entry in Settings -> Roles & Access (0050's
+ * shared.module_access.module). The SQL check constraint lists the same keys. */
+export type ModuleKey =
+  | "executive"
+  | "dashboard"
+  | "calendar"
+  | "staff"
+  | "hr"
+  | "patients"
+  | "house_ops"
+  | "donors"
+  | "inventory"
+  | "finance"
+  | "compliance"
+  | "analytics"
+  | "reports"
+  | "settings";
+
+export type AccessLevel = "none" | "view" | "edit";
+
+export interface ModuleAccessRow {
+  role: Role;
+  module: ModuleKey;
+  level: AccessLevel;
+}
+
 export interface NavItem {
   title: string;
   href: string;
   icon: LucideIcon;
-  allowedRoles: Role[] | "all";
+  module: ModuleKey;
+  /** Nothing to change on these pages: the grid offers None / View only. */
+  viewOnly?: boolean;
+  /** Not configurable in the grid; admins only (Settings holds users and this grid). */
+  adminOnly?: boolean;
+  /** Shown under the module's name in the grid. */
+  note?: string;
 }
 
 export const ALL_ROLES: Role[] = [
@@ -50,81 +82,61 @@ export const ORG_ROLES: Role[] = [...ALL_ROLES, ...INVENTORY_ROLES];
 export const LOGIN_VISIBLE_ROLES = ORG_ROLES;
 
 export const NAV_ITEMS: NavItem[] = [
-  // The CEO's landing page (0031 seeds landing_path = /executive). First in
-  // the list because it is first in his day; board members see it too, since
-  // it is the summary they are shown anyway.
-  { title: "Executive", href: "/executive", icon: Briefcase, allowedRoles: ["admin", "board"] },
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, allowedRoles: ALL_ROLES },
-  // Everyone on staff reads the calendar, the kitchen included -- who is
-  // coming for lunch on Thursday is not an admin secret.
-  { title: "Calendar", href: "/calendar", icon: CalendarDays, allowedRoles: [...ALL_ROLES, ...INVENTORY_ROLES] },
-  { title: "Staff & Time", href: "/staff", icon: Clock, allowedRoles: [...ALL_ROLES, ...INVENTORY_ROLES] },
-  // Everyone has payslips and leave of their own to look at (0035+); what
-  // else the page shows depends on canManageHr, not on the role alone.
-  { title: "HR", href: "/hr", icon: UserCog, allowedRoles: [...ALL_ROLES, ...INVENTORY_ROLES] },
-  {
-    title: "Patients & Admissions",
-    href: "/patients",
-    icon: Users,
-    allowedRoles: ["admin", "social_worker"],
-  },
-  {
-    title: "House Operations",
-    href: "/house-ops",
-    icon: Home,
-    allowedRoles: ["admin", "social_worker", "house_staff", "driver"],
-  },
-  {
-    title: "Donors & Donations",
-    href: "/donors",
-    icon: HandCoins,
-    allowedRoles: ["admin", "finance"],
-  },
-  {
-    title: "Inventory",
-    href: "/inventory",
-    icon: Boxes,
-    allowedRoles: ["admin", "house_staff", "finance", ...INVENTORY_ROLES],
-  },
-  {
-    title: "Financial",
-    href: "/finance",
-    icon: Wallet,
-    allowedRoles: ["admin", "finance", "board"],
-  },
-  // Every government deadline the foundation carries (0043/0044): the CEO
-  // and super admin keep it, finance records what was filed. HR-flagged
+  // The CEO's landing page (0031 seeds landing_path = /executive), first
+  // because it is first in his day.
+  { title: "Executive", href: "/executive", icon: Briefcase, module: "executive", viewOnly: true, note: "Figures from the modules the person can open." },
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, module: "dashboard", viewOnly: true, note: "Figures from the modules the person can open." },
+  { title: "Calendar", href: "/calendar", icon: CalendarDays, module: "calendar" },
+  { title: "Staff & Time", href: "/staff", icon: Clock, module: "staff", note: "Everyone keeps their own clock; Edit adds volunteers." },
+  { title: "HR", href: "/hr", icon: UserCog, module: "hr", viewOnly: true, note: "Own leave and payslips. Running HR follows the HR flag in Users." },
+  { title: "Patients & Admissions", href: "/patients", icon: Users, module: "patients", note: "Includes the floor plan and the house sheet." },
+  { title: "House Operations", href: "/house-ops", icon: Home, module: "house_ops", note: "Also reads resident names, for trips and meals." },
+  { title: "Donors & Donations", href: "/donors", icon: HandCoins, module: "donors" },
+  { title: "Inventory", href: "/inventory", icon: Boxes, module: "inventory", viewOnly: true, note: "Stock is changed in the LAF Inventory app." },
+  { title: "Financial", href: "/finance", icon: Wallet, module: "finance" },
+  // Every government deadline the foundation carries (0043/0044); HR-flagged
   // people reach the same page through the HR sub-menu.
-  { title: "Compliances", href: "/compliance", icon: ShieldCheck, allowedRoles: ["admin", "finance"] },
-  { title: "Analytics", href: "/analytics", icon: BarChart3, allowedRoles: ALL_ROLES },
-  {
-    title: "Reports",
-    href: "/reports",
-    icon: FileText,
-    allowedRoles: ["admin", "finance", "board"],
-  },
-  { title: "Settings", href: "/settings", icon: Settings, allowedRoles: ["admin"] },
+  { title: "Compliances", href: "/compliance", icon: ShieldCheck, module: "compliance" },
+  { title: "Analytics", href: "/analytics", icon: BarChart3, module: "analytics", viewOnly: true, note: "Figures from the modules the person can open." },
+  { title: "Reports", href: "/reports", icon: FileText, module: "reports" },
+  { title: "Settings", href: "/settings", icon: Settings, module: "settings", adminOnly: true, note: "Users, roles and this grid: admins only." },
 ];
 
-/** The nav minus modules hidden on this deployment (lib/rbac/hidden.ts): a landing page there would 404. */
-const SHOWN_NAV_ITEMS = NAV_ITEMS.filter((item) => !isHiddenPath(item.href));
-
-export function isNavItemVisible(item: NavItem, role: Role) {
-  if (isHiddenPath(item.href)) return false;
-  return item.allowedRoles === "all" || item.allowedRoles.includes(role);
+/** A role's level for a module: admins always edit (0050 refuses anything
+ * else); no row means none. The rows come from shared.module_access. */
+export function levelFor(rows: readonly ModuleAccessRow[], role: Role, module: ModuleKey): AccessLevel {
+  if (role === "admin") return "edit";
+  if (NAV_ITEMS.find((i) => i.module === module)?.adminOnly) return "none";
+  return rows.find((r) => r.role === role && r.module === module)?.level ?? "none";
 }
 
-/** The people who actually book things on the master calendar (0032). Also
- * the RLS rule; this only decides whether the buttons render. */
-export function canEditCalendar(role: Role) {
-  return role === "admin" || role === "social_worker";
+export function isNavItemVisible(item: NavItem, role: Role, rows: readonly ModuleAccessRow[]) {
+  return !isHiddenPath(item.href) && levelFor(rows, role, item.module) !== "none";
 }
 
-/** Whether THIS event may be edited: the role must be allowed, and while the
- * Google Sheet sync is on (0034) a sheet-sourced event is the sheet's to
- * change, not the app's. */
-export function canEditCalendarEvent(role: Role, event: { source: "app" | "sheet" }, sheetSyncEnabled: boolean) {
-  return canEditCalendar(role) && (event.source !== "sheet" || !sheetSyncEnabled);
+/** The module a path belongs to (longest matching menu href), or null for
+ * pages outside the menu (login, change PIN, print). */
+export function moduleForPath(path: string): ModuleKey | null {
+  let best: NavItem | null = null;
+  for (const item of NAV_ITEMS) {
+    if ((path === item.href || path.startsWith(`${item.href}/`)) && (!best || item.href.length > best.href.length)) best = item;
+  }
+  return best?.module ?? null;
+}
+
+/** The nav as landing.ts wants it: shown items with the roles that can open them. */
+function landingNav(rows: readonly ModuleAccessRow[]) {
+  return NAV_ITEMS.filter((item) => !isHiddenPath(item.href)).map((item) => ({
+    href: item.href,
+    allowedRoles: ORG_ROLES.filter((role) => levelFor(rows, role, item.module) !== "none"),
+  }));
+}
+
+/** Whether THIS event may be edited: the person must have Calendar edit, and
+ * while the Google Sheet sync is on (0034) a sheet-sourced event is the
+ * sheet's to change, not the app's. */
+export function canEditCalendarEvent(canEditCalendar: boolean, event: { source: "app" | "sheet" }, sheetSyncEnabled: boolean) {
+  return canEditCalendar && (event.source !== "sheet" || !sheetSyncEnabled);
 }
 
 /** Who runs HR: admins, plus anyone an admin flagged as HR (0035's
@@ -168,27 +180,11 @@ export function canDeleteFiles(module: FileModule, role: Role, isHr: boolean) {
   return module === "compliance" ? canManageHr(role, isHr) : canUploadFiles(module, role, isHr);
 }
 
-/** Who reviews the house's Occupancy Tracker against patient records (ops.house_sheet_people, 0046): the patients module's people. */
-export function canReviewHouseSheet(role: Role) {
-  return role === "admin" || role === "social_worker";
-}
-
-/** Who checks a patient into a bed (ops.check_in, 0049, is the rule). */
-export function canCheckIn(role: Role) {
-  return role === "admin" || role === "social_worker";
-}
-
 /** Who draws the floor plan (place, rotate, add, retire beds; 0047). The
  * guard trigger on ops.units is the rule; this only decides whether the
  * edit tools render. */
 export function canEditFloorPlan(role: Role) {
   return role === "admin";
-}
-
-/** Who may lock a bed for maintenance, or block it, with a reason: the
- * people in the house. Mirrors ops.guard_unit_columns (0047). */
-export function canLockBeds(role: Role) {
-  return role === "admin" || role === "social_worker" || role === "house_staff";
 }
 
 /** Finance and Board never see clinical detail — enforced at the component level using this flag. */
@@ -198,15 +194,18 @@ export function canSeeClinicalDetail(role: Role) {
 
 /** Post-login destination for this person, against the real navigation.
  * See lib/rbac/landing.ts for the precedence rules. */
-export function resolveLandingPath(input: { role: Role; landingPath: string | null | undefined; next: string | null | undefined }) {
-  return resolveLandingPathIn(input, SHOWN_NAV_ITEMS);
+export function resolveLandingPath(
+  input: { role: Role; landingPath: string | null | undefined; next: string | null | undefined },
+  rows: readonly ModuleAccessRow[]
+) {
+  return resolveLandingPathIn(input, landingNav(rows));
 }
 
-export function isAllowedLandingPath(role: Role, path: string) {
-  return isAllowedLandingPathIn(role, path, SHOWN_NAV_ITEMS);
+export function isAllowedLandingPath(role: Role, path: string, rows: readonly ModuleAccessRow[]) {
+  return isAllowedLandingPathIn(role, path, landingNav(rows));
 }
 
 /** Every nav href a role can be sent to -- what the landing-page picker offers. */
-export function landingChoicesFor(role: Role): { href: string; title: string }[] {
-  return NAV_ITEMS.filter((item) => isNavItemVisible(item, role)).map((item) => ({ href: item.href, title: item.title }));
+export function landingChoicesFor(role: Role, rows: readonly ModuleAccessRow[]): { href: string; title: string }[] {
+  return NAV_ITEMS.filter((item) => isNavItemVisible(item, role, rows)).map((item) => ({ href: item.href, title: item.title }));
 }

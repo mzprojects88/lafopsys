@@ -12,8 +12,8 @@ import { MonthGrid } from "@/components/modules/calendar/month-grid";
 import { EventDialog, type EventDialogState } from "@/components/modules/calendar/event-dialog";
 import { useCalendarEventsData } from "@/lib/hooks/use-calendar-events-collection";
 import { useNow } from "@/lib/hooks/use-now";
-import { useRole } from "@/lib/rbac/use-role";
-import { canEditCalendar, canEditCalendarEvent } from "@/lib/rbac/roles";
+import { canEditCalendarEvent } from "@/lib/rbac/roles";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { SyncStatus } from "@/components/modules/calendar/sync-status";
 import { dayKey, monthKey } from "@/lib/utils/dtr";
@@ -38,12 +38,11 @@ const PERIODS: { kind: PeriodKind; label: string }[] = [
  */
 export default function CalendarPage() {
   const { events, loading, error } = useCalendarEventsData();
-  const { role } = useRole();
   const { calendarSheetSyncEnabled } = useAppSettings();
-  const canEdit = canEditCalendar(role);
+  const canEdit = useModuleAccess().canEdit("calendar");
   const canEditEvent = React.useCallback(
-    (event: CalendarEvent) => canEditCalendarEvent(role, event, calendarSheetSyncEnabled),
-    [role, calendarSheetSyncEnabled]
+    (event: CalendarEvent) => canEditCalendarEvent(canEdit, event, calendarSheetSyncEnabled),
+    [canEdit, calendarSheetSyncEnabled]
   );
   const today = dayKey(useNow());
 
@@ -65,7 +64,7 @@ export default function CalendarPage() {
     setDialog({ mode: "create", date });
   }
   // Everyone can open an event; whether it opens for editing depends on the
-  // role and, while the sheet sync is on, on where the event came from.
+  // Calendar access and, while the sheet sync is on, on where the event came from.
   function openEvent(event: CalendarEvent) {
     setDialog(canEditEvent(event) ? { mode: "edit", event } : { mode: "view", event });
   }
@@ -140,7 +139,7 @@ export default function CalendarPage() {
           <CardContent className="flex flex-col gap-4 pt-6">
             {periodControl}
             <MonthGrid month={month} events={inMonth} today={today} canEdit={canEdit} onDayClick={openCreate} onEventClick={openEvent} />
-            {!canEdit ? <p className="text-xs text-muted-foreground">Admins and social workers can add and change events.</p> : null}
+            {!canEdit ? <p className="text-xs text-muted-foreground">Your access to the calendar is view only.</p> : null}
           </CardContent>
         </Card>
       ) : (

@@ -38,6 +38,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   manifest: "Transport Manifest",
   "house-ops": "House Operations",
   "floor-plan": "Floor Plan",
+  access: "Roles & Access",
   meals: "Meals",
   trips: "Trips",
   "care-cart": "Care Cart",

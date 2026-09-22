@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/command";
 import { useVisibleNavItems } from "@/lib/rbac/use-role";
 import { isHiddenPath } from "@/lib/rbac/hidden";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { useStockSummary } from "@/lib/hooks/use-inventory-views";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
@@ -28,6 +29,10 @@ export function CommandPalette({ externalOpen, onExternalOpenChange }: CommandPa
   const setOpen = onExternalOpenChange ?? setInternalOpen;
   const router = useRouter();
   const navItems = useVisibleNavItems();
+  const { canView } = useModuleAccess();
+  // Records only for modules the person can open (resident names are also
+  // readable through House Operations, which has no patient page).
+  const opens = (href: string, m: Parameters<typeof canView>[0]) => !isHiddenPath(href) && canView(m);
   const { patients } = usePatientsData();
   const { donors } = useDonorsData();
   const { rows: stockSummary } = useStockSummary();
@@ -66,7 +71,7 @@ export function CommandPalette({ externalOpen, onExternalOpenChange }: CommandPa
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Patients">
-          {(isHiddenPath("/patients") ? [] : patients).map((p) => (
+          {(opens("/patients", "patients") ? patients : []).map((p) => (
             <CommandItem key={p.id} onSelect={() => go(`/patients/${p.id}`)}>
               <span>{p.firstName} {p.lastName}</span>
               <span className="ml-auto text-xs text-muted-foreground">{p.patientNumber}</span>
@@ -75,7 +80,7 @@ export function CommandPalette({ externalOpen, onExternalOpenChange }: CommandPa
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Donors">
-          {(isHiddenPath("/donors") ? [] : donors).map((d) => (
+          {(opens("/donors", "donors") ? donors : []).map((d) => (
             <CommandItem key={d.id} onSelect={() => go(`/donors/${d.id}`)}>
               <span>{d.name}</span>
             </CommandItem>
@@ -83,7 +88,7 @@ export function CommandPalette({ externalOpen, onExternalOpenChange }: CommandPa
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Inventory">
-          {(isHiddenPath("/inventory") ? [] : inventoryItems).map((i) => (
+          {(opens("/inventory", "inventory") ? inventoryItems : []).map((i) => (
             <CommandItem key={i.item_id} onSelect={() => go(`/inventory/${i.item_id}`)}>
               <span>{i.name}</span>
             </CommandItem>

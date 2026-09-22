@@ -160,8 +160,9 @@ async function main() {
   // --- the drawing is the admin's ------------------------------------------------
   await scenario(ids, "admin places and rotates a bed", "admin", null, q(move), rows(1));
   await scenario(ids, "social worker cannot move a bed", "social_worker", null, q(move), denied);
-  await scenario(ids, "house staff cannot move a bed", "house_staff", null, q(move), denied);
-  await scenario(ids, "driver cannot move a bed", "driver", null, q(move), denied);
+  // Since 0050 house staff and drivers have no Patients edit: RLS filters the row out.
+  await scenario(ids, "house staff cannot move a bed", "house_staff", null, q(move), rows(0));
+  await scenario(ids, "driver cannot move a bed", "driver", null, q(move), rows(0));
   // RLS hides every row from a session without a staff role: 0 rows, no error.
   await scenario(ids, "no session cannot move a bed", null, null, q(move), rows(0));
   await scenario(ids, "admin cannot place x without y", "admin", null, q("update ops.units set x = 0.5, y = null where id = 'unit-B1'"), checkFailed);
@@ -175,21 +176,21 @@ async function main() {
   // --- the lock is wider ---------------------------------------------------------
   await scenario(ids, "admin locks a bed and the stamp is theirs", "admin", null, q(lock), (r) => value("status_changed_by", ids.admin)(r));
   await scenario(ids, "social worker locks a bed and the stamp is theirs", "social_worker", null, q(lock), (r) => value("status_changed_by", ids.social_worker)(r));
-  await scenario(ids, "house staff locks a bed and the stamp is theirs", "house_staff", null, q(lock), (r) => value("status_changed_by", ids.house_staff)(r));
-  await scenario(ids, "driver cannot lock a bed", "driver", null, q(lock), denied);
+  await scenario(ids, "house staff cannot lock a bed (0050)", "house_staff", null, q(lock), rows(0));
+  await scenario(ids, "driver cannot lock a bed", "driver", null, q(lock), rows(0));
   await scenario(ids, "a lock needs a reason", "admin", null, q("update ops.units set status = 'blocked' where id = 'unit-B1'"), checkFailed);
   await scenario(ids, "a blank reason is no reason", "admin", null, q("update ops.units set status = 'blocked', lock_reason = '   ' where id = 'unit-B1'"), checkFailed);
   await scenario(ids, "'occupied' can no longer be stored", "admin", null, q("update ops.units set status = 'occupied' where id = 'unit-B1'"), checkFailed);
   await scenario(
     ids,
     "unlocking clears the reason",
-    "house_staff",
+    "social_worker",
     { setup: () => client.query("update ops.units set status = 'maintenance', lock_reason = 'Broken slat' where id = 'unit-B1'") },
     q("update ops.units set status = 'available' where id = 'unit-B1' returning lock_reason"),
     value("lock_reason", null)
   );
   await scenario(ids, "the lock stamp cannot be written by hand", "admin", null, q("update ops.units set status_changed_at = now() where id = 'unit-B1'"), denied);
-  await scenario(ids, "locking an occupied bed is allowed", "house_staff", { setup: occupyB1 }, q(lock), rows(1));
+  await scenario(ids, "locking an occupied bed is allowed", "social_worker", { setup: occupyB1 }, q(lock), rows(1));
 
   // --- create / retire -------------------------------------------------------------
   const create = "select ops.create_bed('B99', 'room-2', 0.6, 0.6, 90) as id";

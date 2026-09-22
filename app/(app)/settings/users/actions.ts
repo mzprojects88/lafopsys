@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ORG_ROLES, isAllowedLandingPath } from "@/lib/rbac/roles";
+import { ORG_ROLES, isAllowedLandingPath, type ModuleAccessRow } from "@/lib/rbac/roles";
 import type { Role } from "@/lib/types/common";
 
 export interface CreateStaffInput {
@@ -140,7 +140,8 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
   }
 
   const landingPath = input.landingPath?.trim() || null;
-  if (landingPath && !isAllowedLandingPath(target.role as Role, landingPath)) {
+  const { data: accessRows } = await admin.schema("shared").from("module_access").select("role, module, level");
+  if (landingPath && !isAllowedLandingPath(target.role as Role, landingPath, (accessRows ?? []) as ModuleAccessRow[])) {
     return { ok: false, error: "That page is not one this person's role can open." };
   }
 

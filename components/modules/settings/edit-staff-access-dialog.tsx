@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { landingChoicesFor } from "@/lib/rbac/roles";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import type { Role } from "@/lib/types/common";
 import { updateStaffAccess } from "@/app/(app)/settings/users/actions";
 
@@ -53,7 +54,8 @@ export function EditStaffAccessDialog({
   const [hr, setHr] = React.useState(isHr);
   const [saving, setSaving] = React.useState(false);
 
-  const choices = landingChoicesFor(role);
+  const { rows: accessRows } = useModuleAccess();
+  const choices = landingChoicesFor(role, accessRows);
   const changed = exempt !== clockInExempt || (landing === ROLE_DEFAULT ? null : landing) !== landingPath || hr !== isHr;
 
   function reset() {

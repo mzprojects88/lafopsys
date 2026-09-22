@@ -22,8 +22,7 @@ import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
 import { confirmHouseSheetMatch, dismissHouseSheetRow, reopenHouseSheetRow } from "@/app/(app)/patients/house-sheet/actions";
 import { houseSheetPeopleStore, useHouseSheetPeople, useHouseSheetRuns } from "@/lib/hooks/use-house-sheet-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
-import { useRole } from "@/lib/rbac/use-role";
-import { canCheckIn, canReviewHouseSheet } from "@/lib/rbac/roles";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { isActiveStay } from "@/lib/utils/beds";
 import { formatDate } from "@/lib/utils/date";
 import { HOUSE_SHEET_STATUS_LABELS, houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
@@ -38,8 +37,7 @@ import type { Patient } from "@/lib/types/patient";
  */
 export default function HouseSheetPage() {
   const router = useRouter();
-  const { role } = useRole();
-  const canReview = canReviewHouseSheet(role);
+  const canReview = useModuleAccess().canEdit("patients");
   const { people, loading, error } = useHouseSheetPeople();
   const { runs } = useHouseSheetRuns();
   const { patients, stays } = usePatientsData();
@@ -184,7 +182,7 @@ export default function HouseSheetPage() {
               const p = row.original;
               const b = busy === p.id;
               const encodeHref = `/patients/referrals/new?fromSheet=${p.id}`;
-              const toCheckIn = canCheckIn(role) ? needsCheckIn(p) : undefined;
+              const toCheckIn = needsCheckIn(p);
               return (
                 <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                   {toCheckIn ? (

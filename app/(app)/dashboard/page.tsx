@@ -41,6 +41,8 @@ import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
 import { useLeaveRequests } from "@/lib/hooks/use-leave-collections";
 import { useExpiringLots, useStockSummary } from "@/lib/hooks/use-inventory-views";
 import { isHiddenPath } from "@/lib/rbac/hidden";
+import { moduleForPath } from "@/lib/rbac/roles";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { inventoryAppHref } from "@/lib/utils/inventory-app";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
@@ -132,6 +134,7 @@ export default function DashboardPage() {
       })),
   ].slice(0, 4);
 
+  const { canEdit } = useModuleAccess();
   const quickActions = [
     { label: "Create Referral", href: "/patients/referrals/new", icon: Send, color: "purple" as CategoryColor },
     { label: "Record Donation", href: "/donors/intake", icon: HandCoins, color: "green" as CategoryColor },
@@ -139,7 +142,11 @@ export default function DashboardPage() {
     { label: "New Cash Entry", href: "/finance/entry", icon: FileSignature, color: "blue" as CategoryColor },
     { label: "Request Approval", href: "/finance/approvals", icon: CheckCircle2, color: "amber" as CategoryColor },
     { label: "Generate Report", href: "/reports/builder", icon: BarChart3, color: "indigo" as CategoryColor },
-  ].filter((a) => !isHiddenPath(a.href));
+  ].filter((a) => {
+    // Only actions the person may actually take; the inventory app decides its own.
+    const m = moduleForPath(a.href);
+    return !isHiddenPath(a.href) && (m === null || canEdit(m));
+  });
 
   const chartConfig: ChartConfig = { amount: { label: "Donations", color: "var(--chart-1)" } };
 

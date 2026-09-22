@@ -11,7 +11,8 @@ import { usePatientDocuments, DOCUMENT_TYPES, DOCUMENT_TYPE_LABELS } from "@/lib
 import { useOrientationTopics } from "@/lib/hooks/use-orientation-topics";
 import { formatDate } from "@/lib/utils/date";
 
-export function AdmissionChecklist({ patientId }: { patientId: string }) {
+/** `canEdit` is Patients edit (0050); view-only access sees the checklist and opens files. */
+export function AdmissionChecklist({ patientId, canEdit }: { patientId: string; canEdit: boolean }) {
   const { documents, markCollected, uploadFile, getSignedUrl } = usePatientDocuments(patientId);
   const { topics, checks, addTopic, removeTopic, toggleCheck } = useOrientationTopics(patientId);
   const [newTopic, setNewTopic] = React.useState("");
@@ -88,27 +89,31 @@ export function AdmissionChecklist({ patientId }: { patientId: string }) {
                         View
                       </Button>
                     )}
-                    <input
-                      ref={(el) => {
-                        fileInputs.current[type] = el;
-                      }}
-                      type="file"
-                      className="hidden"
-                      onChange={(e) => handleFileChange(type, e.target.files?.[0])}
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 gap-1 text-xs"
-                      onClick={() => fileInputs.current[type]?.click()}
-                    >
-                      <Upload className="size-3.5" />
-                      Upload
-                    </Button>
-                    {!collected && (
-                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handleMarkCollected(type)}>
-                        Mark collected
-                      </Button>
+                    {canEdit && (
+                      <>
+                        <input
+                          ref={(el) => {
+                            fileInputs.current[type] = el;
+                          }}
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => handleFileChange(type, e.target.files?.[0])}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1 text-xs"
+                          onClick={() => fileInputs.current[type]?.click()}
+                        >
+                          <Upload className="size-3.5" />
+                          Upload
+                        </Button>
+                        {!collected && (
+                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handleMarkCollected(type)}>
+                            Mark collected
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
                 </CardContent>
@@ -130,33 +135,38 @@ export function AdmissionChecklist({ patientId }: { patientId: string }) {
               const covered = checks.some((c) => c.topicId === t.id);
               return (
                 <label key={t.id} className="flex items-center gap-2 rounded-md border p-2 text-sm">
-                  <Checkbox checked={covered} onCheckedChange={(v) => toggleCheck(t.id, !!v)} />
+                  <Checkbox checked={covered} disabled={!canEdit} onCheckedChange={(v) => toggleCheck(t.id, !!v)} />
                   <span className="flex-1">{t.topic}</span>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="size-6 text-muted-foreground hover:text-destructive"
-                    onClick={() => removeTopic(t.id)}
-                  >
-                    <X className="size-3.5" />
-                  </Button>
+                  {canEdit && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="size-6 text-muted-foreground hover:text-destructive"
+                      onClick={() => removeTopic(t.id)}
+                      aria-label={`Remove ${t.topic}`}
+                    >
+                      <X className="size-3.5" />
+                    </Button>
+                  )}
                 </label>
               );
             })}
           </div>
         )}
-        <div className="mt-2 flex gap-2">
-          <Input
-            placeholder="Add a topic (e.g. house rules, meal schedule)…"
-            value={newTopic}
-            onChange={(e) => setNewTopic(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAddTopic()}
-          />
-          <Button variant="outline" onClick={handleAddTopic}>
-            <Plus className="size-4" />
-            Add
-          </Button>
-        </div>
+        {canEdit && (
+          <div className="mt-2 flex gap-2">
+            <Input
+              placeholder="Add a topic (e.g. house rules, meal schedule)…"
+              value={newTopic}
+              onChange={(e) => setNewTopic(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAddTopic()}
+            />
+            <Button variant="outline" onClick={handleAddTopic}>
+              <Plus className="size-4" />
+              Add
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -15,12 +15,12 @@ import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { computeAge } from "@/lib/utils/age";
 import { formatDate } from "@/lib/utils/date";
 import { useRole } from "@/lib/rbac/use-role";
-import { canDeleteFiles, canSeeClinicalDetail, canUploadFiles } from "@/lib/rbac/roles";
+import { canSeeClinicalDetail } from "@/lib/rbac/roles";
 import { FileLibrary } from "@/components/patterns/file-library";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
 import { houseSheetPatientId } from "@/lib/types/house-sheet";
-import { canCheckIn, canReviewHouseSheet } from "@/lib/rbac/roles";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import Link from "next/link";
 import { Home } from "lucide-react";
 import { AdmissionChecklist } from "@/components/modules/patients/admission-checklist";
@@ -37,6 +37,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   const { units, bedPositions } = useHouseLayout();
   const patient = patients.find((p) => p.id === patientId);
   const { role } = useRole();
+  const { canEdit: canEditModule } = useModuleAccess();
+  const canEdit = canEditModule("patients");
   const { people: sheetPeople } = useHouseSheetPeople();
   const [dischargeTarget, setDischargeTarget] = useState<Stay | null>(null);
   const [extendTarget, setExtendTarget] = useState<Stay | null>(null);
@@ -52,7 +54,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   const patientCarers = carers.filter((c) => c.patientId === patient.id);
   const patientStays = stays.filter((s) => s.patientId === patient.id);
   const patientAppointments = appointments.filter((a) => a.patientId === patient.id);
-  const showCheckIn = canCheckIn(role) && patient.status !== "expired" && !patientStays.some(isActiveStay);
+  const showCheckIn = canEdit && patient.status !== "expired" && !patientStays.some(isActiveStay);
 
   const diagnosisLabel = patient.diagnosisIds
     .map((id) => diagnoses.find((d) => d.id === id)?.name)
@@ -67,7 +69,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   const ageLabel = patient.birthDate ? `${computeAge(patient.birthDate)} yrs old · ` : "";
   const photoConsentLabel =
     patient.photoConsentGranted === undefined ? "Unknown" : patient.photoConsentGranted ? "Granted" : "Not granted";
-  const onHouseSheet = canReviewHouseSheet(role) ? sheetPeople.find((p) => p.offSheetAt === null && houseSheetPatientId(p) === patient.id && p.matchStatus !== "dismissed") : undefined;
+  const onHouseSheet = sheetPeople.find((p) => p.offSheetAt === null && houseSheetPatientId(p) === patient.id && p.matchStatus !== "dismissed");
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -161,7 +163,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
                       </div>
                       <div className="flex items-center gap-2">
                         <StatusBadge domain="stay" status={stay.status} />
-                        {isActive && (
+                        {isActive && canEdit && (
                           <div className="flex gap-1">
                             <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => setExtendTarget(stay)}>
                               <CalendarClock className="size-3.5" />
@@ -232,13 +234,13 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
         </TabsContent>
 
         <TabsContent value="documents" className="flex flex-col gap-6 pt-4">
-          <AdmissionChecklist patientId={patient.id} />
+          <AdmissionChecklist patientId={patient.id} canEdit={canEdit} />
           {canSeeClinical ? (
             <FileLibrary
               recordType="patient"
               recordId={patient.id}
-              canUpload={canUploadFiles("patients", role, false)}
-              canDelete={canDeleteFiles("patients", role, false)}
+              canUpload={canEdit}
+              canDelete={canEdit}
               title="Case files"
               description={`Case management forms, referrals and other scans, kept under Patients / ${patient.lastName}, ${patient.firstName} (${patient.patientNumber}).`}
             />

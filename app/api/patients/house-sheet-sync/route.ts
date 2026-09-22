@@ -68,9 +68,10 @@ export async function POST(request: Request) {
       data: { user },
     } = await session.auth.getUser();
     if (!user) return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
-    const { data: staff } = await session.schema("shared").from("staff").select("role, active").eq("id", user.id).single();
-    if (!staff?.active || !["admin", "social_worker"].includes(staff.role)) {
-      return NextResponse.json({ ok: false, error: "Only admins and social workers can check the house sheet." }, { status: 403 });
+    // Patients edit in Settings -> Roles & Access (0050); inactive staff have no role, so no level.
+    const { data: canEdit } = await session.schema("shared").rpc("module_editable", { p_module: "patients" });
+    if (canEdit !== true) {
+      return NextResponse.json({ ok: false, error: "Your access to Patients is view only." }, { status: 403 });
     }
     trigger = "manual";
     triggeredBy = user.id;
