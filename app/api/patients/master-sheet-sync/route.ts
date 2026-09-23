@@ -21,7 +21,6 @@ import {
   provinceKey,
   refId,
   regionName,
-  rowGaps,
   type OnFile,
   type PatientMasterFields,
 } from "@/lib/utils/master-sheet";
@@ -208,14 +207,13 @@ export async function POST(request: Request) {
         notes.push(match.reason);
         continue;
       }
-      const gaps = rowGaps(row);
-      if (match.kind === "new" && gaps.missing.length) {
+      // The record needs its date of entry (its LFCN takes the year from it). Anything else the sheet
+      // lacks, the social worker completes in the app (the patient page lists it).
+      if (match.kind === "new" && !row.admittedOn) {
         counts.skipped += 1;
-        notes.push(`CN ${row.cn}: not added yet, the sheet has no ${gaps.missing.join(", ")}`);
+        notes.push(`CN ${row.cn}: not added yet, the sheet has no date of entry`);
         continue;
       }
-      // Complete enough to keep, but the sheet still owes these; the next sync writes them.
-      if (gaps.pending.length) notes.push(`CN ${row.cn}: the sheet has no ${gaps.pending.join(", ")} yet`);
       try {
         const provinceId = row.province ? await ensure("provinces", prov, "prov", provinceKey(row.province), row.province) : null;
         const region = regionName(row.regionCode);

@@ -14,8 +14,9 @@ import { MasterSheetStatus } from "@/components/modules/patients/master-sheet-st
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { cities } from "@/lib/mock-data";
 import { useDiagnosesReferenceData } from "@/lib/hooks/use-diagnoses-reference-collection";
-import { PRIORITIES } from "@/lib/utils/master-sheet";
-import type { Patient } from "@/lib/types/patient";
+import { PRIORITIES, recordGaps } from "@/lib/utils/master-sheet";
+import Link from "next/link";
+import type { Carer, Patient } from "@/lib/types/patient";
 import { computeAge } from "@/lib/utils/age";
 import { todayIso } from "@/lib/utils/date";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
@@ -75,7 +76,7 @@ const columnsFor = (dxName: Map<string, string>): ColumnDef<Patient>[] => [
 
 export default function PatientsPage() {
   const router = useRouter();
-  const { patients } = usePatientsData();
+  const { patients, carers } = usePatientsData();
   const { rows: diagnoses } = useDiagnosesReferenceData();
   const columns = React.useMemo(() => columnsFor(new Map(diagnoses.map((d) => [d.id, d.name]))), [diagnoses]);
   const canEdit = useModuleAccess().canEdit("patients");
@@ -93,6 +94,7 @@ export default function PatientsPage() {
       />
 
       <MasterSheetStatus canRun={canEdit} />
+      {canEdit ? <NeedsDetails patients={patients} carers={carers} /> : null}
 
       <KpiGrid>
         <KpiCard label="Total Patients" value={patients.length} icon={Users} color="purple" />
@@ -107,5 +109,40 @@ export default function PatientsPage() {
         onRowClick={(p) => router.push(`/patients/${p.id}`)}
       />
     </div>
+  );
+}
+
+/** Children whose record lacks something neither the sheet nor anyone in the app has filled in. */
+function NeedsDetails({ patients, carers }: { patients: Patient[]; carers: Carer[] }) {
+  const open = patients
+    .filter((p) => p.status !== "expired")
+    .map((p) => {
+      const carer = carers.find((c) => c.patientId === p.id && !c.effectiveTo);
+      const gaps = recordGaps({
+        birthDate: p.birthDate ?? null,
+        address: p.rawAddress ?? null,
+        sex: p.sex ?? null,
+        carer: carer ? { name: carer.name, relationship: carer.relationship ?? null, phone: carer.mobileNumber ?? null } : null,
+      });
+      return { p, gaps };
+    })
+    .filter((x) => x.gaps.length > 0);
+  if (open.length === 0) return null;
+  return (
+    <details className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300">
+      <summary className="cursor-pointer">
+        {open.length} {open.length === 1 ? "child needs" : "children need"} details the sheet does not have — open a record and use Edit details
+      </summary>
+      <ul className="mt-2 flex flex-col gap-1">
+        {open.map(({ p, gaps }) => (
+          <li key={p.id}>
+            <Link href={`/patients/${p.id}`} className="font-medium underline-offset-4 hover:underline">
+              {p.lastName}, {p.firstName}
+            </Link>{" "}
+            ({p.patientNumber}): {gaps.join(", ")}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }

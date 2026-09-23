@@ -2,7 +2,7 @@
 
 import { use, useState } from "react";
 import { notFound } from "next/navigation";
-import { ShieldAlert, LogOut, CalendarClock, ArrowRightLeft, BedDouble } from "lucide-react";
+import { ShieldAlert, LogOut, CalendarClock, ArrowRightLeft, BedDouble, PencilLine } from "lucide-react";
 import { EntityDetailHeader } from "@/components/patterns/entity-detail-header";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { EmptyState } from "@/components/patterns/empty-state";
@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/button";
 import { cities } from "@/lib/mock-data";
 import { useDiagnosesReferenceData } from "@/lib/hooks/use-diagnoses-reference-collection";
 import { useReferenceTableData } from "@/lib/hooks/use-reference-table-collection";
-import { ILLNESS_CODES, PRIORITIES } from "@/lib/utils/master-sheet";
+import { ILLNESS_CODES, PRIORITIES, recordGaps } from "@/lib/utils/master-sheet";
+import { EditDetailsDialog } from "@/components/modules/patients/edit-details-dialog";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { computeAge } from "@/lib/utils/age";
 import { formatDate } from "@/lib/utils/date";
@@ -53,6 +54,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   const [arrivalTarget, setArrivalTarget] = useState<Stay | null>(null);
   const { rides } = useArrivalRides();
   const [checkingIn, setCheckingIn] = useState(false);
+  const [editing, setEditing] = useState(false);
   const { rows: diagnoses } = useDiagnosesReferenceData();
   const { rows: provinces } = useReferenceTableData("provinces", "prov", "region");
   const { rows: treatmentPhases } = useReferenceTableData("treatment_phases", "phase");
@@ -83,6 +85,14 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   const ageLabel = patient.birthDate ? `${computeAge(patient.birthDate)} yrs old · ` : "";
   const photoConsentLabel =
     patient.photoConsentGranted === undefined ? "Unknown" : patient.photoConsentGranted ? "Granted" : "Not granted";
+  const currentCarer = patientCarers.find((c) => !c.effectiveTo);
+  // What neither the sheet nor anyone in the app has filled in yet.
+  const gaps = recordGaps({
+    birthDate: patient.birthDate ?? null,
+    address: patient.rawAddress ?? null,
+    sex: patient.sex ?? null,
+    carer: currentCarer ? { name: currentCarer.name, relationship: currentCarer.relationship ?? null, phone: currentCarer.mobileNumber ?? null } : null,
+  });
   const onHouseSheet = sheetPeople.find((p) => p.offSheetAt === null && houseSheetPatientId(p) === patient.id && p.matchStatus !== "dismissed");
 
   return (
@@ -101,6 +111,22 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
           { label: "Photo Consent", value: photoConsentLabel },
         ]}
       />
+
+      {canEdit && (gaps.length > 0 || canSeeClinical) ? (
+        <div
+          className={
+            gaps.length > 0
+              ? "flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300"
+              : "flex justify-end"
+          }
+        >
+          {gaps.length > 0 ? <span>Details to complete: {gaps.join(", ")}. The Patients Database sheet does not have them.</span> : null}
+          <Button size="sm" variant="outline" className="ml-auto h-7 gap-1.5" onClick={() => setEditing(true)}>
+            <PencilLine className="size-3.5" />
+            Edit details
+          </Button>
+        </div>
+      ) : null}
 
       {onHouseSheet ? (
         <Link href="/patients/house-sheet" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground hover:bg-muted/60">
@@ -275,6 +301,13 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
         </TabsContent>
       </Tabs>
 
+      <EditDetailsDialog
+        key={editing ? "open" : "closed"}
+        patient={patient}
+        carer={currentCarer}
+        open={editing}
+        onOpenChange={setEditing}
+      />
       <CheckInDialog
         key={checkingIn ? "open" : "closed"}
         target={checkingIn ? { patient } : null}

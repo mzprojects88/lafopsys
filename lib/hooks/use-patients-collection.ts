@@ -174,6 +174,9 @@ function patientPatchToRow(patch: Partial<Patient>) {
   if ("isolationRequired" in patch) row.isolation_required = patch.isolationRequired ?? null;
   if ("photoConsentGranted" in patch) row.photo_consent_granted = patch.photoConsentGranted ?? null;
   if ("maritalStatus" in patch) row.marital_status = patch.maritalStatus ?? null;
+  if ("birthDate" in patch) row.birth_date = patch.birthDate || null;
+  if ("sex" in patch) row.sex = patch.sex ?? null;
+  if ("rawAddress" in patch) row.raw_address = patch.rawAddress || null;
   return row;
 }
 
@@ -352,6 +355,18 @@ export function usePatientsData() {
     return { ok: true };
   }
 
+  async function updateCarer(id: string, patch: Pick<Carer, "name" | "relationship" | "mobileNumber">): Promise<MutationResult> {
+    const supabase = createClient();
+    const { error } = await supabase
+      .schema("ops")
+      .from("carers")
+      .update({ name: patch.name, relationship: patch.relationship || null, mobile_number: patch.mobileNumber || null })
+      .eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await refetch();
+    return { ok: true };
+  }
+
   async function addStay(stay: Stay): Promise<MutationResult> {
     const supabase = createClient();
     const { error } = await supabase.schema("ops").from("stays").insert(fromStay(stay));
@@ -392,6 +407,7 @@ export function usePatientsData() {
     loading,
     addPatient,
     addCarer,
+    updateCarer,
     addStay,
     addAppointment,
     updatePatient,

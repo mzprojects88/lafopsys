@@ -16,7 +16,7 @@ import {
   phaseKey,
   refId,
   regionName,
-  rowGaps,
+  recordGaps,
   sheetAgeBracket,
   sheetDate,
 } from "../lib/utils/master-sheet.ts";
@@ -146,16 +146,14 @@ describe("matchMasterRow", () => {
   });
 });
 
-describe("rowGaps", () => {
-  const full = {
-    cn: "9", admittedOn: "2026-09-19", firstName: "Liza", lastName: "Santos", birthDate: "2020-12-01", sex: "F", address: "QC",
-    status: "ongoing", carerName: "Santos, Rey", carerRelationship: "Father", carerPhone: "09181234567",
-  };
-  it("complete patient and carer details are enough; sex and status can follow", () => {
-    assert.deepEqual(rowGaps({ ...full, sex: null, status: null }), { missing: [], pending: ["sex", "status"] });
+describe("recordGaps", () => {
+  const carer = { name: "Santos, Rey", relationship: "Father", phone: "09181234567" };
+  it("a complete record owes nothing", () => {
+    assert.deepEqual(recordGaps({ birthDate: "2020-12-01", address: "QC", sex: "F", carer }), []);
   });
-  it("a missing patient or carer detail holds the row back", () => {
-    assert.deepEqual(rowGaps({ ...full, birthDate: null, carerPhone: null }).missing, ["birthday", "carer's phone"]);
+  it("lists what the social worker still has to encode", () => {
+    assert.deepEqual(recordGaps({ birthDate: null, address: null, sex: null, carer: null }), ["birthday", "sex", "address", "carer"]);
+    assert.deepEqual(recordGaps({ birthDate: "2020-12-01", address: "QC", sex: "F", carer: { ...carer, phone: null } }), ["carer's phone"]);
   });
 });
 
