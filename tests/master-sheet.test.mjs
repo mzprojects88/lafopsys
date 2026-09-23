@@ -4,6 +4,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   caseNumberFromCode,
+  copyOrder,
+  copyRow,
+  COPY_HEADER,
   diagnosisCategory,
   diagnosisKey,
   intakeFor,
@@ -15,6 +18,7 @@ import {
   parseMasterCsv,
   phaseKey,
   refId,
+  regionCode,
   regionName,
   recordGaps,
   sheetAgeBracket,
@@ -188,5 +192,48 @@ describe("other tabs", () => {
     const hit = intakeFor({ firstName: "Juan Miguel", lastName: "Dela Cruz", birthDate: "2016-03-14" }, rows);
     assert.equal(hit?.mssName, "Ms. Reyes");
     assert.equal(intakeFor({ firstName: "Juan", lastName: "Dela Cruz", birthDate: "2016-03-15" }, rows), null);
+  });
+});
+
+describe("the copy sheet", () => {
+  const { rows } = parseMasterCsv(MASTER);
+  const sheetRow = rows[0].raw;
+  const record = {
+    cn: "1", caseNumber: "LFCN-2024-0001", admittedOn: "2024-06-27", firstName: "Juan Miguel", lastName: "Dela Cruz",
+    birthDate: "2016-03-14", sex: "M", address: "Brgy. 1, Antipolo", province: "Rizal", region: "Region IV-A", status: "ongoing",
+    illnessCode: "C", diagnosis: "Acute Lymphoblastic Leukemia", phase: "Maintenance", carerName: "Dela Cruz, Ana",
+    carerRelationship: "Mother", carerPhone: "09171234567", maritalStatus: "M", priority: "A", remarks: null,
+    legacyCode: "LAF-2024-001-C", lastUpdated: "9/23/2026 14:05", sheetRow,
+  };
+  const at = (row, col) => row[COPY_HEADER.indexOf(col)];
+  it("an unchanged child reads exactly as the original, in the original's words", () => {
+    const row = copyRow(record, "2026-09-23");
+    for (const col of ["CN", "DE", "NAME", "BD", "S", "ADD", "P/C", "R", "PS", "I", "D", "TP", "CARER", "RX", "CP", "MS", "P", "CODE"]) {
+      assert.equal(at(row, col), sheetRow[col], col);
+    }
+    assert.equal(at(row, "AUA"), null);
+    assert.equal(at(row, "LFCN"), "LFCN-2024-0001");
+  });
+  it("a real change shows the app's value, written the sheet's way", () => {
+    const row = copyRow({ ...record, status: "expired", carerPhone: "09998887777", birthDate: "2016-03-15" }, "2026-09-23");
+    assert.equal(at(row, "PS"), "Expired");
+    assert.equal(at(row, "CP"), "09998887777");
+    assert.equal(at(row, "BD"), "3/15/2016");
+  });
+  it("a child only in the app: blank CN, app values, age bracket worked out", () => {
+    const row = copyRow({ ...record, cn: null, sheetRow: null }, "2026-09-23");
+    assert.equal(at(row, "CN"), null);
+    assert.equal(at(row, "R"), "RIV-A");
+    assert.equal(at(row, "AB"), "10 to 15");
+    assert.equal(at(row, "DE"), "6/27/2024");
+  });
+  it("CN order, app-only children last", () => {
+    const list = [{ cn: null, caseNumber: "LFCN-2026-0190" }, { cn: "10" }, { cn: "2" }].sort(copyOrder);
+    assert.deepEqual(list.map((r) => r.cn ?? r.caseNumber), ["2", "10", "LFCN-2026-0190"]);
+  });
+  it("region codes both ways", () => {
+    assert.equal(regionCode("Region IV-A"), "RIV-A");
+    assert.equal(regionCode("NCR"), "NCR");
+    assert.equal(regionName(regionCode("Region XIII")), "Region XIII");
   });
 });

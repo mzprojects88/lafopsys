@@ -30,6 +30,14 @@ export const maxDuration = 300;
 
 const RUNNING_GUARD_MS = 5 * 60_000;
 
+/** jsonb hands keys back in its own order; compare by content. */
+const sameCells = (a: Record<string, string>, b: unknown) => {
+  if (!b || typeof b !== "object") return false;
+  const o = b as Record<string, unknown>;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(o).length && keys.every((k) => o[k] === a[k]);
+};
+
 /**
  * Reads LAF's Patients Database sheet (read only, never written) into
  * ops.patients: the sheet wins on every column it fills, a blank cell keeps
@@ -145,7 +153,7 @@ export async function POST(request: Request) {
     ]);
     for (const q of [patientsQ, carersQ, dxLinksQ, diagnosesQ, provincesQ, phasesQ]) if (q.error) throw new Error(q.error.message);
 
-    type PatientDb = PatientMasterFields & { id: string; case_number: string | null; intake_links: unknown };
+    type PatientDb = PatientMasterFields & { id: string; case_number: string | null; intake_links: unknown; sheet_row: unknown };
     const patients = (patientsQ.data ?? []) as PatientDb[];
     const byId = new Map(patients.map((p) => [p.id, p]));
     const onFile: OnFile[] = patients.map((p) => ({ id: p.id, patient_number: p.patient_number, first_name: p.first_name, last_name: p.last_name, birth_date: p.birth_date }));
@@ -258,7 +266,7 @@ export async function POST(request: Request) {
         let changed = false;
         if (match.kind === "new") {
           // A child new on the sheet is under treatment until the sheet says otherwise.
-          const insert = { ...want, sex: row.sex, status: row.status ?? "ongoing", patient_number: row.cn, case_number: codeNumber, intake_links: links, sheet_synced_at: now };
+          const insert = { ...want, sex: row.sex, status: row.status ?? "ongoing", patient_number: row.cn, case_number: codeNumber, intake_links: links, sheet_row: row.raw, sheet_synced_at: now };
           if (dryRun) {
             patientId = `new-${row.cn}`;
           } else {
@@ -280,7 +288,9 @@ export async function POST(request: Request) {
             takenCase.add(codeNumber);
             counts.numbersAssigned += 1;
           }
-          if (links && JSON.stringify(links) !== JSON.stringify(have.intake_links)) patch.intake_links = links;
+          if (links && !sameCells(links as Record<string, string>, have.intake_links)) patch.intake_links = links;
+          // The original's own words, for the copy (0059).
+          if (!sameCells(row.raw, have.sheet_row)) patch.sheet_row = row.raw;
           if (Object.keys(patch).length > 0) {
             changed = true;
             if (!dryRun) {

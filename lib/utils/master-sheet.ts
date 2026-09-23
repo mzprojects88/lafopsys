@@ -180,6 +180,8 @@ export interface MasterRow {
   priority: Priority | null;
   remarks: string | null;
   legacyCode: string | null;
+  /** The row's cells as typed, by header (kept on the record so the copy can repeat the sheet's own words). */
+  raw: Record<string, string>;
 }
 
 export interface MasterParseResult {
@@ -244,6 +246,7 @@ export function parseMasterCsv(csv: string): MasterParseResult {
       priority: priority && priority in PRIORITIES ? (priority as Priority) : null,
       remarks: clean(col(row, "REMARKS")),
       legacyCode: clean(col(row, "CODE")),
+      raw: Object.fromEntries(header.flatMap((h, i) => (h && (row[i] ?? "").trim() ? [[h, (row[i] ?? "").trim()]] : []))),
     });
   }
   return { rows, problems };
@@ -471,4 +474,128 @@ export function masterPatch(
     if (!same) (patch as Record<string, unknown>)[key] = v;
   }
   return patch;
+}
+
+// ---------------------------------------------------------------------
+// The copy sheet (Master Plan step 3): the app's records, in the
+// original's columns, for the copy's script to write in.
+// ---------------------------------------------------------------------
+
+/** The original's 22 columns in order, then the app's two. AUA and PA are the copy's own formulas and are never written. */
+export const COPY_HEADER = [
+  "CN", "DE", "NAME", "BD", "AUA", "PA", "AB", "S", "ADD", "P/C", "R", "PS",
+  "I", "D", "TP", "CARER", "RX", "CP", "MS", "P", "REMARKS", "CODE", "LFCN", "LAST UPDATED",
+] as const;
+export const COPY_FORMULA_COLUMNS = ["AUA", "PA"] as const;
+
+const STATUS_LABEL: Record<string, string> = {
+  ongoing: "On-going Treatment",
+  expired: "Expired",
+  non_pedia: "Non-Pedia",
+  check_up: "Check Up",
+  completed: "Completed",
+  lost_to_follow_up: "Lost to Follow-up",
+};
+
+/** "Region IV-A" -> "RIV-A", "NCR" -> "NCR": the sheet's R column. */
+export function regionCode(region: string | null): string | null {
+  if (!region) return null;
+  const m = /^Region\s+([IVX]+)(?:-([AB]))?$/i.exec(region.trim());
+  return m ? `R${m[1].toUpperCase()}${m[2] ? `-${m[2].toUpperCase()}` : ""}` : region.trim();
+}
+
+/** "2024-06-27" -> "6/27/2024", how the sheet writes dates. */
+export function sheetDateText(iso: string | null): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
+  return m ? `${Number(m[2])}/${Number(m[3])}/${m[1]}` : null;
+}
+
+/** Whole years between two ISO dates. */
+function ageOn(birth: string, today: string): number {
+  const [by, bm, bd] = birth.slice(0, 10).split("-").map(Number);
+  const [ty, tm, td] = today.slice(0, 10).split("-").map(Number);
+  return ty - by - (tm < bm || (tm === bm && td < bd) ? 1 : 0);
+}
+
+/** One child as the app holds them, with the names already looked up. */
+export interface CopyRecord {
+  cn: string | null;
+  caseNumber: string | null;
+  admittedOn: string;
+  firstName: string;
+  lastName: string;
+  birthDate: string | null;
+  sex: string | null;
+  address: string | null;
+  province: string | null;
+  region: string | null;
+  status: string;
+  illnessCode: string | null;
+  diagnosis: string | null;
+  phase: string | null;
+  carerName: string | null;
+  carerRelationship: string | null;
+  carerPhone: string | null;
+  maritalStatus: string | null;
+  priority: string | null;
+  remarks: string | null;
+  legacyCode: string | null;
+  /** Manila time, already formatted for the sheet. */
+  lastUpdated: string;
+  /** The row as the original last read it (ops.patients.sheet_row), if it is on the original. */
+  sheetRow: Record<string, string> | null;
+}
+
+/**
+ * The copy's row for one child. A column keeps the original's own words
+ * while they still mean what the app holds ("BCell ALL" for Acute
+ * Lymphoblastic Leukemia, "9171234567" for 09171234567), so the copy and
+ * the original differ only where the records really differ.
+ */
+export function copyRow(r: CopyRecord, today: string): (string | null)[] {
+  const raw = r.sheetRow ?? {};
+  const eq = (a: string | null | undefined, b: string | null | undefined) => (a ?? null) === (b ?? null);
+  const upper = (v: string | undefined) => clean(v)?.toUpperCase() ?? null;
+  // The sheet's text when it still means the app's value, else the app's value written the sheet's way.
+  const pick = (col: string, same: (cell: string) => boolean, app: string | null) => {
+    const cell = raw[col];
+    return cell !== undefined && same(cell) ? cell : app;
+  };
+  const name = `${r.lastName}, ${r.firstName}`.replace(/,\s*$/, "");
+  const bracket = r.birthDate ? sheetAgeBracket(ageOn(r.birthDate, today)) : null;
+  const cells: Record<(typeof COPY_HEADER)[number], string | null> = {
+    CN: r.cn,
+    DE: pick("DE", (c) => sheetDate(c) === r.admittedOn, sheetDateText(r.admittedOn)),
+    NAME: pick("NAME", (c) => { const s = splitName(c); return normalizeName(s.first) === normalizeName(r.firstName) && normalizeName(s.last) === normalizeName(r.lastName); }, name),
+    BD: pick("BD", (c) => sheetDate(c) === r.birthDate, sheetDateText(r.birthDate)),
+    AUA: null,
+    PA: null,
+    AB: pick("AB", (c) => c.trim() === bracket, bracket),
+    S: pick("S", (c) => eq(upper(c), r.sex), r.sex),
+    ADD: pick("ADD", (c) => eq(clean(c), r.address), r.address),
+    "P/C": pick("P/C", (c) => !!r.province && provinceKey(c) === provinceKey(r.province), r.province),
+    R: pick("R", (c) => eq(regionName(c), r.region), regionCode(r.region)),
+    PS: pick("PS", (c) => STATUS_MAP[c.trim().toLowerCase()] === r.status, STATUS_LABEL[r.status] ?? r.status),
+    I: pick("I", (c) => eq(upper(c), r.illnessCode), r.illnessCode),
+    D: pick("D", (c) => !!r.diagnosis && diagnosisKey(c) === diagnosisKey(r.diagnosis), r.diagnosis),
+    // "Expired" (or a blank) in TP is never a phase, so the app has nothing to say against it.
+    TP: pick("TP", (c) => phaseKey(c) === null || phaseKey(c) === phaseKey(r.phase), r.phase),
+    CARER: pick("CARER", (c) => !!r.carerName && normalizeName(c) === normalizeName(r.carerName), r.carerName),
+    RX: pick("RX", (c) => eq(clean(c), r.carerRelationship), r.carerRelationship),
+    CP: pick("CP", (c) => eq(normalizePhone(c), r.carerPhone), r.carerPhone),
+    MS: pick("MS", (c) => eq(upper(c), r.maritalStatus), r.maritalStatus),
+    P: pick("P", (c) => eq(upper(c), r.priority), r.priority),
+    REMARKS: pick("REMARKS", (c) => eq(clean(c), r.remarks), r.remarks),
+    CODE: pick("CODE", (c) => eq(clean(c), r.legacyCode), r.legacyCode),
+    LFCN: r.caseNumber,
+    "LAST UPDATED": r.lastUpdated,
+  };
+  return COPY_HEADER.map((h) => cells[h]);
+}
+
+/** CN order, then the children the original does not list yet (by LFCN): the cue to add them. */
+export function copyOrder(a: CopyRecord, b: CopyRecord): number {
+  if (a.cn && b.cn) return Number(a.cn) - Number(b.cn);
+  if (a.cn || b.cn) return a.cn ? -1 : 1;
+  return (a.caseNumber ?? "").localeCompare(b.caseNumber ?? "");
 }
