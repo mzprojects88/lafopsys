@@ -13,7 +13,6 @@ import {
   Clock,
   UserPlus,
   HandCoins,
-  Boxes,
   FileSignature,
   BadgeCheck,
   BarChart3,
@@ -137,8 +136,9 @@ export default function DashboardPage() {
   const { canEdit } = useModuleAccess();
   const quickActions = [
     { label: "Admit a child", href: "/patients/admit", icon: Send, color: "purple" as CategoryColor },
-    { label: "Record Donation", href: "/donors/intake", icon: HandCoins, color: "green" as CategoryColor },
-    { label: "Receive Inventory", href: inventoryAppHref("/intake"), icon: Boxes, color: "teal" as CategoryColor },
+    // Donations and stock are both recorded in the LAF Inventory app (one
+    // receipt, one entry); this app only shows what they became.
+    { label: "Receive a donation", href: inventoryAppHref("/intake"), icon: HandCoins, color: "green" as CategoryColor },
     { label: "New Cash Entry", href: "/finance/entry", icon: FileSignature, color: "blue" as CategoryColor },
     { label: "Request Approval", href: "/finance/approvals", icon: CheckCircle2, color: "amber" as CategoryColor },
     { label: "Generate Report", href: "/reports/builder", icon: BarChart3, color: "indigo" as CategoryColor },

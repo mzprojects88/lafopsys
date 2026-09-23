@@ -1,6 +1,7 @@
 /** Where the LAF Inventory app lives. Everything that *changes* stock --
- * scanning, receiving, drawing, waste, counts -- happens there; this app only
- * reads inventory's published views. Override per environment with
+ * scanning, receiving a donation, drawing, waste, counts -- happens there,
+ * including the donation receipt itself; this app only reads inventory's
+ * published views. Override per environment with
  * NEXT_PUBLIC_INVENTORY_APP_URL (e.g. a preview deployment). */
 export const INVENTORY_APP_URL = (process.env.NEXT_PUBLIC_INVENTORY_APP_URL ?? "https://lafinventory.vercel.app").replace(/\/$/, "");
 

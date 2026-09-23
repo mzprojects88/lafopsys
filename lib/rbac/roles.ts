@@ -87,21 +87,22 @@ export const ORG_ROLES: Role[] = [...ALL_ROLES, ...INVENTORY_ROLES];
 export const LOGIN_VISIBLE_ROLES = ORG_ROLES;
 
 export const NAV_ITEMS: NavItem[] = [
-  // In the order a day runs: NCH's sheet and the beds, the pick-ups, then
-  // what is planned, who is on duty, what is in store, and the figures.
+  // The order the org asked for (2026-09-23): the figures, then the day's
+  // work, then the tools, with Settings last. Hidden modules keep their
+  // place in the list and simply do not render.
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, module: "dashboard", viewOnly: true, note: "Figures from the modules the person can open." },
+  { title: "Calendar", href: "/calendar", icon: CalendarDays, module: "calendar" },
   { title: "Patients & Admissions", href: "/patients", startsAt: "/patients/house-sheet", icon: Users, module: "patients", note: "Includes the house sheet, the floor plan and the rides." },
   { title: "LAF HOPE Transport", href: "/transport", icon: Bus, module: "transport", note: "Pick-ups from NCH: the manifest and the driver's on-board ticks." },
-  { title: "Calendar", href: "/calendar", icon: CalendarDays, module: "calendar" },
   { title: "Staff & Time", href: "/staff", icon: Clock, module: "staff", note: "Everyone keeps their own clock; Edit adds volunteers." },
+  { title: "Inventory", href: "/inventory", icon: Boxes, module: "inventory", viewOnly: true, note: "Read-only here: donations and stock are recorded in the LAF Inventory app." },
   { title: "HR", href: "/hr", icon: UserCog, module: "hr", viewOnly: true, note: "Own leave and payslips. Running HR follows the HR flag in Users." },
-  { title: "Inventory", href: "/inventory", icon: Boxes, module: "inventory", viewOnly: true, note: "Stock is changed in the LAF Inventory app." },
   { title: "House Operations", href: "/house-ops", icon: Home, module: "house_ops", note: "Also reads resident names, for trips and meals." },
-  { title: "Donors & Donations", href: "/donors", icon: HandCoins, module: "donors" },
+  { title: "Donors & Donations", href: "/donors", icon: HandCoins, module: "donors", note: "Donations are recorded in the LAF Inventory app; this is the donor record and the receipts." },
   { title: "Financial", href: "/finance", icon: Wallet, module: "finance" },
   // Every government deadline the foundation carries (0043/0044); HR-flagged
   // people reach the same page through the HR sub-menu.
   { title: "Compliances", href: "/compliance", icon: ShieldCheck, module: "compliance" },
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, module: "dashboard", viewOnly: true, note: "Figures from the modules the person can open." },
   { title: "Analytics", href: "/analytics", icon: BarChart3, module: "analytics", viewOnly: true, note: "Figures from the modules the person can open." },
   { title: "Reports", href: "/reports", icon: FileText, module: "reports" },
   // The CEO's landing page (0031 seeds landing_path = /executive).
