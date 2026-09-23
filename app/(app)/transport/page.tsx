@@ -28,7 +28,8 @@ const STATUS_LABEL = { scheduled: "Scheduled", in_progress: "On the road", compl
 const time = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" }) : "");
 
 /**
- * LAF HOPE Transport (0053): the social worker builds each pick-up's manifest
+ * Transport (0053): pick-ups by LAF HOPE, the foundation's own vehicle. The
+ * social worker builds each pick-up's manifest
  * from NCH's list; the driver, on a phone, ticks everyone on board, departs,
  * and marks the arrival. Check-in at the house then names the trip.
  */
@@ -56,7 +57,7 @@ export default function TransportPage() {
   return (
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader
-        title="LAF HOPE Transport"
+        title="Transport"
         description="Pick-ups from NCH. The manifest comes from NCH's list; the driver ticks each family on board."
         action={
           canBuild ? (
@@ -272,7 +273,7 @@ function NewPickupDialog({ onClose }: { onClose: () => void }) {
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New LAF HOPE pick-up</DialogTitle>
+          <DialogTitle>New pick-up</DialogTitle>
           <DialogDescription>Choose who to bring from NCH. The driver sees this manifest on their phone.</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">

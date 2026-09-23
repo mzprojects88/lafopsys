@@ -93,7 +93,7 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, module: "dashboard", viewOnly: true, note: "Figures from the modules the person can open." },
   { title: "Calendar", href: "/calendar", icon: CalendarDays, module: "calendar" },
   { title: "Patients & Admissions", href: "/patients", startsAt: "/patients/house-sheet", icon: Users, module: "patients", note: "Includes the house sheet, the floor plan and the rides." },
-  { title: "LAF HOPE Transport", href: "/transport", icon: Bus, module: "transport", note: "Pick-ups from NCH: the manifest and the driver's on-board ticks." },
+  { title: "Transport", href: "/transport", icon: Bus, module: "transport", note: "Pick-ups from NCH: the manifest and the driver's on-board ticks." },
   { title: "Staff & Time", href: "/staff", icon: Clock, module: "staff", note: "Everyone keeps their own clock; Edit adds volunteers." },
   { title: "Inventory", href: "/inventory", icon: Boxes, module: "inventory", viewOnly: true, note: "Read-only here: donations and stock are recorded in the LAF Inventory app." },
   { title: "HR", href: "/hr", icon: UserCog, module: "hr", viewOnly: true, note: "Own leave and payslips. Running HR follows the HR flag in Users." },
