@@ -5,6 +5,7 @@
 // that lafopsys has one database.
 //
 // Usage: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/master-sync-matrix.mjs
+// (0058 scenarios need 0058 applied, or passed as a pre-flight file)
 // Pre-flight: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/master-sync-matrix.mjs supabase/migrations/0057_patient_master_sync.sql
 import { Client } from "pg";
 import { readFile } from "node:fs/promises";
@@ -163,6 +164,12 @@ async function main() {
   await scenario(ids, "a record added directly (not via check_in) still gets an LFCN", "social_worker", withSeed(),
     q("insert into ops.patients (first_name, last_name, sex, status, admitted_at) values ('Direct', 'Add', 'F', 'ongoing', current_date) returning case_number like 'LFCN-%' as ok"),
     value("ok", true));
+  await scenario(ids, "a child can be kept before the sheet records their sex (0058)", "admin", withSeed(),
+    q("insert into ops.patients (first_name, last_name, status, admitted_at) values ('No', 'Sex', 'ongoing', current_date) returning sex is null and case_number like 'LFCN-%' as ok"),
+    value("ok", true));
+  await scenario(ids, "sex is still only M or F when given", "admin", withSeed(),
+    q("insert into ops.patients (first_name, last_name, sex, status, admitted_at) values ('Bad', 'Sex', 'X', 'ongoing', current_date)"),
+    checkFailed);
   await scenario(ids, "the year of first admission is in the number", "admin", withSeed(oldPatient),
     q(`select case_number like 'LFCN-2024-%' as ok from ops.patients where id = '${OLD}'`), value("ok", true));
   await scenario(ids, "a case number never changes", "admin", withSeed(oldPatient),

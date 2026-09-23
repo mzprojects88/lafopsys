@@ -21,6 +21,7 @@ import {
   provinceKey,
   refId,
   regionName,
+  rowGaps,
   type OnFile,
   type PatientMasterFields,
 } from "@/lib/utils/master-sheet";
@@ -207,6 +208,14 @@ export async function POST(request: Request) {
         notes.push(match.reason);
         continue;
       }
+      const gaps = rowGaps(row);
+      if (match.kind === "new" && gaps.missing.length) {
+        counts.skipped += 1;
+        notes.push(`CN ${row.cn}: not added yet, the sheet has no ${gaps.missing.join(", ")}`);
+        continue;
+      }
+      // Complete enough to keep, but the sheet still owes these; the next sync writes them.
+      if (gaps.pending.length) notes.push(`CN ${row.cn}: the sheet has no ${gaps.pending.join(", ")} yet`);
       try {
         const provinceId = row.province ? await ensure("provinces", prov, "prov", provinceKey(row.province), row.province) : null;
         const region = regionName(row.regionCode);
@@ -250,13 +259,8 @@ export async function POST(request: Request) {
         let patientId: string;
         let changed = false;
         if (match.kind === "new") {
-          const missing = [!row.sex && "sex", !row.status && "status", !row.admittedOn && "date enrolled"].filter(Boolean);
-          if (missing.length) {
-            counts.skipped += 1;
-            notes.push(`CN ${row.cn}: not added yet, the sheet has no ${missing.join(", ")}`);
-            continue;
-          }
-          const insert = { ...want, patient_number: row.cn, case_number: codeNumber, intake_links: links, sheet_synced_at: now };
+          // A child new on the sheet is under treatment until the sheet says otherwise.
+          const insert = { ...want, sex: row.sex, status: row.status ?? "ongoing", patient_number: row.cn, case_number: codeNumber, intake_links: links, sheet_synced_at: now };
           if (dryRun) {
             patientId = `new-${row.cn}`;
           } else {

@@ -89,7 +89,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
     <div className="flex flex-1 flex-col gap-6">
       <EntityDetailHeader
         title={`${patient.firstName} ${patient.lastName}`}
-        subtitle={`${patient.patientNumber}${patient.sheetCn ? ` · CN ${patient.sheetCn}` : ""}${canSeeClinical ? ` · ${ageLabel}${patient.sex}` : ""}`}
+        subtitle={`${patient.patientNumber}${patient.sheetCn ? ` · CN ${patient.sheetCn}` : ""}${canSeeClinical ? ` · ${ageLabel}${patient.sex ?? "sex not recorded"}` : ""}`}
         initials={`${patient.firstName[0]}${patient.lastName[0]}`}
         badge={<StatusBadge domain="patient" status={patient.status} />}
         metadata={[

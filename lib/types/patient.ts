@@ -16,7 +16,8 @@ export interface Patient {
   lastName: string;
   /** Missing for a small number of real records with corrupted source data -- don't fabricate one. */
   birthDate?: string;
-  sex: "M" | "F";
+  /** Blank until the Patients Database sheet records it (0058). */
+  sex?: "M" | "F";
   provinceId: string;
   cityId?: string;
   /** Literal address text, used when the address can't be resolved to a curated `City`. */

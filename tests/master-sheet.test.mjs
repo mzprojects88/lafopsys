@@ -16,6 +16,7 @@ import {
   phaseKey,
   refId,
   regionName,
+  rowGaps,
   sheetAgeBracket,
   sheetDate,
 } from "../lib/utils/master-sheet.ts";
@@ -142,6 +143,19 @@ describe("matchMasterRow", () => {
   });
   it("a namesake with another CN and birthday is a different child", () => {
     assert.deepEqual(matchMasterRow(row, [p("a", "3", "Juan Miguel", "Dela Cruz", "2019-01-01")]), { kind: "new" });
+  });
+});
+
+describe("rowGaps", () => {
+  const full = {
+    cn: "9", admittedOn: "2026-09-19", firstName: "Liza", lastName: "Santos", birthDate: "2020-12-01", sex: "F", address: "QC",
+    status: "ongoing", carerName: "Santos, Rey", carerRelationship: "Father", carerPhone: "09181234567",
+  };
+  it("complete patient and carer details are enough; sex and status can follow", () => {
+    assert.deepEqual(rowGaps({ ...full, sex: null, status: null }), { missing: [], pending: ["sex", "status"] });
+  });
+  it("a missing patient or carer detail holds the row back", () => {
+    assert.deepEqual(rowGaps({ ...full, birthDate: null, carerPhone: null }).missing, ["birthday", "carer's phone"]);
   });
 });
 

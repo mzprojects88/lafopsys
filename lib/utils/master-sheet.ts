@@ -249,6 +249,25 @@ export function parseMasterCsv(csv: string): MasterParseResult {
   return { rows, problems };
 }
 
+/**
+ * What a sheet row lacks before it can become a record. `missing` blocks it:
+ * the patient's and carer's details (user, 2026-09-23) plus the date of
+ * entry, which the record and its LFCN year need. `pending` does not: sex
+ * stays blank and status starts as ongoing until the sheet fills them.
+ */
+export function rowGaps(row: MasterRow): { missing: string[]; pending: string[] } {
+  const missing = [
+    !row.birthDate && "birthday",
+    !row.address && "address",
+    !row.carerName && "carer",
+    !row.carerRelationship && "carer's relationship",
+    !row.carerPhone && "carer's phone",
+    !row.admittedOn && "date of entry",
+  ].filter((x): x is string => !!x);
+  const pending = [!row.sex && "sex", !row.status && "status"].filter((x): x is string => !!x);
+  return { missing, pending };
+}
+
 /** Extract tab: CN -> distance from home in km (its last column, e.g. "34 km"). */
 export function parseDistanceCsv(csv: string): Map<string, number> {
   const out = new Map<string, number>();

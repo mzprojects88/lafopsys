@@ -13,7 +13,7 @@ interface PatientRow {
   first_name: string;
   last_name: string;
   birth_date: string | null;
-  sex: "M" | "F";
+  sex: "M" | "F" | null;
   province_id: string | null;
   city_id: string | null;
   raw_address: string | null;
@@ -96,7 +96,7 @@ function toPatient(row: PatientRow, carerIds: string[]): Patient {
     firstName: row.first_name,
     lastName: row.last_name,
     birthDate: row.birth_date ?? undefined,
-    sex: row.sex,
+    sex: row.sex ?? undefined,
     provinceId: row.province_id ?? "",
     cityId: row.city_id ?? undefined,
     rawAddress: row.raw_address ?? undefined,
