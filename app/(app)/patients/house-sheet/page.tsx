@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
-import { Check, ClipboardList, FilePlus2, Home, RotateCcw, Search, Sparkles, UserCheck, UserX, Users, X } from "lucide-react";
+import { Check, ClipboardList, FilePlus2, Home, RotateCcw, Search, Sparkles, UserCheck, UserX, X } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { EmptyState } from "@/components/patterns/empty-state";
@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { HouseSheetStatus } from "@/components/modules/patients/house-sheet-status";
 import { HouseToday } from "@/components/modules/patients/house-today";
+import { PatientsSubNav } from "@/components/modules/patients/patients-subnav";
 import { confirmHouseSheetMatch, dismissHouseSheetRow, reopenHouseSheetRow } from "@/app/(app)/patients/house-sheet/actions";
 import { houseSheetPeopleStore, useHouseSheetPeople, useHouseSheetRuns } from "@/lib/hooks/use-house-sheet-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
@@ -172,7 +173,7 @@ export default function HouseSheetPage() {
             cell: ({ row }) => {
               const p = row.original;
               const b = busy === p.id;
-              const encodeHref = `/patients/referrals/new?fromSheet=${p.id}`;
+              const encodeHref = `/patients/admit?fromSheet=${p.id}`;
               return (
                 <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                   {p.matchStatus === "suggested" && p.matchedPatientId ? (
@@ -212,14 +213,7 @@ export default function HouseSheetPage() {
       <PageHeader
         title="House sheet"
         description={`Who the Occupancy Tracker says is in the house${latestTab ? ` as of ${formatDate(latestTab, "EEEE, MMM d")}` : ""}, and who each name is in the system.`}
-        action={
-          <Button variant="outline" asChild>
-            <Link href="/patients">
-              <Users className="size-4" />
-              All patients
-            </Link>
-          </Button>
-        }
+        action={<PatientsSubNav except="/patients/house-sheet" />}
       />
 
       <HouseSheetStatus canRun={canReview} />

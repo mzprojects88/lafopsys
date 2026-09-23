@@ -136,7 +136,7 @@ export default function DashboardPage() {
 
   const { canEdit } = useModuleAccess();
   const quickActions = [
-    { label: "Create Referral", href: "/patients/referrals/new", icon: Send, color: "purple" as CategoryColor },
+    { label: "Admit a child", href: "/patients/admit", icon: Send, color: "purple" as CategoryColor },
     { label: "Record Donation", href: "/donors/intake", icon: HandCoins, color: "green" as CategoryColor },
     { label: "Receive Inventory", href: inventoryAppHref("/intake"), icon: Boxes, color: "teal" as CategoryColor },
     { label: "New Cash Entry", href: "/finance/entry", icon: FileSignature, color: "blue" as CategoryColor },

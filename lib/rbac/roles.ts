@@ -59,6 +59,9 @@ export interface NavItem {
   adminOnly?: boolean;
   /** Shown under the module's name in the grid. */
   note?: string;
+  /** Where the menu link goes, when that is not the module's own page
+   * (Patients opens on NCH's house sheet, where the day starts). */
+  startsAt?: string;
 }
 
 export const ALL_ROLES: Role[] = [
@@ -84,24 +87,25 @@ export const ORG_ROLES: Role[] = [...ALL_ROLES, ...INVENTORY_ROLES];
 export const LOGIN_VISIBLE_ROLES = ORG_ROLES;
 
 export const NAV_ITEMS: NavItem[] = [
-  // The CEO's landing page (0031 seeds landing_path = /executive), first
-  // because it is first in his day.
-  { title: "Executive", href: "/executive", icon: Briefcase, module: "executive", viewOnly: true, note: "Figures from the modules the person can open." },
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, module: "dashboard", viewOnly: true, note: "Figures from the modules the person can open." },
+  // In the order a day runs: NCH's sheet and the beds, the pick-ups, then
+  // what is planned, who is on duty, what is in store, and the figures.
+  { title: "Patients & Admissions", href: "/patients", startsAt: "/patients/house-sheet", icon: Users, module: "patients", note: "Includes the house sheet, the floor plan and the rides." },
+  { title: "LAF HOPE Transport", href: "/transport", icon: Bus, module: "transport", note: "Pick-ups from NCH: the manifest and the driver's on-board ticks." },
   { title: "Calendar", href: "/calendar", icon: CalendarDays, module: "calendar" },
   { title: "Staff & Time", href: "/staff", icon: Clock, module: "staff", note: "Everyone keeps their own clock; Edit adds volunteers." },
   { title: "HR", href: "/hr", icon: UserCog, module: "hr", viewOnly: true, note: "Own leave and payslips. Running HR follows the HR flag in Users." },
-  { title: "Patients & Admissions", href: "/patients", icon: Users, module: "patients", note: "Includes the floor plan and the house sheet." },
-  { title: "LAF HOPE Transport", href: "/transport", icon: Bus, module: "transport", note: "Pick-ups from NCH: the manifest and the driver's on-board ticks." },
+  { title: "Inventory", href: "/inventory", icon: Boxes, module: "inventory", viewOnly: true, note: "Stock is changed in the LAF Inventory app." },
   { title: "House Operations", href: "/house-ops", icon: Home, module: "house_ops", note: "Also reads resident names, for trips and meals." },
   { title: "Donors & Donations", href: "/donors", icon: HandCoins, module: "donors" },
-  { title: "Inventory", href: "/inventory", icon: Boxes, module: "inventory", viewOnly: true, note: "Stock is changed in the LAF Inventory app." },
   { title: "Financial", href: "/finance", icon: Wallet, module: "finance" },
   // Every government deadline the foundation carries (0043/0044); HR-flagged
   // people reach the same page through the HR sub-menu.
   { title: "Compliances", href: "/compliance", icon: ShieldCheck, module: "compliance" },
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, module: "dashboard", viewOnly: true, note: "Figures from the modules the person can open." },
   { title: "Analytics", href: "/analytics", icon: BarChart3, module: "analytics", viewOnly: true, note: "Figures from the modules the person can open." },
   { title: "Reports", href: "/reports", icon: FileText, module: "reports" },
+  // The CEO's landing page (0031 seeds landing_path = /executive).
+  { title: "Executive", href: "/executive", icon: Briefcase, module: "executive", viewOnly: true, note: "Figures from the modules the person can open." },
   { title: "Settings", href: "/settings", icon: Settings, module: "settings", adminOnly: true, note: "Users, roles and this grid: admins only." },
 ];
 
@@ -125,6 +129,11 @@ export function moduleForPath(path: string): ModuleKey | null {
     if ((path === item.href || path.startsWith(`${item.href}/`)) && (!best || item.href.length > best.href.length)) best = item;
   }
   return best?.module ?? null;
+}
+
+/** Where this menu entry's link goes: its module's page, or the page the day starts on. */
+export function navHref(item: NavItem): string {
+  return item.startsAt && !isHiddenPath(item.startsAt) ? item.startsAt : item.href;
 }
 
 /** The nav as landing.ts wants it: shown items with the roles that can open them. */
@@ -210,5 +219,5 @@ export function isAllowedLandingPath(role: Role, path: string, rows: readonly Mo
 
 /** Every nav href a role can be sent to -- what the landing-page picker offers. */
 export function landingChoicesFor(role: Role, rows: readonly ModuleAccessRow[]): { href: string; title: string }[] {
-  return NAV_ITEMS.filter((item) => isNavItemVisible(item, role, rows)).map((item) => ({ href: item.href, title: item.title }));
+  return NAV_ITEMS.filter((item) => isNavItemVisible(item, role, rows)).map((item) => ({ href: navHref(item), title: item.title }));
 }

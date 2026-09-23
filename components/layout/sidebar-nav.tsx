@@ -13,6 +13,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { useVisibleNavItems } from "@/lib/rbac/use-role";
+import { navHref } from "@/lib/rbac/roles";
 import { SidebarUserCard } from "@/components/layout/sidebar-user-card";
 
 export function AppSidebar() {
@@ -43,7 +44,7 @@ export function AppSidebar() {
             return (
               <SidebarMenuItem key={item.href}>
                 <SidebarMenuButton asChild isActive={active} tooltip={item.title}>
-                  <Link href={item.href}>
+                  <Link href={navHref(item)}>
                     <item.icon />
                     <span>{item.title}</span>
                   </Link>

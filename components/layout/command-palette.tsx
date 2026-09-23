@@ -12,6 +12,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { useVisibleNavItems } from "@/lib/rbac/use-role";
+import { navHref } from "@/lib/rbac/roles";
 import { isHiddenPath } from "@/lib/rbac/hidden";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { useStockSummary } from "@/lib/hooks/use-inventory-views";
@@ -63,7 +64,7 @@ export function CommandPalette({ externalOpen, onExternalOpenChange }: CommandPa
         <CommandEmpty>No results found.</CommandEmpty>
         <CommandGroup heading="Go to page">
           {navItems.map((item) => (
-            <CommandItem key={item.href} onSelect={() => go(item.href)}>
+            <CommandItem key={item.href} onSelect={() => go(navHref(item))}>
               <item.icon />
               <span>{item.title}</span>
             </CommandItem>

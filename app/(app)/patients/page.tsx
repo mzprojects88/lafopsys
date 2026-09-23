@@ -2,30 +2,19 @@
 
 import type { ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
-import { Users, UserCheck, CalendarPlus, KanbanSquare, ListOrdered, Share2, CalendarClock, Bus, BedDouble, Home, LayoutGrid, Car } from "lucide-react";
+import { Users, UserCheck, CalendarPlus } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
-import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
+import { PatientsSubNav } from "@/components/modules/patients/patients-subnav";
 import { cities, diagnoses } from "@/lib/mock-data";
 import type { Patient } from "@/lib/types/patient";
 import { computeAge } from "@/lib/utils/age";
 import { todayIso } from "@/lib/utils/date";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 
-const SUB_NAV: ModuleSubNavItem[] = [
-  { href: "/patients/floor-plan", label: "Floor Plan", icon: LayoutGrid, color: "teal" },
-  { href: "/patients/today", label: "Today Board", icon: KanbanSquare, color: "blue" },
-  { href: "/patients/waitlist", label: "Waitlist", icon: ListOrdered, color: "amber" },
-  { href: "/patients/referrals", label: "Referrals", icon: Share2, color: "purple" },
-  { href: "/patients/appointments", label: "Appointments", icon: CalendarClock, color: "cyan" },
-  { href: "/patients/manifest", label: "Manifest", icon: Bus, color: "green" },
-  { href: "/patients/rides", label: "Rides", icon: Car, color: "amber" },
-  { href: "/patients/stays", label: "Stay History", icon: BedDouble, color: "indigo" },
-  { href: "/patients/house-sheet", label: "House Sheet", icon: Home, color: "teal" },
-];
 
 const columns: ColumnDef<Patient>[] = [
   { accessorKey: "patientNumber", header: "Patient #" },
@@ -84,7 +73,7 @@ export default function PatientsPage() {
       <PageHeader
         title="Patients & Admissions"
         description="Full patient master, migrated from FINAL_PATIENTS DATABASE."
-        action={<ModuleSubNav items={SUB_NAV} />}
+        action={<PatientsSubNav except="/patients" />}
       />
 
       <KpiGrid>

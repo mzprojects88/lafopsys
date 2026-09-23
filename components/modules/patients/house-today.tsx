@@ -149,7 +149,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                       </Link>
                     ) : (
                       <Button asChild size="sm" variant="outline" className="h-7 gap-1">
-                        <Link href={`/patients/referrals/new?fromSheet=${p.id}`}>
+                        <Link href={`/patients/admit?fromSheet=${p.id}`}>
                           <FilePlus2 className="size-3.5" /> Admit new child
                         </Link>
                       </Button>

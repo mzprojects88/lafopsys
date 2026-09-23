@@ -59,7 +59,7 @@ export default function ReferralsPage() {
         action={
           canEdit && (
             <Button asChild>
-              <Link href="/patients/referrals/new">
+              <Link href="/patients/admit">
                 <Plus />
                 New Referral
               </Link>
