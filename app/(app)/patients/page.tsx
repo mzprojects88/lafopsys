@@ -9,6 +9,8 @@ import { StatusBadge } from "@/components/patterns/status-badge";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
 import { PatientsSubNav } from "@/components/modules/patients/patients-subnav";
+import { MasterSheetStatus } from "@/components/modules/patients/master-sheet-status";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { cities, diagnoses } from "@/lib/mock-data";
 import type { Patient } from "@/lib/types/patient";
 import { computeAge } from "@/lib/utils/age";
@@ -17,7 +19,8 @@ import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 
 
 const columns: ColumnDef<Patient>[] = [
-  { accessorKey: "patientNumber", header: "Patient #" },
+  { accessorKey: "patientNumber", header: "Case No." },
+  { accessorKey: "sheetCn", header: "CN" },
   {
     id: "name",
     header: "Name",
@@ -63,6 +66,7 @@ const columns: ColumnDef<Patient>[] = [
 export default function PatientsPage() {
   const router = useRouter();
   const { patients } = usePatientsData();
+  const canEdit = useModuleAccess().canEdit("patients");
   const ongoingCount = patients.filter((p) => p.status === "ongoing").length;
   const admittedThisMonth = patients.filter(
     (p) => p.admittedAt.slice(0, 7) === todayIso().slice(0, 7)
@@ -72,9 +76,11 @@ export default function PatientsPage() {
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader
         title="Patients & Admissions"
-        description="Full patient master, migrated from FINAL_PATIENTS DATABASE."
+        description="Every child LAF has served. Kept in step with the Patients Database sheet while staff learn the app."
         action={<PatientsSubNav except="/patients" />}
       />
+
+      <MasterSheetStatus canRun={canEdit} />
 
       <KpiGrid>
         <KpiCard label="Total Patients" value={patients.length} icon={Users} color="purple" />

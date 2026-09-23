@@ -83,7 +83,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
     <div className="flex flex-1 flex-col gap-6">
       <EntityDetailHeader
         title={`${patient.firstName} ${patient.lastName}`}
-        subtitle={`${patient.patientNumber}${canSeeClinical ? ` · ${ageLabel}${patient.sex}` : ""}`}
+        subtitle={`${patient.patientNumber}${patient.sheetCn ? ` · CN ${patient.sheetCn}` : ""}${canSeeClinical ? ` · ${ageLabel}${patient.sex}` : ""}`}
         initials={`${patient.firstName[0]}${patient.lastName[0]}`}
         badge={<StatusBadge domain="patient" status={patient.status} />}
         metadata={[
@@ -258,7 +258,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
               canUpload={canEdit}
               canDelete={canEdit}
               title="Case files"
-              description={`Case management forms, referrals and other scans, kept under Patients / ${patient.lastName}, ${patient.firstName} (${patient.patientNumber}).`}
+              description={`Case management forms, referrals and other scans, kept under Patients / ${patient.lastName}, ${patient.firstName} (${patient.sheetCn ?? patient.patientNumber}).`}
             />
           ) : null}
         </TabsContent>

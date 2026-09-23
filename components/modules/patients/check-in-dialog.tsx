@@ -196,7 +196,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
                   <SelectItem value={NEW_RECORD}>Create a new record</SelectItem>
                   {matches.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
-                      Already on file: {p.firstName} {p.lastName} (#{p.patientNumber}{p.birthDate ? `, born ${p.birthDate}` : ""})
+                      Already on file: {p.firstName} {p.lastName} ({p.patientNumber}{p.birthDate ? `, born ${p.birthDate}` : ""})
                     </SelectItem>
                   ))}
                 </SelectContent>

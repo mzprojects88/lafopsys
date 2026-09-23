@@ -1,0 +1,451 @@
+/**
+ * LAF's Patients Database sheet -- the patient master while staff learn the
+ * app (0057, Master Plan steps 1-2). The app only READS it; the sync route
+ * turns each row into the patient record it should be, and the sheet wins on
+ * every column it fills.
+ *
+ * Pure, relative imports only: tests/master-sheet.test.mjs runs it under
+ * node --test. The name rules are the original importer's
+ * (scripts/clean-real-data.py), so a sync never disagrees with the import.
+ */
+import { parseCsv } from "./bank-statement.ts";
+import { normalizeName, splitName } from "./house-sheet.ts";
+
+export const MASTER_SHEET_ID = "16IllEPWoz0oEF0polLIH3BrPQNkNYdcg04RHpyh072s";
+/** Pinned: this workbook's tabs do not move (unlike the house sheet's daily tabs). */
+export const MASTER_TABS = { patients: "161600482", extract: "261557177", intake: "2109115764" } as const;
+
+export function masterCsvUrl(gid: string): string {
+  return `https://docs.google.com/spreadsheets/d/${MASTER_SHEET_ID}/export?format=csv&gid=${gid}`;
+}
+
+export const ILLNESS_CODES = {
+  C: "Cancer (Hema-Onco)",
+  T: "Thalassemia",
+  B: "Other Blood Disorders",
+  H: "Heart / Cardiovascular",
+  O: "Other Critical Illnesses",
+  FD: "For determining",
+} as const;
+export type IllnessCode = keyof typeof ILLNESS_CODES;
+/** ops.patients.illness_type, the older broad label the DSWD figures were imported with; it follows the code. */
+export const ILLNESS_TYPE_LABEL: Record<IllnessCode, string> = { C: "Cancer", T: "Thalassemia", B: "Others", H: "Cardio", O: "Others", FD: "For determining" };
+
+export const PRIORITIES = { A: "Chemo", B: "Blood transfusion", C: "Post procedure", D: "Follow-up consultation" } as const;
+export type Priority = keyof typeof PRIORITIES;
+
+export type SheetStatus = "ongoing" | "check_up" | "expired" | "non_pedia";
+const STATUS_MAP: Record<string, SheetStatus> = {
+  "on-going treatment": "ongoing",
+  "ongoing treatment": "ongoing",
+  expired: "expired",
+  "non-pedia": "non_pedia",
+  "check up": "check_up",
+};
+
+// ---------------------------------------------------------------------
+// Cells
+// ---------------------------------------------------------------------
+
+const clean = (v: string | undefined): string | null => {
+  const s = (v ?? "").replace(/\s+/g, " ").trim();
+  return s === "" ? null : s;
+};
+
+/** "6/27/2026" or "06/27/26" -> "2026-06-27"; anything else -> null. */
+export function sheetDate(raw: string | undefined): string | null {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec((raw ?? "").trim());
+  if (!m) return null;
+  const year = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+  const month = Number(m[1]);
+  const day = Number(m[2]);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/** Sheet phones lose their leading 0 ("9755997520"); several are separated by "/" or a line break. */
+export function normalizePhone(raw: string | undefined): string | null {
+  const parts = (raw ?? "")
+    .split(/[/\n,]+/)
+    .map((p) => p.replace(/\D/g, ""))
+    .filter((p) => p.length >= 7)
+    .map((p) => (p.length === 10 && p.startsWith("9") ? `0${p}` : p));
+  return parts.length ? parts.join(" / ") : null;
+}
+
+/** The sheet's CODE "LAF-2024-001-C" -> "LFCN-2024-0001" (the illness letter is not part of the number). */
+export function caseNumberFromCode(code: string | null | undefined): string | null {
+  const m = /^LAF-(\d{4})-(\d{1,4})\b/i.exec((code ?? "").trim());
+  if (!m || Number(m[2]) === 0) return null;
+  return `LFCN-${m[1]}-${m[2].padStart(4, "0")}`;
+}
+
+/** "RIV-A" -> "Region IV-A", "NCR" -> "NCR" (how ops.provinces.region is written). */
+export function regionName(code: string | null | undefined): string | null {
+  const s = (code ?? "").trim().toUpperCase();
+  if (!s) return null;
+  if (s === "NCR" || s === "CAR" || s === "BARMM") return s;
+  const m = /^R(?:EGION)?\s*([IVX]+)(-?[AB])?$/.exec(s);
+  if (!m) return null;
+  return `Region ${m[1]}${m[2] ? `-${m[2].replace("-", "")}` : ""}`;
+}
+
+/** The sheet's age bracket, from age today (its own AB column is typed by hand and goes stale). */
+export function sheetAgeBracket(age: number): string {
+  if (age < 5) return "0 to 5";
+  if (age < 10) return "5 to 10";
+  if (age < 15) return "10 to 15";
+  if (age < 18) return "15 to 18";
+  return "18+";
+}
+
+// ---------------------------------------------------------------------
+// Reference names (the importer's rules)
+// ---------------------------------------------------------------------
+
+/** Abbreviations that mean a diagnosis already on the list (scripts/clean-real-data.py). */
+export const DIAGNOSIS_SYNONYMS: Readonly<Record<string, string>> = {
+  all: "acute lymphoblastic leukemia",
+  aml: "acute myeloid leukemia",
+  "bcell all": "acute lymphoblastic leukemia",
+  "tcell all": "acute lymphoblastic leukemia",
+  "b-cell all": "acute lymphoblastic leukemia",
+  "t-cell all": "acute lymphoblastic leukemia",
+  apl: "acute promyelocytic leukemia",
+};
+
+/** The key a diagnosis is looked up by: lowercase, synonyms resolved. */
+export function diagnosisKey(name: string): string {
+  const k = name.trim().toLowerCase().replace(/\s+/g, " ");
+  return DIAGNOSIS_SYNONYMS[k] ?? k;
+}
+
+/** Province names the importer folded together (scripts/clean-real-data.py). */
+export const PROVINCE_SYNONYMS: Readonly<Record<string, string>> = { "metro manila": "ncr" };
+
+export function provinceKey(name: string): string {
+  const k = name.trim().toLowerCase().replace(/\s+/g, " ");
+  return PROVINCE_SYNONYMS[k] ?? k;
+}
+
+/** A treatment phase's lookup key; "Expired" is a status, never a phase. */
+export function phaseKey(name: string | null): string | null {
+  const k = (name ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  return k === "" || k === "expired" ? null : k;
+}
+
+const CANCER_WORDS = ["leukemia", "lymphoma", "tumor", "tumour", "sarcoma", "carcinoma", "blastoma", "malignan", "teratoma"];
+/** ops.diagnoses.category for a new diagnosis: the illness code when the sheet gives one, else the name. */
+export function diagnosisCategory(name: string, illnessCode: IllnessCode | null): "cancer" | "thalassemia" | "other" {
+  if (illnessCode === "C") return "cancer";
+  if (illnessCode === "T") return "thalassemia";
+  if (illnessCode) return "other";
+  const lower = name.toLowerCase();
+  if (lower.includes("thalassemia")) return "thalassemia";
+  if (CANCER_WORDS.some((w) => lower.includes(w)) || /\b(all|aml|cml|cll|apl)\b/.test(lower)) return "cancer";
+  return "other";
+}
+
+/** A new reference row's id: prefix + slug, disambiguated against ids already taken. */
+export function refId(prefix: string, name: string, taken: ReadonlySet<string>): string {
+  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "unknown";
+  let id = `${prefix}-${slug}`;
+  for (let n = 2; taken.has(id); n += 1) id = `${prefix}-${slug}-${n}`;
+  return id;
+}
+
+// ---------------------------------------------------------------------
+// The Patients Database tab
+// ---------------------------------------------------------------------
+
+export interface MasterRow {
+  cn: string;
+  admittedOn: string | null;
+  firstName: string;
+  lastName: string;
+  birthDate: string | null;
+  sex: "M" | "F" | null;
+  address: string | null;
+  province: string | null;
+  regionCode: string | null;
+  status: SheetStatus | null;
+  illnessCode: IllnessCode | null;
+  diagnosis: string | null;
+  phase: string | null;
+  carerName: string | null;
+  carerRelationship: string | null;
+  carerPhone: string | null;
+  maritalStatus: string | null;
+  priority: Priority | null;
+  remarks: string | null;
+  legacyCode: string | null;
+}
+
+export interface MasterParseResult {
+  rows: MasterRow[];
+  problems: string[];
+}
+
+const REQUIRED = ["CN", "NAME"];
+
+export function parseMasterCsv(csv: string): MasterParseResult {
+  const grid = parseCsv(csv);
+  const header = (grid[0] ?? []).map((h) => h.trim().toUpperCase());
+  const missing = REQUIRED.filter((h) => !header.includes(h));
+  if (missing.length) return { rows: [], problems: [`The Patients Database tab has no ${missing.join(", ")} column; first row: ${header.join(" | ")}`] };
+  const col = (row: string[], name: string) => {
+    const i = header.indexOf(name);
+    return i < 0 ? undefined : row[i];
+  };
+
+  const rows: MasterRow[] = [];
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  for (const [n, row] of grid.slice(1).entries()) {
+    const cn = clean(col(row, "CN"));
+    const name = clean(col(row, "NAME"));
+    if (!cn && !name) continue; // the sheet's empty pre-formatted rows
+    if (!cn || !/^\d+$/.test(cn)) {
+      problems.push(`Row ${n + 2}: no CN, skipped`);
+      continue;
+    }
+    if (!name) {
+      problems.push(`CN ${cn}: no name, skipped`);
+      continue;
+    }
+    if (seen.has(cn)) {
+      problems.push(`CN ${cn} appears twice; the first row is used`);
+      continue;
+    }
+    seen.add(cn);
+    const { first, last } = splitName(name);
+    const sex = clean(col(row, "S"))?.toUpperCase();
+    const illness = clean(col(row, "I"))?.toUpperCase();
+    const priority = clean(col(row, "P"))?.toUpperCase();
+    rows.push({
+      cn,
+      admittedOn: sheetDate(col(row, "DE")),
+      firstName: first,
+      lastName: last,
+      birthDate: sheetDate(col(row, "BD")),
+      sex: sex === "M" || sex === "F" ? sex : null,
+      address: clean(col(row, "ADD")),
+      province: clean(col(row, "P/C")),
+      regionCode: clean(col(row, "R")),
+      status: STATUS_MAP[(clean(col(row, "PS")) ?? "").toLowerCase()] ?? null,
+      illnessCode: illness && illness in ILLNESS_CODES ? (illness as IllnessCode) : null,
+      diagnosis: clean(col(row, "D")),
+      phase: clean(col(row, "TP")),
+      carerName: clean(col(row, "CARER")),
+      carerRelationship: clean(col(row, "RX")),
+      carerPhone: normalizePhone(col(row, "CP")),
+      maritalStatus: clean(col(row, "MS"))?.toUpperCase() ?? null,
+      priority: priority && priority in PRIORITIES ? (priority as Priority) : null,
+      remarks: clean(col(row, "REMARKS")),
+      legacyCode: clean(col(row, "CODE")),
+    });
+  }
+  return { rows, problems };
+}
+
+/** Extract tab: CN -> distance from home in km (its last column, e.g. "34 km"). */
+export function parseDistanceCsv(csv: string): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const row of parseCsv(csv).slice(1)) {
+    const cn = (row[0] ?? "").trim();
+    if (!/^\d+$/.test(cn)) continue;
+    const km = [...row].reverse().map((c) => /^([\d.,]+)\s*km\b/i.exec(c.trim())).find(Boolean);
+    if (km) out.set(cn, Number(km[1].replace(/,/g, "")));
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------
+// The intake form (NEW&OLD Form Responses AIS)
+// ---------------------------------------------------------------------
+
+export interface IntakeRow {
+  submittedAt: string | null;
+  authorized: boolean;
+  name: string;
+  birthDate: string | null;
+  mssName: string | null;
+  attendingPhysician: string | null;
+  parentEducation: string | null;
+  parentOccupation: string | null;
+  householdIncome: string | null;
+  parentEmployment: string | null;
+  housingType: string | null;
+  links: { photo?: string; parentId?: string; medicalCertificate?: string };
+}
+
+const INTAKE_FIELDS: Record<string, keyof IntakeRow | "photo" | "parentId" | "medicalCertificate"> = {
+  timestamp: "submittedAt",
+  authorization: "authorized",
+  name: "name",
+  birthday: "birthDate",
+  "name of mss": "mssName",
+  "attending physician": "attendingPhysician",
+  "highest educational attainment": "parentEducation",
+  occupation: "parentOccupation",
+  "estimated monthly income": "householdIncome",
+  "employment status": "parentEmployment",
+  "type of housing": "housingType",
+  "solo photo of the patient": "photo",
+  "parent's id with address": "parentId",
+  "carer's id with address": "parentId",
+  "medical certificate": "medicalCertificate",
+};
+
+/** "9/5/2025 14:03:22" (Manila) -> ISO instant. */
+function formTimestamp(raw: string | undefined): string | null {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/.exec((raw ?? "").trim());
+  if (!m) return null;
+  const pad = (s: string) => s.padStart(2, "0");
+  return `${m[3]}-${pad(m[1])}-${pad(m[2])}T${pad(m[4])}:${m[5]}:${m[6]}+08:00`;
+}
+
+/**
+ * The form's responses, oldest first. The tab stacks two versions of the form,
+ * the second with its own header row part-way down, so a row that reads like a
+ * header switches the column map for the rows below it.
+ */
+export function parseIntakeCsv(csv: string): IntakeRow[] {
+  const grid = parseCsv(csv);
+  const mapFor = (row: string[]) => row.map((c) => INTAKE_FIELDS[c.trim().toLowerCase()] ?? null);
+  const looksLikeHeader = (row: string[]) => row.filter((c) => INTAKE_FIELDS[c.trim().toLowerCase()]).length >= 3;
+  let map = mapFor(grid[0] ?? []);
+  const out: IntakeRow[] = [];
+  for (const row of grid.slice(1)) {
+    if (looksLikeHeader(row)) {
+      // A partial header (only the new columns) keeps the old names for the rest.
+      map = map.map((old, i) => INTAKE_FIELDS[(row[i] ?? "").trim().toLowerCase()] ?? old);
+      continue;
+    }
+    const r: IntakeRow = {
+      submittedAt: null, authorized: false, name: "", birthDate: null, mssName: null, attendingPhysician: null,
+      parentEducation: null, parentOccupation: null, householdIncome: null, parentEmployment: null, housingType: null, links: {},
+    };
+    row.forEach((cell, i) => {
+      const field = map[i];
+      const v = clean(cell);
+      if (!field || !v) return;
+      if (field === "submittedAt") r.submittedAt = formTimestamp(v);
+      else if (field === "authorized") r.authorized = /authori[sz]e/i.test(v);
+      else if (field === "birthDate") r.birthDate = sheetDate(v);
+      else if (field === "photo" || field === "parentId" || field === "medicalCertificate") {
+        if (/^https?:\/\//i.test(v)) r.links[field] = v;
+      } else (r as unknown as Record<string, string>)[field] = v;
+    });
+    if (r.name) out.push(r);
+  }
+  return out;
+}
+
+/** The form's latest response for a child: same birthday, and their first and last names among its words. */
+export function intakeFor(
+  patient: { firstName: string; lastName: string; birthDate: string | null },
+  rows: readonly IntakeRow[]
+): IntakeRow | null {
+  if (!patient.birthDate) return null;
+  const last = normalizeName(patient.lastName).split(" ").filter(Boolean).pop();
+  const first = normalizeName(patient.firstName).split(" ")[0];
+  if (!last || !first) return null;
+  const hits = rows.filter((r) => {
+    if (r.birthDate !== patient.birthDate) return false;
+    const words = new Set(normalizeName(r.name).split(" "));
+    return words.has(last) && words.has(first);
+  });
+  return hits.sort((a, b) => (b.submittedAt ?? "").localeCompare(a.submittedAt ?? ""))[0] ?? null;
+}
+
+// ---------------------------------------------------------------------
+// What changes on a record
+// ---------------------------------------------------------------------
+
+/** The patient columns the sheet owns, as the app stores them. */
+export interface PatientMasterFields {
+  patient_number: string | null;
+  first_name: string;
+  last_name: string;
+  birth_date: string | null;
+  sex: string;
+  raw_address: string | null;
+  province_id: string | null;
+  status: string;
+  illness_code: string | null;
+  illness_type: string | null;
+  treatment_phase_id: string | null;
+  marital_status: string | null;
+  remarks: string | null;
+  priority: string | null;
+  legacy_code: string | null;
+  admitted_at: string;
+  distance_km: number | null;
+  mss_name: string | null;
+  attending_physician: string | null;
+  parent_education: string | null;
+  parent_occupation: string | null;
+  household_income: string | null;
+  parent_employment: string | null;
+  housing_type: string | null;
+  consent_authorized_at: string | null;
+}
+
+export interface OnFile {
+  id: string;
+  patient_number: string | null;
+  first_name: string;
+  last_name: string;
+  birth_date: string | null;
+}
+
+export type MasterMatch = { kind: "cn" | "name"; id: string } | { kind: "new" } | { kind: "conflict"; reason: string };
+
+/**
+ * Which record a sheet row is: the one holding its CN; else a CN-less record
+ * with the same name (and birthday, when both have one) -- a child admitted
+ * in the app before the sheet listed them. Two such records, or a namesake
+ * holding another CN, is a conflict for a person to settle, never a guess.
+ */
+export function matchMasterRow(row: MasterRow, onFile: readonly OnFile[]): MasterMatch {
+  const byCn = onFile.find((p) => p.patient_number === row.cn);
+  if (byCn) return { kind: "cn", id: byCn.id };
+  const key = (first: string, last: string) => `${normalizeName(last)}|${normalizeName(first)}`;
+  const want = key(row.firstName, row.lastName);
+  const same = onFile.filter(
+    (p) => key(p.first_name, p.last_name) === want && (!row.birthDate || !p.birth_date || p.birth_date === row.birthDate)
+  );
+  const free = same.filter((p) => p.patient_number === null);
+  if (free.length === 1) return { kind: "name", id: free[0].id };
+  if (free.length > 1) return { kind: "conflict", reason: `CN ${row.cn}: ${free.length} records without a CN share this name` };
+  const taken = same.find((p) => p.birth_date && p.birth_date === row.birthDate);
+  if (taken) return { kind: "conflict", reason: `CN ${row.cn}: the same child is on file as CN ${taken.patient_number}` };
+  return { kind: "new" };
+}
+
+/**
+ * The sheet wins on every column it fills: a blank cell keeps what the app
+ * has. Returns only what differs, so an unchanged record is not written.
+ */
+export function masterPatch(
+  want: Partial<PatientMasterFields>,
+  have: PatientMasterFields
+): Partial<PatientMasterFields> {
+  const patch: Partial<PatientMasterFields> = {};
+  for (const key of Object.keys(want) as (keyof PatientMasterFields)[]) {
+    const v = want[key];
+    if (v === null || v === undefined || v === "") continue;
+    const current = have[key];
+    // Instants come back from Postgres in UTC; the sheet's are Manila time.
+    const same =
+      typeof v === "number"
+        ? Number(current) === v
+        : key.endsWith("_at") && current
+          ? Date.parse(String(current)) === Date.parse(v)
+          : current === v;
+    if (!same) (patch as Record<string, unknown>)[key] = v;
+  }
+  return patch;
+}

@@ -113,11 +113,12 @@ export async function POST(request: Request) {
   let index: PatientIndex | null = null;
   const loadIndex = async () => {
     if (index) return index;
-    const { data, error } = await admin.schema("ops").from("patients").select("id, patient_number, first_name, last_name, birth_date, province:provinces(name), city:cities(name), carers(name)");
+    const { data, error } = await admin.schema("ops").from("patients").select("id, patient_number, case_number, first_name, last_name, birth_date, province:provinces(name), city:cities(name), carers(name)");
     if (error) throw new Error(error.message);
     type Row = {
       id: string;
-      patient_number: string;
+      patient_number: string | null;
+      case_number: string | null;
       first_name: string;
       last_name: string;
       birth_date: string | null;
@@ -128,7 +129,7 @@ export async function POST(request: Request) {
     const one = (v: { name: string } | { name: string }[] | null) => (Array.isArray(v) ? (v[0]?.name ?? null) : (v?.name ?? null));
     const refs: PatientRef[] = ((data ?? []) as Row[]).map((r) => ({
       id: r.id,
-      patientNumber: r.patient_number,
+      patientNumber: r.case_number ?? r.patient_number ?? "",
       firstName: r.first_name,
       lastName: r.last_name,
       birthDate: r.birth_date,

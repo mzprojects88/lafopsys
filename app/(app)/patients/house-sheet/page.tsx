@@ -77,7 +77,7 @@ export default function HouseSheetPage() {
             {patient.lastName}, {patient.firstName}
           </Link>
           <span className="text-[11px] text-muted-foreground">
-            #{patient.patientNumber}
+            {patient.patientNumber}
             {p.matchStatus === "suggested" ? ` · AI suggests${p.matchConfidence !== null ? ` · ${Math.round(p.matchConfidence * 100)}%` : ""}` : p.matchMethod === "loose" ? " · matched on first name" : ""}
           </span>
         </span>
@@ -89,7 +89,7 @@ export default function HouseSheetPage() {
         <span className="text-muted-foreground">Not in the system</span>
         {p.aiCandidates.length > 0 ? (
           <span className="text-[11px] text-muted-foreground">
-            Similar: {p.aiCandidates.slice(0, 3).map((c) => `${c.name} (#${c.patientNumber})`).join(", ")}
+            Similar: {p.aiCandidates.slice(0, 3).map((c) => `${c.name} (${c.patientNumber})`).join(", ")}
           </span>
         ) : null}
       </span>
@@ -305,7 +305,7 @@ function PatientPicker({ person, patients, onClose, onPick }: { person: HouseShe
                   .filter((p) => candidates.has(p.id))
                   .map((p) => (
                     <CommandItem key={`c-${p.id}`} value={`${p.lastName} ${p.firstName} ${p.patientNumber}`} onSelect={() => onPick(p)}>
-                      {p.lastName}, {p.firstName} <span className="ml-auto text-xs text-muted-foreground">#{p.patientNumber}</span>
+                      {p.lastName}, {p.firstName} <span className="ml-auto text-xs text-muted-foreground">{p.patientNumber}</span>
                     </CommandItem>
                   ))}
               </CommandGroup>
@@ -313,7 +313,7 @@ function PatientPicker({ person, patients, onClose, onPick }: { person: HouseShe
             <CommandGroup heading="All patients">
               {sorted.map((p) => (
                 <CommandItem key={p.id} value={`${p.lastName} ${p.firstName} ${p.patientNumber}`} onSelect={() => onPick(p)}>
-                  {p.lastName}, {p.firstName} <span className="ml-auto text-xs text-muted-foreground">#{p.patientNumber}</span>
+                  {p.lastName}, {p.firstName} <span className="ml-auto text-xs text-muted-foreground">{p.patientNumber}</span>
                 </CommandItem>
               ))}
             </CommandGroup>

@@ -8,7 +8,8 @@ export type MutationResult = { ok: true } | { ok: false; error: string };
 
 interface PatientRow {
   id: string;
-  patient_number: string;
+  patient_number: string | null;
+  case_number: string | null;
   first_name: string;
   last_name: string;
   birth_date: string | null;
@@ -77,7 +78,8 @@ interface AppointmentRow {
 function toPatient(row: PatientRow, carerIds: string[]): Patient {
   return {
     id: row.id,
-    patientNumber: row.patient_number,
+    patientNumber: row.case_number ?? row.patient_number ?? "",
+    sheetCn: row.patient_number ?? undefined,
     firstName: row.first_name,
     lastName: row.last_name,
     birthDate: row.birth_date ?? undefined,
@@ -111,7 +113,6 @@ function toPatient(row: PatientRow, carerIds: string[]): Patient {
 function fromPatient(p: Patient) {
   return {
     id: p.id,
-    patient_number: p.patientNumber,
     first_name: p.firstName,
     last_name: p.lastName,
     birth_date: p.birthDate ?? null,

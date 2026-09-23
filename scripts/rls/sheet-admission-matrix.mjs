@@ -192,7 +192,7 @@ async function main() {
   await scenario(ids, "a new child is admitted with the encode form, as an NCH referral", "social_worker", withSeed(),
     last({ sql: admitB() },
       { sql: `select r.source = 'house_sheet' and r.status = 'admitted'
-                 and p.patient_number = (select max(patient_number::int)::text from ops.patients where patient_number ~ '^[0-9]+$')
+                 and p.case_number like 'LFCN-%' and p.patient_number is null
                  and h.match_status = 'encoded' and h.referral_id = r.id
                  and exists (select 1 from ops.bed_nights n join ops.stays s on s.id = n.stay_id where s.patient_id = p.id and n.night = ${TODAY})
                  and exists (select 1 from ops.carers c where c.patient_id = p.id and c.name = 'Papa New') as ok

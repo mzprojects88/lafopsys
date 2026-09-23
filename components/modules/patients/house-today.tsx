@@ -118,7 +118,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                   <div className="flex min-w-0 flex-col">
                     <span className="truncate font-medium">{p.patientName}</span>
                     <span className="text-xs text-muted-foreground">
-                      {patient ? `#${patient.patientNumber} · on file` : p.matchStatus === "suggested" ? "AI suggests a record" : "Not on file"} · since {formatDate(p.runStartedOn, "MMM d")}
+                      {patient ? `${patient.patientNumber} · on file` : p.matchStatus === "suggested" ? "AI suggests a record" : "Not on file"} · since {formatDate(p.runStartedOn, "MMM d")}
                       {pickups.some((t) => t.date >= p.runStartedOn && t.manifest.some((m) => m.sheetRowId === p.id && m.boardedAt)) ? " · came on LAF HOPE" : ""}
                     </span>
                   </div>

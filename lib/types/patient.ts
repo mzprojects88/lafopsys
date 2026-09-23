@@ -8,7 +8,10 @@ export type PatientStatus =
 
 export interface Patient {
   id: string;
+  /** The LFCN case number (0057); a record from before it may show the sheet's CN until the sync numbers it. */
   patientNumber: string;
+  /** The Patients Database sheet's CN; missing until the sheet lists the child. */
+  sheetCn?: string;
   firstName: string;
   lastName: string;
   /** Missing for a small number of real records with corrupted source data -- don't fabricate one. */

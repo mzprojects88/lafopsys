@@ -54,8 +54,9 @@ async function folderContext(supabase: Supabase, recordType: FileRecordType, rec
       return data ? { ok: true, ctx: { kind: "compliance_item", agency: data.agency, periodKey: subKey } } : { ok: false, error: "No such obligation." };
     }
     case "patient": {
-      const { data } = await supabase.schema("ops").from("patients").select("patient_number, first_name, last_name").eq("id", recordId).maybeSingle();
-      return data ? { ok: true, ctx: { kind: "patient", patientNumber: data.patient_number, firstName: data.first_name, lastName: data.last_name } } : { ok: false, error: "No such patient." };
+      const { data } = await supabase.schema("ops").from("patients").select("patient_number, case_number, first_name, last_name").eq("id", recordId).maybeSingle();
+      return data ? { ok: true, ctx: { kind: "patient", // Existing folders are named by the CN; a child without one uses the LFCN.
+        patientNumber: data.patient_number ?? data.case_number, firstName: data.first_name, lastName: data.last_name } } : { ok: false, error: "No such patient." };
     }
     case "donor": {
       const { data } = await supabase.schema("ops").from("donors").select("name").eq("id", recordId).maybeSingle();

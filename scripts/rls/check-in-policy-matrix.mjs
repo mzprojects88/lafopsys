@@ -178,9 +178,9 @@ async function main() {
   await scenario(ids, "no session cannot check in", null, withSeed(), q(ciPatient(P1)), denied);
 
   // --- referral path -----------------------------------------------------------
-  await scenario(ids, "an approved referral becomes the next-numbered patient", "social_worker", withSeed(),
+  await scenario(ids, "an approved referral becomes a patient with an LFCN (the CN is the sheet's, 0057)", "social_worker", withSeed(),
     last({ sql: ciReferral() },
-      { sql: `select (p.patient_number = (select (max(patient_number::int))::text from ops.patients where patient_number ~ '^[0-9]+$'))
+      { sql: `select (p.case_number like 'LFCN-%' and p.patient_number is null)
                  and r.status = 'admitted' and p.status = 'ongoing'
                  and exists (select 1 from ops.patient_diagnoses d where d.patient_id = p.id)
                  and exists (select 1 from ops.carers c where c.patient_id = p.id and c.name = 'Ate Kid' and c.relationship = 'Aunt')
