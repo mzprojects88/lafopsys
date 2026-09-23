@@ -227,6 +227,11 @@ describe("the copy sheet", () => {
     assert.equal(at(row, "AB"), "10 to 15");
     assert.equal(at(row, "DE"), "6/27/2024");
   });
+  it("where the app holds nothing, the original's text stays", () => {
+    const row = copyRow({ ...record, province: null, region: null }, "2026-09-23");
+    assert.equal(at(row, "R"), sheetRow.R);
+    assert.equal(at(row, "P/C"), sheetRow["P/C"]);
+  });
   it("CN order, app-only children last", () => {
     const list = [{ cn: null, caseNumber: "LFCN-2026-0190" }, { cn: "10" }, { cn: "2" }].sort(copyOrder);
     assert.deepEqual(list.map((r) => r.cn ?? r.caseNumber), ["2", "10", "LFCN-2026-0190"]);

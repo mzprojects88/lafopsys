@@ -556,10 +556,11 @@ export function copyRow(r: CopyRecord, today: string): (string | null)[] {
   const raw = r.sheetRow ?? {};
   const eq = (a: string | null | undefined, b: string | null | undefined) => (a ?? null) === (b ?? null);
   const upper = (v: string | undefined) => clean(v)?.toUpperCase() ?? null;
-  // The sheet's text when it still means the app's value, else the app's value written the sheet's way.
+  // The sheet's text when it still means the app's value, or when the app holds nothing there to
+  // contradict it (a region with no province, say); else the app's value written the sheet's way.
   const pick = (col: string, same: (cell: string) => boolean, app: string | null) => {
     const cell = raw[col];
-    return cell !== undefined && same(cell) ? cell : app;
+    return cell !== undefined && (app === null || same(cell)) ? cell : app;
   };
   const name = `${r.lastName}, ${r.firstName}`.replace(/,\s*$/, "");
   const bracket = r.birthDate ? sheetAgeBracket(ageOn(r.birthDate, today)) : null;
