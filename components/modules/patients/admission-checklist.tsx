@@ -24,6 +24,7 @@ export function AdmissionChecklist({ patientId, canEdit, stay, firstStay }: { pa
   const { topics, checks, addTopic, removeTopic, setReturneeToo, toggleCheck } = useOrientationTopics(stay?.id, firstStay);
   const covered = topics.filter((t) => checks.some((c) => c.topicId === t.id)).length;
   const [newTopic, setNewTopic] = React.useState("");
+  const [newTopicEn, setNewTopicEn] = React.useState("");
   const fileInputs = React.useRef<Record<string, HTMLInputElement | null>>({});
 
   async function handleFileChange(documentType: (typeof DOCUMENT_TYPES)[number], file: File | undefined) {
@@ -56,12 +57,13 @@ export function AdmissionChecklist({ patientId, canEdit, stay, firstStay }: { pa
 
   async function handleAddTopic() {
     if (!newTopic.trim()) return;
-    const result = await addTopic(newTopic.trim());
+    const result = await addTopic(newTopic.trim(), newTopicEn);
     if (!result.ok) {
       toast.error(`Couldn't add topic: ${result.error}`);
       return;
     }
     setNewTopic("");
+    setNewTopicEn("");
   }
 
   return (
@@ -157,9 +159,12 @@ export function AdmissionChecklist({ patientId, canEdit, stay, firstStay }: { pa
               const isCovered = checks.some((c) => c.topicId === t.id);
               return (
                 <div key={t.id} className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm">
-                  <label className="flex flex-1 items-center gap-2">
-                    <Checkbox checked={isCovered} disabled={!canEdit || !stay} onCheckedChange={(v) => toggleCheck(t.id, !!v)} />
-                    <span>{t.topic}</span>
+                  <label className="flex flex-1 items-start gap-2">
+                    <Checkbox className="mt-0.5" checked={isCovered} disabled={!canEdit || !stay} onCheckedChange={(v) => toggleCheck(t.id, !!v)} />
+                    <span className="flex flex-col">
+                      <span>{t.topic}</span>
+                      {t.topicEn && <span className="text-xs text-muted-foreground">{t.topicEn}</span>}
+                    </span>
                   </label>
                   {canEdit && (
                     <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -184,11 +189,17 @@ export function AdmissionChecklist({ patientId, canEdit, stay, firstStay }: { pa
           </div>
         )}
         {canEdit && (
-          <div className="mt-2 flex gap-2">
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
             <Input
-              placeholder="Add a topic (e.g. house rules, meal schedule)…"
+              placeholder="Add a rule, as the house says it…"
               value={newTopic}
               onChange={(e) => setNewTopic(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAddTopic()}
+            />
+            <Input
+              placeholder="In English (optional)"
+              value={newTopicEn}
+              onChange={(e) => setNewTopicEn(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleAddTopic()}
             />
             <Button variant="outline" onClick={handleAddTopic}>

@@ -9,6 +9,7 @@ export type MutationResult = { ok: true } | { ok: false; error: string };
 interface OrientationTopicRow {
   id: string;
   topic: string;
+  topic_en: string | null;
   sort_order: number;
   returnee_too: boolean;
 }
@@ -21,7 +22,7 @@ interface CheckRow {
 }
 
 function toTopic(row: OrientationTopicRow): OrientationTopic {
-  return { id: row.id, topic: row.topic, sortOrder: row.sort_order, returneeToo: row.returnee_too };
+  return { id: row.id, topic: row.topic, topicEn: row.topic_en ?? undefined, sortOrder: row.sort_order, returneeToo: row.returnee_too };
 }
 
 /** The org's own arrival-day topics (`ops.orientation_topics`, empty by design
@@ -85,9 +86,12 @@ export function useOrientationTopics(stayId?: string, firstStay = true) {
   const { data: checks, loading: checksLoading } = useCollection(checksStore);
   const topics = firstStay ? allTopics : allTopics.filter((t) => t.returneeToo);
 
-  async function addTopic(topic: string): Promise<MutationResult> {
+  async function addTopic(topic: string, topicEn?: string): Promise<MutationResult> {
     const sortOrder = allTopics.length > 0 ? Math.max(...allTopics.map((t) => t.sortOrder)) + 1 : 0;
-    const { error } = await createClient().schema("ops").from("orientation_topics").insert({ topic, sort_order: sortOrder });
+    const { error } = await createClient()
+      .schema("ops")
+      .from("orientation_topics")
+      .insert({ topic, topic_en: topicEn?.trim() || null, sort_order: sortOrder });
     if (error) return { ok: false, error: error.message };
     await orientationTopicsStore.refetch();
     return { ok: true };

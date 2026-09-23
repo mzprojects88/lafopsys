@@ -171,6 +171,8 @@ export interface PatientDocument {
 export interface OrientationTopic {
   id: string;
   topic: string;
+  /** The same rule in English, beside the house's own Filipino text (0056). */
+  topicEn?: string;
   sortOrder: number;
   /** Covered again with a returning family: the shorter list for a second stay (0054). */
   returneeToo: boolean;
