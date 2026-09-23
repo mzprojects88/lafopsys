@@ -140,6 +140,13 @@ export function AdmissionChecklist({ patientId, canEdit, stay, firstStay }: { pa
               : "(ticks start when the family is checked in)"}
           </span>
         </h4>
+        <p className="mb-2 text-xs text-muted-foreground">
+          The list is the house&apos;s own &ldquo;Mga Paalala&rdquo; —{" "}
+          <a href="/house-rules/mga-paalala.jpg" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+            the printed sheet
+          </a>{" "}
+          as it hangs in the house.
+        </p>
         {topics.length === 0 ? (
           <p className="text-xs italic text-muted-foreground">
             No orientation topics defined yet. Add the real topics your team covers with families on arrival day below.

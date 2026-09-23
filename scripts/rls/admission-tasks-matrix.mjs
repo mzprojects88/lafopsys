@@ -186,6 +186,8 @@ async function main() {
     q(`update ops.orientation_topics set returnee_too = true where id = '${T_FIRST}' returning returnee_too`), value("returnee_too", true));
   await scenario(ids, "a driver cannot change the topic list", "driver", withSeed(),
     q(`update ops.orientation_topics set topic = 'Nope' where id = '${T_ALL}'`), rows(0));
+  await scenario(ids, "the house's own Mga Paalala are the starting list", "social_worker", null,
+    q("select count(*)::int as n from ops.orientation_topics where topic like '6:00 AM ang oras%' or topic like 'Magdasal muna%'"), value("n", 2));
   await scenario(ids, "the old per-patient checklist is gone", "admin", withSeed(),
     q("select 1 from ops.patient_orientation_checks"), (r) => !r.ok && r.code === "42P01");
 
