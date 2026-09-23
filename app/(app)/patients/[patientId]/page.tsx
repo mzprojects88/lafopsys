@@ -10,7 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { cities, provinces, diagnoses, treatmentPhases } from "@/lib/mock-data";
+import { cities } from "@/lib/mock-data";
+import { useDiagnosesReferenceData } from "@/lib/hooks/use-diagnoses-reference-collection";
+import { useReferenceTableData } from "@/lib/hooks/use-reference-table-collection";
+import { ILLNESS_CODES, PRIORITIES } from "@/lib/utils/master-sheet";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { computeAge } from "@/lib/utils/age";
 import { formatDate } from "@/lib/utils/date";
@@ -33,7 +36,7 @@ import { arrivalLabel } from "@/lib/utils/arrival";
 import { isFirstStay } from "@/lib/utils/admission-tasks";
 import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
 import { isActiveStay, unitForBedPosition } from "@/lib/utils/beds";
-import type { Stay } from "@/lib/types/patient";
+import type { Patient, Stay } from "@/lib/types/patient";
 
 export default function PatientDetailPage({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = use(params);
@@ -50,6 +53,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   const [arrivalTarget, setArrivalTarget] = useState<Stay | null>(null);
   const { rides } = useArrivalRides();
   const [checkingIn, setCheckingIn] = useState(false);
+  const { rows: diagnoses } = useDiagnosesReferenceData();
+  const { rows: provinces } = useReferenceTableData("provinces", "prov", "region");
+  const { rows: treatmentPhases } = useReferenceTableData("treatment_phases", "phase");
 
   if (!patient) {
     if (loading) return null;
@@ -90,6 +96,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
           { label: "Diagnosis", value: canSeeClinical ? diagnosisLabel || "—" : <Restricted /> },
           { label: "Treatment Phase", value: canSeeClinical ? phaseLabel ?? "—" : <Restricted /> },
           { label: "Location", value: canSeeClinical ? locationLabel : <Restricted /> },
+          { label: "Type of Illness", value: canSeeClinical ? (patient.illnessCode ? ILLNESS_CODES[patient.illnessCode] : "—") : <Restricted /> },
+          { label: "Priority", value: patient.priority ? `${patient.priority} · ${PRIORITIES[patient.priority]}` : "—" },
           { label: "Photo Consent", value: photoConsentLabel },
         ]}
       />
@@ -128,6 +136,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
               value={patient.isolationRequired === undefined ? "Unknown" : patient.isolationRequired ? "Yes (unenforced)" : "No"}
             />
             <InfoTile label="Non-Pedia" value={patient.status === "non_pedia" ? "Yes" : "No"} />
+            {patient.distanceKm !== undefined && canSeeClinical && <InfoTile label="Distance from Home" value={`${patient.distanceKm} km`} />}
+            {patient.legacyCode && <InfoTile label="Old Code" value={patient.legacyCode} />}
             {patient.religion && <InfoTile label="Religion" value={patient.religion} />}
             {patient.lengthOfStay && <InfoTile label="Length of Stay" value={patient.lengthOfStay} />}
             {patient.sectorCaseCategory && canSeeClinical && (
@@ -143,6 +153,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
               <InfoTile label="Death Info" value={patient.deathInfo} />
             )}
           </div>
+          {canSeeClinical && <IntakeDetails patient={patient} />}
         </TabsContent>
 
         <TabsContent value="stays" className="flex flex-col gap-3 pt-4">
@@ -304,6 +315,51 @@ function InfoTile({ label, value }: { label: string; value: string }) {
       <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</span>
       <span className="text-sm font-medium">{value}</span>
     </div>
+  );
+}
+
+/** The intake form's answers (the sheet's AIS tab, 0057): who referred, the family's situation, the documents. */
+function IntakeDetails({ patient }: { patient: Patient }) {
+  const answers: [string, string | undefined][] = [
+    ["Consent (“I authorize”)", patient.consentAuthorizedAt ? `Given ${formatDate(patient.consentAuthorizedAt)}` : undefined],
+    ["NCH Medical Social Worker", patient.mssName],
+    ["Attending Physician", patient.attendingPhysician],
+    ["Parent's Education", patient.parentEducation],
+    ["Parent's Occupation", patient.parentOccupation],
+    ["Monthly Income", patient.householdIncome],
+    ["Employment Status", patient.parentEmployment],
+    ["Type of Housing", patient.housingType],
+  ];
+  const shown = answers.filter((a): a is [string, string] => !!a[1]);
+  const links = [
+    ["Photo", patient.intakeLinks?.photo],
+    ["Parent's ID", patient.intakeLinks?.parentId],
+    ["Medical certificate", patient.intakeLinks?.medicalCertificate],
+  ].filter((l): l is [string, string] => !!l[1]);
+  return (
+    <section className="mt-6 flex flex-col gap-3">
+      <h3 className="text-sm font-semibold">Intake form</h3>
+      {shown.length === 0 && links.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No intake form response matched this child (by name and birthday).</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {shown.map(([label, value]) => (
+              <InfoTile key={label} label={label} value={value} />
+            ))}
+          </div>
+          {links.length > 0 && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              {links.map(([label, href]) => (
+                <a key={label} href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-4 hover:underline">
+                  {label}
+                </a>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 

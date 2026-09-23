@@ -4,7 +4,7 @@ import Link from "next/link";
 import { differenceInCalendarDays, parseISO } from "date-fns";
 import { Lock, MapPinOff, UserRound, Users } from "lucide-react";
 import { StatusBadge } from "@/components/patterns/status-badge";
-import { diagnoses } from "@/lib/mock-data";
+import { useDiagnosesReferenceData } from "@/lib/hooks/use-diagnoses-reference-collection";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { computeAge } from "@/lib/utils/age";
 import { formatDate, todayIso } from "@/lib/utils/date";
@@ -21,6 +21,7 @@ interface BedSummaryProps {
 
 /** What a bed says about itself -- the hover card and the detail panel share it. */
 export function BedSummary({ bed, canSeeClinical, linkPatients = false }: BedSummaryProps) {
+  const { rows: diagnoses } = useDiagnosesReferenceData();
   const { staff } = useStaffRoster();
   const lockedBy = bed.statusChangedBy ? staff.find((s) => s.id === bed.statusChangedBy) : undefined;
   const today = todayIso();

@@ -19,6 +19,7 @@ import { useAllOrientationChecks } from "@/lib/hooks/use-orientation-topics";
 import { orientationProgress } from "@/lib/utils/admission-tasks";
 import { assignableBeds, isActiveStay, unitForBedPosition } from "@/lib/utils/beds";
 import { formatDate, todayIso } from "@/lib/utils/date";
+import { PRIORITIES } from "@/lib/utils/master-sheet";
 import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
 import type { Patient, Stay } from "@/lib/types/patient";
 
@@ -55,10 +56,14 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const onSheet = people.filter((p) => p.offSheetAt === null && p.matchStatus !== "dismissed");
   const onSheetPatientIds = new Set(onSheet.map(settledPatientId).filter((id): id is string => id !== null));
 
-  const arrivals = onSheet.filter((p) => {
-    const id = settledPatientId(p);
-    return id === null || !stayByPatient.has(id);
-  });
+  // Highest priority first (the sheet's P: A chemo ... D follow-up); no priority last.
+  const priorityOf = (p: HouseSheetPerson) => patientById.get(settledPatientId(p) ?? "")?.priority ?? "Z";
+  const arrivals = onSheet
+    .filter((p) => {
+      const id = settledPatientId(p);
+      return id === null || !stayByPatient.has(id);
+    })
+    .sort((a, b) => priorityOf(a).localeCompare(priorityOf(b)));
   // In the house but gone from the newest tab: NCH says they left.
   const left = activeStays.flatMap((s) => {
     if (onSheetPatientIds.has(s.patientId)) return [];
@@ -118,7 +123,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                   <div className="flex min-w-0 flex-col">
                     <span className="truncate font-medium">{p.patientName}</span>
                     <span className="text-xs text-muted-foreground">
-                      {patient ? `${patient.patientNumber} · on file` : p.matchStatus === "suggested" ? "AI suggests a record" : "Not on file"} · since {formatDate(p.runStartedOn, "MMM d")}
+                      {patient ? `${patient.patientNumber}${patient.priority ? ` · Priority ${patient.priority}, ${PRIORITIES[patient.priority]}` : ""} · on file` : p.matchStatus === "suggested" ? "AI suggests a record" : "Not on file"} · since {formatDate(p.runStartedOn, "MMM d")}
                       {pickups.some((t) => t.date >= p.runStartedOn && t.manifest.some((m) => m.sheetRowId === p.id && m.boardedAt)) ? " · came on LAF HOPE" : ""}
                     </span>
                   </div>

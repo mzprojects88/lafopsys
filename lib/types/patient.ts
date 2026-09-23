@@ -52,6 +52,25 @@ export interface Patient {
   deathInfo?: string;
   /** Raw source text (e.g. "6 months") — not normalized to a day count, source format varies. */
   lengthOfStay?: string;
+
+  // From the Patients Database sheet and its intake form (0057), kept by the sync.
+  /** Sheet column I: C, T, B, H, O or FD (lib/utils/master-sheet.ts ILLNESS_CODES). */
+  illnessCode?: "C" | "T" | "B" | "H" | "O" | "FD";
+  /** Sheet column P: A chemo, B blood transfusion, C post procedure, D follow-up. */
+  priority?: "A" | "B" | "C" | "D";
+  /** The sheet's old CODE, e.g. LAF-2024-001-C. */
+  legacyCode?: string;
+  distanceKm?: number;
+  mssName?: string;
+  attendingPhysician?: string;
+  parentEducation?: string;
+  parentOccupation?: string;
+  householdIncome?: string;
+  parentEmployment?: string;
+  housingType?: string;
+  /** When the intake form's "I authorize" was submitted. */
+  consentAuthorizedAt?: string;
+  intakeLinks?: { photo?: string; parentId?: string; medicalCertificate?: string };
 }
 
 export interface Carer {

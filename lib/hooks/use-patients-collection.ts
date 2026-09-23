@@ -36,6 +36,19 @@ interface PatientRow {
   services_received: string | null;
   death_info: string | null;
   length_of_stay: string | null;
+  illness_code: Patient["illnessCode"] | null;
+  priority: Patient["priority"] | null;
+  legacy_code: string | null;
+  distance_km: number | null;
+  mss_name: string | null;
+  attending_physician: string | null;
+  parent_education: string | null;
+  parent_occupation: string | null;
+  household_income: string | null;
+  parent_employment: string | null;
+  housing_type: string | null;
+  consent_authorized_at: string | null;
+  intake_links: Patient["intakeLinks"] | null;
 }
 
 interface CarerRow {
@@ -107,6 +120,19 @@ function toPatient(row: PatientRow, carerIds: string[]): Patient {
     servicesReceived: row.services_received ?? undefined,
     deathInfo: row.death_info ?? undefined,
     lengthOfStay: row.length_of_stay ?? undefined,
+    illnessCode: row.illness_code ?? undefined,
+    priority: row.priority ?? undefined,
+    legacyCode: row.legacy_code ?? undefined,
+    distanceKm: row.distance_km ?? undefined,
+    mssName: row.mss_name ?? undefined,
+    attendingPhysician: row.attending_physician ?? undefined,
+    parentEducation: row.parent_education ?? undefined,
+    parentOccupation: row.parent_occupation ?? undefined,
+    householdIncome: row.household_income ?? undefined,
+    parentEmployment: row.parent_employment ?? undefined,
+    housingType: row.housing_type ?? undefined,
+    consentAuthorizedAt: row.consent_authorized_at ?? undefined,
+    intakeLinks: row.intake_links ?? undefined,
   };
 }
 

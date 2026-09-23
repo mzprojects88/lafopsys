@@ -18,6 +18,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { HouseSheetStatus } from "@/components/modules/patients/house-sheet-status";
+import { PRIORITIES } from "@/lib/utils/master-sheet";
 import { HouseToday } from "@/components/modules/patients/house-today";
 import { PatientsSubNav } from "@/components/modules/patients/patients-subnav";
 import { confirmHouseSheetMatch, dismissHouseSheetRow, reopenHouseSheetRow } from "@/app/(app)/patients/house-sheet/actions";
@@ -78,6 +79,7 @@ export default function HouseSheetPage() {
           </Link>
           <span className="text-[11px] text-muted-foreground">
             {patient.patientNumber}
+            {patient.priority ? ` · Priority ${patient.priority}, ${PRIORITIES[patient.priority]}` : ""}
             {p.matchStatus === "suggested" ? ` · AI suggests${p.matchConfidence !== null ? ` · ${Math.round(p.matchConfidence * 100)}%` : ""}` : p.matchMethod === "loose" ? " · matched on first name" : ""}
           </span>
         </span>
