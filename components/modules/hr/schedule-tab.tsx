@@ -12,6 +12,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { useWorkScheduleHistory, workSchedulesFamily } from "@/lib/hooks/use-employee-detail-collections";
+import { allSchedulesStore } from "@/lib/hooks/use-roster";
 import { formatDate } from "@/lib/utils/date";
 import { addWorkSchedule, type WorkScheduleInput } from "@/app/(app)/hr/actions";
 import { WEEKDAYS, type Employee, type SchedulePattern, type Weekday, type WorkSchedule } from "@/lib/types/hr";
@@ -90,13 +91,14 @@ export function ScheduleTab({ employee, manages }: { employee: Employee; manages
   );
 }
 
-function ScheduleDialog({ employee, current }: { employee: Employee; current: WorkSchedule | null }) {
+/** Also opened from Staff & Time > Roster (DTR plan phase 3), where HR is hidden. */
+export function ScheduleDialog({ employee, current }: { employee: Pick<Employee, "id">; current: Pick<WorkSchedule, "pattern" | "breakMinutes" | "hoursPerDay"> | null }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [form, setForm] = React.useState<WorkScheduleInput>(() => blank(current));
 
-  function blank(from: WorkSchedule | null): WorkScheduleInput {
+  function blank(from: Pick<WorkSchedule, "pattern" | "breakMinutes" | "hoursPerDay"> | null): WorkScheduleInput {
     const pattern = { ...(from?.pattern ?? DEFAULT_PATTERN) };
     return { effectiveFrom: "", pattern, breakMinutes: from?.breakMinutes ?? 60, hoursPerDay: from?.hoursPerDay ?? 8, reason: "" };
   }
@@ -113,7 +115,7 @@ function ScheduleDialog({ employee, current }: { employee: Employee; current: Wo
       toast.error(result.error);
       return;
     }
-    await workSchedulesFamily.get(employee.id).refetch();
+    await Promise.all([workSchedulesFamily.get(employee.id).refetch(), allSchedulesStore.refetch()]);
     toast.success("Schedule recorded.");
     setOpen(false);
     router.refresh();

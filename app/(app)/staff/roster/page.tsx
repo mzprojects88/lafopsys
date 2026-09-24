@@ -1,12 +1,11 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { isHiddenPath } from "@/lib/rbac/hidden";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { RosterCalendar, type CalendarEvent } from "@/components/patterns/roster-calendar";
+import { WeeklySchedulesCard } from "@/components/modules/staff/weekly-schedules-card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,8 +17,6 @@ import { scheduleOverridesStore } from "@/lib/hooks/use-pay-periods-collection";
 import { useRole } from "@/lib/rbac/use-role";
 import { canManageHr } from "@/lib/rbac/roles";
 import { formatDate } from "@/lib/utils/date";
-import { useNow } from "@/lib/hooks/use-now";
-import { dayKey } from "@/lib/utils/dtr";
 import { deleteScheduleOverride, saveScheduleOverride } from "@/app/(app)/hr/actions";
 
 /**
@@ -32,7 +29,6 @@ export default function RosterPage() {
   const { role, isHr } = useRole();
   const manages = canManageHr(role, isHr);
   const { people, entryFor, onDay, overrides, loading } = useRoster();
-  const today = dayKey(useNow());
   const [dialog, setDialog] = React.useState<{ day: string; person: RosterPerson | null } | null>(null);
 
   const eventsFor = React.useCallback(
@@ -46,8 +42,6 @@ export default function RosterPage() {
       })),
     [onDay]
   );
-
-  const unscheduled = people.filter((p) => !entryFor(p, today).hasSchedule);
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -71,15 +65,7 @@ export default function RosterPage() {
           { label: "Overnight", tone: "info" },
         ]}
       />
-      {manages && unscheduled.length > 0 && !isHiddenPath("/hr") ? (
-        <p className="text-xs text-muted-foreground">
-          No schedule yet: {unscheduled.map((p) => `${p.firstName} ${p.lastName}`).join(", ")} — set one on{" "}
-          <Link href="/hr/employees" className="underline">
-            their employee page
-          </Link>
-          .
-        </p>
-      ) : null}
+      {manages ? <WeeklySchedulesCard /> : null}
       {dialog ? (
         <OverrideDialog
           key={`${dialog.day}:${dialog.person?.employeeId ?? ""}`}
