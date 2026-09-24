@@ -4,8 +4,9 @@
  * (Master Plan step 3. It never runs in, or writes to, the original sheet.)
  *
  * SETUP (once, by whoever owns the copy):
- *   1. In the copy: Extensions > Apps Script. Delete what is there, paste
- *      this whole file, and save (the disk icon).
+ *   1. In the copy: Extensions > Apps Script -- or, from a phone, open
+ *      script.google.com in the browser's desktop mode and make a New
+ *      project. Delete what is there, paste this whole file, and save.
  *   2. Project Settings (gear icon) > Script Properties > Add script property:
  *        Property: SHEET_EXPORT_SECRET
  *        Value:    the key you were given (never paste it anywhere else)
@@ -26,6 +27,8 @@ var EXPORT_URL = "https://lafopsys.vercel.app/api/patients/sheet-export";
 var TAB = "Patients Database";
 /** The original. This script must never write to it. */
 var ORIGINAL_ID = "16IllEPWoz0oEF0polLIH3BrPQNkNYdcg04RHpyh072s";
+/** LAF's copy: used when the script is its own project (script.google.com, e.g. set up from a phone). */
+var COPY_ID = "1dNMIw-oOx_tlkJnk5Gmv6GNXPl732pCid8kPl-fpmIM";
 var DATE_COLUMNS = ["DE", "BD"];
 var TEXT_COLUMNS = ["CP", "LFCN"];
 
@@ -38,7 +41,8 @@ function setup() {
 }
 
 function syncCopy() {
-  var book = SpreadsheetApp.getActiveSpreadsheet();
+  // Inside the copy (Extensions > Apps Script) it is the active sheet; as its own project, the copy by id.
+  var book = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(COPY_ID);
   if (book.getId() === ORIGINAL_ID) throw new Error("This is the ORIGINAL Patients Database. The script only runs in LAF's copy.");
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) return; // the previous run is still writing
