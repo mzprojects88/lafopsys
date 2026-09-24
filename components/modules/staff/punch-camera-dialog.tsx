@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button";
 import { captureLocation, useClockStatus, type CapturedLocation } from "@/lib/hooks/use-clock-status";
 import { PHOTO_MAX_SIDE, PHOTO_QUALITY } from "@/lib/utils/punch-photo";
+import { formatDistance } from "@/lib/utils/site";
 
 type CameraState = "starting" | "live" | "denied" | "unavailable";
 
@@ -100,7 +101,17 @@ export function PunchCameraDialog({
       toast.error(result && result.ok === false ? result.error : "Couldn't record the punch.");
       return;
     }
-    toast.success(`${isIn ? "Clocked in" : "Clocked out"} at ${nowLabel()}`);
+    // Where it was recorded (0063): the person sees what the DTR will say.
+    const { siteStatus, siteDistanceM, addressLabel } = result.place;
+    const where =
+      siteStatus === "on_site"
+        ? " at LAF House"
+        : siteStatus === "off_site"
+          ? ` off-site (${formatDistance(siteDistanceM ?? 0)} from LAF House)${addressLabel ? `: ${addressLabel}` : ""}`
+          : addressLabel
+            ? `: ${addressLabel}`
+            : " (no location)";
+    toast.success(`${isIn ? "Clocked in" : "Clocked out"} at ${nowLabel()}${where}`);
     onOpenChange(false);
   }
 

@@ -1,4 +1,4 @@
-// Proves 0060 (DTR punch photos) against the live database, one scenario per
+// Proves 0060 (DTR punch photos) and 0063 (on-site check) against the live database, one scenario per
 // transaction, every transaction rolled back: staff see their own punches
 // (with location and photo_status) but never a photo row; admins and HR see
 // every photo row; finance, though it reads all punches, sees no photo.
@@ -162,6 +162,16 @@ async function main() {
     q(`delete from ops.time_punch_photos where punch_id = '${MINE}'`), denied);
   await scenario(ids, "photo status is one of the five", "social_worker", {},
     q(`insert into ops.time_punches (staff_id, punch_type, source, photo_status) values ('${ids.social_worker}', 'clock_in', 'device', 'selfie')`), checkFailed);
+
+  // ---- 0063: on-site check ----
+  await scenario(ids, "staff cannot move the LAF House pin", "social_worker", {},
+    q("update shared.app_settings set laf_house_latitude = 1, laf_house_longitude = 1 where id returning id"), (r) => (r.ok && r.rows === 0) || (!r.ok && r.code === "42501"));
+  await scenario(ids, "admins set the pin", "admin", {},
+    q("update shared.app_settings set laf_house_latitude = 14.627712, laf_house_longitude = 121.026051, laf_house_radius_m = 20 where id returning id"), rows(1));
+  await scenario(ids, "a pin needs both coordinates", "admin", {},
+    q("update shared.app_settings set laf_house_latitude = 14.6, laf_house_longitude = null where id"), checkFailed);
+  await scenario(ids, "site status is one of the three", "social_worker", {},
+    q(`insert into ops.time_punches (staff_id, punch_type, source, site_status) values ('${ids.social_worker}', 'clock_in', 'device', 'home')`), checkFailed);
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();

@@ -3,7 +3,7 @@
 import { useRole } from "@/context/role-provider";
 import { invalidateTables, useCollection } from "@/lib/data/collection-store";
 import { staffRosterStore, type StaffRosterEntry } from "@/lib/hooks/use-staff-roster";
-import { timeEntriesStore, type MutationResult } from "@/lib/hooks/use-time-entries-collection";
+import { timeEntriesStore } from "@/lib/hooks/use-time-entries-collection";
 import { appSettingsStore } from "@/lib/hooks/use-app-settings";
 import { INVENTORY_ROLES } from "@/lib/rbac/roles";
 import { todayIso } from "@/lib/utils/date";
@@ -49,6 +49,15 @@ export function captureLocation(): Promise<CapturedLocation> {
     );
   });
 }
+
+/** Where a punch was recorded (0063). */
+export interface PunchPlace {
+  siteStatus: "on_site" | "off_site" | "unknown";
+  siteDistanceM: number | null;
+  addressLabel: string | null;
+}
+
+export type PunchResult = { ok: true; place: PunchPlace } | { ok: false; error: string };
 
 /** What the camera dialog hands a punch (0060): the photo, or why there is none, and the location it started. */
 export interface PunchCapture {
@@ -106,7 +115,7 @@ export function useClockStatus() {
       ? false
       : !INVENTORY_ROLES.includes(me.role) || settings.requireClockInForInventoryRoles;
 
-  async function punch(punchType: "clock_in" | "clock_out", capture: PunchCapture = {}): Promise<MutationResult | undefined> {
+  async function punch(punchType: "clock_in" | "clock_out", capture: PunchCapture = {}): Promise<PunchResult | undefined> {
     if (!me) return undefined;
     // The camera dialog starts the location while the person lines up the photo.
     const location = await (capture.location ?? captureLocation());
@@ -123,7 +132,7 @@ export function useClockStatus() {
     }
 
     const result = (await response.json().catch(() => null)) as
-      | { ok: true; locationStatus: PunchLocationStatus; addressLabel: string | null }
+      | { ok: true; locationStatus: PunchLocationStatus; addressLabel: string | null; siteStatus: "on_site" | "off_site" | "unknown"; siteDistanceM: number | null }
       | { ok: false; error: string }
       | null;
 
@@ -135,14 +144,15 @@ export function useClockStatus() {
     // releases the gate everywhere at once. The DTR page reads time_punches.
     await timeEntriesStore.refetch();
     void invalidateTables([{ schema: "ops", table: "time_punches" }]);
-    return { ok: true, id: punchType };
+    // Where it was recorded, for the confirmation (0063): LAF House, or the address the phone was at.
+    return { ok: true, place: { siteStatus: result.siteStatus, siteDistanceM: result.siteDistanceM, addressLabel: result.addressLabel } };
   }
 
-  async function clockIn(capture?: PunchCapture): Promise<MutationResult | undefined> {
+  async function clockIn(capture?: PunchCapture): Promise<PunchResult | undefined> {
     return punch("clock_in", capture);
   }
 
-  async function clockOut(capture?: PunchCapture): Promise<MutationResult | undefined> {
+  async function clockOut(capture?: PunchCapture): Promise<PunchResult | undefined> {
     if (!openEntry) return undefined;
     return punch("clock_out", capture);
   }

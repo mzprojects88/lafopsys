@@ -17,6 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PunchPhotoCell } from "@/components/modules/staff/punch-photo-cell";
+import { PrintDtrButton } from "@/components/modules/staff/print-dtr-button";
+import { formatDistance } from "@/lib/utils/site";
 import { CorrectionRequestsPanel } from "@/components/modules/staff/correction-requests-panel";
 import { useCorrectionRequests } from "@/lib/hooks/use-correction-requests";
 import { useRole } from "@/lib/rbac/use-role";
@@ -38,6 +40,8 @@ const LOCATION_STATUS_LABELS: Record<PunchLocationStatus, string> = {
 
 interface PunchRow extends TimePunch {
   staffName: string;
+  /** Drivers work away from the house; their off-site punches are not a warning (DTR plan decision). */
+  isDriver: boolean;
   dayKey: string;
   dateLabel: string;
   timeLabel: string;
@@ -80,10 +84,29 @@ function mapsHref(punch: TimePunch) {
   return `https://www.openstreetmap.org/?mlat=${punch.latitude}&mlon=${punch.longitude}#map=18/${punch.latitude}/${punch.longitude}`;
 }
 
-function LocationCell({ punch }: { punch: TimePunch }) {
+/** On-site / off-site against the LAF House pin, as judged when punched (0063). */
+function SiteBadge({ punch, isDriver }: { punch: TimePunch; isDriver: boolean }) {
+  if (punch.siteStatus === "on_site") {
+    return <Badge className="w-fit bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-400">LAF House</Badge>;
+  }
+  if (punch.siteStatus !== "off_site") return null;
+  const tone = isDriver
+    ? "bg-slate-100 text-slate-600 hover:bg-slate-100 dark:bg-slate-500/15 dark:text-slate-400"
+    : "bg-amber-50 text-amber-700 hover:bg-amber-50 dark:bg-amber-500/15 dark:text-amber-400";
+  return (
+    <Badge className={`w-fit ${tone}`}>
+      Off-site{punch.siteDistanceM !== undefined ? ` · ${formatDistance(punch.siteDistanceM)} away` : ""}
+    </Badge>
+  );
+}
+
+function LocationCell({ punch, isDriver = false }: { punch: TimePunch; isDriver?: boolean }) {
+  // At the house the badge says it all; anywhere else, the address the phone was at.
+  if (punch.siteStatus === "on_site") return <SiteBadge punch={punch} isDriver={isDriver} />;
   if (punch.locationStatus === "captured" && punch.addressLabel) {
     return (
       <div className="flex min-w-0 flex-col gap-0.5">
+        <SiteBadge punch={punch} isDriver={isDriver} />
         <span className="break-words">{punch.addressLabel}</span>
         <a
           href={mapsHref(punch)}
@@ -215,7 +238,7 @@ const punchColumnsFor = (canSeePhotos: boolean): ColumnDef<PunchRow>[] => [
     id: "location",
     header: "Location",
     accessorFn: (p) => p.addressLabel ?? LOCATION_STATUS_LABELS[p.locationStatus],
-    cell: ({ row }) => <LocationCell punch={row.original} />,
+    cell: ({ row }) => <LocationCell punch={row.original} isDriver={row.original.isDriver} />,
   },
   {
     id: "device",
@@ -235,12 +258,14 @@ const punchColumnsFor = (canSeePhotos: boolean): ColumnDef<PunchRow>[] => [
 
 function punchesToCsv(rows: PunchRow[]): string {
   return csvLines(
-    ["Staff", "Date", "Punch", "Time", "Location", "Location status", "Device", "Network address", "Source", "Correction reason"],
+    ["Staff", "Date", "Punch", "Time", "Site", "Metres from LAF House", "Location", "Location status", "Device", "Network address", "Source", "Correction reason"],
     rows.map((r) => [
       r.staffName,
       r.dateLabel,
       r.punchType === "clock_in" ? "In" : "Out",
       r.timeLabel,
+      r.siteStatus === "on_site" ? "LAF House" : r.siteStatus === "off_site" ? "Off-site" : "",
+      r.siteDistanceM !== undefined ? String(r.siteDistanceM) : "",
       r.addressLabel ?? "",
       LOCATION_STATUS_LABELS[r.locationStatus],
       r.deviceLabel ?? "",
@@ -320,13 +345,14 @@ export default function DtrPage() {
       rows.push({
         ...p,
         staffName: staffName(p.staffId),
+        isDriver: staff.find((x) => x.id === p.staffId)?.role === "driver",
         dayKey: day,
         dateLabel: formatDayKey(day),
         timeLabel: timeLabel(p.punchedAt),
       });
     }
     return rows;
-  }, [punches, inRange, staffName]);
+  }, [punches, inRange, staffName, staff]);
 
   const today = todayIso();
   const sessionsToday = sessions.filter((s) => s.dayKey === today && (!staffIds || staffIds.includes(s.staffId)) && s.status !== "orphan_out").length;
@@ -347,6 +373,10 @@ export default function DtrPage() {
     else downloadCsv(punchesToCsv(punchRows), `dtr-punches-${today}.csv`);
   }
 
+  // Whose DTR prints: your own, or for those who read everyone's (0017/0041), whoever the filter picked.
+  const readsEveryone = canManageHr(role, isHr) || role === "finance";
+  const printTarget = readsEveryone ? (staffFilter === "all" ? null : staffFilter) : (myId ?? null);
+
   const exportDisabled = tab === "sessions" ? sessionRows.length === 0 : punchRows.length === 0;
 
   return (
@@ -355,10 +385,13 @@ export default function DtrPage() {
         title="Daily Time Record"
         description="Every clock-in and clock-out session, with hours for today, this week and this month."
         action={
-          <Button variant="outline" onClick={handleExport} disabled={exportDisabled}>
-            <Download className="size-4" />
-            Export CSV
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <PrintDtrButton staffId={printTarget} />
+            <Button variant="outline" onClick={handleExport} disabled={exportDisabled}>
+              <Download className="size-4" />
+              Export CSV
+            </Button>
+          </div>
         }
       />
 
@@ -514,7 +547,7 @@ export default function DtrPage() {
                   {row.dateLabel} · {row.timeLabel}
                 </div>
                 <div className="text-xs">
-                  <LocationCell punch={row} />
+                  <LocationCell punch={row} isDriver={row.isDriver} />
                 </div>
                 {canSeePhotos ? <PunchPhotoCell punch={row} caption={`${row.staffName} · ${row.dateLabel} ${row.timeLabel}`} /> : null}
                 <div className="flex flex-wrap gap-x-3 gap-y-1 border-t pt-2.5 text-[11px] text-muted-foreground">

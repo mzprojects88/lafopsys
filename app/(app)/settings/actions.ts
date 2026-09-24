@@ -235,3 +235,40 @@ export async function updateHrSettings(input: HrSettings): Promise<UpdateClockIn
   revalidatePath("/hr");
   return { ok: true };
 }
+
+/**
+ * LAF House's pin and the on-site radius for DTR punches (0063). Admins
+ * only, like the rest of this file; the column CHECKs bound the values.
+ * Clearing the pin (both null) turns the on-site check off.
+ */
+export async function updateLafHouseLocation(input: { lat: number | null; lng: number | null; radiusM: number }): Promise<UpdateClockInRequirementResult> {
+  const { lat, lng, radiusM } = input;
+  if ((lat === null) !== (lng === null)) return { ok: false, error: "Give both the latitude and the longitude, or neither." };
+  if (lat !== null && (!Number.isFinite(lat) || lat < -90 || lat > 90)) return { ok: false, error: "The latitude must be between -90 and 90." };
+  if (lng !== null && (!Number.isFinite(lng) || lng < -180 || lng > 180)) return { ok: false, error: "The longitude must be between -180 and 180." };
+  if (!Number.isInteger(radiusM) || radiusM < 10 || radiusM > 1000) return { ok: false, error: "The radius must be between 10 and 1,000 metres." };
+
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+  if (!caller) return { ok: false, error: "Not signed in." };
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") return { ok: false, error: "Only admins can change this setting." };
+
+  const round6 = (n: number | null) => (n === null ? null : Math.round(n * 1e6) / 1e6);
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({
+      laf_house_latitude: round6(lat),
+      laf_house_longitude: round6(lng),
+      laf_house_radius_m: radiusM,
+      updated_at: new Date().toISOString(),
+      updated_by: caller.id,
+    })
+    .eq("id", true);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/settings");
+  return { ok: true };
+}

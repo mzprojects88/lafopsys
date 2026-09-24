@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ResetDemoDataButton } from "@/components/modules/settings/reset-demo-data-button";
 import { ClockInRequirementToggle } from "@/components/modules/settings/clock-in-requirement-toggle";
 import { OvertimeThresholdField } from "@/components/modules/settings/overtime-threshold-field";
+import { LafHouseLocationField } from "@/components/modules/settings/laf-house-location-field";
 import { CalendarSheetSyncToggle } from "@/components/modules/settings/calendar-sheet-sync-toggle";
 import { HouseSheetSyncToggle } from "@/components/modules/settings/house-sheet-sync-toggle";
 import { HrSettingsCard } from "@/components/modules/settings/hr-settings-card";
@@ -67,6 +68,7 @@ export default function SettingsPage() {
           <CardContent className="flex flex-col gap-4">
             <ClockInRequirementToggle />
             <OvertimeThresholdField />
+            <LafHouseLocationField />
           </CardContent>
         </Card>
 

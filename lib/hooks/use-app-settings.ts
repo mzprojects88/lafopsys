@@ -38,6 +38,8 @@ export interface AppSettings extends HrSettings {
   /** While true the house's Occupancy Tracker is read every half hour and
    * its names resolved to patients (0046). */
   houseSheetSyncEnabled: boolean;
+  /** LAF House's pin and the on-site radius for DTR punches (0063); null until an admin sets it. */
+  lafHouse: { lat: number | null; lng: number | null; radiusM: number };
 }
 
 interface AppSettingsRow {
@@ -56,6 +58,9 @@ interface AppSettingsRow {
   compliance_employer_initial: string | null;
   compliance_tracking_from: string;
   compliance_lead_days: number | null;
+  laf_house_latitude: number | string | null;
+  laf_house_longitude: number | string | null;
+  laf_house_radius_m: number;
 }
 
 export const HR_SETTINGS_DEFAULTS: HrSettings = {
@@ -77,6 +82,7 @@ const DEFAULTS: AppSettings = {
   overtimeThresholdMinutes: DEFAULT_OVERTIME_THRESHOLD_MINUTES,
   calendarSheetSyncEnabled: true,
   houseSheetSyncEnabled: true,
+  lafHouse: { lat: null, lng: null, radiusM: 20 },
   ...HR_SETTINGS_DEFAULTS,
 };
 
@@ -84,7 +90,8 @@ const SELECT =
   "require_clock_in_for_inventory_roles, overtime_threshold_minutes, calendar_sheet_sync_enabled, house_sheet_sync_enabled, " +
   "payroll_pay_date_rule, payroll_contribution_cutoff, tardiness_grace_minutes, " +
   "leave_vl_days_per_year, leave_sl_days_per_year, leave_vl_convertible, minimum_wage_region, " +
-  "compliance_pen_last_digit, compliance_employer_initial, compliance_tracking_from, compliance_lead_days";
+  "compliance_pen_last_digit, compliance_employer_initial, compliance_tracking_from, compliance_lead_days, " +
+  "laf_house_latitude, laf_house_longitude, laf_house_radius_m";
 
 export const appSettingsStore = createCollection<AppSettings>({
   key: "shared.app_settings",
@@ -111,6 +118,11 @@ export const appSettingsStore = createCollection<AppSettings>({
       complianceEmployerInitial: row.compliance_employer_initial ?? null,
       complianceTrackingFrom: row.compliance_tracking_from ?? HR_SETTINGS_DEFAULTS.complianceTrackingFrom,
       complianceLeadDays: row.compliance_lead_days ?? HR_SETTINGS_DEFAULTS.complianceLeadDays,
+      lafHouse: {
+        lat: row.laf_house_latitude == null ? null : Number(row.laf_house_latitude),
+        lng: row.laf_house_longitude == null ? null : Number(row.laf_house_longitude),
+        radiusM: row.laf_house_radius_m ?? 20,
+      },
     };
   },
 });

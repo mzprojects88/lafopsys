@@ -7,6 +7,7 @@ import { addDays, entryTotals, pairSessions, zonedDayStart } from "@/lib/utils/d
 import type { PunchLocationStatus } from "@/lib/types/staff";
 import { deleteObject, putObject } from "@/lib/files/b2";
 import { decodeJpegDataUrl, punchPhotoKey, type PhotoStatus } from "@/lib/utils/punch-photo";
+import { siteOf } from "@/lib/utils/site";
 
 const LOCATION_STATUSES: PunchLocationStatus[] = [
   "captured",
@@ -133,6 +134,22 @@ export async function POST(request: Request) {
     }
   }
 
+  // At LAF House or not (0063): judged now, against the pin as it is now, and kept.
+  const { data: house } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .select("laf_house_latitude, laf_house_longitude, laf_house_radius_m")
+    .eq("id", true)
+    .maybeSingle();
+  const site = siteOf(
+    { lat: latitude, lng: longitude },
+    {
+      lat: house?.laf_house_latitude == null ? null : Number(house.laf_house_latitude),
+      lng: house?.laf_house_longitude == null ? null : Number(house.laf_house_longitude),
+      radiusM: house?.laf_house_radius_m ?? 20,
+    }
+  );
+
   const today = todayIso();
   const yesterday = addDays(today, -1);
   const time = nowTimeLabel();
@@ -235,6 +252,8 @@ export async function POST(request: Request) {
   const { error: punchError } = await supabase.schema("ops").from("time_punches").insert({
     id: punchId,
     photo_status: photoStatus,
+    site_status: site.status,
+    site_distance_m: site.distanceM,
     time_entry_id: entryId,
     staff_id: user.id,
     punch_type: punchType,
@@ -312,6 +331,8 @@ export async function POST(request: Request) {
     addressLabel,
     photoStatus,
     photoWarning,
+    siteStatus: site.status,
+    siteDistanceM: site.distanceM,
     device: device.label,
     totalMinutesToday: totals.totalMinutes,
     sessionCount: totals.sessionCount,

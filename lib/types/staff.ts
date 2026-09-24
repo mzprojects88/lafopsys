@@ -68,6 +68,9 @@ export interface TimePunch {
   adjustedBy?: string;
   /** What happened to the punch's photo (0060). The photo itself is only for admins and HR. */
   photoStatus: "captured" | "denied" | "unavailable" | "upload_failed" | "none";
+  /** At LAF House or not, judged when punched (0063). */
+  siteStatus: "on_site" | "off_site" | "unknown";
+  siteDistanceM?: number;
 }
 
 export interface Volunteer {
