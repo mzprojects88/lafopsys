@@ -167,6 +167,18 @@ describe("reconcile", () => {
     assert.equal(plan.counts.updated, 1);
   });
 
+  it("an old unkeyed copy beside its keyed twin: the twin is matched, and no key is given twice", () => {
+    const key = "2026-09-10|visit|09:30";
+    const oldCopy = dbRow("2026-09-10", "Visit", "9:30 AM");
+    const twin = dbRow("2026-09-10", "Visit", "9:30 AM", { sheetKey: key });
+    const plan = run([sheetEvent("2026-09-10", "Visit", "9:30 AM")], [oldCopy, twin]);
+    assert.equal(plan.inserts.length, 0);
+    assert.ok(plan.updates.every((u) => u.patch.sheet_key === undefined), "no update hands out a key");
+    assert.ok(!plan.updates.some((u) => u.id === oldCopy.id && u.patch.sheet_key), "the old copy is not given the twin's key");
+    // The unmatched old copy is upcoming, so it is hidden rather than left as a second event.
+    assert.deepEqual(plan.removes, [oldCopy.id]);
+  });
+
   it("updates a changed venue and nothing else", () => {
     const row = dbRow("2026-09-10", "Visit", "3:00 PM", { venue: "NCH", sheetKey: "2026-09-10|visit|15:00" });
     const plan = run([sheetEvent("2026-09-10", "Visit", "3:00 PM", { venue: "LAF" })], [row]);

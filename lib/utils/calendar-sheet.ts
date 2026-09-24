@@ -329,9 +329,15 @@ export function reconcile(input: ReconcileInput): ReconcilePlan {
   const { sheet, dbSheet, appKeys, today, now } = input;
   const byKey = new Map<string, DbSheetRow>();
   const byDateTitle = new Map<string, DbSheetRow[]>();
+  // Keys already stored on an event: never given to a second one (the unique index would refuse it and fail the run).
+  const heldKeys = new Map<string, string>();
+  for (const row of dbSheet) if (row.sheetKey) heldKeys.set(row.sheetKey, row.id);
   for (const row of dbSheet) {
     const key = row.sheetKey ?? buildKey(row.date, row.title, row.timeKey);
-    if (!byKey.has(key)) byKey.set(key, row);
+    // Two stored copies of one event (an old unkeyed row beside its keyed twin):
+    // the copy that already holds the key is the one the sheet row matches.
+    const held = byKey.get(key);
+    if (!held || (row.sheetKey === key && held.sheetKey !== key)) byKey.set(key, row);
     const dt = `${row.date}|${normalizeTitle(row.title)}`;
     const list = byDateTitle.get(dt);
     if (list) list.push(row);
@@ -395,7 +401,8 @@ export function reconcile(input: ReconcileInput): ReconcilePlan {
 
     // Bookkeeping that does not count as a change to the event.
     let bookkeeping = false;
-    if (row.sheetKey !== s.key) {
+    const holder = heldKeys.get(s.key);
+    if (row.sheetKey !== s.key && (!holder || holder === row.id)) {
       patch.sheet_key = s.key;
       bookkeeping = true;
     }
