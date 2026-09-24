@@ -77,7 +77,7 @@ function syncCopy() {
       var values = rows.map(function (r) {
         var v = r[i];
         if (v === null || v === undefined) return [""];
-        if (DATE_COLUMNS.indexOf(name) >= 0) return [toDate(v)];
+        if (DATE_COLUMNS.indexOf(name) >= 0) return [toDate(v, book.getSpreadsheetTimeZone())];
         return [v];
       });
       var range = sheet.getRange(2, col, rows.length, 1);
@@ -95,10 +95,13 @@ function syncCopy() {
   }
 }
 
-// "6/27/2024" or "6/27/24" -> a real date, so the age formulas keep working; anything else stays as typed.
-function toDate(v) {
+// "6/27/2024" or "6/27/24" -> that day at midnight IN THE SHEET'S TIME ZONE, so
+// the age formulas keep working and the date never shows a day early (a date
+// made in the script's own zone did, when the two zones differed).
+// Anything else stays as typed.
+function toDate(v, timeZone) {
   var m = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(String(v));
   if (!m) return v;
   var year = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
-  return new Date(year, Number(m[1]) - 1, Number(m[2]));
+  return Utilities.parseDate(m[1] + "/" + m[2] + "/" + year, timeZone, "M/d/yyyy");
 }
