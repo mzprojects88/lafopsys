@@ -17,6 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PunchPhotoCell } from "@/components/modules/staff/punch-photo-cell";
+import { CorrectionRequestsPanel } from "@/components/modules/staff/correction-requests-panel";
+import { useCorrectionRequests } from "@/lib/hooks/use-correction-requests";
 import { useRole } from "@/lib/rbac/use-role";
 import { canManageHr } from "@/lib/rbac/roles";
 import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
@@ -262,7 +264,10 @@ export default function DtrPage() {
   const [fromDate, setFromDate] = React.useState("");
   const [toDate, setToDate] = React.useState("");
   const [tab, setTab] = React.useState("sessions");
-  const { role, isHr } = useRole();
+  const { role, isHr, staffId: myId } = useRole();
+  const { requests } = useCorrectionRequests();
+  // Admins and HR: requests waiting on them (not their own); everyone else: their own still waiting.
+  const pendingRequests = requests.filter((r) => r.status === "pending" && (canManageHr(role, isHr) ? r.staffId !== myId : true)).length;
   const canSeePhotos = canManageHr(role, isHr);
   const punchColumns = React.useMemo(() => punchColumnsFor(canSeePhotos), [canSeePhotos]);
 
@@ -449,7 +454,14 @@ export default function DtrPage() {
         <TabsList>
           <TabsTrigger value="sessions">Sessions</TabsTrigger>
           <TabsTrigger value="punches">Punches</TabsTrigger>
+          <TabsTrigger value="requests">
+            Requests{pendingRequests > 0 ? ` (${pendingRequests})` : ""}
+          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="requests">
+          <CorrectionRequestsPanel canDecide={canSeePhotos} myId={myId ?? undefined} staffName={staffName} />
+        </TabsContent>
 
         <TabsContent value="sessions">
           <DataTable

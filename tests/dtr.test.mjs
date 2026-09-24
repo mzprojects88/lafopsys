@@ -17,6 +17,7 @@ import {
   weekKey,
   zonedDayStart,
   MAX_SESSION_MINUTES,
+  planClockOut,
 } from "../lib/utils/dtr.ts";
 
 /** Manila wall-clock -> ISO instant (Manila is UTC+8, no DST). */
@@ -231,5 +232,26 @@ describe("a supplied clock-out on consecutive forgotten days", () => {
     const closed = sessions.find((s) => s.clockOutAt === supplied.punchedAt);
     assert.equal(closed.dayKey, "2026-08-30");
     assert.equal(entryTotals(sessions, "2026-08-30", "s1").totalMinutes, 4 * 60);
+  });
+});
+
+describe("planClockOut", () => {
+  // Forgot to clock out on the 22nd (in 08:00 Manila = 00:00Z), clocked in normally on the 23rd.
+  const punches = [
+    { id: "i1", staffId: "s", punchType: "clock_in", punchedAt: "2026-09-22T00:00:00.000Z", timeEntryId: "e22" },
+    { id: "i2", staffId: "s", punchType: "clock_in", punchedAt: "2026-09-23T00:00:00.000Z", timeEntryId: "e23" },
+  ];
+  const day22 = { id: "e22", staffId: "s", day: "2026-09-22" };
+  it("closes a forgotten day even when the next day has a clock-in", () => {
+    const r = planClockOut(punches, day22, new Date("2026-09-22T09:00:00.000Z"));
+    assert.deepEqual(r, { ok: true, totalMinutes: 540, sessionCount: 1 });
+  });
+  it("refuses a time before the day's own clock-in", () => {
+    assert.equal(planClockOut(punches, day22, new Date("2026-09-21T23:00:00.000Z")).ok, false);
+  });
+  it("refuses a time after the next shift started", () => {
+    const r = planClockOut(punches, day22, new Date("2026-09-23T01:00:00.000Z"));
+    assert.equal(r.ok, false);
+    assert.match(r.error, /next shift/);
   });
 });

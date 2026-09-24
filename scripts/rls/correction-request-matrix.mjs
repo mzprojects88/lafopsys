@@ -1,9 +1,9 @@
-// Proves 0061 (DTR correction requests + ops.report_missed_clock_out) against
+// Proves 0061/0062 (DTR correction requests: report, approve, reject) against
 // the live database, one scenario per transaction, every one rolled back.
 // Same harness as scripts/rls/floor-plan-policy-matrix.mjs.
 //
 // Usage: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/correction-request-matrix.mjs
-// Pre-flight: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/correction-request-matrix.mjs supabase/migrations/0061_dtr_correction_requests.sql
+// Pre-flight: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/correction-request-matrix.mjs supabase/migrations/0062_decide_correction_requests.sql
 import { readFile } from "node:fs/promises";
 
 import { Client } from "pg";
@@ -156,6 +156,29 @@ async function main() {
     q(`insert into ops.dtr_correction_requests (staff_id, time_entry_id, kind, punch_type, requested_at, reason) values ('${ids.social_worker}', '${MINE}', 'missed_clock_out', 'clock_out', now(), 'x y z')`), denied);
   await scenario(ids, "nobody approves their own request directly", "social_worker", reported,
     q(`update ops.dtr_correction_requests set status = 'approved' where time_entry_id = '${MINE}'`), denied);
+
+
+  // ---- 0062: deciding ----
+  const reqId = `(select id from ops.dtr_correction_requests where time_entry_id = '${MINE}')`;
+  const asHr = (who) => ({ setup: async () => { await reported.setup(); await client.query("update shared.staff set is_hr = true where id = $1", [ids[who]]); } });
+  await scenario(ids, "an admin approves: a signed clock-out at the stated time", "admin", reported,
+    last({ sql: `select ops.approve_correction_request(${reqId}, null)` },
+      { sql: `select r.status = 'approved' and p.source = 'adjustment' and p.adjusted_by = '${ids.admin}' and p.punched_at = r.requested_at and p.punch_type = 'clock_out' as ok
+              from ops.dtr_correction_requests r join ops.time_punches p on p.id = r.adjustment_punch_id where r.time_entry_id = '${MINE}'` }),
+    value("ok", true));
+  await scenario(ids, "HR (not admin) approves", "driver", asHr("driver"), q(`select ops.approve_correction_request(${reqId}, null)`), rows(1));
+  await scenario(ids, "other staff cannot approve", "driver", reported, q(`select ops.approve_correction_request(${reqId}, null)`), denied);
+  await scenario(ids, "nobody decides their own request", "social_worker", asHr("social_worker"), q(`select ops.approve_correction_request(${reqId}, null)`), denied);
+  await scenario(ids, "a rejection needs a reason", "admin", reported, q(`select ops.reject_correction_request(${reqId}, '')`), (r) => !r.ok && r.code === "22023");
+  await scenario(ids, "after a rejection the person can ask again", "social_worker",
+    { setup: async () => { await reported.setup(); await client.query("update shared.staff set active = true, role = 'admin' where id = $1", [ids.admin]); await client.query(`select set_config('request.jwt.claims', $1, true)`, [claims(ids.admin)]); await client.query(`select ops.reject_correction_request(${reqId}, 'Time is wrong')`); await client.query("update ops.time_entries set flag = 'on_time' where id = $1", [MINE]); } },
+    q(report(MINE, EIGHT_HOURS_IN)), rows(1));
+  await scenario(ids, "a request is decided once", "admin",
+    { setup: async () => { await reported.setup(); await client.query(`select set_config('request.jwt.claims', $1, true)`, [claims(ids.admin)]); await client.query(`select ops.approve_correction_request(${reqId}, null)`); } },
+    q(`select ops.reject_correction_request(${reqId}, 'Changed my mind')`), (r) => !r.ok && r.code === "22023");
+  await scenario(ids, "not approved over a day that already has a clock-out", "admin",
+    { setup: async () => { await reported.setup(); await client.query("update ops.time_entries set clock_out = '17:00' where id = $1", [MINE]); } },
+    q(`select ops.approve_correction_request(${reqId}, null)`), (r) => !r.ok && r.code === "22023");
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();

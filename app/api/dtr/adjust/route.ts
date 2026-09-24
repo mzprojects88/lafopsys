@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { addDays, dayKey, entryTotals, pairSessions, timeLabel, zonedDayStart } from "@/lib/utils/dtr";
+import { addDays, dayKey, planClockOut, timeLabel, zonedDayStart } from "@/lib/utils/dtr";
 
 interface AdjustBody {
   timeEntryId?: unknown;
@@ -101,54 +101,21 @@ export async function POST(request: Request) {
   if (punchesError) return NextResponse.json({ ok: false, error: punchesError.message }, { status: 500 });
 
   type PunchRowLite = { id: string; staff_id: string; punch_type: "clock_in" | "clock_out"; punched_at: string; time_entry_id: string | null };
-  const existing = (punchRows ?? []) as PunchRowLite[];
-  const lastIn = [...existing].reverse().find((p) => p.punch_type === "clock_in");
-  if (lastIn && punchedAt.getTime() <= new Date(lastIn.punched_at).getTime()) {
-    return NextResponse.json(
-      { ok: false, error: `The clock-out has to be after the clock-in at ${timeLabel(lastIn.punched_at)}.` },
-      { status: 400 }
-    );
-  }
-
-  // Pair the punches as they WOULD be with this clock-out, before writing it.
-  //
-  // pairSessions closes a still-open session as `missed_out` the moment a
-  // clock-in arrives on a later day. So on consecutive forgotten days, a
-  // clock-out timed after the NEXT day's clock-in closes that day's session
-  // instead of this one -- silently, and on the wrong person's wrong day.
-  // Reachable from the dialog's "next morning" option, which is why it is
-  // checked here rather than trusted to the caller.
-  const sessions = pairSessions(
-    [
-      ...existing,
-      {
-        id: "pending-adjustment",
-        staff_id: entry.staff_id as string,
-        punch_type: "clock_out" as const,
-        punched_at: punchedAt.toISOString(),
-        time_entry_id: entry.id as string,
-      },
-    ].map((r) => ({
+  // Where the clock-out may go, and the day's totals with it: lib/utils/dtr.ts
+  // planClockOut, shared with approved correction requests (0062).
+  const plan = planClockOut(
+    ((punchRows ?? []) as PunchRowLite[]).map((r) => ({
       id: r.id,
       staffId: r.staff_id,
       punchType: r.punch_type,
       punchedAt: r.punched_at,
       timeEntryId: r.time_entry_id ?? undefined,
-    }))
+    })),
+    { id: entry.id as string, staffId: entry.staff_id as string, day: entryDay },
+    punchedAt
   );
-
-  const closedByThis = sessions.find((s) => s.clockOutAt === punchedAt.toISOString());
-  if (!closedByThis || closedByThis.dayKey !== entryDay) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "That time falls after the next shift started, so it would close that one instead. Pick an earlier time.",
-      },
-      { status: 409 }
-    );
-  }
-
-  const totals = entryTotals(sessions, entryDay, entry.staff_id as string);
+  if (!plan.ok) return NextResponse.json({ ok: false, error: plan.error }, { status: 409 });
+  const totals = plan;
 
   const { error: insertError } = await supabase.schema("ops").from("time_punches").insert({
     time_entry_id: entry.id,

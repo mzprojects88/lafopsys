@@ -264,6 +264,40 @@ export function entryTotals(sessions: readonly DtrSession[], day: string, staffI
 }
 
 /**
+ * A clock-out supplied after the fact -- an admin's fix (0029) or an approved
+ * correction request (0062): the day's totals as they would be with it, or
+ * why it cannot go there. Two things are refused:
+ * - a time at or before the day's own clock-in (the entry's latest one, not
+ *   the next day's: with consecutive forgotten days the window holds both);
+ * - a time after the next shift started. pairSessions closes a still-open
+ *   session as missed the moment a later day's clock-in arrives, so such a
+ *   clock-out would close the NEXT day's session, silently.
+ */
+export function planClockOut(
+  punches: readonly PunchLike[],
+  entry: { id: string; staffId: string; day: string },
+  at: Date
+): { ok: true; totalMinutes: number; sessionCount: number } | { ok: false; error: string } {
+  const ownIn = punches
+    .filter((p) => p.punchType === "clock_in" && p.timeEntryId === entry.id)
+    .sort((a, b) => a.punchedAt.localeCompare(b.punchedAt))
+    .pop();
+  if (ownIn && at.getTime() <= new Date(ownIn.punchedAt).getTime()) {
+    return { ok: false, error: `The clock-out has to be after the clock-in at ${timeLabel(ownIn.punchedAt)}.` };
+  }
+  const iso = at.toISOString();
+  const sessions = pairSessions([
+    ...punches,
+    { id: "pending-clock-out", staffId: entry.staffId, punchType: "clock_out", punchedAt: iso, timeEntryId: entry.id },
+  ]);
+  const closed = sessions.find((s) => s.clockOutAt === iso);
+  if (!closed || closed.dayKey !== entry.day) {
+    return { ok: false, error: "That time falls after the next shift started, so it would close that one instead. Pick an earlier time." };
+  }
+  return { ok: true, ...entryTotals(sessions, entry.day, entry.staffId) };
+}
+
+/**
  * The normal working day in minutes -- 8 hours, Art. 83 of the Labor Code.
  * Only the fallback: the live value is shared.app_settings.
  * overtime_threshold_minutes, which an admin can change in Settings.
