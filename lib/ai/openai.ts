@@ -110,3 +110,67 @@ export async function adjudicatePatientMatch(q: MatchQuestion): Promise<MatchAns
     clearTimeout(timer);
   }
 }
+
+const CHANGES_TIMEOUT_MS = 45_000;
+
+export interface SheetChangeItem {
+  /** Server-side handle; the model sees only a number. */
+  id: string;
+  label: string;
+  before: string | null;
+  after: string;
+  appNow: string | null;
+}
+
+export interface SheetChangeAnswer {
+  id: string;
+  summary: string;
+  /** typo = a spelling fix; format = the same value written differently; real = new information; serious = a change a person must confirm (a death, a changed identity). */
+  flag: "typo" | "format" | "real" | "serious";
+}
+
+const changesSchema = z.object({
+  items: z.array(
+    z.object({
+      n: z.number().int(),
+      summary: z.string().max(240),
+      flag: z.enum(["typo", "format", "real", "serious"]),
+    })
+  ),
+});
+
+/**
+ * What changed on LAF's original Patients Database sheet, in words a social
+ * worker can act on (user, 2026-09-24: the app is the record; the sheet's
+ * edits are reviewed, not copied). Each item is one field of one child,
+ * with no name, number or other context attached -- the model sees the
+ * field's label and its old, new and current-app values, nothing else.
+ */
+export async function explainSheetChanges(items: SheetChangeItem[]): Promise<SheetChangeAnswer[]> {
+  if (items.length === 0) return [];
+  const lines = items.map(
+    (it, i) => `${i + 1}. ${it.label}: the sheet said "${it.before ?? "(nothing)"}", now says "${it.after}"; the app has "${it.appNow ?? "(nothing)"}".`
+  );
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CHANGES_TIMEOUT_MS);
+  try {
+    const { object } = await generateObject({
+      model: model(),
+      schema: changesSchema,
+      system:
+        "You review edits made on a Philippine children's shelter spreadsheet so a social worker can decide whether to copy each one into the patient system. " +
+        "For each numbered change write one short plain-English sentence saying what changed and what applying it would do to the system's value, and give a flag: " +
+        "typo = a spelling or typing fix of the same thing; format = the same value written differently (a phone losing its leading 0, dates, capitals, an abbreviation like 'BCell ALL' for Acute Lymphoblastic Leukemia); " +
+        "real = genuinely new or different information; serious = a change that must be confirmed before applying (status Expired, a changed name or birthday, a different carer). " +
+        "Names are Filipino; statuses are On-going Treatment, Expired, Non-Pedia, Check Up. Never invent facts beyond the values given.",
+      prompt: `Changes:\n${lines.join("\n")}\n\nAnswer every number.`,
+      abortSignal: controller.signal,
+      providerOptions: { openai: { reasoningEffort: "low" } },
+    });
+    return object.items
+      .filter((a) => a.n >= 1 && a.n <= items.length)
+      .map((a) => ({ id: items[a.n - 1].id, summary: a.summary, flag: a.flag }));
+  } finally {
+    clearTimeout(timer);
+  }
+}

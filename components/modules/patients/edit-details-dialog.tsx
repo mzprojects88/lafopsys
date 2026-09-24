@@ -20,9 +20,9 @@ interface EditDetailsDialogProps {
 }
 
 /**
- * The social worker completes what the Patients Database sheet does not
- * carry (user, 2026-09-23). The sheet still wins on any cell it fills; a
- * blank cell never erases what is saved here.
+ * The social worker completes or corrects the child's details in the app,
+ * which is the record (user, 2026-09-24); the original sheet's edits are
+ * proposals (0064), never overwrites.
  */
 export function EditDetailsDialog({ patient, carer, open, onOpenChange }: EditDetailsDialogProps) {
   const { updatePatient, updateCarer, addCarer } = usePatientsData();
@@ -71,7 +71,7 @@ export function EditDetailsDialog({ patient, carer, open, onOpenChange }: EditDe
             Edit details · {patient.firstName} {patient.lastName}
           </DialogTitle>
           <DialogDescription>
-            Fill in what the Patients Database sheet does not have. Where the sheet has a value, the sheet&apos;s value is kept.
+            Saved here, this is the child&apos;s record. The original Patients Database sheet no longer overwrites it; a change made there waits on the Patients page for someone to apply.
           </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

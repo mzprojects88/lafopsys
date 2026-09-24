@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { dayKey } from "@/lib/utils/dtr";
-import { COPY_FORMULA_COLUMNS, COPY_HEADER, copyOrder, copyRow, type CopyRecord } from "@/lib/utils/master-sheet";
+import { COPY_FORMULA_COLUMNS, COPY_HEADER, copyOrder, copyRecordOf, copyRow, type CopyLookups, type CopyRecord, type PatientRowForCopy } from "@/lib/utils/master-sheet";
 
 export const dynamic = "force-dynamic";
 
@@ -34,55 +34,26 @@ export async function GET(request: Request) {
   const failed = [patientsQ, carersQ, dxLinksQ, diagnosesQ, provincesQ, phasesQ].find((q) => q.error);
   if (failed?.error) return NextResponse.json({ ok: false, error: failed.error.message }, { status: 500 });
 
-  type P = {
-    id: string; patient_number: string | null; case_number: string | null; admitted_at: string; first_name: string; last_name: string;
-    birth_date: string | null; sex: string | null; raw_address: string | null; province_id: string | null; status: string;
-    illness_code: string | null; treatment_phase_id: string | null; marital_status: string | null; priority: string | null;
-    remarks: string | null; legacy_code: string | null; updated_at: string; sheet_row: Record<string, string> | null;
-  };
-  type C = { patient_id: string; name: string; relationship: string | null; mobile_number: string | null };
   const names = (rows: { id: string; name: string }[] | null) => new Map((rows ?? []).map((r) => [r.id, r.name]));
   const dxName = names(diagnosesQ.data);
   const phaseName = names(phasesQ.data);
   const province = new Map(((provincesQ.data ?? []) as { id: string; name: string; region: string | null }[]).map((p) => [p.id, p]));
   const dxOf = new Map<string, string>();
   for (const l of (dxLinksQ.data ?? []) as { patient_id: string; diagnosis_id: string }[]) if (!dxOf.has(l.patient_id)) dxOf.set(l.patient_id, l.diagnosis_id);
+  type C = { patient_id: string; name: string; relationship: string | null; mobile_number: string | null };
   const carersOf = new Map<string, C[]>();
   for (const c of (carersQ.data ?? []) as C[]) carersOf.set(c.patient_id, [...(carersOf.get(c.patient_id) ?? []), c]);
+  const lookups: CopyLookups = {
+    province: (id) => (id ? province.get(id) : undefined),
+    diagnosisName: (pid) => (dxOf.has(pid) ? (dxName.get(dxOf.get(pid)!) ?? null) : null),
+    phaseName: (id) => (id ? (phaseName.get(id) ?? null) : null),
+    carers: (pid) => carersOf.get(pid) ?? [],
+  };
 
   const manila = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", month: "numeric", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
-  const records: CopyRecord[] = ((patientsQ.data ?? []) as P[]).map((p) => {
-    const carers = carersOf.get(p.id) ?? [];
-    // The carer the original names, else the longest-standing current one.
-    const sheetCarer = p.sheet_row?.CARER?.trim().toLowerCase();
-    const carer = carers.find((c) => c.name.trim().toLowerCase() === sheetCarer) ?? carers[0];
-    const prov = p.province_id ? province.get(p.province_id) : undefined;
-    return {
-      cn: p.patient_number,
-      caseNumber: p.case_number,
-      admittedOn: p.admitted_at,
-      firstName: p.first_name,
-      lastName: p.last_name,
-      birthDate: p.birth_date,
-      sex: p.sex,
-      address: p.raw_address,
-      province: prov?.name ?? null,
-      region: prov?.region ?? null,
-      status: p.status,
-      illnessCode: p.illness_code,
-      diagnosis: dxOf.has(p.id) ? (dxName.get(dxOf.get(p.id)!) ?? null) : null,
-      phase: p.treatment_phase_id ? (phaseName.get(p.treatment_phase_id) ?? null) : null,
-      carerName: carer?.name ?? null,
-      carerRelationship: carer?.relationship ?? null,
-      carerPhone: carer?.mobile_number ?? null,
-      maritalStatus: p.marital_status,
-      priority: p.priority,
-      remarks: p.remarks,
-      legacyCode: p.legacy_code,
-      lastUpdated: manila.format(new Date(p.updated_at)).replace(",", ""),
-      sheetRow: p.sheet_row,
-    };
-  });
+  const records: CopyRecord[] = ((patientsQ.data ?? []) as (PatientRowForCopy & { updated_at: string })[]).map((p) =>
+    copyRecordOf(p, lookups, manila.format(new Date(p.updated_at)).replace(",", ""))
+  );
   records.sort(copyOrder);
   const today = dayKey(new Date());
 

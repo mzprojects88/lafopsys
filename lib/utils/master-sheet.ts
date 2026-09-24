@@ -1,8 +1,8 @@
 /**
  * LAF's Patients Database sheet -- the patient master while staff learn the
- * app (0057, Master Plan steps 1-2). The app only READS it; the sync route
- * turns each row into the patient record it should be, and the sheet wins on
- * every column it fills.
+ * app (0057, Master Plan steps 1-2). The app only READS it. Since
+ * 2026-09-24 the app is the record: the sync turns an edit on the sheet into
+ * a proposal a person applies (0064), never an overwrite.
  *
  * Pure, relative imports only: tests/master-sheet.test.mjs runs it under
  * node --test. The name rules are the original importer's
@@ -452,8 +452,9 @@ export function matchMasterRow(row: MasterRow, onFile: readonly OnFile[]): Maste
 }
 
 /**
- * The sheet wins on every column it fills: a blank cell keeps what the app
- * has. Returns only what differs, so an unchanged record is not written.
+ * What the sheet's values would change on the record: only what differs,
+ * and a blank cell has no say. (Once the sheet won with it; since 0064 it
+ * decides what a proposal would write.)
  */
 export function masterPatch(
   want: Partial<PatientMasterFields>,
@@ -599,4 +600,122 @@ export function copyOrder(a: CopyRecord, b: CopyRecord): number {
   if (a.cn && b.cn) return Number(a.cn) - Number(b.cn);
   if (a.cn || b.cn) return a.cn ? -1 : 1;
   return (a.caseNumber ?? "").localeCompare(b.caseNumber ?? "");
+}
+
+// ---------------------------------------------------------------------
+// Changes on the original (user, 2026-09-24): the app is the record; an
+// edit on the original sheet is a PROPOSAL a person applies or dismisses.
+// ---------------------------------------------------------------------
+
+/** What a person reviews: one field of a child, and the sheet columns it is read from. */
+export const SHEET_FIELDS = {
+  name: { label: "Name", columns: ["NAME"] },
+  admitted: { label: "Date of entry", columns: ["DE"] },
+  birthday: { label: "Birthday", columns: ["BD"] },
+  sex: { label: "Sex", columns: ["S"] },
+  address: { label: "Address", columns: ["ADD"] },
+  province: { label: "Province / region", columns: ["P/C", "R"] },
+  status: { label: "Status", columns: ["PS"] },
+  illness: { label: "Type of illness", columns: ["I"] },
+  diagnosis: { label: "Diagnosis", columns: ["D"] },
+  phase: { label: "Treatment phase", columns: ["TP"] },
+  carer: { label: "Carer", columns: ["CARER", "RX", "CP"] },
+  marital: { label: "Marital status", columns: ["MS"] },
+  priority: { label: "Priority", columns: ["P"] },
+  remarks: { label: "Remarks", columns: ["REMARKS"] },
+  code: { label: "Old code", columns: ["CODE"] },
+} as const;
+export type SheetField = keyof typeof SHEET_FIELDS;
+
+/**
+ * The fields someone changed on the original since it was last read. A cell
+ * emptied on the sheet has no say (it never proposes erasing the app's
+ * value). No baseline yet -- a child the app met first, now on the sheet --
+ * means every field the sheet fills is looked at once.
+ */
+export function changedSheetFields(before: Record<string, string> | null, now: Record<string, string>): SheetField[] {
+  const cell = (row: Record<string, string> | null, c: string) => (row?.[c] ?? "").trim();
+  return (Object.keys(SHEET_FIELDS) as SheetField[]).filter((f) => {
+    const cols = SHEET_FIELDS[f].columns as readonly string[];
+    if (!cols.some((c) => cell(now, c))) return false;
+    return before === null || cols.some((c) => cell(before, c) !== cell(now, c));
+  });
+}
+
+/** A field's cells as the sheet shows them, e.g. "Dela Cruz, Ana · Mother · 9171234567". */
+export function sheetFieldText(row: Record<string, string> | null, field: SheetField): string {
+  return (SHEET_FIELDS[field].columns as readonly string[]).map((c) => (row?.[c] ?? "").trim()).filter(Boolean).join(" · ");
+}
+
+/** A patient row as the database returns it, the columns the copy needs. */
+export interface PatientRowForCopy {
+  id: string;
+  patient_number: string | null;
+  case_number: string | null;
+  admitted_at: string;
+  first_name: string;
+  last_name: string;
+  birth_date: string | null;
+  sex: string | null;
+  raw_address: string | null;
+  province_id: string | null;
+  status: string;
+  illness_code: string | null;
+  treatment_phase_id: string | null;
+  marital_status: string | null;
+  priority: string | null;
+  remarks: string | null;
+  legacy_code: string | null;
+  sheet_row: Record<string, string> | null;
+}
+
+/** Names looked up by id, and each child's current carers (oldest first). */
+export interface CopyLookups {
+  province: (id: string | null) => { name: string; region: string | null } | undefined;
+  diagnosisName: (patientId: string) => string | null;
+  phaseName: (id: string | null) => string | null;
+  carers: (patientId: string) => { name: string; relationship: string | null; mobile_number: string | null }[];
+}
+
+/** The child as the copy shows them (shared by the export and the sheet-change review). */
+export function copyRecordOf(p: PatientRowForCopy, l: CopyLookups, lastUpdated: string): CopyRecord {
+  const carers = l.carers(p.id);
+  // The carer the original names, else the longest-standing current one.
+  const sheetCarer = p.sheet_row?.CARER ? normalizeName(p.sheet_row.CARER) : null;
+  const carer = carers.find((c) => normalizeName(c.name) === sheetCarer) ?? carers[0];
+  const prov = l.province(p.province_id);
+  return {
+    cn: p.patient_number,
+    caseNumber: p.case_number,
+    admittedOn: p.admitted_at,
+    firstName: p.first_name,
+    lastName: p.last_name,
+    birthDate: p.birth_date,
+    sex: p.sex,
+    address: p.raw_address,
+    province: prov?.name ?? null,
+    region: prov?.region ?? null,
+    status: p.status,
+    illnessCode: p.illness_code,
+    diagnosis: l.diagnosisName(p.id),
+    phase: l.phaseName(p.treatment_phase_id),
+    carerName: carer?.name ?? null,
+    carerRelationship: carer?.relationship ?? null,
+    carerPhone: carer?.mobile_number ?? null,
+    maritalStatus: p.marital_status,
+    priority: p.priority,
+    remarks: p.remarks,
+    legacyCode: p.legacy_code,
+    lastUpdated,
+    sheetRow: p.sheet_row,
+  };
+}
+
+/** The app's value of one field, in the copy's words (what "the app has now" means in a review). */
+export function appFieldText(record: CopyRecord, field: SheetField, today: string): string {
+  const row = copyRow(record, today);
+  return (SHEET_FIELDS[field].columns as readonly string[])
+    .map((c) => row[COPY_HEADER.indexOf(c as (typeof COPY_HEADER)[number])] ?? "")
+    .filter(Boolean)
+    .join(" · ");
 }

@@ -2,6 +2,7 @@
 
 import { BedDouble, Bus, CalendarClock, Car, Home, KanbanSquare, LayoutGrid, ListOrdered, Share2, Users } from "lucide-react";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
+import { useSheetChanges } from "@/lib/hooks/use-sheet-changes";
 
 /**
  * The patients module in the order a day runs: NCH's sheet first (arrivals,
@@ -23,5 +24,10 @@ export const PATIENTS_SUB_NAV: ModuleSubNavItem[] = [
 
 /** Every patients page carries it, so a phone never has to go back to jump. */
 export function PatientsSubNav({ except }: { except?: string }) {
-  return <ModuleSubNav items={PATIENTS_SUB_NAV.filter((i) => i.href !== except)} />;
+  // Changes on the original sheet waiting for review (0064) live on All Patients: say so from every page.
+  const waiting = useSheetChanges().pending.length;
+  const items = PATIENTS_SUB_NAV.filter((i) => i.href !== except).map((i) =>
+    i.href === "/patients" && waiting > 0 ? { ...i, label: `${i.label} · ${waiting} to review` } : i
+  );
+  return <ModuleSubNav items={items} />;
 }

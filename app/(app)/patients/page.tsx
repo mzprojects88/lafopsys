@@ -11,6 +11,7 @@ import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
 import { PatientsSubNav } from "@/components/modules/patients/patients-subnav";
 import { MasterSheetStatus } from "@/components/modules/patients/master-sheet-status";
+import { SheetChangesPanel } from "@/components/modules/patients/sheet-changes-panel";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { cities } from "@/lib/mock-data";
 import { useDiagnosesReferenceData } from "@/lib/hooks/use-diagnoses-reference-collection";
@@ -94,6 +95,7 @@ export default function PatientsPage() {
       />
 
       <MasterSheetStatus canRun={canEdit} />
+      <SheetChangesPanel canDecide={canEdit} />
       {canEdit ? <NeedsDetails patients={patients} carers={carers} /> : null}
 
       <KpiGrid>

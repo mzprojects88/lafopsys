@@ -191,6 +191,23 @@ async function main() {
   await scenario(ids, "nobody writes the sync log from the app", "admin", withSeed(),
     q("insert into ops.master_sheet_sync_runs (trigger) values ('manual')"), denied);
 
+  // ---- 0064: changes found on the original sheet ----
+  const change = (field = "status") =>
+    client.query(
+      `insert into ops.sheet_changes (sheet_cn, patient_id, kind, field, label, sheet_after, payload, sheet_row)
+       values ('999', '${OLD}', 'field', '${field}', 'Status', 'Expired', '{"patient":{"status":"expired"}}', '{}')`
+    );
+  const withChange = { setup: async () => { await seed(); await oldPatient(); await change(); } };
+  await scenario(ids, "social workers read changes found on the sheet", "social_worker", withChange, q("select id from ops.sheet_changes where sheet_cn = '999'"), rows(1));
+  await scenario(ids, "drivers do not", "driver", withChange, q("select id from ops.sheet_changes where sheet_cn = '999'"), rows(0));
+  await scenario(ids, "nobody writes a change directly", "admin", withChange,
+    q(`insert into ops.sheet_changes (sheet_cn, kind, label, sheet_after, payload, sheet_row) values ('998', 'new_child', 'x', 'x', '{}', '{}')`), denied);
+  await scenario(ids, "nobody applies one directly", "admin", withChange, q("update ops.sheet_changes set status = 'applied' where sheet_cn = '999'"), denied);
+  await scenario(ids, "one waiting change per child and field", "admin", { setup: async () => { await seed(); await oldPatient(); await change(); } },
+    async () => { await client.query("reset role"); return change(); }, (r) => !r.ok && r.code === "23505");
+  await scenario(ids, "a field change names its child and field", "admin", withChange,
+    async () => { await client.query("reset role"); return client.query(`insert into ops.sheet_changes (sheet_cn, kind, label, sheet_after, payload, sheet_row) values ('997', 'field', 'x', 'x', '{}', '{}')`); }, checkFailed);
+
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
   console.table(results);

@@ -4,6 +4,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   caseNumberFromCode,
+  changedSheetFields,
+  sheetFieldText,
   copyOrder,
   copyRow,
   COPY_HEADER,
@@ -240,5 +242,22 @@ describe("the copy sheet", () => {
     assert.equal(regionCode("Region IV-A"), "RIV-A");
     assert.equal(regionCode("NCR"), "NCR");
     assert.equal(regionName(regionCode("Region XIII")), "Region XIII");
+  });
+});
+
+describe("changes on the original", () => {
+  const before = { CN: "1", NAME: "Dela Cruz, Juan", PS: "On-going Treatment", CARER: "Dela Cruz, Ana", RX: "Mother", CP: "9171234567", REMARKS: "x" };
+  it("only the fields whose cells changed", () => {
+    const now = { ...before, PS: "Expired", CP: "9998887777" };
+    assert.deepEqual(changedSheetFields(before, now), ["status", "carer"]);
+  });
+  it("a cell emptied on the sheet proposes nothing", () => {
+    assert.deepEqual(changedSheetFields(before, { ...before, REMARKS: "" }), []);
+  });
+  it("no baseline: every field the sheet fills", () => {
+    assert.deepEqual(changedSheetFields(null, { CN: "1", NAME: "A, B", D: "ALL" }), ["name", "diagnosis"]);
+  });
+  it("a field reads as the sheet shows it", () => {
+    assert.equal(sheetFieldText(before, "carer"), "Dela Cruz, Ana · Mother · 9171234567");
   });
 });

@@ -9,9 +9,11 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { useSheetChanges } from "@/lib/hooks/use-sheet-changes";
 import { useVisibleNavItems } from "@/lib/rbac/use-role";
 import { navHref } from "@/lib/rbac/roles";
 import { SidebarUserCard } from "@/components/layout/sidebar-user-card";
@@ -19,6 +21,8 @@ import { SidebarUserCard } from "@/components/layout/sidebar-user-card";
 export function AppSidebar() {
   const pathname = usePathname();
   const items = useVisibleNavItems();
+  // Changes on the original Patients Database waiting for someone (0064); RLS shows them only to Patients viewers.
+  const sheetChanges = useSheetChanges().pending.length;
 
   return (
     <Sidebar collapsible="icon">
@@ -49,6 +53,9 @@ export function AppSidebar() {
                     <span>{item.title}</span>
                   </Link>
                 </SidebarMenuButton>
+                {item.module === "patients" && sheetChanges > 0 ? (
+                  <SidebarMenuBadge title={`${sheetChanges} change${sheetChanges === 1 ? "" : "s"} on the original sheet to review`}>{sheetChanges}</SidebarMenuBadge>
+                ) : null}
               </SidebarMenuItem>
             );
           })}

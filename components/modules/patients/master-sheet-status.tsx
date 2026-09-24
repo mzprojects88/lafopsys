@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
 import { patientsStore } from "@/lib/hooks/use-patients-collection";
+import { sheetChangesStore, useSheetChanges } from "@/lib/hooks/use-sheet-changes";
 import { useNow } from "@/lib/hooks/use-now";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,8 @@ interface Run {
   rows_seen: number;
   inserted: number;
   updated: number;
+  changes_found: number;
+  new_children_found: number;
   skipped: number;
   details: { notes?: string[]; errors?: string[] } | null;
   error: string | null;
@@ -45,6 +48,7 @@ const masterRunsStore = createCollection<Run[]>({
  */
 export function MasterSheetStatus({ canRun }: { canRun: boolean }) {
   const { data: runs, loading } = useCollection(masterRunsStore);
+  const pending = useSheetChanges().pending.length;
   const now = useNow();
   const [syncing, setSyncing] = React.useState(false);
 
@@ -63,11 +67,11 @@ export function MasterSheetStatus({ canRun }: { canRun: boolean }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ force: true }),
       });
-      const r = (await response.json()) as { ok: boolean; skipped?: string; error?: string; inserted?: number; updated?: number; details?: { errors?: string[] } };
+      const r = (await response.json()) as { ok: boolean; status?: string; skipped?: string; error?: string; changes_found?: number; new_children_found?: number; details?: { errors?: string[] } };
       if (r.skipped === "disabled") toast.info("Reading the Patients Database is switched off in Settings.");
       else if (!r.ok) toast.error(r.error ?? r.details?.errors?.[0] ?? "The sync failed.");
-      else toast.success(`Read the Patients Database: ${r.inserted ?? 0} new, ${r.updated ?? 0} updated.`);
-      await patientsStore.refetch();
+      else toast.success(r.status === "unchanged" ? "The original sheet has not changed." : `Read the original sheet: ${r.new_children_found ?? 0} new children and ${r.changes_found ?? 0} changes to review.`);
+      await Promise.all([patientsStore.refetch(), sheetChangesStore.refetch()]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "The sync failed.");
     } finally {
@@ -84,13 +88,13 @@ export function MasterSheetStatus({ canRun }: { canRun: boolean }) {
     >
       {stale && !loading ? <AlertTriangle className="size-3.5 shrink-0" /> : <Table2 className="size-3.5 shrink-0" />}
       <span>
-        From the Patients Database sheet ·{" "}
+        Original Patients Database (reference) ·{" "}
         {loading
           ? "checking…"
           : running
             ? "reading now…"
             : checkedAt
-              ? `last checked ${formatDistanceToNowStrict(checkedAt)} ago${lastRead ? ` · last read ${formatDistanceToNowStrict(new Date(lastRead.finished_at ?? lastRead.started_at))} ago: ${lastRead.inserted} new, ${lastRead.updated} updated` : ""}${latest?.status === "failed" ? " · last sync failed" : ""}`
+              ? `last checked ${formatDistanceToNowStrict(checkedAt)} ago${pending > 0 ? ` · ${pending} change${pending === 1 ? "" : "s"} waiting for review` : " · nothing waiting"}${latest?.status === "failed" ? " · last sync failed" : ""}`
               : "never read"}
         {stale && !loading && checkedAt ? " — the half-hourly sync may be down." : ""}
       </span>
