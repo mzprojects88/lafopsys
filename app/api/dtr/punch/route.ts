@@ -5,6 +5,8 @@ import { clientIpFromHeaders, parseUserAgent } from "@/lib/utils/device";
 import { todayIso, nowTimeLabel } from "@/lib/utils/date";
 import { addDays, entryTotals, pairSessions, zonedDayStart } from "@/lib/utils/dtr";
 import type { PunchLocationStatus } from "@/lib/types/staff";
+import { deleteObject, putObject } from "@/lib/files/b2";
+import { decodeJpegDataUrl, punchPhotoKey, type PhotoStatus } from "@/lib/utils/punch-photo";
 
 const LOCATION_STATUSES: PunchLocationStatus[] = [
   "captured",
@@ -19,6 +21,9 @@ interface PunchBody {
   longitude?: unknown;
   accuracyMeters?: unknown;
   locationStatus?: unknown;
+  /** A live front-camera JPEG as a data URL (0060), or absent with photoStatus saying why. */
+  photo?: unknown;
+  photoStatus?: unknown;
 }
 
 function finiteNumber(value: unknown): number | undefined {
@@ -39,6 +44,12 @@ function finiteNumber(value: unknown): number | undefined {
  *   clock_out | no open entry                 -> 409 (covers double clock-out)
  *   clock_out | open entry                    -> close it (may be yesterday's)
  * then insert the punch, then recompute the day's totals from its punches.
+ *
+ * Every punch also carries a live photo (0060, user 2026-09-24): stored in
+ * the private bucket BEFORE the punch row, so a stored punch never points at
+ * a picture that is not there. A camera that was refused or is missing does
+ * not stop the punch (the clock-in gate would lock the person out of their
+ * job); the punch says so in photo_status for admins and HR to see.
  *
  * Server-side because three of the four things it records can only be obtained
  * or trusted here: the IP comes from proxy headers, Nominatim's usage policy
@@ -89,6 +100,13 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+
+  // The photo: bytes when one came, else the client's reason why not.
+  const photoBytes = body.photo === undefined || body.photo === null ? null : decodeJpegDataUrl(body.photo);
+  if (body.photo !== undefined && body.photo !== null && !photoBytes) {
+    return NextResponse.json({ ok: false, error: "The photo could not be read. Take it again." }, { status: 400 });
+  }
+  let photoStatus: PhotoStatus = photoBytes ? "captured" : body.photoStatus === "denied" ? "denied" : "unavailable";
 
   const latitude = finiteNumber(body.latitude);
   const longitude = finiteNumber(body.longitude);
@@ -196,11 +214,24 @@ export async function POST(request: Request) {
     entryDay = openEntry.date;
   }
 
+  // ---- the photo, before the punch that points at it ----
+  const punchId = crypto.randomUUID();
+  const photoKey = photoBytes ? punchPhotoKey(user.id, punchId, entryDay) : null;
+  if (photoBytes && photoKey) {
+    try {
+      await putObject(photoKey, photoBytes, "image/jpeg");
+    } catch {
+      photoStatus = "upload_failed";
+    }
+  }
+
   // ---- the DTR punch itself ----
   const userAgent = request.headers.get("user-agent");
   const device = parseUserAgent(userAgent);
 
   const { error: punchError } = await supabase.schema("ops").from("time_punches").insert({
+    id: punchId,
+    photo_status: photoStatus,
     time_entry_id: entryId,
     staff_id: user.id,
     punch_type: punchType,
@@ -218,7 +249,18 @@ export async function POST(request: Request) {
 
   if (punchError) {
     if (revert) await revert();
+    if (photoStatus === "captured" && photoKey) await deleteObject(photoKey).catch(() => undefined);
     return NextResponse.json({ ok: false, error: `The punch could not be recorded: ${punchError.message}` }, { status: 500 });
+  }
+
+  // Only admins and HR can read this row (0060); the punch itself already says "captured".
+  let photoWarning: string | null = null;
+  if (photoStatus === "captured" && photoKey && photoBytes) {
+    const { error } = await supabase
+      .schema("ops")
+      .from("time_punch_photos")
+      .insert({ punch_id: punchId, staff_id: user.id, object_key: photoKey, bytes: photoBytes.length });
+    if (error) photoWarning = `Punch recorded, but its photo could not be filed: ${error.message}`;
   }
 
   // ---- the day's totals, from the punches (the only source of duration) ----
@@ -265,6 +307,8 @@ export async function POST(request: Request) {
     timeEntryId: entryId,
     locationStatus,
     addressLabel,
+    photoStatus,
+    photoWarning,
     device: device.label,
     totalMinutesToday: totals.totalMinutes,
     sessionCount: totals.sessionCount,

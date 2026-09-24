@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { LogIn, ShieldAlert } from "lucide-react";
-import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -13,11 +12,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { IconCircle } from "@/components/patterns/icon-circle";
+import { PunchCameraDialog } from "@/components/modules/staff/punch-camera-dialog";
 import { useClockStatus } from "@/lib/hooks/use-clock-status";
-
-function nowLabel() {
-  return new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
-}
 
 /**
  * Blocks interaction with the rest of the app until the logged-in staff
@@ -25,25 +21,17 @@ function nowLabel() {
  * is the only way to close it, mirroring the ClockInGate navigation rule.
  */
 export function ClockInRequiredDialog() {
-  const { me, hasClockedInToday, clockInRequired, loading, clockIn } = useClockStatus();
+  const { me, hasClockedInToday, clockInRequired, loading } = useClockStatus();
 
   // Same rule as ClockInGate: inventory roles are only held here when the
   // admin setting requires it. `loading` already covers the pre-identity window.
   const open = !loading && !!me && clockInRequired && !hasClockedInToday;
-  // Punching waits on a GPS fix (up to 8s). Without a visible pending state this
-  // dialog looks frozen, and a second tap would record a duplicate punch.
-  const [punching, setPunching] = React.useState(false);
-
-  async function handleClockIn() {
-    setPunching(true);
-    const result = await clockIn();
-    setPunching(false);
-    if (result?.ok === false) toast.error(result.error);
-    else toast.success(`Clocked in at ${nowLabel()}`);
-  }
+  // The punch itself happens in the camera dialog (photo + location, 0060).
+  const [camera, setCamera] = React.useState(false);
 
   return (
-    <Dialog open={open}>
+    <>
+    <Dialog open={open && !camera}>
       <DialogContent
         showCloseButton={false}
         className="sm:max-w-sm"
@@ -60,16 +48,18 @@ export function ClockInRequiredDialog() {
           </DialogDescription>
         </DialogHeader>
         <p className="text-center text-xs text-muted-foreground">
-          Clocking in records your location, device and network address to your Daily Time Record.
-          You can decline the location prompt — your punch is still saved.
+          Clocking in takes a photo and records your location, device and network address to your Daily
+          Time Record. Only admins and HR can see the photo.
         </p>
         <DialogFooter>
-          <Button size="lg" className="w-full gap-2" disabled={punching} onClick={handleClockIn}>
+          <Button size="lg" className="w-full gap-2" onClick={() => setCamera(true)}>
             <LogIn className="size-4" />
-            {punching ? "Recording…" : "Clock In Now"}
+            Clock In Now
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    {open && camera ? <PunchCameraDialog punchType="clock_in" open dismissable onOpenChange={(o) => !o && setCamera(false)} /> : null}
+    </>
   );
 }

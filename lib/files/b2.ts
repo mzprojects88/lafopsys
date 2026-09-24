@@ -35,6 +35,15 @@ export async function presignPut(key: string, contentType: string): Promise<stri
   return getSignedUrl(s3(), new PutObjectCommand({ Bucket: b2Bucket(), Key: key, ContentType: contentType }), { expiresIn: SIGNED_URL_SECONDS });
 }
 
+/**
+ * A small object written by the server itself: the DTR punch photo, which
+ * arrives with the punch (a shrunk JPEG, tens of KB) so the punch and its
+ * picture are one request. Everything larger goes through presignPut.
+ */
+export async function putObject(key: string, body: Uint8Array, contentType: string): Promise<void> {
+  await s3().send(new PutObjectCommand({ Bucket: b2Bucket(), Key: key, Body: body, ContentType: contentType }));
+}
+
 /** Encodes a file name for Content-Disposition: ASCII fallback plus the RFC 5987 UTF-8 form. */
 export function contentDisposition(fileName: string, inline: boolean): string {
   const ascii = fileName.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");

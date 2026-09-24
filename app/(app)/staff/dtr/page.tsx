@@ -16,6 +16,9 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PunchPhotoCell } from "@/components/modules/staff/punch-photo-cell";
+import { useRole } from "@/lib/rbac/use-role";
+import { canManageHr } from "@/lib/rbac/roles";
 import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
 import { csvLines, downloadCsv } from "@/lib/utils/csv";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
@@ -156,7 +159,8 @@ const sessionColumns: ColumnDef<SessionRow>[] = [
   },
 ];
 
-const punchColumns: ColumnDef<PunchRow>[] = [
+/** The photo column is added for admins and HR only (0060); everyone else sees times and places. */
+const punchColumnsFor = (canSeePhotos: boolean): ColumnDef<PunchRow>[] => [
   {
     id: "staff",
     header: "Staff",
@@ -193,6 +197,18 @@ const punchColumns: ColumnDef<PunchRow>[] = [
     ),
   },
   { id: "time", header: "Time", accessorFn: (p) => p.timeLabel },
+  ...(canSeePhotos
+    ? [
+        {
+          id: "photo",
+          header: "Photo",
+          accessorFn: (p: PunchRow) => p.photoStatus,
+          cell: ({ row }: { row: { original: PunchRow } }) => (
+            <PunchPhotoCell punch={row.original} caption={`${row.original.staffName} · ${row.original.dateLabel} ${row.original.timeLabel}`} />
+          ),
+        } satisfies ColumnDef<PunchRow>,
+      ]
+    : []),
   {
     id: "location",
     header: "Location",
@@ -246,6 +262,9 @@ export default function DtrPage() {
   const [fromDate, setFromDate] = React.useState("");
   const [toDate, setToDate] = React.useState("");
   const [tab, setTab] = React.useState("sessions");
+  const { role, isHr } = useRole();
+  const canSeePhotos = canManageHr(role, isHr);
+  const punchColumns = React.useMemo(() => punchColumnsFor(canSeePhotos), [canSeePhotos]);
 
   const staffIds = React.useMemo(() => (staffFilter === "all" ? undefined : [staffFilter]), [staffFilter]);
   const { sessions, totals, punches, loading, now } = useDtrSessions({ staffIds });
@@ -485,6 +504,7 @@ export default function DtrPage() {
                 <div className="text-xs">
                   <LocationCell punch={row} />
                 </div>
+                {canSeePhotos ? <PunchPhotoCell punch={row} caption={`${row.staffName} · ${row.dateLabel} ${row.timeLabel}`} /> : null}
                 <div className="flex flex-wrap gap-x-3 gap-y-1 border-t pt-2.5 text-[11px] text-muted-foreground">
                   <span>{row.deviceLabel ?? "Unknown device"}</span>
                   {row.ipAddress && <span className="font-mono">{row.ipAddress}</span>}

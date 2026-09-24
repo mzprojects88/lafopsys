@@ -66,6 +66,8 @@ export interface TimePunch {
   /** Set only on an adjustment: the admin who supplied it, from their session
    * rather than from the request. */
   adjustedBy?: string;
+  /** What happened to the punch's photo (0060). The photo itself is only for admins and HR. */
+  photoStatus: "captured" | "denied" | "unavailable" | "upload_failed" | "none";
 }
 
 export interface Volunteer {

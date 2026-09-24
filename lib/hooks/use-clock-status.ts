@@ -14,7 +14,7 @@ import type { PunchLocationStatus } from "@/lib/types/staff";
  * standing in a concrete stairwell should not be left holding a spinner. */
 const GEO_TIMEOUT_MS = 8000;
 
-interface CapturedLocation {
+export interface CapturedLocation {
   latitude?: number;
   longitude?: number;
   accuracyMeters?: number;
@@ -27,7 +27,7 @@ interface CapturedLocation {
  * staff out of every screen until they clock in, so a location failure that
  * blocked clocking in would lock them out of their job.
  */
-function captureLocation(): Promise<CapturedLocation> {
+export function captureLocation(): Promise<CapturedLocation> {
   return new Promise((resolve) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       resolve({ locationStatus: "unavailable" });
@@ -48,6 +48,13 @@ function captureLocation(): Promise<CapturedLocation> {
       { enableHighAccuracy: true, timeout: GEO_TIMEOUT_MS, maximumAge: 0 }
     );
   });
+}
+
+/** What the camera dialog hands a punch (0060): the photo, or why there is none, and the location it started. */
+export interface PunchCapture {
+  photo?: string;
+  photoStatus?: "denied" | "unavailable";
+  location?: Promise<CapturedLocation>;
 }
 
 /**
@@ -99,16 +106,17 @@ export function useClockStatus() {
       ? false
       : !INVENTORY_ROLES.includes(me.role) || settings.requireClockInForInventoryRoles;
 
-  async function punch(punchType: "clock_in" | "clock_out"): Promise<MutationResult | undefined> {
+  async function punch(punchType: "clock_in" | "clock_out", capture: PunchCapture = {}): Promise<MutationResult | undefined> {
     if (!me) return undefined;
-    const location = await captureLocation();
+    // The camera dialog starts the location while the person lines up the photo.
+    const location = await (capture.location ?? captureLocation());
 
     let response: Response;
     try {
       response = await fetch("/api/dtr/punch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ punchType, ...location }),
+        body: JSON.stringify({ punchType, ...location, photo: capture.photo ?? null, photoStatus: capture.photoStatus }),
       });
     } catch {
       return { ok: false, error: "Couldn't reach the server. Check your connection and try again." };
@@ -130,13 +138,13 @@ export function useClockStatus() {
     return { ok: true, id: punchType };
   }
 
-  async function clockIn(): Promise<MutationResult | undefined> {
-    return punch("clock_in");
+  async function clockIn(capture?: PunchCapture): Promise<MutationResult | undefined> {
+    return punch("clock_in", capture);
   }
 
-  async function clockOut(): Promise<MutationResult | undefined> {
+  async function clockOut(capture?: PunchCapture): Promise<MutationResult | undefined> {
     if (!openEntry) return undefined;
-    return punch("clock_out");
+    return punch("clock_out", capture);
   }
 
   return {

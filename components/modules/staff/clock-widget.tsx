@@ -2,12 +2,12 @@
 
 import * as React from "react";
 import { Clock, LogIn, LogOut, CalendarCheck, CalendarDays, CalendarRange, ShieldCheck, MapPin } from "lucide-react";
-import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { IconCircle } from "@/components/patterns/icon-circle";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
 import { useRoster } from "@/lib/hooks/use-roster";
+import { PunchCameraDialog } from "@/components/modules/staff/punch-camera-dialog";
 import { useClockStatus } from "@/lib/hooks/use-clock-status";
 import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
 import { todayIso } from "@/lib/utils/date";
@@ -19,13 +19,12 @@ function nowLabel() {
 }
 
 export function ClockWidget() {
-  const { me, todayEntry, openEntry, clockedIn, loading, clockIn, clockOut } = useClockStatus();
+  const { me, todayEntry, openEntry, clockedIn, loading } = useClockStatus();
   const { people, entryFor } = useRoster();
   // Live hours from the punches; an open session keeps ticking on its own.
   const { totals } = useDtrSessions({ staffIds: me ? [me.id] : [] });
-  // A punch waits on a GPS fix (up to 8s), so the button has to say so — an
-  // unresponsive-looking button invites a second tap and a duplicate punch.
-  const [punching, setPunching] = React.useState(false);
+  // Every punch goes through the camera (0060): photo + location.
+  const [camera, setCamera] = React.useState<"clock_in" | "clock_out" | null>(null);
 
   if (loading) return null;
 
@@ -40,22 +39,6 @@ export function ClockWidget() {
 
   const mePerson = people.find((p) => p.staffId === me.id) ?? null;
   const todayShift = mePerson ? entryFor(mePerson, todayIso()).shift : null;
-
-  async function handleClockIn() {
-    setPunching(true);
-    const result = await clockIn();
-    setPunching(false);
-    if (result?.ok) toast.success(`Clocked in at ${nowLabel()}`);
-    else toast.error(result ? result.error : "Couldn't record the punch.");
-  }
-
-  async function handleClockOut() {
-    setPunching(true);
-    const result = await clockOut();
-    setPunching(false);
-    if (result?.ok) toast.success(`Clocked out at ${nowLabel()}`);
-    else toast.error(result ? result.error : "You're not clocked in.");
-  }
 
   const sessionsToday = todayEntry?.sessionCount ?? 0;
   const statusLabel = clockedIn
@@ -87,21 +70,19 @@ export function ClockWidget() {
             size="lg"
             variant="destructive"
             className="h-12 w-full gap-2 text-base"
-            disabled={punching}
-            onClick={handleClockOut}
+            onClick={() => setCamera("clock_out")}
           >
             <LogOut className="size-5" />
-            {punching ? "Recording…" : "Clock Out"}
+            Clock Out
           </Button>
         ) : (
           <Button
             size="lg"
             className="h-12 w-full gap-2 text-base"
-            disabled={punching}
-            onClick={handleClockIn}
+            onClick={() => setCamera("clock_in")}
           >
             <LogIn className="size-5" />
-            {punching ? "Recording…" : "Clock In"}
+            Clock In
           </Button>
         )}
 
@@ -157,8 +138,8 @@ export function ClockWidget() {
         <div className="flex items-start gap-2.5 rounded-lg bg-accent/40 px-3 py-2.5 text-xs text-muted-foreground">
           <MapPin className="size-4 shrink-0 text-primary" />
           <span>
-            Clocking in or out records your location, device and network address to your Daily Time Record.
-            You can decline the location prompt — your punch is still saved, noted as no location given.
+            Clocking in or out takes a photo and records your location, device and network address to your Daily Time Record. You
+            can see your entries and locations; only admins and HR can see the photos.
           </span>
         </div>
 
@@ -167,6 +148,7 @@ export function ClockWidget() {
           <span>Don&apos;t forget to clock out at the end of your shift.</span>
         </div>
       </CardContent>
+      {camera ? <PunchCameraDialog punchType={camera} open onOpenChange={(o) => !o && setCamera(null)} /> : null}
     </Card>
   );
 }
