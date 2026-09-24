@@ -8,6 +8,8 @@ import { AppFooter } from "@/components/layout/app-footer";
 import { ClockInGate } from "@/components/layout/clock-in-gate";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { ModuleGate } from "@/components/layout/module-gate";
+import { ShiftReminder } from "@/components/layout/shift-reminder";
+import { MissedClockOutPrompt } from "@/components/modules/staff/missed-clock-out-prompt";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [paletteOpen, setPaletteOpen] = React.useState(false);
@@ -18,6 +20,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <SidebarInset>
         <Topbar onSearchClick={() => setPaletteOpen(true)} />
         <main className="flex flex-1 flex-col gap-4 p-4 md:p-6">
+          <ShiftReminder />
+          <MissedClockOutPrompt />
           <ClockInGate>
             <ModuleGate>{children}</ModuleGate>
           </ClockInGate>

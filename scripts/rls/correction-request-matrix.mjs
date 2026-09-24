@@ -1,14 +1,12 @@
-// Proves 0060 (DTR punch photos) against the live database, one scenario per
-// transaction, every transaction rolled back: staff see their own punches
-// (with location and photo_status) but never a photo row; admins and HR see
-// every photo row; finance, though it reads all punches, sees no photo.
+// Proves 0061 (DTR correction requests + ops.report_missed_clock_out) against
+// the live database, one scenario per transaction, every one rolled back.
 // Same harness as scripts/rls/floor-plan-policy-matrix.mjs.
 //
-// Usage: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/punch-photo-matrix.mjs
-// Pre-flight: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/punch-photo-matrix.mjs supabase/migrations/0060_punch_photos.sql
-import { Client } from "pg";
+// Usage: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/correction-request-matrix.mjs
+// Pre-flight: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/correction-request-matrix.mjs supabase/migrations/0061_dtr_correction_requests.sql
 import { readFile } from "node:fs/promises";
 
+import { Client } from "pg";
 if (process.env.RLS_ALLOW_PROD !== "1") {
   console.error("This targets the production database (rolled back per scenario). Set RLS_ALLOW_PROD=1 to run.");
   process.exit(1);
@@ -109,22 +107,23 @@ const last = (...steps) => async () => {
   return r;
 };
 
-
 const PREFLIGHT = process.argv.slice(2);
-const MINE = "00000000-0000-4000-8000-00000000d0a1";
-const THEIRS = "00000000-0000-4000-8000-00000000d0a2";
-// A punch and its photo for the acting social worker, and one for the driver.
+const MINE = "00000000-0000-4000-8000-00000000e0a1";
+const THEIRS = "00000000-0000-4000-8000-00000000e0a2";
+const CLOSED = "00000000-0000-4000-8000-00000000e0a3";
+// Two forgotten days (clocked in 50 hours ago, never out) and one closed day.
 const seedFor = (ids) => async () => {
-  for (const [id, who] of [[MINE, ids.social_worker], [THEIRS, ids.driver]]) {
-    await client.query(`insert into ops.time_punches (id, staff_id, punch_type, source, photo_status) values ($1, $2, 'clock_in', 'device', 'captured')`, [id, who]);
-    await client.query(`insert into ops.time_punch_photos (punch_id, staff_id, object_key, bytes) values ($1, $2, $3, 5000)`, [id, who, `DTR photos/test/${id}.jpg`]);
+  const days = [[MINE, ids.social_worker, 5, null], [THEIRS, ids.driver, 5, null], [CLOSED, ids.social_worker, 6, "17:00"]];
+  for (const [id, who, back, out] of days) {
+    await client.query(
+      `insert into ops.time_entries (id, staff_id, date, clock_in, clock_out) values ($1, $2, (now() at time zone 'Asia/Manila')::date - $3::int, '08:00', $4)`,
+      [id, who, back, out]
+    );
+    await client.query(`insert into ops.time_punches (time_entry_id, staff_id, punch_type, punched_at, source) values ($1, $2, 'clock_in', now() - interval '50 hours', 'device')`, [id, who]);
   }
 };
-const hr = (ids, extra) => async () => {
-  await seedFor(ids)();
-  await client.query("update shared.staff set is_hr = true where id = $1", [ids.social_worker]);
-  if (extra) await extra();
-};
+const report = (entry, leftAt) => `select ops.report_missed_clock_out('${entry}', ${leftAt}, 'Forgot to clock out.') as id`;
+const EIGHT_HOURS_IN = "now() - interval '42 hours'";
 
 async function main() {
   await client.connect();
@@ -138,30 +137,25 @@ async function main() {
   const ids = await accountIds();
   console.log("Acting accounts:", Object.fromEntries(Object.entries(ids).map(([k, v]) => [k, v ? "yes" : "none"])));
   const seeded = { setup: seedFor(ids) };
+  const reported = { setup: async () => { await seedFor(ids)(); await client.query(`select set_config('request.jwt.claims', $1, true)`, [claims(ids.social_worker)]); await client.query(report(MINE, EIGHT_HOURS_IN)); } };
 
-  await scenario(ids, "staff read their own punch, with its photo status", "social_worker", seeded,
-    q(`select photo_status from ops.time_punches where id = '${MINE}'`), value("photo_status", "captured"));
-  await scenario(ids, "staff never read their own photo row", "social_worker", seeded,
-    q(`select object_key from ops.time_punch_photos where punch_id = '${MINE}'`), rows(0));
-  await scenario(ids, "staff never read a colleague's photo row", "driver", seeded,
-    q(`select object_key from ops.time_punch_photos`), rows(0));
-  await scenario(ids, "finance reads punches but no photo", "finance", seeded,
-    q(`select object_key from ops.time_punch_photos`), rows(0));
-  await scenario(ids, "admins read every photo row", "admin", seeded,
-    q(`select object_key from ops.time_punch_photos where punch_id in ('${MINE}', '${THEIRS}')`), rows(2));
-  await scenario(ids, "HR (not admin) reads every photo row", "social_worker", { setup: hr(ids) },
-    q(`select object_key from ops.time_punch_photos where punch_id in ('${MINE}', '${THEIRS}')`), rows(2));
-  await scenario(ids, "staff file the photo of their own punch", "driver",
-    { setup: () => client.query(`insert into ops.time_punches (id, staff_id, punch_type, source, photo_status) values ('${THEIRS}', $1, 'clock_in', 'device', 'captured')`, [ids.driver]) },
-    q(`insert into ops.time_punch_photos (punch_id, staff_id, object_key, bytes) values ('${THEIRS}', '${ids.driver}', 'DTR photos/test/x.jpg', 5000)`), rows(1));
-  await scenario(ids, "nobody files a photo against someone else's punch", "driver", seeded,
-    q(`insert into ops.time_punch_photos (punch_id, staff_id, object_key, bytes) values ('${MINE}', '${ids.driver}', 'DTR photos/test/y.jpg', 5000)`), denied);
-  await scenario(ids, "a photo row is never changed", "admin", seeded,
-    q(`update ops.time_punch_photos set object_key = 'elsewhere' where punch_id = '${MINE}'`), denied);
-  await scenario(ids, "a photo row is never deleted", "admin", seeded,
-    q(`delete from ops.time_punch_photos where punch_id = '${MINE}'`), denied);
-  await scenario(ids, "photo status is one of the five", "social_worker", {},
-    q(`insert into ops.time_punches (staff_id, punch_type, source, photo_status) values ('${ids.social_worker}', 'clock_in', 'device', 'selfie')`), checkFailed);
+  await scenario(ids, "staff report their own forgotten clock-out", "social_worker", seeded,
+    last({ sql: report(MINE, EIGHT_HOURS_IN) },
+      { sql: `select (select flag from ops.time_entries where id = '${MINE}') = 'missed_punch' and (select status from ops.dtr_correction_requests where time_entry_id = '${MINE}') = 'pending' as ok` }),
+    value("ok", true));
+  await scenario(ids, "nobody reports someone else's day", "social_worker", seeded, q(report(THEIRS, EIGHT_HOURS_IN)), denied);
+  await scenario(ids, "a time before the clock-in is refused", "social_worker", seeded, q(report(MINE, "now() - interval '60 hours'")), (r) => !r.ok && r.code === "22023");
+  await scenario(ids, "a time in the future is refused", "social_worker", seeded, q(report(MINE, "now() + interval '1 hour'")), (r) => !r.ok && r.code === "22023");
+  await scenario(ids, "a time past 25 hours is refused", "social_worker", seeded, q(report(MINE, "now() - interval '20 hours'")), (r) => !r.ok && r.code === "22023");
+  await scenario(ids, "a day with a clock-out cannot be reported", "social_worker", seeded, q(report(CLOSED, EIGHT_HOURS_IN)), (r) => !r.ok && r.code === "22023");
+  await scenario(ids, "one open request per day", "social_worker", reported, q(report(MINE, EIGHT_HOURS_IN)), (r) => !r.ok && (r.code === "23505" || r.code === "22023"));
+  await scenario(ids, "staff read their own requests", "social_worker", reported, q("select id from ops.dtr_correction_requests"), rows(1));
+  await scenario(ids, "staff do not read others' requests", "driver", reported, q("select id from ops.dtr_correction_requests"), rows(0));
+  await scenario(ids, "admins read every request", "admin", reported, q(`select id from ops.dtr_correction_requests where time_entry_id = '${MINE}'`), rows(1));
+  await scenario(ids, "nobody writes a request directly", "social_worker", seeded,
+    q(`insert into ops.dtr_correction_requests (staff_id, time_entry_id, kind, punch_type, requested_at, reason) values ('${ids.social_worker}', '${MINE}', 'missed_clock_out', 'clock_out', now(), 'x y z')`), denied);
+  await scenario(ids, "nobody approves their own request directly", "social_worker", reported,
+    q(`update ops.dtr_correction_requests set status = 'approved' where time_entry_id = '${MINE}'`), denied);
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();

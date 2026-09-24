@@ -144,15 +144,16 @@ export async function POST(request: Request) {
   const { data: recent, error: recentError } = await supabase
     .schema("ops")
     .from("time_entries")
-    .select("id, date, clock_in, clock_out")
+    .select("id, date, clock_in, clock_out, flag")
     .eq("staff_id", user.id)
     .in("date", [today, yesterday])
     .order("date", { ascending: false });
   if (recentError) return NextResponse.json({ ok: false, error: recentError.message }, { status: 500 });
 
-  type RecentEntry = { id: string; date: string; clock_in: string | null; clock_out: string | null };
+  type RecentEntry = { id: string; date: string; clock_in: string | null; clock_out: string | null; flag: string };
   const todayEntry = ((recent ?? []) as RecentEntry[]).find((e) => e.date === today) ?? null;
-  const openEntry = ((recent ?? []) as RecentEntry[]).find((e) => !!e.clock_in && !e.clock_out) ?? null;
+  // A day reported as a forgotten clock-out (0061) is closed, not open.
+  const openEntry = ((recent ?? []) as RecentEntry[]).find((e) => !!e.clock_in && !e.clock_out && e.flag !== "missed_punch") ?? null;
 
   let entryId: string;
   let entryDay: string;
@@ -168,12 +169,14 @@ export async function POST(request: Request) {
     if (todayEntry) {
       // Clocked out earlier today: reopen the day. clock_in keeps the day's first
       // time; the session that just ended is safe in the punches.
-      const { error } = await supabase.schema("ops").from("time_entries").update({ clock_out: null }).eq("id", todayEntry.id);
+      // A reported forgotten clock-out (0061) keeps its request; the day is open again.
+      const { error } = await supabase.schema("ops").from("time_entries").update({ clock_out: null, flag: "on_time" }).eq("id", todayEntry.id);
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
       entryId = todayEntry.id;
       const previousOut = todayEntry.clock_out;
+      const previousFlag = todayEntry.flag;
       revert = async () => {
-        await supabase.schema("ops").from("time_entries").update({ clock_out: previousOut }).eq("id", todayEntry.id);
+        await supabase.schema("ops").from("time_entries").update({ clock_out: previousOut, flag: previousFlag }).eq("id", todayEntry.id);
       };
     } else {
       const { data: inserted, error } = await supabase

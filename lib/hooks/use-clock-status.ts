@@ -91,7 +91,7 @@ export function useClockStatus() {
   const yesterday = addDays(today, -1);
   const todayEntry = me ? entries.find((t) => t.staffId === me.id && t.date === today) : undefined;
   const openEntry = me
-    ? entries.find((t) => t.staffId === me.id && (t.date === today || t.date === yesterday) && !!t.clockIn && !t.clockOut)
+    ? entries.find((t) => t.staffId === me.id && (t.date === today || t.date === yesterday) && !!t.clockIn && !t.clockOut && t.flag !== "missed_punch")
     : undefined;
   const clockedIn = !!openEntry;
   const hasClockedInToday = !!todayEntry?.clockIn || clockedIn;
