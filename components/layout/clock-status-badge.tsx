@@ -32,7 +32,7 @@ export function ClockStatusBadge() {
         type="button"
         onClick={() => setCamera(clockedIn ? "clock_out" : "clock_in")}
         className={cn(
-          "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+          "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors sm:px-3",
           clockedIn
             ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-400"
             : "bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-500/15 dark:text-amber-400"

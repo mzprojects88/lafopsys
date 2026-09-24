@@ -41,12 +41,15 @@ export function Topbar({ onSearchClick }: { onSearchClick: () => void }) {
     .toUpperCase();
 
   return (
-    <header className="flex h-16 shrink-0 items-center gap-2 border-b bg-background px-4">
-      <SidebarTrigger className="rounded-full" />
-      <Separator orientation="vertical" className="h-5" />
-      <Breadcrumbs />
+    <header className="flex h-16 shrink-0 items-center gap-1.5 border-b bg-background px-3 sm:gap-2 sm:px-4">
+      <SidebarTrigger className="shrink-0 rounded-full" />
+      {/* On a phone the page's own title says where you are; the trail only crowded the bar. */}
+      <Separator orientation="vertical" className="hidden h-5 sm:block" />
+      <div className="hidden min-w-0 flex-1 sm:block">
+        <Breadcrumbs />
+      </div>
 
-      <div className="ml-auto flex items-center gap-1.5">
+      <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
         <button
           type="button"
           onClick={onSearchClick}

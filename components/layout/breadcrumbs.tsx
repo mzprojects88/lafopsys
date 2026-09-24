@@ -89,8 +89,9 @@ export function Breadcrumbs() {
   if (segments.length === 0) return null;
 
   return (
-    <Breadcrumb>
-      <BreadcrumbList>
+    <Breadcrumb className="min-w-0">
+      {/* One line, cut off at the end, never wrapped under the bar's height. */}
+      <BreadcrumbList className="flex-nowrap overflow-hidden whitespace-nowrap [&>*]:truncate">
         {segments.map((segment, i) => {
           const href = "/" + segments.slice(0, i + 1).join("/");
           const isLast = i === segments.length - 1;

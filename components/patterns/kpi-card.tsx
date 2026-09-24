@@ -30,12 +30,13 @@ export function KpiCard({
 
   return (
     <Card className={cn("py-4", className)}>
-      <CardContent className="flex items-center gap-3 px-4">
-        {Icon && <IconCircle icon={Icon} color={color} size="lg" />}
+      {/* Two to a row on a phone: the icon sits above the words so the label is not cut to "Hours T…". */}
+      <CardContent className="flex flex-col items-start gap-2 px-4 sm:flex-row sm:items-center sm:gap-3">
+        {Icon && <IconCircle icon={Icon} color={color} size="lg" className="size-10 sm:size-12" />}
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="truncate text-sm font-medium text-muted-foreground">{label}</span>
+          <span className="text-sm leading-tight font-medium text-muted-foreground sm:truncate">{label}</span>
           <span className="text-2xl font-bold tracking-tight tabular-nums">{value}</span>
-          {sublabel && <span className="truncate text-xs text-muted-foreground">{sublabel}</span>}
+          {sublabel && <span className="text-xs leading-tight text-muted-foreground sm:truncate">{sublabel}</span>}
           {deltaPct !== undefined && (
             <div
               className={cn(
