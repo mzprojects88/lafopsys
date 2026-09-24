@@ -1,33 +1,31 @@
-/**
- * LAF copy sheet: keeps the "Patients Database" tab of LAF's COPY of the
- * Patients Database in step with the LAF app, every 5 minutes.
- * (Master Plan step 3. It never runs in, or writes to, the original sheet.)
- *
- * SETUP (once, by whoever owns the copy):
- *   1. In the copy: Extensions > Apps Script -- or, from a phone, open
- *      script.google.com in the browser's desktop mode and make a New
- *      project. Delete what is there, paste this whole file, and save.
- *   2. Project Settings (gear icon) > Script Properties > Add script property:
- *        Property: SHEET_EXPORT_SECRET
- *        Value:    the key you were given (never paste it anywhere else)
- *      Save script properties.
- *   3. Back in the Editor, pick "setup" in the function list and click Run.
- *      Google asks for permission: choose your account, Advanced, "Go to
- *      (project)", Allow. setup adds the 5-minute timer and runs once.
- *   4. Look at the Patients Database tab: cell A1 carries a note with the
- *      time of the last update (hover over A1 to read it).
- *
- * What it writes: every column of the tab except AUA and PA (their formulas
- * keep calculating), plus LFCN and LAST UPDATED after CODE. Rows are in CN
- * order; children with no CN yet come last. If the app does not answer, it
- * changes nothing and says why in the A1 note.
- */
+// LAF copy sheet: keeps the "Patients Database" tab of LAF's COPY of the
+// Patients Database in step with the LAF app, every 5 minutes.
+// (Master Plan step 3. It never runs in, or writes to, the original sheet.)
+//
+// SETUP (once, by whoever owns the copy):
+//   1. In the copy: Extensions > Apps Script -- or, from a phone, open
+//      script.google.com in the browser's desktop mode and make a New
+//      project. Delete what is there, paste this whole file, and save.
+//   2. Project Settings (gear icon) > Script Properties > Add script property:
+//        Property: SHEET_EXPORT_SECRET
+//        Value:    the key you were given (never paste it anywhere else)
+//      Save script properties.
+//   3. Back in the Editor, pick "setup" in the function list and click Run.
+//      Google asks for permission: choose your account, Advanced, "Go to
+//      (project)", Allow. setup adds the 5-minute timer and runs once.
+//   4. Look at the Patients Database tab: cell A1 carries a note with the
+//      time of the last update (hover over A1 to read it).
+//
+// What it writes: every column of the tab except AUA and PA (their formulas
+// keep calculating), plus LFCN and LAST UPDATED after CODE. Rows are in CN
+// order; children with no CN yet come last. If the app does not answer, it
+// changes nothing and says why in the A1 note.
 
 var EXPORT_URL = "https://lafopsys.vercel.app/api/patients/sheet-export";
 var TAB = "Patients Database";
-/** The original. This script must never write to it. */
+// The original. This script must never write to it.
 var ORIGINAL_ID = "16IllEPWoz0oEF0polLIH3BrPQNkNYdcg04RHpyh072s";
-/** LAF's copy: used when the script is its own project (script.google.com, e.g. set up from a phone). */
+// LAF's copy: used when the script is its own project (script.google.com, e.g. set up from a phone).
 var COPY_ID = "1dNMIw-oOx_tlkJnk5Gmv6GNXPl732pCid8kPl-fpmIM";
 var DATE_COLUMNS = ["DE", "BD"];
 var TEXT_COLUMNS = ["CP", "LFCN"];
@@ -97,7 +95,7 @@ function syncCopy() {
   }
 }
 
-/** "6/27/2024" or "6/27/24" -> a real date, so the age formulas keep working; anything else stays as typed. */
+// "6/27/2024" or "6/27/24" -> a real date, so the age formulas keep working; anything else stays as typed.
 function toDate(v) {
   var m = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(String(v));
   if (!m) return v;
