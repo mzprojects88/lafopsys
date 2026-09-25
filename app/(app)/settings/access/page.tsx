@@ -96,7 +96,7 @@ export default function AccessPage() {
                         >
                           <SelectTrigger
                             size="sm"
-                            className="w-[104px]"
+                            className="w-[112px] pl-3 pr-2"
                             aria-label={`${item.title} for ${ROLE_LABEL[r]}`}
                           >
                             <SelectValue />
