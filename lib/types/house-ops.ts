@@ -69,6 +69,8 @@ export interface Trip {
   departureTime: string;
   returnTime?: string;
   passengerPatientIds: string[];
+  /** A LAF HOPE pick-up's riders live on its manifest (0053): listed, or boarded once it has left. */
+  manifestCount?: number;
   odometerStart: number;
   odometerEnd?: number;
   fuelCost?: number;

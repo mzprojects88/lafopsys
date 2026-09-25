@@ -34,7 +34,7 @@ const columns: ColumnDef<Trip>[] = [
   {
     id: "passengers",
     header: "Passengers",
-    cell: ({ row }) => row.original.passengerPatientIds.length,
+    cell: ({ row }) => row.original.passengerPatientIds.length + (row.original.manifestCount ?? 0),
   },
   { accessorKey: "fuelCost", header: "Fuel Cost", cell: ({ row }) => (row.original.fuelCost ? `₱${row.original.fuelCost}` : "—") },
   {

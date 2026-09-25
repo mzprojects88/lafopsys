@@ -19,6 +19,7 @@ interface TripRow {
   fuel_cost: number | null;
   status: TripStatus;
   trip_passengers: { patient_id: string }[] | null;
+  trip_manifest: { boarded_at: string | null }[] | null;
 }
 
 function toTrip(row: TripRow): Trip {
@@ -31,6 +32,8 @@ function toTrip(row: TripRow): Trip {
     departureTime: row.departure_time,
     returnTime: row.return_time ?? undefined,
     passengerPatientIds: (row.trip_passengers ?? []).map((p) => p.patient_id),
+    // Before it leaves, everyone listed; after, only who actually boarded.
+    manifestCount: (row.trip_manifest ?? []).filter((m) => row.status === "scheduled" || m.boarded_at).length,
     odometerStart: row.odometer_start ?? 0,
     odometerEnd: row.odometer_end ?? undefined,
     fuelCost: row.fuel_cost ?? undefined,
@@ -42,13 +45,13 @@ export const tripsStore = createCollection<Trip[]>({
   key: "ops.trips",
   empty: [],
   // The embedded select reads the join table too, so a change there must refresh this.
-  tables: [{ schema: "ops", table: "trips" }, { schema: "ops", table: "trip_passengers" }],
+  tables: [{ schema: "ops", table: "trips" }, { schema: "ops", table: "trip_passengers" }, { schema: "ops", table: "trip_manifest" }],
   fetch: async () => {
     const supabase = createClient();
     const { data, error } = await supabase
       .schema("ops")
       .from("trips")
-      .select("*, trip_passengers(patient_id)")
+      .select("*, trip_passengers(patient_id), trip_manifest(boarded_at)")
       .order("date", { ascending: false });
     if (error) throw new Error(error.message);
     return (data ?? []).map(toTrip);
