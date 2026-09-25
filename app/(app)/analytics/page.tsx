@@ -261,8 +261,8 @@ export default function AnalyticsPage() {
         <KpiGrid>
           <KpiCard label="Cash Donations" value={formatCurrency(cashTotal)} icon={HandCoins} />
           <KpiCard label="In-Kind Value" value={formatCurrency(inKindTotal)} icon={Package} />
-          <KpiCard label="Expiring ≤ 14 days" value={expiringSoon} icon={PackageX} tone="warning" />
-          <KpiCard label="Below Reorder Point" value={lowStockItems} icon={PackageX} tone="warning" />
+          <KpiCard label="Expiring ≤ 14 days" value={expiringSoon} icon={PackageX} tone={expiringSoon > 0 ? "warning" : "default"} />
+          <KpiCard label="Below Reorder Point" value={lowStockItems} icon={PackageX} tone={lowStockItems > 0 ? "warning" : "default"} />
         </KpiGrid>
         <SectionCard title="Top Donors (Lifetime Value)" bodyClassName="flex flex-col gap-2">
           {topDonors.map((d) => (

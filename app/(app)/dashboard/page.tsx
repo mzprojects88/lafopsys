@@ -180,13 +180,13 @@ export default function DashboardPage() {
           <KpiCard label="Cash Donations" value={formatCurrency(cashIn)} sublabel="This period" icon={Wallet} />
         )}
         {(role === "admin" || role === "finance") && !isHiddenPath("/finance") && (
-          <KpiCard label="Pending Approvals" value={pendingApprovals} sublabel="Items" icon={ClipboardList} tone="warning" />
+          <KpiCard label="Pending Approvals" value={pendingApprovals} sublabel="Items" icon={ClipboardList} tone={pendingApprovals > 0 ? "warning" : "default"} />
         )}
         {(role === "admin" || role === "social_worker") && (
-          <KpiCard label="Pending Referrals" value={pendingReferrals} sublabel="Referrals" icon={Send} tone="warning" />
+          <KpiCard label="Pending Referrals" value={pendingReferrals} sublabel="Referrals" icon={Send} tone={pendingReferrals > 0 ? "warning" : "default"} />
         )}
         {(role === "admin" || role === "house_staff") && (
-          <KpiCard label="Items Expiring ≤14d" value={expiringSoon} sublabel="Items" icon={PackageX} tone="warning" />
+          <KpiCard label="Items Expiring ≤14d" value={expiringSoon} sublabel="Items" icon={PackageX} tone={expiringSoon > 0 ? "warning" : "default"} />
         )}
         {role === "volunteer" && !isHiddenPath("/donors") && <KpiCard label="Donations Recorded" value={donations.length} icon={HandCoins} />}
       </KpiGrid>
