@@ -7,8 +7,10 @@ import { AlertTriangle, CalendarClock, CheckCircle2, ClipboardList, ExternalLink
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
-import { KpiCard } from "@/components/patterns/kpi-card";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
+import { STATUS_TONE_TEXT } from "@/lib/utils/status-colors";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FileLibrary } from "@/components/patterns/file-library";
 import { useAllFiles } from "@/lib/hooks/use-files-collection";
@@ -127,26 +129,24 @@ export default function CompliancePage() {
         action={manages ? <HrSubNav /> : undefined}
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Overdue" value={loading ? "…" : overdue.length} icon={AlertTriangle} color="rose" sublabel="Past the agency's deadline, not filed" />
-        <KpiCard label="Behind target" value={loading ? "…" : behind.length} icon={TimerOff} color="amber" sublabel="Past our submit-by date, still before the deadline" />
-        <KpiCard label="Due within 14 days" value={loading ? "…" : soon.length} icon={CalendarClock} color="blue" sublabel="Counting to the submit-by date, in-progress included" />
-        <KpiCard label={`Submitted ${year}`} value={loading ? "…" : filedThisYear.length} icon={CheckCircle2} color="green" sublabel="With reference numbers" />
-      </div>
+      <KpiGrid>
+        <KpiCard label="Overdue" value={loading ? "…" : overdue.length} icon={AlertTriangle} tone="negative" sublabel="Past the agency's deadline, not filed" />
+        <KpiCard label="Behind target" value={loading ? "…" : behind.length} icon={TimerOff} tone="warning" sublabel="Past our submit-by date, still before the deadline" />
+        <KpiCard label="Due within 14 days" value={loading ? "…" : soon.length} icon={CalendarClock} tone="warning" sublabel="Counting to the submit-by date, in-progress included" />
+        <KpiCard label={`Submitted ${year}`} value={loading ? "…" : filedThisYear.length} icon={CheckCircle2} tone="positive" sublabel="With reference numbers" />
+      </KpiGrid>
 
       {missingSettings ? (
-        <Card>
-          <CardContent className="flex items-start gap-2 pt-6 text-sm">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
-            <div>
-              PhilHealth and Pag-IBIG dates need the PEN&apos;s last digit and the employer&apos;s first letter.{" "}
-              <Link href="/settings" className="underline">
-                Set them in Settings
-              </Link>
-              .
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex items-start gap-2 rounded-2xl border border-warning/30 bg-warning/10 p-4 text-theme-sm text-foreground">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning-foreground dark:text-warning" />
+          <div>
+            PhilHealth and Pag-IBIG dates need the PEN&apos;s last digit and the employer&apos;s first letter.{" "}
+            <Link href="/settings" className="underline">
+              Set them in Settings
+            </Link>
+            .
+          </div>
+        </div>
       ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
@@ -187,17 +187,16 @@ export default function CompliancePage() {
         </Select>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Deadlines</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : shown.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing in this range.</p>
-          ) : (
-            shown.map((e) => {
+      <SectionCard title="Deadlines" flush>
+        {loading ? (
+          <div className="p-5">
+            <LoadingState />
+          </div>
+        ) : shown.length === 0 ? (
+          <p className="px-5 py-8 text-center text-theme-sm text-muted-foreground">Nothing in this range.</p>
+        ) : (
+          <div className="divide-y divide-border">
+            {shown.map((e) => {
               const source = reportSourceFor(e.code);
               // The payroll figures live under HR, which finance cannot open; the DSWD figures are open to everyone here.
               const canGenerate = source !== null && !isHiddenPath(source.href(e.periodKey)) && (manages || !source.href(e.periodKey).startsWith("/hr/"));
@@ -210,9 +209,9 @@ export default function CompliancePage() {
                       ? `${STATUS_LABEL.overdue} · ${-e.daysToDeadline} d late`
                       : STATUS_LABEL[e.status];
               return (
-                <div key={`${e.itemId}|${e.periodKey}`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm">
+                <div key={`${e.itemId}|${e.periodKey}`} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
                   <div className="flex min-w-0 flex-col">
-                    <span className="font-medium">
+                    <span className="font-medium text-foreground">
                       {e.item.agency} · {e.item.name}
                     </span>
                     <span className="text-xs">
@@ -229,7 +228,7 @@ export default function CompliancePage() {
                       {e.periodLabel}
                       {" · "}
                       {source ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                        <span className={`inline-flex items-center gap-1 ${STATUS_TONE_TEXT.positive}`}>
                           <FileSpreadsheet className="size-3" /> {source.label}
                         </span>
                       ) : (
@@ -266,41 +265,38 @@ export default function CompliancePage() {
                   </div>
                 </div>
               );
-            })
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">DSWD annual figures</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 text-sm">
-          <p className="text-muted-foreground">The Annex E financial report and Annex G accomplishment report drafted from the bank statement, receipts, patients, the census and the meal logs. Print or copy the figures onto the DSWD forms.</p>
-          <div className="flex flex-wrap gap-2">
-            {dswdYears.map((y) => (
-              <Button key={y} asChild size="sm" variant="outline">
-                <Link href={`/compliance/dswd/${y}`}>{y}</Link>
-              </Button>
-            ))}
+            })}
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </SectionCard>
 
-      <Card>
-        <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-          <CardTitle className="text-base">Obligations</CardTitle>
-          {manages ? (
+      <SectionCard title="DSWD annual figures" bodyClassName="flex flex-col gap-2 text-theme-sm">
+        <p className="text-muted-foreground">The Annex E financial report and Annex G accomplishment report drafted from the bank statement, receipts, patients, the census and the meal logs. Print or copy the figures onto the DSWD forms.</p>
+        <div className="flex flex-wrap gap-2">
+          {dswdYears.map((y) => (
+            <Button key={y} asChild size="sm" variant="outline">
+              <Link href={`/compliance/dswd/${y}`}>{y}</Link>
+            </Button>
+          ))}
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Obligations"
+        actions={
+          manages ? (
             <Button size="sm" variant="outline" onClick={() => setEditing("new")}>
               Add obligation
             </Button>
-          ) : null}
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
+          ) : undefined
+        }
+        flush
+      >
+        <div className="divide-y divide-border">
           {items.map((i) => (
-            <div key={i.id} className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm ${i.active ? "" : "opacity-60"}`}>
+            <div key={i.id} className={`flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm ${i.active ? "" : "opacity-60"}`}>
               <div className="flex min-w-0 flex-col">
-                <span className="font-medium">
+                <span className="font-medium text-foreground">
                   {i.agency} · {i.name}
                 </span>
                 <span className="text-xs text-muted-foreground">
@@ -320,8 +316,8 @@ export default function CompliancePage() {
               )}
             </div>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
 
       {recording ? <FilingDialog key={`${recording.itemId}|${recording.periodKey}`} entry={recording} close={() => setRecording(null)} canDelete={manages} canUploadFiles={canUploadFiles("compliance", role, isHr)} canDeleteFiles={canDeleteFiles("compliance", role, isHr)} /> : null}
       {filesFor ? (

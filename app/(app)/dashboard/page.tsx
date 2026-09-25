@@ -17,15 +17,13 @@ import {
   BadgeCheck,
   BarChart3,
   ChevronRight,
-  ChevronDown,
   Settings2,
   type LucideIcon,
 } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Line, LineChart, XAxis } from "recharts";
-import { PageHeader } from "@/components/patterns/page-header";
-import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
+import { KpiCard, KpiGrid, type StatTone } from "@/components/patterns/kpi-card";
 import { IconCircle } from "@/components/patterns/icon-circle";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
@@ -45,10 +43,12 @@ import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { inventoryAppHref } from "@/lib/utils/inventory-app";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
-import type { CategoryColor } from "@/lib/utils/category-colors";
+import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
+import { ROLES } from "@/lib/types/common";
 
 export default function DashboardPage() {
-  const { role } = useRole();
+  const { role, user } = useRole();
+  const roleLabel = ROLES.find((r) => r.value === role)?.label ?? role;
   const { referrals } = useReferralsData();
   const { patients, stays } = usePatientsData();
   const { history: censusHistory } = useCensusData();
@@ -95,21 +95,18 @@ export default function DashboardPage() {
   const recentActivity = [
     ...donations.slice(0, 2).map((d) => ({
       icon: HandCoins,
-      color: "green" as CategoryColor,
       title: `Donation of ${formatCurrency(d.totalValue, d.currency)} received`,
       subtitle: donors.find((dn) => dn.id === d.donorId)?.name ?? "Anonymous",
       date: d.date,
     })),
     ...stays.slice(0, 2).map((s) => ({
       icon: UserPlus,
-      color: "blue" as CategoryColor,
       title: "Patient stay recorded",
       subtitle: patients.find((p) => p.id === s.patientId)?.firstName ?? "—",
       date: s.checkInAt,
     })),
     ...referrals.filter((r) => r.status === "approved").slice(0, 1).map((r) => ({
       icon: BadgeCheck,
-      color: "purple" as CategoryColor,
       title: "Referral approved",
       subtitle: r.patientName,
       date: r.date,
@@ -135,13 +132,13 @@ export default function DashboardPage() {
 
   const { canEdit } = useModuleAccess();
   const quickActions = [
-    { label: "Admit a child", href: "/patients/admit", icon: Send, color: "purple" as CategoryColor },
+    { label: "Admit a child", href: "/patients/admit", icon: Send },
     // Donations and stock are both recorded in the LAF Inventory app (one
     // receipt, one entry); this app only shows what they became.
-    { label: "Receive a donation", href: inventoryAppHref("/intake"), icon: HandCoins, color: "green" as CategoryColor },
-    { label: "New Cash Entry", href: "/finance/entry", icon: FileSignature, color: "blue" as CategoryColor },
-    { label: "Request Approval", href: "/finance/approvals", icon: CheckCircle2, color: "amber" as CategoryColor },
-    { label: "Generate Report", href: "/reports/builder", icon: BarChart3, color: "indigo" as CategoryColor },
+    { label: "Receive a donation", href: inventoryAppHref("/intake"), icon: HandCoins },
+    { label: "New Cash Entry", href: "/finance/entry", icon: FileSignature },
+    { label: "Request Approval", href: "/finance/approvals", icon: CheckCircle2 },
+    { label: "Generate Report", href: "/reports/builder", icon: BarChart3 },
   ].filter((a) => {
     // Only actions the person may actually take; the inventory app decides its own.
     const m = moduleForPath(a.href);
@@ -164,43 +161,75 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="flex flex-1 flex-col gap-6">
-      <PageHeader title="Dashboard" description="Role-aware view — switch roles from the sidebar to compare." />
+    <div className="flex flex-1 flex-col gap-5 lg:gap-6">
+      <div className="flex flex-col gap-0.5">
+        <p className="text-theme-sm text-muted-foreground">Welcome back,</p>
+        <h1 className="text-xl font-semibold text-foreground lg:text-2xl">
+          {user || roleLabel}
+          {user ? <span className="font-normal text-muted-foreground"> · {roleLabel}</span> : null}
+        </h1>
+      </div>
 
       <KpiGrid>
         {(role === "admin" || role === "social_worker" || role === "house_staff" || role === "driver") && (
-          <KpiCard label="In-House Now" value={inHouseNow} sublabel="Residents" icon={Users} color="blue" />
+          <KpiCard label="In-House Now" value={inHouseNow} sublabel="Residents" icon={Users} />
         )}
         {(role === "admin" || role === "social_worker") && (
-          <KpiCard label="Enrolled Patients" value={patients.length} sublabel="Total" icon={UserCheck} color="cyan" />
+          <KpiCard label="Enrolled Patients" value={patients.length} sublabel="Total" icon={UserCheck} />
         )}
         {(role === "admin" || role === "finance" || role === "board") && !isHiddenPath("/donors") && (
-          <KpiCard label="Cash Donations" value={formatCurrency(cashIn)} sublabel="This period" icon={Wallet} color="green" />
+          <KpiCard label="Cash Donations" value={formatCurrency(cashIn)} sublabel="This period" icon={Wallet} />
         )}
         {(role === "admin" || role === "finance") && !isHiddenPath("/finance") && (
-          <KpiCard label="Pending Approvals" value={pendingApprovals} sublabel="Items" icon={ClipboardList} color="amber" />
+          <KpiCard label="Pending Approvals" value={pendingApprovals} sublabel="Items" icon={ClipboardList} tone="warning" />
         )}
         {(role === "admin" || role === "social_worker") && (
-          <KpiCard label="Pending Referrals" value={pendingReferrals} sublabel="Referrals" icon={Send} color="purple" />
+          <KpiCard label="Pending Referrals" value={pendingReferrals} sublabel="Referrals" icon={Send} tone="warning" />
         )}
         {(role === "admin" || role === "house_staff") && (
-          <KpiCard label="Items Expiring ≤14d" value={expiringSoon} sublabel="Items" icon={PackageX} color="rose" />
+          <KpiCard label="Items Expiring ≤14d" value={expiringSoon} sublabel="Items" icon={PackageX} tone="warning" />
         )}
-        {role === "volunteer" && !isHiddenPath("/donors") && <KpiCard label="Donations Recorded" value={donations.length} icon={HandCoins} color="green" />}
+        {role === "volunteer" && !isHiddenPath("/donors") && <KpiCard label="Donations Recorded" value={donations.length} icon={HandCoins} />}
       </KpiGrid>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {!isHiddenPath("/donors") && (
-          <Card>
-            <CardHeader className="flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-base">Donations Trend (This Period)</CardTitle>
-              <span className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs text-muted-foreground">
-                Last 30 days <ChevronDown className="size-3" />
-              </span>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="size-2 rounded-full bg-[var(--chart-1)]" />
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-theme-sm font-semibold text-foreground">Quick Actions</h2>
+          <button type="button" className="flex items-center gap-1 text-theme-xs font-medium text-primary hover:underline">
+            <Settings2 className="size-3.5" />
+            Customize dashboard
+          </button>
+        </div>
+        <div className="grid grid-cols-4 gap-2 lg:hidden">
+          {quickActions.map((action) => (
+            <Link
+              key={action.href}
+              href={action.href}
+              className="flex flex-col items-center gap-1.5 rounded-2xl border border-border bg-card px-2 py-3 text-center transition-colors hover:bg-muted/60"
+            >
+              <IconCircle icon={action.icon} size="md" />
+              <span className="text-[11px] leading-tight font-medium text-foreground">{action.label}</span>
+            </Link>
+          ))}
+        </div>
+        <div className="hidden flex-wrap gap-2 lg:flex">
+          {quickActions.map((action) => (
+            <Button key={action.href} variant="outline" asChild>
+              <Link href={action.href}>
+                <action.icon className="size-4" strokeWidth={1.75} />
+                {action.label}
+              </Link>
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3 lg:gap-6">
+        <div className="flex min-w-0 flex-col gap-5 lg:col-span-2 lg:gap-6">
+          {!isHiddenPath("/donors") && (
+            <SectionCard title="Donations Trend (This Period)" description="Last 30 days">
+              <div className="mb-3 flex items-center gap-1.5 text-theme-xs text-muted-foreground">
+                <span className="size-2 rounded-full bg-chart-1" />
                 Cash Donations (₱)
               </div>
               <ChartContainer config={chartConfig} className="h-56 w-full">
@@ -217,25 +246,17 @@ export default function DashboardPage() {
                   <Area type="monotone" dataKey="amount" stroke="var(--color-amount)" fill="url(#donationFill)" strokeWidth={2} />
                 </AreaChart>
               </ChartContainer>
-            </CardContent>
-          </Card>
-        )}
+            </SectionCard>
+          )}
 
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">Patients & Admissions Trend</CardTitle>
-            <span className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs text-muted-foreground">
-              Last 30 days <ChevronDown className="size-3" />
-            </span>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-3 flex items-center gap-3 text-xs text-muted-foreground">
+          <SectionCard title="Patients & Admissions Trend" description="Last 30 days">
+            <div className="mb-3 flex items-center gap-3 text-theme-xs text-muted-foreground">
               <span className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-[var(--chart-1)]" />
+                <span className="size-2 rounded-full bg-chart-1" />
                 Enrolled
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-[var(--chart-2)]" />
+                <span className="size-2 rounded-full bg-chart-2" />
                 Admissions
               </span>
             </div>
@@ -248,119 +269,80 @@ export default function DashboardPage() {
                 <Line type="monotone" dataKey="admissions" stroke="var(--color-admissions)" strokeWidth={2} dot={false} />
               </LineChart>
             </ChartContainer>
-          </CardContent>
-        </Card>
-      </div>
+          </SectionCard>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">House Occupancy</CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-center gap-6">
-            <OccupancyRing percent={occupiedPct} />
-            <div className="flex flex-col gap-2 text-sm">
-              <LegendRow color="bg-blue-500" label="In-House Now" value={inHouseNow} />
-              <LegendRow color="bg-blue-200" label="Available Slots" value={availableSlots} />
-              <LegendRow color="bg-slate-300" label="Total Capacity" value={capacity || "—"} />
-            </div>
-          </CardContent>
-          <Link href="/patients/floor-plan" className="mx-4 mb-4 flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-            View floor plan <ChevronRight className="size-3.5" />
-          </Link>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Inventory Status</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-1">
-            <StatusRow icon={CheckCircle2} color="green" label="Good Stock" sublabel="Well-stocked items" value={goodStock} />
-            <StatusRow icon={AlertTriangle} color="amber" label="Low Stock" sublabel="Reorder soon" value={lowStock} />
-            <StatusRow icon={Clock} color="rose" label="Expiring ≤14d" sublabel="Needs attention" value={expiringSoon} />
-            <Link href="/inventory" className="mt-2 flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-              View inventory <ChevronRight className="size-3.5" />
-            </Link>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Recent Activity</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {recentActivity.map((a, i) => (
-              <div key={i} className="flex items-start gap-3">
-                <IconCircle icon={a.icon} color={a.color} size="sm" />
-                <div className="flex flex-1 flex-col">
-                  <span className="text-sm font-medium leading-tight">{a.title}</span>
-                  <span className="text-xs text-muted-foreground">{a.subtitle}</span>
-                </div>
-                <span className="shrink-0 text-[11px] text-muted-foreground">{formatDate(a.date, "MMM d")}</span>
-              </div>
-            ))}
-            <Link href="/reports" className="mt-1 flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-              View all activity <ChevronRight className="size-3.5" />
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {!isHiddenPath("/finance") && (
-          <Card>
-            <CardHeader className="flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-base">Urgent Approvals</CardTitle>
-              <Badge className="rounded-full">{urgentApprovals.length}</Badge>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              {urgentApprovals.map((a, i) => (
-                <div key={i} className="flex items-center justify-between gap-2">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium">{a.title}</span>
-                    <span className="text-xs text-muted-foreground">{a.subtitle}</span>
+          <SectionCard title="Recent Activity" flush>
+            <ul className="divide-y divide-border">
+              {recentActivity.map((a, i) => (
+                <li key={i} className="flex items-start gap-3 px-5 py-3">
+                  <IconCircle icon={a.icon} size="sm" />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="text-theme-sm leading-tight font-medium text-foreground">{a.title}</span>
+                    <span className="text-theme-xs text-muted-foreground">{a.subtitle}</span>
                   </div>
-                  <Badge
-                    variant="outline"
-                    className={
-                      a.priority === "High"
-                        ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400"
-                        : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400"
-                    }
-                  >
-                    {a.priority}
-                  </Badge>
-                </div>
+                  <span className="shrink-0 text-theme-xs text-muted-foreground">{formatDate(a.date, "MMM d")}</span>
+                </li>
               ))}
-              <Link href="/finance/approvals" className="mt-1 flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-                View all approvals <ChevronRight className="size-3.5" />
+            </ul>
+            <div className="border-t border-border px-5 py-3">
+              <Link href="/reports" className="flex w-fit items-center gap-1 text-theme-xs font-medium text-primary hover:underline">
+                View all activity <ChevronRight className="size-3.5" />
               </Link>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          </SectionCard>
+        </div>
 
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base">Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-            {quickActions.map((action) => (
-              <Button key={action.href} variant="outline" className="h-auto flex-col items-start gap-2 py-3" asChild>
-                <Link href={action.href}>
-                  <IconCircle icon={action.icon} color={action.color} size="sm" />
-                  <span className="text-xs font-medium">{action.label}</span>
+        <div className="flex min-w-0 flex-col gap-5 lg:gap-6">
+          <SectionCard title="House Occupancy" flush>
+            <div className="flex items-center gap-6 p-5">
+              <OccupancyRing percent={occupiedPct} />
+              <div className="flex flex-1 flex-col gap-2 text-theme-sm">
+                <LegendRow color="bg-primary" label="In-House Now" value={inHouseNow} />
+                <LegendRow color="bg-primary/30" label="Available Slots" value={availableSlots} />
+                <LegendRow color="bg-muted-foreground/40" label="Total Capacity" value={capacity || "—"} />
+              </div>
+            </div>
+            <div className="border-t border-border px-5 py-3">
+              <Link href="/patients/floor-plan" className="flex w-fit items-center gap-1 text-theme-xs font-medium text-primary hover:underline">
+                View floor plan <ChevronRight className="size-3.5" />
+              </Link>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Inventory Status" flush>
+            <ul className="divide-y divide-border">
+              <StatusRow icon={CheckCircle2} tone="positive" label="Good Stock" sublabel="Well-stocked items" value={goodStock} />
+              <StatusRow icon={AlertTriangle} tone="warning" label="Low Stock" sublabel="Reorder soon" value={lowStock} />
+              <StatusRow icon={Clock} tone="warning" label="Expiring ≤14d" sublabel="Needs attention" value={expiringSoon} />
+            </ul>
+            <div className="border-t border-border px-5 py-3">
+              <Link href="/inventory" className="flex w-fit items-center gap-1 text-theme-xs font-medium text-primary hover:underline">
+                View inventory <ChevronRight className="size-3.5" />
+              </Link>
+            </div>
+          </SectionCard>
+
+          {!isHiddenPath("/finance") && (
+            <SectionCard title="Urgent Approvals" actions={<Badge className="rounded-full">{urgentApprovals.length}</Badge>} flush>
+              <ul className="divide-y divide-border">
+                {urgentApprovals.map((a, i) => (
+                  <li key={i} className="flex items-center justify-between gap-2 px-5 py-3">
+                    <div className="flex min-w-0 flex-col">
+                      <span className="text-theme-sm font-medium text-foreground">{a.title}</span>
+                      <span className="text-theme-xs text-muted-foreground">{a.subtitle}</span>
+                    </div>
+                    <Badge className={STATUS_TONE_CLASSES[a.priority === "High" ? "negative" : "warning"]}>{a.priority}</Badge>
+                  </li>
+                ))}
+              </ul>
+              <div className="border-t border-border px-5 py-3">
+                <Link href="/finance/approvals" className="flex w-fit items-center gap-1 text-theme-xs font-medium text-primary hover:underline">
+                  View all approvals <ChevronRight className="size-3.5" />
                 </Link>
-              </Button>
-            ))}
-            <button
-              type="button"
-              className="col-span-full mt-1 flex items-center justify-end gap-1 text-xs font-medium text-primary hover:underline"
-            >
-              <Settings2 className="size-3.5" />
-              Customize dashboard
-            </button>
-          </CardContent>
-        </Card>
+              </div>
+            </SectionCard>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -389,8 +371,8 @@ function OccupancyRing({ percent }: { percent: number }) {
         />
       </svg>
       <div className="absolute flex flex-col items-center">
-        <span className="text-2xl font-bold">{percent}%</span>
-        <span className="text-[10px] text-muted-foreground">Occupied</span>
+        <span className="text-xl font-bold tabular-nums text-foreground">{percent}%</span>
+        <span className="text-theme-xs text-muted-foreground">Occupied</span>
       </div>
     </div>
   );
@@ -401,32 +383,32 @@ function LegendRow({ color, label, value }: { color: string; label: string; valu
     <div className="flex items-center gap-2">
       <span className={`size-2.5 shrink-0 rounded-full ${color}`} />
       <span className="text-muted-foreground">{label}</span>
-      <span className="ml-auto font-semibold">{value}</span>
+      <span className="ml-auto font-semibold tabular-nums text-foreground">{value}</span>
     </div>
   );
 }
 
 function StatusRow({
   icon,
-  color,
+  tone,
   label,
   sublabel,
   value,
 }: {
   icon: LucideIcon;
-  color: CategoryColor;
+  tone: StatTone;
   label: string;
   sublabel: string;
   value: number;
 }) {
   return (
-    <div className="flex items-center gap-3 py-1.5">
-      <IconCircle icon={icon} color={color} size="sm" />
-      <div className="flex flex-1 flex-col">
-        <span className="text-sm font-medium">{label}</span>
-        <span className="text-xs text-muted-foreground">{sublabel}</span>
+    <li className="flex items-center gap-3 px-5 py-3">
+      <IconCircle icon={icon} tone={tone} size="sm" />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="text-theme-sm font-medium text-foreground">{label}</span>
+        <span className="text-theme-xs text-muted-foreground">{sublabel}</span>
       </div>
-      <span className="text-lg font-semibold tabular-nums">{value}</span>
-    </div>
+      <span className="text-lg font-semibold tabular-nums text-foreground">{value}</span>
+    </li>
   );
 }

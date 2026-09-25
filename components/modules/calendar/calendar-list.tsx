@@ -6,6 +6,7 @@ import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils/date";
+import { HOLIDAY_DOT } from "@/components/modules/calendar/month-grid";
 import type { CalendarEvent } from "@/lib/types/calendar";
 
 /** The sheet's own venue chip. Free text that is not one of the known
@@ -58,7 +59,8 @@ export function CalendarList({
       accessorFn: (e) => e.title,
       cell: ({ row }) => (
         <span className="flex items-center gap-1.5">
-          <span className={row.original.isHoliday ? "font-medium text-amber-700 dark:text-amber-400" : "font-medium"}>{row.original.title}</span>
+          {row.original.isHoliday ? <span className={HOLIDAY_DOT} aria-hidden /> : null}
+          <span className="font-medium">{row.original.title}</span>
           {row.original.source === "sheet" ? <Table2 className="size-3 shrink-0 text-muted-foreground" aria-label="From the Google Sheet" /> : null}
         </span>
       ),

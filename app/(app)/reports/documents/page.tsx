@@ -5,8 +5,9 @@ import { toast } from "sonner";
 import { ChevronRight, ExternalLink, FileText, Folder, FolderOpen, Search, Trash2, Upload } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
-import { KpiCard } from "@/components/patterns/kpi-card";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -102,7 +103,7 @@ export default function DocumentsPage() {
         {node.path ? (
           <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-muted" style={{ paddingLeft: `${depth * 16 + 8}px` }} onClick={() => toggle(node.path)}>
             <ChevronRight className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`} />
-            {expanded ? <FolderOpen className="size-4 shrink-0 text-amber-600" /> : <Folder className="size-4 shrink-0 text-amber-600" />}
+            {expanded ? <FolderOpen className="size-4 shrink-0 text-muted-foreground" /> : <Folder className="size-4 shrink-0 text-muted-foreground" />}
             <span className="truncate font-medium">{node.name}</span>
             <span className="text-xs text-muted-foreground">{node.count}</span>
           </button>
@@ -124,7 +125,7 @@ export default function DocumentsPage() {
                     <ExternalLink className="size-3.5" />
                   </Button>
                   {canDelete(f) ? (
-                    <Button size="sm" variant="ghost" aria-label="Remove" className="text-rose-700" onClick={() => setConfirmDelete(f)}>
+                    <Button size="sm" variant="ghost" aria-label="Remove" className="text-destructive" onClick={() => setConfirmDelete(f)}>
                       <Trash2 className="size-3.5" />
                     </Button>
                   ) : null}
@@ -141,12 +142,12 @@ export default function DocumentsPage() {
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader title="Documents" description="Every file kept in the foundation's bucket that you may see, arranged as the menus are: HR, Compliances, Patients, Donors, Financial, Reports." />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Files" value={loading ? "…" : files.length} icon={FileText} color="blue" sublabel={formatBytes(totalBytes)} />
-        <KpiCard label="HR · 201 files" value={loading ? "…" : (byModule.get("hr") ?? 0)} icon={Folder} color="indigo" />
-        <KpiCard label="Compliances" value={loading ? "…" : (byModule.get("compliance") ?? 0)} icon={Folder} color="amber" />
-        <KpiCard label="Patients · Donors · Financial" value={loading ? "…" : (byModule.get("patients") ?? 0) + (byModule.get("donors") ?? 0) + (byModule.get("finance") ?? 0)} icon={Folder} color="teal" />
-      </div>
+      <KpiGrid>
+        <KpiCard label="Files" value={loading ? "…" : files.length} icon={FileText} sublabel={formatBytes(totalBytes)} />
+        <KpiCard label="HR · 201 files" value={loading ? "…" : (byModule.get("hr") ?? 0)} icon={Folder} />
+        <KpiCard label="Compliances" value={loading ? "…" : (byModule.get("compliance") ?? 0)} icon={Folder} />
+        <KpiCard label="Patients · Donors · Financial" value={loading ? "…" : (byModule.get("patients") ?? 0) + (byModule.get("donors") ?? 0) + (byModule.get("finance") ?? 0)} icon={Folder} />
+      </KpiGrid>
 
       <div className="relative max-w-md">
         <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
@@ -156,14 +157,9 @@ export default function DocumentsPage() {
       {error ? (
         <EmptyState title="Couldn't load the files" description={error} />
       ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Folders</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading && files.length === 0 ? <p className="text-sm text-muted-foreground">Loading…</p> : shown.length === 0 ? <p className="text-sm text-muted-foreground">{q ? "Nothing matches." : "No files yet. Add them on an employee, obligation, patient, donor or bank import, or below under Reports."}</p> : renderNode(tree, 0)}
-          </CardContent>
-        </Card>
+        <SectionCard title="Folders">
+          {loading && files.length === 0 ? <LoadingState /> : shown.length === 0 ? <p className="text-theme-sm text-muted-foreground">{q ? "Nothing matches." : "No files yet. Add them on an employee, obligation, patient, donor or bank import, or below under Reports."}</p> : renderNode(tree, 0)}
+        </SectionCard>
       )}
 
       <FileLibrary recordType="general" recordId="Board packs" canUpload={canUploadFiles("reports", role, isHr)} canDelete={canDeleteFiles("reports", role, isHr)} title="Reports · Board packs" description="General papers that belong to no single record: board packs, annual reports, policies. Kept under Reports / Board packs." />
@@ -183,7 +179,7 @@ export default function DocumentsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Keep it</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={busy} className="bg-destructive text-white hover:bg-destructive/90">
+            <AlertDialogAction onClick={handleDelete} disabled={busy} variant="destructive">
               Remove
             </AlertDialogAction>
           </AlertDialogFooter>

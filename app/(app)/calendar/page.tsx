@@ -5,7 +5,8 @@ import { CalendarDays, ChevronLeft, ChevronRight, List, Plus } from "lucide-reac
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CalendarList } from "@/components/modules/calendar/calendar-list";
 import { MonthGrid } from "@/components/modules/calendar/month-grid";
@@ -135,13 +136,13 @@ export default function CalendarPage() {
       {error ? (
         <EmptyState title="Couldn't load the calendar" description={error} />
       ) : view === "month" ? (
-        <Card>
-          <CardContent className="flex flex-col gap-4 pt-6">
-            {periodControl}
-            <MonthGrid month={month} events={inMonth} today={today} canEdit={canEdit} onDayClick={openCreate} onEventClick={openEvent} />
-            {!canEdit ? <p className="text-xs text-muted-foreground">Your access to the calendar is view only.</p> : null}
-          </CardContent>
-        </Card>
+        <SectionCard bodyClassName="flex flex-col gap-4">
+          {periodControl}
+          <MonthGrid month={month} events={inMonth} today={today} canEdit={canEdit} onDayClick={openCreate} onEventClick={openEvent} />
+          {!canEdit ? <p className="text-theme-xs text-muted-foreground">Your access to the calendar is view only.</p> : null}
+        </SectionCard>
+      ) : loading && events.length === 0 ? (
+        <LoadingState />
       ) : (
         <CalendarList
           events={inPeriod}
@@ -149,7 +150,7 @@ export default function CalendarPage() {
           canEditEvent={canEditEvent}
           onOpen={openEvent}
           toolbar={periodControl}
-          emptyMessage={loading ? "Loading…" : `Nothing on the calendar for ${periodLabel(kind, window)}.`}
+          emptyMessage={`Nothing on the calendar for ${periodLabel(kind, window)}.`}
         />
       )}
 

@@ -8,6 +8,15 @@ import type { CalendarEvent } from "@/lib/types/calendar";
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_PILLS = 3;
 
+// Data colours, not status: the event TYPE (holiday vs everything else) on the
+// chart palette. Holidays take --chart-3; regular events the accent. Text stays
+// text-foreground because chart-3 is too light to carry text on a light card.
+const HOLIDAY_CELL = "bg-chart-3/10";
+const HOLIDAY_PILL = "bg-chart-3/20 text-foreground hover:bg-chart-3/30";
+const EVENT_PILL = "bg-chart-1/10 text-foreground hover:bg-chart-1/20";
+/** The holiday marker beside a title in the list views (same data colour). */
+export const HOLIDAY_DOT = "size-2 shrink-0 rounded-full bg-chart-3";
+
 /**
  * A month of the foundation calendar as a grid -- the view the sheet's
  * "April 2026" / "May 2026" tabs were drawn by hand to give.
@@ -47,7 +56,7 @@ export function MonthGrid({
   return (
     <div className="overflow-x-auto">
       <div className="min-w-[640px]">
-        <div className="grid grid-cols-7 border-b text-center text-xs font-medium text-muted-foreground">
+        <div className="grid grid-cols-7 border-b border-border text-center text-theme-xs font-medium text-muted-foreground">
           {WEEKDAYS.map((d) => (
             <div key={d} className="py-2">
               {d}
@@ -74,10 +83,10 @@ export function MonthGrid({
                   }
                 }}
                 className={cn(
-                  "flex min-h-24 flex-col gap-1 border-b border-r p-1.5 text-left",
+                  "flex min-h-24 flex-col gap-1 border-r border-b border-border p-1.5 text-left",
                   !inMonth && "bg-muted/30 text-muted-foreground",
-                  holiday && inMonth && "bg-amber-50/60 dark:bg-amber-500/10",
-                  canEdit && "cursor-pointer hover:bg-accent/40"
+                  holiday && inMonth && HOLIDAY_CELL,
+                  canEdit && "cursor-pointer hover:bg-muted/60"
                 )}
               >
                 <span
@@ -100,9 +109,7 @@ export function MonthGrid({
                     title={[e.time, e.title, e.venue].filter(Boolean).join(" · ")}
                     className={cn(
                       "w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] leading-tight",
-                      e.isHoliday
-                        ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
-                        : "bg-primary/10 text-foreground hover:bg-primary/20"
+                      e.isHoliday ? HOLIDAY_PILL : EVENT_PILL
                     )}
                   >
                     {e.time ? <span className="text-muted-foreground">{e.time} </span> : null}

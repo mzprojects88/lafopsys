@@ -78,8 +78,8 @@ export function SyncStatus() {
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border px-3 py-2 text-xs",
-        stale && !runsLoading ? "border-amber-200 bg-amber-50/60 text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300" : "bg-muted/30 text-muted-foreground"
+        "flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border px-3 py-2 text-theme-xs",
+        stale && !runsLoading ? "border-warning/30 bg-warning/10 text-warning-foreground dark:text-warning" : "border-border bg-muted/30 text-muted-foreground"
       )}
     >
       {stale && !runsLoading ? <AlertTriangle className="size-3.5 shrink-0" /> : <Table2 className="size-3.5 shrink-0" />}

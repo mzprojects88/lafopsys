@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { ArrowRight, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { useCalendarEventsData } from "@/lib/hooks/use-calendar-events-collection";
 import { useNow } from "@/lib/hooks/use-now";
 import { dayKey } from "@/lib/utils/dtr";
 import { inWindow, periodWindow } from "@/lib/utils/period";
 import { formatDate } from "@/lib/utils/date";
 import { VenueBadge } from "@/components/modules/calendar/calendar-list";
+import { HOLIDAY_DOT } from "@/components/modules/calendar/month-grid";
 
 /**
  * Today and the rest of this week, compactly -- what the CEO wants to glance
@@ -25,24 +27,26 @@ export function CalendarSnapshot() {
   const laterThisWeek = events.filter((e) => e.date > today && inWindow(e.date, week));
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="flex items-center gap-2 text-base">
+    <SectionCard
+      title={
+        <span className="flex items-center gap-2">
           <CalendarDays className="size-4 text-muted-foreground" />
           Calendar
-        </CardTitle>
+        </span>
+      }
+      actions={
         <Button asChild variant="outline" size="sm">
           <Link href="/calendar">
             Open full calendar
             <ArrowRight />
           </Link>
         </Button>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <Section title="Today" subtitle={formatDate(today, "EEEE, MMMM d")} events={todays} loading={loading} empty="Nothing scheduled today." />
-        <Section title="Later this week" events={laterThisWeek} loading={loading} empty="Nothing else this week." showDate />
-      </CardContent>
-    </Card>
+      }
+      bodyClassName="flex flex-col gap-4"
+    >
+      <Section title="Today" subtitle={formatDate(today, "EEEE, MMMM d")} events={todays} loading={loading} empty="Nothing scheduled today." />
+      <Section title="Later this week" events={laterThisWeek} loading={loading} empty="Nothing else this week." showDate />
+    </SectionCard>
   );
 }
 
@@ -64,23 +68,26 @@ function Section({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between">
-        <span className="text-sm font-medium">{title}</span>
+        <span className="text-theme-sm font-medium text-foreground">{title}</span>
         {subtitle ? <span className="text-xs text-muted-foreground">{subtitle}</span> : null}
       </div>
       {loading ? (
-        <p className="text-xs text-muted-foreground">Loading…</p>
+        <LoadingState rows={2} />
       ) : events.length === 0 ? (
         <p className="text-xs text-muted-foreground">{empty}</p>
       ) : (
-        <ul className="flex flex-col divide-y rounded-lg border">
+        <ul className="flex flex-col divide-y divide-border">
           {events.map((e) => (
-            <li key={e.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+            <li key={e.id} className="flex items-center gap-3 py-2.5 text-theme-sm">
               <span className="w-24 shrink-0 text-xs text-muted-foreground">
                 {showDate ? formatDate(e.date, "EEE d") : null}
                 {showDate && e.time ? " · " : null}
                 {e.time ?? (showDate ? null : "—")}
               </span>
-              <span className={e.isHoliday ? "flex-1 truncate font-medium text-amber-700 dark:text-amber-400" : "flex-1 truncate"}>{e.title}</span>
+              <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                {e.isHoliday ? <span className={HOLIDAY_DOT} aria-hidden /> : null}
+                <span className={e.isHoliday ? "truncate font-medium" : "truncate"}>{e.title}</span>
+              </span>
               {e.officerOnDuty ? <span className="hidden text-xs text-muted-foreground sm:inline">{e.officerOnDuty}</span> : null}
               <VenueBadge venue={e.venue} />
             </li>

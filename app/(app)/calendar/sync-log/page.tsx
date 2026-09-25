@@ -9,7 +9,8 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { useCalendarSyncRuns, type CalendarSyncRun } from "@/lib/hooks/use-calendar-sync-runs-collection";
 import { useCalendarRemovedEvents, calendarRemovedEventsStore } from "@/lib/hooks/use-calendar-removed-events";
 import { calendarEventsStore } from "@/lib/hooks/use-calendar-events-collection";
@@ -85,7 +86,7 @@ export default function CalendarSyncLogPage() {
       accessorFn: (r) => r.error ?? "",
       cell: ({ row }) =>
         row.original.error ? (
-          <span className="block max-w-[40ch] truncate text-rose-700 dark:text-rose-400" title={row.original.error}>
+          <span className="block max-w-[40ch] truncate text-destructive" title={row.original.error}>
             {row.original.error}
           </span>
         ) : (
@@ -109,24 +110,23 @@ export default function CalendarSyncLogPage() {
         }
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Hidden upcoming events</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          <p className="text-sm text-muted-foreground">
-            Upcoming events that were on the sheet and no longer are. They are kept here rather than deleted. Restore one only if it
-            was removed by accident — the next check hides it again unless it is back in the sheet.
-          </p>
-          {removedLoading ? (
-            <p className="text-xs text-muted-foreground">Loading…</p>
-          ) : upcomingRemoved.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Nothing hidden.</p>
-          ) : (
-            upcomingRemoved.map((e) => (
-              <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2">
+      <SectionCard title="Hidden upcoming events" flush>
+        <p className="px-5 pt-4 pb-3 text-theme-sm text-muted-foreground">
+          Upcoming events that were on the sheet and no longer are. They are kept here rather than deleted. Restore one only if it
+          was removed by accident — the next check hides it again unless it is back in the sheet.
+        </p>
+        {removedLoading ? (
+          <div className="px-5 pb-5">
+            <LoadingState rows={2} />
+          </div>
+        ) : upcomingRemoved.length === 0 ? (
+          <p className="px-5 pb-4 text-theme-xs text-muted-foreground">Nothing hidden.</p>
+        ) : (
+          <div className="divide-y divide-border border-t border-border">
+            {upcomingRemoved.map((e) => (
+              <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 hover:bg-muted/60">
                 <div className="flex min-w-0 flex-col">
-                  <span className="truncate text-sm font-medium">{e.title}</span>
+                  <span className="truncate text-theme-sm font-medium text-foreground">{e.title}</span>
                   <span className="text-xs text-muted-foreground">
                     {formatDate(e.date, "EEE, MMM d, yyyy")}
                     {e.time ? ` · ${e.time}` : ""} · hidden {formatDate(e.sheetRemovedAt, "MMM d, HH:mm")}
@@ -142,19 +142,19 @@ export default function CalendarSyncLogPage() {
                   ) : null}
                 </div>
               </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+            ))}
+          </div>
+        )}
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Checks</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <DataTable columns={columns} data={runs} searchPlaceholder="Search…" emptyMessage={loading ? "Loading…" : "The sheet has not been checked yet."} pageSize={20} />
-        </CardContent>
-      </Card>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-base font-medium text-foreground">Checks</h2>
+        {loading && runs.length === 0 ? (
+          <LoadingState />
+        ) : (
+          <DataTable columns={columns} data={runs} searchPlaceholder="Search…" emptyMessage="The sheet has not been checked yet." pageSize={20} />
+        )}
+      </section>
     </div>
   );
 }

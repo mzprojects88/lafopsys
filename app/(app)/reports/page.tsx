@@ -12,9 +12,9 @@ import { Button } from "@/components/ui/button";
 import { reportDefinitions } from "@/lib/mock-data";
 
 const SUB_NAV: ModuleSubNavItem[] = [
-  { href: "/reports/builder", label: "Report Builder", icon: Wrench, color: "blue" },
-  { href: "/reports/schedule", label: "Scheduled Delivery", icon: Send, color: "purple" },
-  { href: "/reports/documents", label: "Documents", icon: FolderOpen, color: "slate" },
+  { href: "/reports/builder", label: "Report Builder", icon: Wrench },
+  { href: "/reports/schedule", label: "Scheduled Delivery", icon: Send },
+  { href: "/reports/documents", label: "Documents", icon: FolderOpen },
 ];
 import type { ReportDefinition } from "@/lib/types/reports";
 
@@ -56,9 +56,9 @@ export default function ReportsPage() {
       />
 
       <KpiGrid>
-        <KpiCard label="Total Reports" value={reportDefinitions.length} icon={FileText} color="slate" />
-        <KpiCard label="Scheduled" value={scheduledCount} icon={CalendarClock} color="blue" />
-        <KpiCard label="Generated" value={generatedCount} icon={CheckCircle2} color="green" />
+        <KpiCard label="Total Reports" value={reportDefinitions.length} icon={FileText} />
+        <KpiCard label="Scheduled" value={scheduledCount} icon={CalendarClock} />
+        <KpiCard label="Generated" value={generatedCount} icon={CheckCircle2} />
       </KpiGrid>
 
       <DataTable columns={columns} data={reportDefinitions} searchPlaceholder="Search reports…" />

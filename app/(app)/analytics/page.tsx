@@ -5,7 +5,7 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "rec
 import { Users, HeartPulse, Droplets, Home, Share2, Percent, Bed, Utensils, Car, Sparkles, HandCoins, Package, PackageX, Wallet, TrendingDown, Timer } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
@@ -123,7 +123,7 @@ export default function AnalyticsPage() {
   const programChartConfig: ChartConfig = { amount: { label: "Spend", color: "var(--chart-2)" } };
 
   return (
-    <div className="flex flex-1 flex-col gap-8">
+    <div className="flex flex-1 flex-col gap-6">
       <PageHeader
         title="Analytics Dashboard"
         description={isBoard ? "Aggregate view — no clinical detail is shown to the Board role." : "All panels derived from operations data — nothing here can disagree with the modules that feed it."}
@@ -132,38 +132,32 @@ export default function AnalyticsPage() {
       {/* Panel A */}
       {!isBoard && (
         <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold text-muted-foreground">Panel A — Enrolled Patients Overview</h2>
+          <h2 className="text-base font-medium text-foreground">Enrolled Patients Overview</h2>
           <KpiGrid>
-            <KpiCard label="Total Enrolled" value={patients.length} icon={Users} color="purple" />
-            <KpiCard label="Male / Female" value={`${sexSplit.M} / ${sexSplit.F}`} icon={Users} color="blue" />
-            <KpiCard label="Cancer" value={illnessBreakdown.find((i) => i.category === "cancer")?.count ?? 0} icon={HeartPulse} color="rose" />
-            <KpiCard label="Thalassemia" value={illnessBreakdown.find((i) => i.category === "thalassemia")?.count ?? 0} icon={Droplets} color="red" />
+            <KpiCard label="Total Enrolled" value={patients.length} icon={Users} />
+            <KpiCard label="Male / Female" value={`${sexSplit.M} / ${sexSplit.F}`} icon={Users} />
+            <KpiCard label="Cancer" value={illnessBreakdown.find((i) => i.category === "cancer")?.count ?? 0} icon={HeartPulse} />
+            <KpiCard label="Thalassemia" value={illnessBreakdown.find((i) => i.category === "thalassemia")?.count ?? 0} icon={Droplets} />
           </KpiGrid>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Card>
-              <CardHeader><CardTitle className="text-sm">Age Brackets</CardTitle></CardHeader>
-              <CardContent>
-                <ChartContainer config={{ count: { label: "Patients", color: "var(--chart-1)" } }} className="h-56 w-full">
-                  <BarChart data={ageBrackets}>
-                    <CartesianGrid vertical={false} />
-                    <XAxis dataKey="bracket" tickLine={false} axisLine={false} fontSize={11} />
-                    <YAxis hide />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="count" fill="var(--color-count)" radius={4} />
-                  </BarChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader><CardTitle className="text-sm">Status Breakdown</CardTitle></CardHeader>
-              <CardContent className="flex flex-wrap gap-2">
-                {statusBreakdown.map((s) => (
-                  <Badge key={s.status} variant="secondary" className="text-xs capitalize">
-                    {s.status.replace("_", " ")}: {s.count}
-                  </Badge>
-                ))}
-              </CardContent>
-            </Card>
+            <SectionCard title="Age Brackets">
+              <ChartContainer config={{ count: { label: "Patients", color: "var(--chart-1)" } }} className="h-56 w-full">
+                <BarChart data={ageBrackets}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="bracket" tickLine={false} axisLine={false} fontSize={11} />
+                  <YAxis hide />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="count" fill="var(--color-count)" radius={4} />
+                </BarChart>
+              </ChartContainer>
+            </SectionCard>
+            <SectionCard title="Status Breakdown" bodyClassName="flex flex-wrap gap-2">
+              {statusBreakdown.map((s) => (
+                <Badge key={s.status} variant="secondary" className="text-xs capitalize">
+                  {s.status.replace("_", " ")}: {s.count}
+                </Badge>
+              ))}
+            </SectionCard>
           </div>
         </section>
       )}
@@ -171,8 +165,8 @@ export default function AnalyticsPage() {
       {/* Panel B */}
       {!isBoard && (
         <section className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-muted-foreground">Panel B — Accommodated Clients by Diagnosis</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-base font-medium text-foreground">Accommodated Clients by Diagnosis</h2>
             <div className="flex gap-1">
               <Button size="sm" variant={panelBMode === "nights" ? "default" : "outline"} className="h-7 text-xs" onClick={() => setPanelBMode("nights")}>
                 Patient-Nights
@@ -182,7 +176,7 @@ export default function AnalyticsPage() {
               </Button>
             </div>
           </div>
-          <p className="text-xs text-amber-700 dark:text-amber-400">
+          <p className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-theme-xs text-warning-foreground dark:text-warning">
             ⚠ These two measures tell very different stories — &ldquo;162 cancer patients&rdquo; reads as headcount but often means patient-nights. Toggle to compare.
           </p>
           <KpiGrid>
@@ -192,7 +186,6 @@ export default function AnalyticsPage() {
                 label={`${row.category[0].toUpperCase()}${row.category.slice(1)} (${panelBMode === "nights" ? "nights" : "patients"})`}
                 value={panelBMode === "nights" ? row.nights : row.unique}
                 icon={row.category === "cancer" ? HeartPulse : row.category === "thalassemia" ? Droplets : Users}
-                color={row.category === "cancer" ? "rose" : row.category === "thalassemia" ? "red" : "slate"}
               />
             ))}
           </KpiGrid>
@@ -202,118 +195,105 @@ export default function AnalyticsPage() {
       {/* Panel C */}
       {!isBoard && (
         <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold text-muted-foreground">Panel C — Distribution by Province/Area</h2>
-          <Card>
-            <CardContent className="flex flex-col gap-2 pt-6">
-              {byProvince.map((p) => (
-                <div key={p.name} className="flex items-center gap-3">
-                  <span className="w-32 shrink-0 text-sm">{p.name}</span>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-primary"
-                      style={{ width: `${maxProvinceCount ? (p.count / maxProvinceCount) * 100 : 0}%` }}
-                    />
-                  </div>
-                  <span className="w-6 text-right text-xs text-muted-foreground">{p.count}</span>
+          <h2 className="text-base font-medium text-foreground">Distribution by Province/Area</h2>
+          <SectionCard bodyClassName="flex flex-col gap-2">
+            {byProvince.map((p) => (
+              <div key={p.name} className="flex items-center gap-3">
+                <span className="w-32 shrink-0 text-sm">{p.name}</span>
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${maxProvinceCount ? (p.count / maxProvinceCount) * 100 : 0}%` }}
+                  />
                 </div>
-              ))}
-            </CardContent>
-          </Card>
+                <span className="w-6 text-right text-xs text-muted-foreground">{p.count}</span>
+              </div>
+            ))}
+          </SectionCard>
         </section>
       )}
 
       {/* Panel D */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-muted-foreground">Panel D — Live House Census</h2>
+        <h2 className="text-base font-medium text-foreground">Live House Census</h2>
         <KpiGrid>
-          <KpiCard label="In-House Now" value={today?.inHouse ?? 0} icon={Users} color="orange" />
+          <KpiCard label="In-House Now" value={today?.inHouse ?? 0} icon={Users} />
           <KpiCard
             label="Units Occupied"
             value={today?.unitsOccupied !== undefined ? `${today.unitsOccupied} / ${today.totalUnits}` : "—"}
             icon={Home}
-            color="blue"
           />
-          <KpiCard label="Units Shared" value={today?.unitsShared ?? "—"} icon={Share2} color="purple" />
+          <KpiCard label="Units Shared" value={today?.unitsShared ?? "—"} icon={Share2} />
           <KpiCard
             label="Utilization"
             value={today?.unitsOccupied !== undefined ? `${Math.round((today.unitsOccupied / today.totalUnits) * 100)}%` : "—"}
             icon={Percent}
-            color="amber"
           />
         </KpiGrid>
       </section>
 
       {/* Panel E */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-muted-foreground">Panel E — Impact YTD</h2>
+        <h2 className="text-base font-medium text-foreground">Impact YTD</h2>
         <KpiGrid>
-          <KpiCard label="Bed Nights" value={ytd.bedNights.toLocaleString()} icon={Bed} color="blue" deltaPct={bedNightDelta} deltaLabel="vs prior month" />
-          <KpiCard label="Meals" value={ytd.meals.toLocaleString()} icon={Utensils} color="green" />
-          <KpiCard label="Trips" value={ytd.trips.toLocaleString()} icon={Car} color="cyan" />
-          <KpiCard label="Care Cart Meals" value={ytd.careCartMeals.toLocaleString()} icon={HandCoins} color="orange" />
-          <KpiCard label="Activity Participants" value={ytd.activityParticipants.toLocaleString()} icon={Sparkles} color="purple" />
+          <KpiCard label="Bed Nights" value={ytd.bedNights.toLocaleString()} icon={Bed} deltaPct={bedNightDelta} deltaLabel="vs prior month" />
+          <KpiCard label="Meals" value={ytd.meals.toLocaleString()} icon={Utensils} />
+          <KpiCard label="Trips" value={ytd.trips.toLocaleString()} icon={Car} />
+          <KpiCard label="Care Cart Meals" value={ytd.careCartMeals.toLocaleString()} icon={HandCoins} />
+          <KpiCard label="Activity Participants" value={ytd.activityParticipants.toLocaleString()} icon={Sparkles} />
         </KpiGrid>
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Bed Nights — Monthly Trend</CardTitle></CardHeader>
-          <CardContent>
-            <ChartContainer config={cashflowChartConfig} className="h-56 w-full">
-              <LineChart data={metricSnapshots}>
-                <CartesianGrid vertical={false} />
-                <XAxis dataKey="date" tickFormatter={(d: string) => d.slice(5, 7)} fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis hide />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Line type="monotone" dataKey="bedNights" stroke="var(--color-bedNights)" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
+        <SectionCard title="Bed Nights — Monthly Trend">
+          <ChartContainer config={cashflowChartConfig} className="h-56 w-full">
+            <LineChart data={metricSnapshots}>
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="date" tickFormatter={(d: string) => d.slice(5, 7)} fontSize={11} tickLine={false} axisLine={false} />
+              <YAxis hide />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Line type="monotone" dataKey="bedNights" stroke="var(--color-bedNights)" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ChartContainer>
+        </SectionCard>
       </section>
 
       {/* Panel F */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-muted-foreground">Panel F — Donations & Inventory</h2>
+        <h2 className="text-base font-medium text-foreground">Donations & Inventory</h2>
         <KpiGrid>
-          <KpiCard label="Cash Donations" value={formatCurrency(cashTotal)} icon={HandCoins} color="green" />
-          <KpiCard label="In-Kind Value" value={formatCurrency(inKindTotal)} icon={Package} color="teal" />
-          <KpiCard label="Expiring ≤ 14 days" value={expiringSoon} icon={PackageX} color="rose" />
-          <KpiCard label="Below Reorder Point" value={lowStockItems} icon={PackageX} color="amber" />
+          <KpiCard label="Cash Donations" value={formatCurrency(cashTotal)} icon={HandCoins} />
+          <KpiCard label="In-Kind Value" value={formatCurrency(inKindTotal)} icon={Package} />
+          <KpiCard label="Expiring ≤ 14 days" value={expiringSoon} icon={PackageX} tone="warning" />
+          <KpiCard label="Below Reorder Point" value={lowStockItems} icon={PackageX} tone="warning" />
         </KpiGrid>
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Top Donors (Lifetime Value)</CardTitle></CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {topDonors.map((d) => (
-              <div key={d.id} className="flex items-center justify-between text-sm">
-                <span>{d.name}</span>
-                <span className="font-medium tabular-nums">{formatCurrency(d.lifetimeValue)}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        <SectionCard title="Top Donors (Lifetime Value)" bodyClassName="flex flex-col gap-2">
+          {topDonors.map((d) => (
+            <div key={d.id} className="flex items-center justify-between text-sm">
+              <span>{d.name}</span>
+              <span className="font-medium tabular-nums">{formatCurrency(d.lifetimeValue)}</span>
+            </div>
+          ))}
+        </SectionCard>
       </section>
 
       {/* Panel G */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-muted-foreground">Panel G — Financial</h2>
+        <h2 className="text-base font-medium text-foreground">Financial</h2>
         <KpiGrid>
-          <KpiCard label="Cashflow In" value={formatCurrency(totalIn)} icon={HandCoins} color="green" />
-          <KpiCard label="Cashflow Out" value={formatCurrency(totalOut)} icon={TrendingDown} color="rose" />
-          <KpiCard label="Cash on Hand (PHP eq.)" value={formatCurrency(cashOnHand)} icon={Wallet} color="blue" />
-          <KpiCard label="Runway" value={runwayMonths ? `${runwayMonths} months` : "—"} icon={Timer} color="amber" />
+          <KpiCard label="Cashflow In" value={formatCurrency(totalIn)} icon={HandCoins} />
+          <KpiCard label="Cashflow Out" value={formatCurrency(totalOut)} icon={TrendingDown} />
+          <KpiCard label="Cash on Hand (PHP eq.)" value={formatCurrency(cashOnHand)} icon={Wallet} />
+          <KpiCard label="Runway" value={runwayMonths ? `${runwayMonths} months` : "—"} icon={Timer} />
         </KpiGrid>
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Program Allocation</CardTitle></CardHeader>
-          <CardContent>
-            <ChartContainer config={programChartConfig} className="h-56 w-full">
-              <BarChart data={programSpendChart}>
-                <CartesianGrid vertical={false} />
-                <XAxis dataKey="program" tickLine={false} axisLine={false} fontSize={10} interval={0} angle={-20} textAnchor="end" height={50} />
-                <YAxis hide />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="amount" fill="var(--color-amount)" radius={4} />
-              </BarChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
+        <SectionCard title="Program Allocation">
+          <ChartContainer config={programChartConfig} className="h-56 w-full">
+            <BarChart data={programSpendChart}>
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="program" tickLine={false} axisLine={false} fontSize={10} interval={0} angle={-20} textAnchor="end" height={50} />
+              <YAxis hide />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Bar dataKey="amount" fill="var(--color-amount)" radius={4} />
+            </BarChart>
+          </ChartContainer>
+        </SectionCard>
       </section>
     </div>
   );
