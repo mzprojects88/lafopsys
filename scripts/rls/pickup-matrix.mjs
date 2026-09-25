@@ -182,7 +182,7 @@ async function main() {
                  and (select count(*) from ops.trip_manifest m where m.trip_id = t.id) = 2
                  and (select patient_id from ops.trip_manifest m where m.trip_id = t.id and m.house_sheet_person_id = $2) = $3
                  and (select carer_name from ops.trip_manifest m where m.trip_id = t.id and m.house_sheet_person_id = $4) = 'Papa New' as ok
-               from ops.trips t order by t.id desc limit 1`, params: [ids.driver, ROW_A, P1, ROW_B] }),
+               from ops.trips t where exists (select 1 from ops.trip_manifest m where m.trip_id = t.id and m.house_sheet_person_id = $2)`, params: [ids.driver, ROW_A, P1, ROW_B] }),
     value("ok", true));
   await scenario(ids, "a pick-up needs someone to pick up", "social_worker", withSeed(),
     q(`select ops.create_pickup(${TODAY}, '07:30', null, array[]::uuid[])`), badInput);
