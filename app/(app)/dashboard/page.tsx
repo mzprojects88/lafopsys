@@ -17,7 +17,6 @@ import {
   BadgeCheck,
   BarChart3,
   ChevronRight,
-  Settings2,
   type LucideIcon,
 } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Line, LineChart, XAxis } from "recharts";
@@ -193,13 +192,7 @@ export default function DashboardPage() {
       </KpiGrid>
 
       <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-theme-sm font-semibold text-foreground">Quick Actions</h2>
-          <button type="button" className="flex items-center gap-1 text-theme-xs font-medium text-primary hover:underline">
-            <Settings2 className="size-3.5" />
-            Customize dashboard
-          </button>
-        </div>
+        <h2 className="text-theme-sm font-semibold text-foreground">Quick Actions</h2>
         <div className="grid grid-cols-4 gap-2 lg:hidden">
           {quickActions.map((action) => (
             <Link

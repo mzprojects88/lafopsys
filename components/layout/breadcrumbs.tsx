@@ -26,10 +26,14 @@ const SEGMENT_LABELS: Record<string, string> = {
   reconcile: "Bank reconciliation",
   leave: "Leave",
   staff: "Staff & Time",
+  dtr: "DTR",
   roster: "Roster",
   timesheets: "Timesheets",
   volunteers: "Volunteers",
   patients: "Patients & Admissions",
+  "house-sheet": "House Sheet",
+  stays: "Stays",
+  admit: "Admit",
   referrals: "Referrals",
   new: "New",
   waitlist: "Waitlist",
@@ -51,11 +55,14 @@ const SEGMENT_LABELS: Record<string, string> = {
   "donee-certs": "Donee Certificates",
   campaigns: "Campaigns",
   inventory: "Inventory",
+  assets: "Fixed Assets",
   scan: "Scan",
   locations: "Storage Locations",
   expiry: "Expiry Alerts",
   waste: "Waste Log",
   finance: "Financial",
+  "monthly-summary": "Monthly Summary",
+  "bank-import": "Bank Import",
   entry: "New Entry",
   accounts: "Accounts",
   approvals: "Approvals",
@@ -86,8 +93,9 @@ export function Breadcrumbs() {
   const pathname = usePathname();
   const segments = pathname.split("/").filter(Boolean);
 
-  // A top-level page's only crumb would repeat its title.
-  if (segments.length < 2) return null;
+  // A top-level page's only crumb would repeat its title; the donor portal is
+  // four flat tabs with no trail to follow.
+  if (segments.length < 2 || segments[0] === "portal") return null;
 
   return (
     <Breadcrumb className="min-w-0 text-theme-sm">
