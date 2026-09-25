@@ -218,7 +218,7 @@ async function main() {
       await twoOnGrab();
       await client.query(`update ops.arrival_rides set reimbursed_at = current_date, reimbursed_amount = 480, reimbursed_to = 'x' where id = $1`, [RIDE]);
     }), q(`select ops.record_arrival('${S[2]}', 'ride_app', null, '${RIDE}')`), checkFailed);
-  await scenario(ids, "board reads rides (Financial view)", "board", withSeed(twoOnGrab), q("select id from ops.arrival_rides"), rows(1));
+  await scenario(ids, "board reads rides (Financial view)", "board", withSeed(twoOnGrab), q("select id from ops.arrival_rides where id = $1", [RIDE]), rows(1));
   await scenario(ids, "volunteer reads no rides", "volunteer", withSeed(twoOnGrab), q("select id from ops.arrival_rides"), rows(0));
   await scenario(ids, "volunteer reads no rides through the view either", "volunteer", withSeed(twoOnGrab), q("select id from ops.v_arrival_rides"), rows(0));
   await scenario(ids, "finance sees the true rider count", "finance", withSeed(twoOnGrab),

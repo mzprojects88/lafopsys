@@ -100,12 +100,15 @@ export function useBedReservations() {
  * The child was checked in. On the held bed = confirmation ("used"); on
  * another bed, the held one is freed ("released"). Either way it names the stay.
  */
-export async function closeReservation(hold: BedHold, stayId: string, unitId: string): Promise<void> {
-  await createClient()
+export async function closeReservation(hold: BedHold, stayId: string, unitId: string): Promise<string | null> {
+  // 0067 closes it in the database with the stay; this is the same close, kept
+  // for the moment in between (a no-op once the trigger has done it).
+  const { error } = await createClient()
     .schema("ops")
     .from("bed_reservations")
     .update({ status: hold.unitId === unitId ? "used" : "released", used_stay_id: stayId, closed_at: new Date().toISOString() })
     .eq("id", hold.id)
     .eq("status", "active");
   await bedReservationsStore.refetch();
+  return error?.message ?? null;
 }

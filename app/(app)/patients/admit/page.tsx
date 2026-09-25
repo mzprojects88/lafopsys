@@ -93,7 +93,8 @@ function NewReferralForm() {
   const hold = sheetRow ? holdFor(null, sheetRow.id) : undefined;
   const beds = assignableBeds(units, bedPositions, stays, rooms, { holds: reservations, forHoldId: hold?.id });
   const [unitIdEdited, setUnitId] = React.useState("");
-  const unitId = unitIdEdited || (hold && beds.some((b) => b.unit.id === hold.unitId) ? hold.unitId : "");
+  // Only a bed still on offer: one taken or reserved since the page opened drops out.
+  const unitId = [unitIdEdited, hold?.unitId].find((id) => id && beds.some((b) => b.unit.id === id)) ?? "";
   const [appointment, setAppointment] = React.useState<AppointmentDraft>(EMPTY_APPOINTMENT);
   const [rulesDraft, setRulesDraft] = React.useState<RulesDraft>(EMPTY_RULES);
   const [checkInAt, setCheckInAt] = React.useState("");

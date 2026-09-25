@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { reverseGeocode } from "@/lib/utils/geocode";
 import { clientIpFromHeaders, parseUserAgent } from "@/lib/utils/device";
 import { todayIso, nowTimeLabel } from "@/lib/utils/date";
@@ -172,6 +173,12 @@ export async function POST(request: Request) {
   // A day reported as a forgotten clock-out (0061) is closed, not open.
   const openEntry = ((recent ?? []) as RecentEntry[]).find((e) => !!e.clock_in && !e.clock_out && e.flag !== "missed_punch") ?? null;
 
+  // Writes go through the service role (0067): staff cannot write their own
+  // DTR rows, so a punch's time, "on site" and "photo taken" come from here
+  // only. Every write below is scoped to the session's user, or to an entry
+  // read through their own session above.
+  const db = createAdminClient();
+
   let entryId: string;
   let entryDay: string;
   // Undoes the summary write if the punch insert right after it fails, so the
@@ -187,16 +194,16 @@ export async function POST(request: Request) {
       // Clocked out earlier today: reopen the day. clock_in keeps the day's first
       // time; the session that just ended is safe in the punches.
       // A reported forgotten clock-out (0061) keeps its request; the day is open again.
-      const { error } = await supabase.schema("ops").from("time_entries").update({ clock_out: null, flag: "on_time" }).eq("id", todayEntry.id);
+      const { error } = await db.schema("ops").from("time_entries").update({ clock_out: null, flag: "on_time" }).eq("id", todayEntry.id);
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
       entryId = todayEntry.id;
       const previousOut = todayEntry.clock_out;
       const previousFlag = todayEntry.flag;
       revert = async () => {
-        await supabase.schema("ops").from("time_entries").update({ clock_out: previousOut, flag: previousFlag }).eq("id", todayEntry.id);
+        await db.schema("ops").from("time_entries").update({ clock_out: previousOut, flag: previousFlag }).eq("id", todayEntry.id);
       };
     } else {
-      const { data: inserted, error } = await supabase
+      const { data: inserted, error } = await db
         .schema("ops")
         .from("time_entries")
         .insert({ staff_id: user.id, date: today, clock_in: time })
@@ -210,14 +217,14 @@ export async function POST(request: Request) {
       }
       entryId = inserted.id as string;
       revert = async () => {
-        await supabase.schema("ops").from("time_entries").delete().eq("id", inserted.id);
+        await db.schema("ops").from("time_entries").delete().eq("id", inserted.id);
       };
     }
     entryDay = today;
 
     // A day left open before yesterday is a forgotten clock-out. Flag it for the
     // timesheet queue; never block today's clock-in on it. Best effort.
-    await supabase
+    await db
       .schema("ops")
       .from("time_entries")
       .update({ flag: "missed_punch" })
@@ -249,7 +256,7 @@ export async function POST(request: Request) {
   const userAgent = request.headers.get("user-agent");
   const device = parseUserAgent(userAgent);
 
-  const { error: punchError } = await supabase.schema("ops").from("time_punches").insert({
+  const { error: punchError } = await db.schema("ops").from("time_punches").insert({
     id: punchId,
     photo_status: photoStatus,
     site_status: site.status,
@@ -278,7 +285,7 @@ export async function POST(request: Request) {
   // Only admins and HR can read this row (0060); the punch itself already says "captured".
   let photoWarning: string | null = null;
   if (photoStatus === "captured" && photoKey && photoBytes) {
-    const { error } = await supabase
+    const { error } = await db
       .schema("ops")
       .from("time_punch_photos")
       .insert({ punch_id: punchId, staff_id: user.id, object_key: photoKey, bytes: photoBytes.length });
@@ -307,7 +314,7 @@ export async function POST(request: Request) {
   );
   const totals = entryTotals(sessions, entryDay, user.id);
 
-  const { error: summaryError } = await supabase
+  const { error: summaryError } = await db
     .schema("ops")
     .from("time_entries")
     .update({

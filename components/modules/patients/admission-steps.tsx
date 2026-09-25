@@ -194,6 +194,9 @@ export async function finishAdmission(input: {
       await recordGroupOrientation(target).catch((e: Error) => problems.push(`the group's house rules (${e.message})`));
     }
   }
-  if (input.hold) await closeReservation(input.hold, input.stayId, input.unitId);
+  if (input.hold) {
+    const error = await closeReservation(input.hold, input.stayId, input.unitId);
+    if (error) problems.push(`closing the bed reservation (${error}); release it on the floor plan`);
+  }
   return problems;
 }

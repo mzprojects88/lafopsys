@@ -4,7 +4,7 @@
 // scripts/rls/floor-plan-policy-matrix.mjs; RLS_ALLOW_PROD=1 acknowledges
 // that lafopsys has one database.
 //
-// 0066 (replacement) scenarios need 0066 applied, or passed as a pre-flight file.
+// 0066/0067 scenarios need those applied, or passed as a pre-flight file.
 // Usage: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/bed-reservation-matrix.mjs
 // Pre-flight: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/bed-reservation-matrix.mjs supabase/migrations/0065_bed_reservations_and_group_orientation.sql
 import { Client } from "pg";
@@ -114,9 +114,15 @@ const PREFLIGHT = process.argv.slice(2);
 const KID = "00000000-0000-4000-8000-00000000d065";
 const KID2 = "00000000-0000-4000-8000-00000000d066";
 const TRIP = "00000000-0000-4000-8000-00000000e065";
+const ROW = "00000000-0000-4000-8000-00000000f065";
 const TODAY = "(now() at time zone 'Asia/Manila')::date";
 const seed = async () => {
-  await client.query("update ops.units set status = 'available', lock_reason = null where id = 'unit-B1'");
+  await client.query("update ops.units set status = 'available', lock_reason = null where id in ('unit-B1', 'unit-B2')");
+  await client.query(
+    `insert into ops.house_sheet_people (id, name_key, patient_name, carer_name, relationship, first_seen_on, run_started_on, last_seen_on, match_status)
+     values ($1, 'rlstest|holdkid', 'Holdkid, Sheet', 'Papa Hold', 'father', ${TODAY}, ${TODAY}, ${TODAY}, 'unmatched')`,
+    [ROW]
+  );
   await client.query(`insert into ops.patients (id, first_name, last_name, sex, status, admitted_at) values ($1, 'Held', 'Bed', 'M', 'ongoing', current_date)`, [KID]);
   await client.query(`insert into ops.patients (id, first_name, last_name, sex, status, admitted_at) values ($1, 'Other', 'Kid', 'F', 'ongoing', current_date)`, [KID2]);
   await client.query(
@@ -188,6 +194,45 @@ async function main() {
   await scenario(ids, "replaced always names who took the bed", "admin", withHold,
     asOwner(`update ops.bed_reservations set status = 'replaced', closed_at = now() where patient_id = '${KID}'`), checkFailed);
   await scenario(ids, "drivers cannot replace", "driver", withHold, q(replaceSql), (r) => !r.ok);
+
+  // ---- 0067: the database keeps holds honest; the whole flow ----
+  const holdOn = (unit, who = KID) => client.query(
+    `insert into ops.bed_reservations (unit_id, patient_id, reserved_for, expected_on) values ($1, $2, 'x', ${TODAY})`, [unit, who]);
+  const checkIn = (who, unit) => ({ sql: `select ops.check_in(p_unit_id => '${unit}', p_check_in_at => ${TODAY}, p_patient_id => '${who}')` });
+  const holdState = (who) => ({ sql: `select string_agg(r.status || ':' || coalesce(bp.unit_id, '-'), ',' order by r.created_at) as s
+      from ops.bed_reservations r left join ops.stays st on st.id = r.used_stay_id left join ops.bed_positions bp on bp.id = st.bed_position_id
+      where r.patient_id = '${who}'` });
+  await scenario(ids, "a bed already held cannot be held for another child", "social_worker", withSeed(() => holdOn("unit-B1")),
+    q(reserveSql.replace(`'${KID}'`, `'${KID2}'`)), duplicate);
+  await scenario(ids, "an occupied bed cannot be held", "social_worker",
+    withSeed(() => client.query(`insert into ops.stays (patient_id, bed_position_id, check_in_at, status) values ($1, 'unit-B1-A', current_date, 'in_house')`, [KID2])),
+    q(reserveSql), duplicate);
+  await scenario(ids, "a locked bed cannot be held", "social_worker",
+    withSeed(() => client.query("update ops.units set status = 'maintenance', lock_reason = 'test' where id = 'unit-B1'")), q(reserveSql), checkFailed);
+  await scenario(ids, "an open hold's bed cannot be switched", "social_worker", withHold,
+    q(`update ops.bed_reservations set unit_id = 'unit-B2' where patient_id = '${KID}'`), denied);
+  await scenario(ids, "a closed hold cannot be reopened", "social_worker", withSeed(() => hold("released")),
+    q(`update ops.bed_reservations set status = 'active', closed_at = null where patient_id = '${KID}'`), rows(0));
+  await scenario(ids, "FLOW confirmation: checked in on the held bed closes it as used", "social_worker", withSeed(() => holdOn("unit-B1")),
+    last(checkIn(KID, "unit-B1"), holdState(KID)), value("s", "used:unit-B1"));
+  await scenario(ids, "FLOW another bed: the held one is freed", "social_worker", withSeed(() => holdOn("unit-B1")),
+    last(checkIn(KID, "unit-B2"), holdState(KID),
+      ), value("s", "released:unit-B2"));
+  await scenario(ids, "FLOW another bed: a freed bed can be held again", "social_worker", withSeed(() => holdOn("unit-B1")),
+    last(checkIn(KID, "unit-B2"), { sql: reserveSql.replace(`'${KID}'`, `'${KID2}'`) }), value("mine", true));
+  await scenario(ids, "FLOW replacement: the other child checks in on the bed and confirms it", "social_worker", withSeed(() => holdOn("unit-B1")),
+    last({ sql: replaceSql }, checkIn(KID2, "unit-B1"),
+      { sql: `select (select status from ops.bed_reservations where patient_id = '${KID}') || '/' || (select status from ops.bed_reservations where patient_id = '${KID2}') as s` }),
+    value("s", "replaced/used"));
+  const newKid = JSON.stringify({ patient_first_name: "Sheet", patient_last_name: "Holdkid", patient_sex: "M", carer_name: "Papa Hold", carer_relationship: "Father", hospital_id: null, diagnosis_ids: [] });
+  await scenario(ids, "FLOW new child from the sheet: admitting closes the sheet-line hold", "social_worker",
+    withSeed(() => client.query(`insert into ops.bed_reservations (unit_id, house_sheet_person_id, reserved_for, expected_on) values ('unit-B1', $1, 'Holdkid, Sheet', ${TODAY})`, [ROW])),
+    last({ sql: `select ops.admit_from_sheet(p_sheet_row_id => '${ROW}', p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_referral => '${newKid}'::jsonb)` },
+      { sql: `select status, used_stay_id is not null as linked from ops.bed_reservations where house_sheet_person_id = '${ROW}'` }),
+    (r) => r.ok && r.rows === 1 && r.data[0].status === "used" && r.data[0].linked === true);
+  await scenario(ids, "FLOW group: the second family of a trip finds the talk already recorded", "social_worker",
+    withSeed(() => client.query(`insert into ops.group_orientations (trip_id) values ('${TRIP}')`)),
+    q(`select count(*)::int as n from ops.group_orientations where trip_id = '${TRIP}'`), value("n", 1));
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();

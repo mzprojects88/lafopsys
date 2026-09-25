@@ -164,7 +164,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                       </span>
                     ) : null}
                   </div>
-                  {canEdit && !hold ? (
+                  {canEdit && !hold && p.matchStatus !== "encoded" ? (
                     <Button size="sm" variant="ghost" className="h-7 gap-1" onClick={() => setReserving({ row: p, patientId: patient?.id ?? null })}>
                       <BookmarkPlus className="size-3.5" /> Reserve bed
                     </Button>

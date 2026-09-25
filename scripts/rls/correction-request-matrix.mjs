@@ -149,7 +149,7 @@ async function main() {
   await scenario(ids, "a time past 25 hours is refused", "social_worker", seeded, q(report(MINE, "now() - interval '20 hours'")), (r) => !r.ok && r.code === "22023");
   await scenario(ids, "a day with a clock-out cannot be reported", "social_worker", seeded, q(report(CLOSED, EIGHT_HOURS_IN)), (r) => !r.ok && r.code === "22023");
   await scenario(ids, "one open request per day", "social_worker", reported, q(report(MINE, EIGHT_HOURS_IN)), (r) => !r.ok && (r.code === "23505" || r.code === "22023"));
-  await scenario(ids, "staff read their own requests", "social_worker", reported, q("select id from ops.dtr_correction_requests"), rows(1));
+  await scenario(ids, "staff read their own requests", "social_worker", reported, q(`select id from ops.dtr_correction_requests where time_entry_id = '${MINE}'`), rows(1));
   await scenario(ids, "staff do not read others' requests", "driver", reported, q("select id from ops.dtr_correction_requests"), rows(0));
   await scenario(ids, "admins read every request", "admin", reported, q(`select id from ops.dtr_correction_requests where time_entry_id = '${MINE}'`), rows(1));
   await scenario(ids, "nobody writes a request directly", "social_worker", seeded,

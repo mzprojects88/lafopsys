@@ -151,9 +151,23 @@ async function main() {
     q(`select object_key from ops.time_punch_photos where punch_id in ('${MINE}', '${THEIRS}')`), rows(2));
   await scenario(ids, "HR (not admin) reads every photo row", "social_worker", { setup: hr(ids) },
     q(`select object_key from ops.time_punch_photos where punch_id in ('${MINE}', '${THEIRS}')`), rows(2));
-  await scenario(ids, "staff file the photo of their own punch", "driver",
+  // 0067: the punch route files photos and punches server side; nobody writes them from a browser.
+  await scenario(ids, "staff cannot file a photo row themselves (0067)", "driver",
     { setup: () => client.query(`insert into ops.time_punches (id, staff_id, punch_type, source, photo_status) values ('${THEIRS}', $1, 'clock_in', 'device', 'captured')`, [ids.driver]) },
-    q(`insert into ops.time_punch_photos (punch_id, staff_id, object_key, bytes) values ('${THEIRS}', '${ids.driver}', 'DTR photos/test/x.jpg', 5000)`), rows(1));
+    q(`insert into ops.time_punch_photos (punch_id, staff_id, object_key, bytes) values ('${THEIRS}', '${ids.driver}', 'DTR photos/test/x.jpg', 5000)`), denied);
+  await scenario(ids, "staff cannot write their own punch, on site or not (0067)", "driver", {},
+    q(`insert into ops.time_punches (staff_id, punch_type, source, site_status, photo_status) values ('${ids.driver}', 'clock_in', 'device', 'on_site', 'captured')`), denied);
+  const ownEntry = { setup: () => client.query(`insert into ops.time_entries (id, staff_id, date, clock_in) values ('00000000-0000-4000-8000-00000000d067', $1, '2031-02-01', '08:00')`, [ids.driver]) };
+  await scenario(ids, "staff cannot open a day themselves (0067)", "driver", {},
+    q(`insert into ops.time_entries (staff_id, date, clock_in) values ('${ids.driver}', '2031-02-02', '06:00')`), denied);
+  await scenario(ids, "staff cannot change their own day's totals (0067)", "driver", ownEntry,
+    q(`update ops.time_entries set total_minutes = 900, clock_in = '05:00' where id = '00000000-0000-4000-8000-00000000d067'`), rows(0));
+  await scenario(ids, "staff cannot delete their own day (0067)", "driver", ownEntry,
+    q(`delete from ops.time_entries where id = '00000000-0000-4000-8000-00000000d067'`), rows(0));
+  await scenario(ids, "staff still read their own day", "driver", ownEntry,
+    q(`select id from ops.time_entries where id = '00000000-0000-4000-8000-00000000d067'`), rows(1));
+  await scenario(ids, "HR still correct a day", "social_worker", { setup: async () => { await ownEntry.setup(); await hr(ids)(); } },
+    q(`update ops.time_entries set clock_out = '17:00' where id = '00000000-0000-4000-8000-00000000d067'`), rows(1));
   await scenario(ids, "nobody files a photo against someone else's punch", "driver", seeded,
     q(`insert into ops.time_punch_photos (punch_id, staff_id, object_key, bytes) values ('${MINE}', '${ids.driver}', 'DTR photos/test/y.jpg', 5000)`), denied);
   await scenario(ids, "a photo row is never changed", "admin", seeded,
@@ -161,7 +175,7 @@ async function main() {
   await scenario(ids, "a photo row is never deleted", "admin", seeded,
     q(`delete from ops.time_punch_photos where punch_id = '${MINE}'`), denied);
   await scenario(ids, "photo status is one of the five", "social_worker", {},
-    q(`insert into ops.time_punches (staff_id, punch_type, source, photo_status) values ('${ids.social_worker}', 'clock_in', 'device', 'selfie')`), checkFailed);
+    async () => { await client.query("reset role"); return client.query(`insert into ops.time_punches (staff_id, punch_type, source, photo_status) values ('${ids.social_worker}', 'clock_in', 'device', 'selfie')`); }, checkFailed);
 
   // ---- 0063: on-site check ----
   await scenario(ids, "staff cannot move the LAF House pin", "social_worker", {},
@@ -171,7 +185,7 @@ async function main() {
   await scenario(ids, "a pin needs both coordinates", "admin", {},
     q("update shared.app_settings set laf_house_latitude = 14.6, laf_house_longitude = null where id"), checkFailed);
   await scenario(ids, "site status is one of the three", "social_worker", {},
-    q(`insert into ops.time_punches (staff_id, punch_type, source, site_status) values ('${ids.social_worker}', 'clock_in', 'device', 'home')`), checkFailed);
+    async () => { await client.query("reset role"); return client.query(`insert into ops.time_punches (staff_id, punch_type, source, site_status) values ('${ids.social_worker}', 'clock_in', 'device', 'home')`); }, checkFailed);
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();

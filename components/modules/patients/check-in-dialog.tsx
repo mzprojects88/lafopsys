@@ -127,7 +127,8 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
   // A bed reserved for this child (0065) is theirs to confirm; nobody else's hold is offered.
   const hold = holdFor(patientId, sheetRow?.id);
   const beds = assignableBeds(units, bedPositions, stays, rooms, { holds: reservations, forHoldId: hold?.id });
-  const bed = unitId || (hold && beds.some((b) => b.unit.id === hold.unitId) ? hold.unitId : "");
+  // Only a bed still on offer: one taken or reserved since the dialog opened drops out.
+  const bed = [unitId, hold?.unitId].find((id) => id && beds.some((b) => b.unit.id === id)) ?? "";
   // Returning families take the shorter list of rules (0054).
   const firstStay = !patientId || !stays.some((s) => s.patientId === patientId);
   const rules = useHouseRules(firstStay, arrival);

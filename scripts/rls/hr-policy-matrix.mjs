@@ -323,19 +323,11 @@ async function main() {
   await scenario(ids, "driver reads another's time entry (roster)", "driver", { setup: otherEntry }, q("select id from ops.time_entries where id = $1", [ENTRY]), rows(1));
   await scenario(ids, "driver cannot rewrite another's time entry", "driver", { setup: otherEntry }, q("update ops.time_entries set clock_in = '06:00' where id = $1", [ENTRY]), rows(0));
   await scenario(ids, "driver cannot delete another's time entry", "driver", { setup: otherEntry }, q("delete from ops.time_entries where id = $1", [ENTRY]), rows(0));
-  await scenario(
-    ids,
-    "driver inserts, updates and deletes own time entry (punch route paths)",
-    "driver",
-    null,
-    last(
-      { sql: "insert into ops.time_entries (id, staff_id, date, clock_in) values ($1, $2, '2031-01-05', '08:00')", params: [ENTRY, ids.driver] },
-      { sql: "update ops.time_entries set clock_out = '17:00' where id = $1", params: [ENTRY] },
-      { sql: "delete from ops.time_entries where id = $1", params: [ENTRY] }
-    ),
-    rows(1)
-  );
-  await scenario(ids, "chef inserts own time entry", "chef", null, q("insert into ops.time_entries (id, staff_id, date, clock_in) values ($1, $2, '2031-01-05', '08:00')", [ENTRY, ids.chef]), rows(1));
+  // 0067: the punch route writes the DTR server side; staff never write their own rows.
+  await scenario(ids, "driver cannot write own time entry directly (0067)", "driver", null,
+    q("insert into ops.time_entries (id, staff_id, date, clock_in) values ($1, $2, '2031-01-05', '08:00')", [ENTRY, ids.driver]), denied);
+  await scenario(ids, "chef cannot write own time entry directly (0067)", "chef", null,
+    q("insert into ops.time_entries (id, staff_id, date, clock_in) values ($1, $2, '2031-01-05', '08:00')", [ENTRY, ids.chef]), denied);
   await scenario(ids, "HR updates another's time entry", "hr", { setup: otherEntry }, q("update ops.time_entries set clock_out = '17:00' where id = $1", [ENTRY]), rows(1));
   const seedPunch = () => client.query("insert into ops.time_punches (staff_id, punch_type, punched_at) values ($1, 'clock_in', '2031-01-05T08:00:00+08:00')", [ids.admin]);
   await scenario(ids, "HR reads every punch", "hr", { setup: seedPunch }, q("select id from ops.time_punches where punched_at >= '2031-01-01'"), rows(1));

@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { toast } from "sonner";
 import { Lock, LockOpen, RotateCw, Trash2 } from "lucide-react";
+import { useBedReservations } from "@/lib/hooks/use-bed-reservations";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -85,6 +87,9 @@ export function BedDetailPanel({
   return (
     <div className="flex flex-col gap-4">
       <BedSummary bed={bed} canSeeClinical={canSeeClinical} linkPatients />
+
+      {/* Any open hold can be released here, even once its child has left NCH's sheet. */}
+      {canLock && bed.holds.length > 0 ? <ReleaseHolds bed={bed} /> : null}
 
       {canLock && (
         <div className="flex flex-wrap gap-2">
@@ -209,6 +214,32 @@ export function BedDetailPanel({
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+function ReleaseHolds({ bed }: { bed: BedView }) {
+  const { release } = useBedReservations();
+  const [busy, setBusy] = React.useState<string | null>(null);
+  return (
+    <div className="flex flex-wrap gap-2">
+      {bed.holds.map((h) => (
+        <Button
+          key={h.id}
+          variant="outline"
+          size="sm"
+          disabled={busy === h.id}
+          onClick={async () => {
+            setBusy(h.id);
+            const r = await release(h.id);
+            setBusy(null);
+            if (r.ok) toast.success(`Bed ${bed.code} is free again.`);
+            else toast.error(r.error);
+          }}
+        >
+          Release {h.reservedFor}&apos;s reservation
+        </Button>
+      ))}
     </div>
   );
 }
