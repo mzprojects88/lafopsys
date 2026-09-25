@@ -15,6 +15,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { FloorPlanBedPicker } from "@/components/modules/house-ops/floor-plan/floor-plan-bed-picker";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
+import { useBedReservations } from "@/lib/hooks/use-bed-reservations";
 import { assignableBeds, unitForBedPosition } from "@/lib/utils/beds";
 import type { Stay } from "@/lib/types/patient";
 
@@ -34,7 +35,8 @@ export function TransferBedDialog({ stay, patientName, onOpenChange, onTransferr
   // Same rule as CheckInDialog (lib/utils/beds.ts), minus the bed the
   // patient is already in.
   const currentUnit = stay ? unitForBedPosition(stay.bedPositionId, units, bedPositions) : undefined;
-  const beds = assignableBeds(units, bedPositions, stays, rooms, { excludeUnitId: currentUnit?.id });
+  const { reservations } = useBedReservations();
+  const beds = assignableBeds(units, bedPositions, stays, rooms, { excludeUnitId: currentUnit?.id, holds: reservations });
 
   async function handleConfirm() {
     const target = beds.find((b) => b.unit.id === unitId);

@@ -11,7 +11,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -24,6 +23,18 @@ import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { assignableBeds } from "@/lib/utils/beds";
 import { ArrivalFields, arrivalFromPickups, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
+import {
+  EMPTY_APPOINTMENT,
+  EMPTY_RULES,
+  HouseRulesStep,
+  NextAppointmentFields,
+  appointmentReady,
+  finishAdmission,
+  useHouseRules,
+  type AppointmentDraft,
+  type RulesDraft,
+} from "@/components/modules/patients/admission-steps";
+import { useBedReservations } from "@/lib/hooks/use-bed-reservations";
 import { usePickups } from "@/lib/hooks/use-pickups-collection";
 import { recordArrival } from "@/lib/hooks/use-arrival-rides-collection";
 import { formatDate, todayIso } from "@/lib/utils/date";
@@ -66,9 +77,14 @@ function possibleMatches(referral: Referral, patients: Patient[]): Patient[] {
 }
 
 /**
- * The one door into the house (ops.check_in, 0049): bed, carer, arrival day,
- * expected check-out and the next appointment, saved in one transaction.
- * Keyed by the caller on the target, so every open starts clean.
+ * The one door into the house (ops.check_in, 0049), in two steps (user,
+ * 2026-09-25): the details -- bed on the floor plan (a bed reserved for the
+ * child comes chosen, to confirm or change), carer, arrival, the next
+ * appointment even when NCH's sheet has none -- then the house rules. The
+ * child is checked in only when the rules have been discussed; a family that
+ * came with others (one LAF HOPE pick-up, one shared ride) can hear them as a
+ * group, recorded once for the group (0065). Keyed by the caller on the
+ * target, so every open starts clean.
  */
 export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDialogProps) {
   const { patients, carers, stays } = usePatientsData();
@@ -86,13 +102,13 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
   const [carerName, setCarerName] = React.useState("");
   const [carerRelationship, setCarerRelationship] = React.useState("");
   const [carerMobile, setCarerMobile] = React.useState("");
-  const [apptDate, setApptDate] = React.useState("");
-  const [apptTime, setApptTime] = React.useState("08:00");
-  const [apptClinic, setApptClinic] = React.useState("");
-  const [needsTransport, setNeedsTransport] = React.useState(true);
+  const [appointment, setAppointment] = React.useState<AppointmentDraft>(EMPTY_APPOINTMENT);
   const { pickups } = usePickups();
   const [arrival, setArrival] = React.useState<ArrivalDraft>(() => arrivalFromPickups(pickups, target?.sheetRow));
   const [submitting, setSubmitting] = React.useState(false);
+  const [step, setStep] = React.useState<"details" | "rules">("details");
+  const [rulesDraft, setRulesDraft] = React.useState<RulesDraft>(EMPTY_RULES);
+  const { holdFor, reservations } = useBedReservations();
 
   const patientId = recordId === NEW_RECORD ? null : recordId;
   const patient = patientId ? patients.find((p) => p.id === patientId) : undefined;
@@ -108,19 +124,27 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
     { value: NEW_CARER, label: "Someone else…" },
   ];
   const carer = carerChoice || sheetCarerOnFile?.id || (sheetRow?.carerName && !sheetCarerOnFile ? SHEET_CARER : carerOptions[0].value);
-  const beds = assignableBeds(units, bedPositions, stays, rooms);
+  // A bed reserved for this child (0065) is theirs to confirm; nobody else's hold is offered.
+  const hold = holdFor(patientId, sheetRow?.id);
+  const beds = assignableBeds(units, bedPositions, stays, rooms, { holds: reservations, forHoldId: hold?.id });
+  const bed = unitId || (hold && beds.some((b) => b.unit.id === hold.unitId) ? hold.unitId : "");
+  // Returning families take the shorter list of rules (0054).
+  const firstStay = !patientId || !stays.some((s) => s.patientId === patientId);
+  const rules = useHouseRules(firstStay, arrival);
+  // NCH's sheet gives no dated appointment: staff ask the family and type it in.
+  const manualAppointment = !sheetRow?.nextAppointmentOn;
   const name = patient ? `${patient.firstName} ${patient.lastName}` : referral?.patientName ?? "";
   const today = todayIso();
 
   const ready =
-    !!unitId &&
+    !!bed &&
     arrivalReady(arrival) &&
     !!checkInAt &&
     (carer !== NEW_CARER || !carerName.trim() || !!carerRelationship) &&
-    (!apptDate || !!apptClinic.trim());
+    appointmentReady(appointment);
 
   async function handleConfirm() {
-    if (!target || !ready) return;
+    if (!target || !ready || !rulesDraft.discussed) return;
     setSubmitting(true);
     const newCarer = carer === NEW_CARER && carerName.trim();
     const fromSheet = carer === SHEET_CARER && sheetRow;
@@ -129,7 +153,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
           .schema("ops")
           .rpc("admit_from_sheet", {
             p_sheet_row_id: sheetRow.id,
-            p_unit_id: unitId,
+            p_unit_id: bed,
             p_check_in_at: checkInAt,
             p_patient_id: patientId,
             p_referral: null,
@@ -142,7 +166,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
       : await createClient()
           .schema("ops")
           .rpc("check_in", {
-            p_unit_id: unitId,
+            p_unit_id: bed,
             p_check_in_at: checkInAt,
             p_patient_id: patientId,
             p_referral_id: referral?.id ?? null,
@@ -153,21 +177,38 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
             p_carer_relationship: newCarer ? carerRelationship : null,
             p_carer_mobile: newCarer ? carerMobile.trim() || null : null,
             p_expected_checkout_at: expectedCheckoutAt || null,
-            p_appt_date: apptDate || null,
-            p_appt_time: apptDate ? apptTime : null,
-            p_appt_clinic: apptDate ? apptClinic.trim() : null,
+            p_appt_date: appointment.date || null,
+            p_appt_time: appointment.date ? appointment.time : null,
+            p_appt_clinic: appointment.date ? appointment.clinic.trim() : null,
             p_appt_purpose: null,
-            p_appt_needs_transport: apptDate ? needsTransport : false,
+            p_appt_needs_transport: appointment.date ? appointment.needsTransport : false,
           });
     if (error) {
       setSubmitting(false);
       toast.error(`Couldn't check in: ${error.message}`);
       return;
     }
+    const stayId = (data as { stay_id: string }).stay_id;
+    const newPatientId = (data as { patient_id: string }).patient_id;
     // How they came is its own step (0052); the stay stands either way.
-    const arrived = await recordArrival((data as { stay_id: string }).stay_id, arrivalInput(arrival));
+    const arrived = await recordArrival(stayId, arrivalInput(arrival));
+    const problems = arrived.ok ? [] : [`how they arrived (${arrived.error}); set it on the Stays tab`];
+    problems.push(
+      ...(await finishAdmission({
+        stayId,
+        patientId: newPatientId,
+        // check_in takes the appointment itself; the sheet's path does not.
+        appointment: sheetRow && manualAppointment ? appointment : null,
+        topics: rules.topics,
+        rules: rulesDraft,
+        group: rules.group,
+        groupTalkExists: !!rules.groupTalk,
+        arrived: arrived.ok ? arrived : null,
+        hold,
+      }))
+    );
     setSubmitting(false);
-    if (!arrived.ok) toast.warning(`Checked in, but how they arrived was not saved: ${arrived.error}. Set it on the patient's Stays tab.`);
+    if (problems.length) toast.warning(`Checked in, but not saved: ${problems.join("; ")}.`);
     await Promise.all([patientsStore.refetch(), referralsStore.refetch(), houseSheetPeopleStore.refetch(), bedNightsStore.refetch()]);
     toast.success(`${name} checked in`);
     onCheckedIn?.((data as { patient_id: string }).patient_id);
@@ -178,12 +219,15 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
     <Dialog open={!!target} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Check in {name}</DialogTitle>
+          <DialogTitle>{step === "details" ? `Check in ${name}` : `House rules · ${name}`}</DialogTitle>
           <DialogDescription>
-            Assigns the bed and records the stay. Families already in the house can be entered with the day they arrived.
+            {step === "details"
+              ? "Step 1 of 2: the bed and the details. Families already in the house can be entered with the day they arrived."
+              : "Step 2 of 2: go through the house rules with the patient and carer. They are checked in once the rules are discussed."}
           </DialogDescription>
         </DialogHeader>
 
+        {step === "details" ? (
         <div className="flex flex-col gap-4">
           {referral && matches.length > 0 && (
             <Field>
@@ -207,7 +251,12 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
 
           <Field>
             <FieldLabel>Bed</FieldLabel>
-            <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={beds} />
+            <FloorPlanBedPicker value={bed} onChange={setUnitId} options={beds} />
+            {hold ? (
+              <FieldDescription>
+                A bed was reserved for them{hold.unitId === bed ? "" : " (another one is chosen now)"}. Confirm it, or tap another green bed.
+              </FieldDescription>
+            ) : null}
           </Field>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -273,51 +322,48 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
             </div>
           )}
 
-          {sheetRow ? (
+          {sheetRow?.nextAppointmentOn ? (
             <p className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-              {sheetRow.nextAppointmentOn
-                ? `Next appointment from NCH's sheet: ${formatDate(sheetRow.nextAppointmentOn)}. It is added with the ride box ticked, and follows the sheet if NCH changes it.`
-                : "NCH's sheet has no dated next appointment yet; it is added when they fill it in."}
+              Next appointment from NCH&apos;s sheet: {formatDate(sheetRow.nextAppointmentOn)}. It is added with the ride box ticked, and follows the sheet if NCH changes it.
             </p>
           ) : (
-            <div className="flex flex-col gap-3 rounded-md border p-3">
-              <span className="text-sm font-medium">Next hospital appointment (optional)</span>
-              {referral?.nextAppointmentNote && (
-                <span className="text-xs text-muted-foreground">From the referral: {referral.nextAppointmentNote}</span>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <Field>
-                  <FieldLabel htmlFor="apptDate">Date</FieldLabel>
-                  <Input id="apptDate" type="date" value={apptDate} onChange={(e) => setApptDate(e.target.value)} />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="apptTime">Time</FieldLabel>
-                  <Input id="apptTime" type="time" value={apptTime} onChange={(e) => setApptTime(e.target.value)} />
-                </Field>
-              </div>
-              {apptDate && (
-                <>
-                  <Field>
-                    <FieldLabel htmlFor="apptClinic">Clinic</FieldLabel>
-                    <Input id="apptClinic" placeholder="e.g. NCH Pediatric Oncology" value={apptClinic} onChange={(e) => setApptClinic(e.target.value)} />
-                  </Field>
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox checked={needsTransport} onCheckedChange={(v) => setNeedsTransport(!!v)} />
-                    Needs a ride (goes on the transport manifest)
-                  </label>
-                </>
-              )}
-            </div>
+            <NextAppointmentFields
+              value={appointment}
+              onChange={setAppointment}
+              note={
+                sheetRow
+                  ? "NCH's sheet has no dated appointment. Ask the patient and carer whether the doctor set one."
+                  : referral?.nextAppointmentNote
+                    ? `From the referral: ${referral.nextAppointmentNote}`
+                    : undefined
+              }
+            />
           )}
         </div>
+        ) : (
+          <HouseRulesStep name={name} firstStay={firstStay} rules={rules} value={rulesDraft} onChange={setRulesDraft} />
+        )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button disabled={!ready || submitting} onClick={handleConfirm}>
-            {submitting ? "Checking in…" : "Check in"}
-          </Button>
+          {step === "details" ? (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button disabled={!ready} onClick={() => setStep("rules")}>
+                Next: house rules
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" disabled={submitting} onClick={() => setStep("details")}>
+                Back
+              </Button>
+              <Button disabled={!rulesDraft.discussed || submitting} onClick={handleConfirm}>
+                {submitting ? "Checking in…" : "Check in"}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

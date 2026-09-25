@@ -58,7 +58,13 @@ export function BedSummary({ bed, canSeeClinical, linkPatients = false }: BedSum
         </div>
       )}
 
-      {bed.occupants.length === 0 && !locked && (
+      {bed.holds.map((h) => (
+        <p key={h.id} className="rounded-md border border-violet-200 bg-violet-50 p-2 text-xs dark:border-violet-500/30 dark:bg-violet-500/10">
+          Reserved for <b>{h.reservedFor}</b>, expected {formatDate(h.expectedOn)}. Not checked in yet.
+        </p>
+      ))}
+
+      {bed.occupants.length === 0 && bed.holds.length === 0 && !locked && (
         <p className="text-xs text-muted-foreground">Ready for admission.</p>
       )}
 

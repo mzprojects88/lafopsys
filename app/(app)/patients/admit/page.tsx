@@ -3,7 +3,7 @@
 import * as React from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -31,6 +31,18 @@ import { assignableBeds } from "@/lib/utils/beds";
 import { ArrivalFields, arrivalFromPickups, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
 import { usePickups } from "@/lib/hooks/use-pickups-collection";
 import { recordArrival } from "@/lib/hooks/use-arrival-rides-collection";
+import { useBedReservations } from "@/lib/hooks/use-bed-reservations";
+import {
+  EMPTY_APPOINTMENT,
+  EMPTY_RULES,
+  HouseRulesStep,
+  NextAppointmentFields,
+  appointmentReady,
+  finishAdmission,
+  useHouseRules,
+  type AppointmentDraft,
+  type RulesDraft,
+} from "@/components/modules/patients/admission-steps";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import type { Referral } from "@/lib/types/patient";
@@ -76,8 +88,14 @@ function NewReferralForm() {
   // them in the same save (ops.admit_from_sheet, 0051) -- bed and arrival day.
   const { stays } = usePatientsData();
   const { rooms, units, bedPositions } = useHouseLayout();
-  const beds = assignableBeds(units, bedPositions, stays, rooms);
-  const [unitId, setUnitId] = React.useState("");
+  const { holdFor, reservations } = useBedReservations();
+  // A bed reserved for this child (0065) opens chosen; nobody else's hold is offered.
+  const hold = sheetRow ? holdFor(null, sheetRow.id) : undefined;
+  const beds = assignableBeds(units, bedPositions, stays, rooms, { holds: reservations, forHoldId: hold?.id });
+  const [unitIdEdited, setUnitId] = React.useState("");
+  const unitId = unitIdEdited || (hold && beds.some((b) => b.unit.id === hold.unitId) ? hold.unitId : "");
+  const [appointment, setAppointment] = React.useState<AppointmentDraft>(EMPTY_APPOINTMENT);
+  const [rulesDraft, setRulesDraft] = React.useState<RulesDraft>(EMPTY_RULES);
   const [checkInAt, setCheckInAt] = React.useState("");
   const [expectedCheckoutAt, setExpectedCheckoutAt] = React.useState("");
   const { pickups } = usePickups();
@@ -86,6 +104,9 @@ function NewReferralForm() {
   const [arrivalEdited, setArrivalEdited] = React.useState<ArrivalDraft | null>(null);
   const arrival = arrivalEdited ?? arrivalFromPickups(pickups, sheetRow);
   const setArrival = setArrivalEdited;
+  // A new record: always a first stay, so the full list of rules.
+  const rules = useHouseRules(true, arrival);
+  const manualAppointment = !sheetRow?.nextAppointmentOn;
   const arrivedOn = checkInAt || (sheetRow && sheetRow.runStartedOn <= todayIso() ? sheetRow.runStartedOn : todayIso());
   const {
     register,
@@ -116,6 +137,8 @@ function NewReferralForm() {
       transcriptionNote: `Transcribed from hospital referral sheet on ${todayIso()} by ${user}.`,
     },
   });
+
+  const firstName = useWatch({ control, name: "patientFirstName" });
 
   const prefilledFor = React.useRef<string | null>(null);
   React.useEffect(() => {
@@ -151,6 +174,14 @@ function NewReferralForm() {
         toast.error("Say how they arrived.");
         return;
       }
+      if (manualAppointment && !appointmentReady(appointment)) {
+        toast.error("Give the appointment's clinic.");
+        return;
+      }
+      if (!rulesDraft.discussed) {
+        toast.error("Discuss the house rules first.");
+        return;
+      }
       const { data, error } = await supabase.schema("ops").rpc("admit_from_sheet", {
         p_sheet_row_id: fromSheet,
         p_unit_id: unitId,
@@ -184,11 +215,26 @@ function NewReferralForm() {
         toast.error(`Couldn't admit: ${error.message}`);
         return;
       }
-      const arrived = await recordArrival((data as { stay_id: string }).stay_id, arrivalInput(arrival));
-      if (!arrived.ok) toast.warning(`Admitted, but how they arrived was not saved: ${arrived.error}. Set it on the patient's Stays tab.`);
+      const { stay_id: stayId, patient_id: patientId } = data as { stay_id: string; patient_id: string };
+      const arrived = await recordArrival(stayId, arrivalInput(arrival));
+      const problems = arrived.ok ? [] : [`how they arrived (${arrived.error}); set it on the Stays tab`];
+      problems.push(
+        ...(await finishAdmission({
+          stayId,
+          patientId,
+          appointment: manualAppointment ? appointment : null,
+          topics: rules.topics,
+          rules: rulesDraft,
+          group: rules.group,
+          groupTalkExists: !!rules.groupTalk,
+          arrived: arrived.ok ? arrived : null,
+          hold,
+        }))
+      );
+      if (problems.length) toast.warning(`Admitted, but not saved: ${problems.join("; ")}.`);
       await Promise.all([patientsStore.refetch(), referralsStore.refetch(), houseSheetPeopleStore.refetch(), bedNightsStore.refetch()]);
       toast.success(`${values.patientFirstName} ${values.patientLastName} admitted`);
-      router.push(`/patients/${(data as { patient_id: string }).patient_id}`);
+      router.push(`/patients/${patientId}`);
       return;
     }
     const { data: userData } = await supabase.auth.getUser();
@@ -491,6 +537,11 @@ function NewReferralForm() {
                     <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={beds} />
                   </Field>
                   <ArrivalFields value={arrival} onChange={setArrival} arrivalDate={arrivedOn} />
+                  {hold ? (
+                    <p className="text-xs text-muted-foreground">
+                      A bed was reserved for them{hold.unitId === unitId ? "" : " (another one is chosen now)"}. Confirm it, or tap another green bed.
+                    </p>
+                  ) : null}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Field>
                       <FieldLabel htmlFor="checkInAt">Arrived on</FieldLabel>
@@ -501,6 +552,22 @@ function NewReferralForm() {
                       <Input id="expectedCheckoutAt" type="date" min={arrivedOn} value={expectedCheckoutAt} onChange={(e) => setExpectedCheckoutAt(e.target.value)} />
                     </Field>
                   </div>
+                  {manualAppointment ? (
+                    <NextAppointmentFields
+                      value={appointment}
+                      onChange={setAppointment}
+                      note="NCH's sheet has no dated appointment. Ask the patient and carer whether the doctor set one."
+                    />
+                  ) : null}
+                  <FieldSeparator />
+                  <span className="text-sm font-semibold text-muted-foreground">House rules (last step)</span>
+                  <HouseRulesStep
+                    name={firstName || "the child"}
+                    firstStay
+                    rules={rules}
+                    value={rulesDraft}
+                    onChange={setRulesDraft}
+                  />
                 </>
               ) : null}
 
@@ -518,7 +585,7 @@ function NewReferralForm() {
                 <Button type="button" variant="outline" onClick={() => router.back()}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isSubmitting}>
+                <Button type="submit" disabled={isSubmitting || (!!fromSheet && !rulesDraft.discussed)}>
                   {isSubmitting ? "Saving…" : fromSheet ? "Admit" : "Submit Referral"}
                 </Button>
               </div>

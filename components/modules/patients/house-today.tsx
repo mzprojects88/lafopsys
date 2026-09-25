@@ -3,10 +3,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { BedDouble, Check, DoorOpen, FilePlus2, LogOut, MoonStar } from "lucide-react";
+import { BedDouble, BookmarkPlus, Check, DoorOpen, FilePlus2, LogOut, MoonStar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { useBedReservations } from "@/lib/hooks/use-bed-reservations";
 import { FloorPlanBedPicker } from "@/components/modules/house-ops/floor-plan/floor-plan-bed-picker";
 import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
 import { DischargeDialog } from "@/components/modules/patients/discharge-dialog";
@@ -49,6 +52,9 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const [checkIn, setCheckIn] = React.useState<{ patient: Patient; sheetRow: HouseSheetPerson } | null>(null);
   const [discharge, setDischarge] = React.useState<{ stay: Stay; name: string; on: string } | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
+  // A bed held before the child arrives (user, 2026-09-25; 0065).
+  const { reservations, holdFor, reserve, release } = useBedReservations();
+  const [reserving, setReserving] = React.useState<{ row: HouseSheetPerson; patientId: string | null } | null>(null);
   // "Move for tonight" picks the new bed on the floor plan (user, 2026-09-25).
   const [moving, setMoving] = React.useState<{ stayId: string; name: string; from: string; options: AssignableBed[] } | null>(null);
 
@@ -121,6 +127,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
             {arrivals.length === 0 ? <p className="text-xs text-muted-foreground">Everyone on today&apos;s sheet has a bed.</p> : null}
             {arrivals.map((p) => {
               const patient = patientById.get(settledPatientId(p) ?? "");
+              const hold = holdFor(patient?.id, p.id);
               return (
                 <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2 text-sm">
                   <div className="flex min-w-0 flex-col">
@@ -129,7 +136,27 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                       {patient ? `${patient.patientNumber}${patient.priority ? ` · Priority ${patient.priority}, ${PRIORITIES[patient.priority]}` : ""} · on file` : p.matchStatus === "suggested" ? "AI suggests a record" : "Not on file"} · since {formatDate(p.runStartedOn, "MMM d")}
                       {pickups.some((t) => t.date >= p.runStartedOn && t.manifest.some((m) => m.sheetRowId === p.id && m.boardedAt)) ? " · came on LAF HOPE" : ""}
                     </span>
+                    {hold ? (
+                      <span className="text-xs text-violet-700 dark:text-violet-300">
+                        Bed {units.find((u) => u.id === hold.unitId)?.code ?? "?"} reserved, expected {formatDate(hold.expectedOn, "MMM d")}
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            className="ml-2 text-muted-foreground underline hover:text-foreground"
+                            disabled={busy === hold.id}
+                            onClick={() => run(hold.id, () => release(hold.id), "Reservation released.")}
+                          >
+                            Release
+                          </button>
+                        ) : null}
+                      </span>
+                    ) : null}
                   </div>
+                  {canEdit && !hold ? (
+                    <Button size="sm" variant="ghost" className="h-7 gap-1" onClick={() => setReserving({ row: p, patientId: patient?.id ?? null })}>
+                      <BookmarkPlus className="size-3.5" /> Reserve bed
+                    </Button>
+                  ) : null}
                   {canEdit ? (
                     patient ? (
                       <Button size="sm" className="h-7 gap-1" onClick={() => setCheckIn({ patient, sheetRow: p })}>
@@ -188,7 +215,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
             {tonight.length === 0 ? <p className="text-xs text-muted-foreground">Nobody is checked in.</p> : null}
             {tonight.map((s) => {
               const night = tonightNight(s);
-              const moves = assignableBeds(units, bedPositions, stays, rooms, { excludeUnitId: unitForBedPosition(s.bedPositionId, units, bedPositions)?.id });
+              const moves = assignableBeds(units, bedPositions, stays, rooms, { excludeUnitId: unitForBedPosition(s.bedPositionId, units, bedPositions)?.id, holds: reservations });
               const tasks = orientationProgress(s, stays, topics, checks);
               return (
                 <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2 text-sm">
@@ -269,6 +296,19 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
           }}
         />
       ) : null}
+      {reserving ? (
+        <ReserveBedDialog
+          name={reserving.row.patientName}
+          options={assignableBeds(units, bedPositions, stays, rooms, { holds: reservations })}
+          onClose={() => setReserving(null)}
+          onReserve={async (unitId, expectedOn, note) => {
+            const r = await reserve({ unitId, patientId: reserving.patientId, sheetPersonId: reserving.row.id, reservedFor: reserving.row.patientName, expectedOn, note });
+            if (!r.ok) return toast.error(r.error);
+            toast.success("Bed reserved. Confirm it at check-in.");
+            setReserving(null);
+          }}
+        />
+      ) : null}
       <CheckInDialog key={checkIn?.sheetRow.id} target={checkIn} onOpenChange={(open) => !open && setCheckIn(null)} />
       <DischargeDialog
         stay={discharge?.stay ?? null}
@@ -312,6 +352,60 @@ function MoveTonightDialog({
           </Button>
           <Button disabled={!unitId || busy} onClick={() => onMove(unitId)}>
             {busy ? "Moving…" : "Move for tonight"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Hold a bed for a child who has not arrived; Check in opens on it. */
+function ReserveBedDialog({
+  name,
+  options,
+  onClose,
+  onReserve,
+}: {
+  name: string;
+  options: AssignableBed[];
+  onClose: () => void;
+  onReserve: (unitId: string, expectedOn: string, note: string) => Promise<unknown>;
+}) {
+  const [unitId, setUnitId] = React.useState("");
+  const [expectedOn, setExpectedOn] = React.useState(todayIso());
+  const [note, setNote] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Reserve a bed for {name}</DialogTitle>
+          <DialogDescription>Not checked in yet: the bed is held for them and offered to no one else. Confirm it when they arrive.</DialogDescription>
+        </DialogHeader>
+        <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={options} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="expectedOn">Expected to arrive</FieldLabel>
+            <Input id="expectedOn" type="date" min={todayIso()} value={expectedOn} onChange={(e) => setExpectedOn(e.target.value)} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="holdNote">Note (optional)</FieldLabel>
+            <Input id="holdNote" placeholder="e.g. coming on LAF HOPE" value={note} onChange={(e) => setNote(e.target.value)} />
+          </Field>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!unitId || !expectedOn || busy}
+            onClick={async () => {
+              setBusy(true);
+              await onReserve(unitId, expectedOn, note);
+              setBusy(false);
+            }}
+          >
+            {busy ? "Reserving…" : "Reserve bed"}
           </Button>
         </DialogFooter>
       </DialogContent>

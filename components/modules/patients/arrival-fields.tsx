@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { recordArrival, useArrivalRides, type ArrivalInput } from "@/lib/hooks/use-arrival-rides-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
@@ -25,10 +26,12 @@ export interface ArrivalDraft {
   fare: string;
   /** laf_hope: the pick-up's trip id, or NO_TRIP. */
   trip: string;
+  /** ride_app: came in one car with another NCH family (user, 2026-09-25: a checkbox, then who). */
+  shared: boolean;
 }
 
 const NO_TRIP = "none";
-export const EMPTY_ARRIVAL: ArrivalDraft = { mode: "", ride: NEW_RIDE, app: "", fare: "", trip: NO_TRIP };
+export const EMPTY_ARRIVAL: ArrivalDraft = { mode: "", ride: NEW_RIDE, app: "", fare: "", trip: NO_TRIP, shared: false };
 
 /** A sheet name ticked on board a LAF HOPE pick-up arrived by it: the arrival starts filled in (0053). */
 export function arrivalFromPickups(pickups: Pickup[], sheetRow: HouseSheetPerson | undefined): ArrivalDraft {
@@ -41,6 +44,13 @@ export function arrivalReady(d: ArrivalDraft): boolean {
   if (!d.mode) return false;
   if (d.mode !== "ride_app") return true;
   return d.ride !== NEW_RIDE || d.app !== "";
+}
+
+/** The group that arrived together, whose house rules can be discussed once (0065): a LAF HOPE pick-up, or a shared car ride. */
+export function arrivalGroup(d: ArrivalDraft): { kind: "trip" | "ride"; tripId: string | null; rideId: string | null } | null {
+  if (d.mode === "laf_hope" && d.trip !== NO_TRIP) return { kind: "trip", tripId: d.trip, rideId: null };
+  if (d.mode === "ride_app" && d.shared) return { kind: "ride", tripId: null, rideId: d.ride !== NEW_RIDE ? d.ride : null };
+  return null;
 }
 
 export function arrivalInput(d: ArrivalDraft): ArrivalInput {
@@ -71,7 +81,10 @@ export function ArrivalFields({ value, onChange, arrivalDate, excludeStayId }: {
   const ridersOf = (rideId: string) =>
     stays
       .filter((s) => s.arrivalRideId === rideId && s.id !== excludeStayId)
-      .map((s) => patients.find((p) => p.id === s.patientId)?.lastName ?? "?");
+      .map((s) => {
+        const p = patients.find((x) => x.id === s.patientId);
+        return p ? `${p.firstName} ${p.lastName}` : "?";
+      });
 
   return (
     <div className="flex flex-col gap-3">
@@ -112,29 +125,36 @@ export function ArrivalFields({ value, onChange, arrivalDate, excludeStayId }: {
 
       {value.mode === "ride_app" && (
         <>
-          <Field>
-            <FieldLabel htmlFor="arrivalRide">Ride</FieldLabel>
-            <Select value={value.ride} onValueChange={(v) => onChange({ ...value, ride: v })}>
-              <SelectTrigger id="arrivalRide" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NEW_RIDE}>A new ride</SelectItem>
-                {sameDay.map((r) => {
-                  const who = ridersOf(r.id);
-                  return (
-                    <SelectItem key={r.id} value={r.id}>
-                      Rode with {who.length ? who.join(", ") : "—"} · {ARRIVAL_APP_LABELS[r.app]}
-                      {r.fare !== null ? ` · ${formatCurrency(r.fare)}` : ""}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-            <FieldDescription>
-              Families who came in the same car share one ride. Two or more NCH patients on a car ride make the fare reimbursable; Angkas never is.
-            </FieldDescription>
-          </Field>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={value.shared}
+              onCheckedChange={(v) => onChange({ ...value, shared: !!v, ride: v ? value.ride : NEW_RIDE })}
+            />
+            Shared the ride with another NCH patient
+          </label>
+          {value.shared ? (
+            <Field>
+              <FieldLabel htmlFor="arrivalRide">Who did they ride with?</FieldLabel>
+              <Select value={value.ride} onValueChange={(v) => onChange({ ...value, ride: v })}>
+                <SelectTrigger id="arrivalRide" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {sameDay.map((r) => {
+                    const who = ridersOf(r.id);
+                    return (
+                      <SelectItem key={r.id} value={r.id}>
+                        {who.length ? who.join(", ") : "A ride with no one checked in"} · {ARRIVAL_APP_LABELS[r.app]}
+                        {r.fare !== null ? ` · ${formatCurrency(r.fare)}` : ""}
+                      </SelectItem>
+                    );
+                  })}
+                  <SelectItem value={NEW_RIDE}>Someone not checked in yet (they pick this ride when they are)</SelectItem>
+                </SelectContent>
+              </Select>
+              <FieldDescription>Two or more NCH patients in one car make the fare reimbursable; Angkas never is.</FieldDescription>
+            </Field>
+          ) : null}
           {value.ride === NEW_RIDE && (
             <div className="grid grid-cols-2 gap-3">
               <Field>
@@ -179,6 +199,7 @@ export function ArrivalDialog({ stay, patientName, onOpenChange }: { stay: Stay 
     mode: stay?.arrivalMode ?? "",
     ride: stay?.arrivalRideId ?? NEW_RIDE,
     trip: stay?.arrivalTripId ?? NO_TRIP,
+    shared: !!stay?.arrivalRideId,
   }));
   const [saving, setSaving] = React.useState(false);
 

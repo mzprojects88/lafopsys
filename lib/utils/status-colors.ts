@@ -38,6 +38,7 @@ export const STATUS_DOMAIN_MAP: Record<string, Record<string, StatusTone>> = {
   unit: {
     available: "positive",
     occupied: "info",
+    reserved: "neutral",
     maintenance: "warning",
     blocked: "negative",
   },

@@ -62,8 +62,9 @@ export interface ArrivalInput {
 }
 
 /** How a stay's family reached the house (ops.record_arrival). */
-export async function recordArrival(stayId: string, input: ArrivalInput): Promise<MutationResult> {
-  const { error } = await createClient()
+/** Returns the ride the stay is on (a new one, or the one joined) and the pick-up, for the group's house-rules talk (0065). */
+export async function recordArrival(stayId: string, input: ArrivalInput): Promise<{ ok: true; rideId: string | null; tripId: string | null } | { ok: false; error: string }> {
+  const { data, error } = await createClient()
     .schema("ops")
     .rpc("record_arrival", {
       p_stay_id: stayId,
@@ -75,7 +76,8 @@ export async function recordArrival(stayId: string, input: ArrivalInput): Promis
     });
   if (error) return { ok: false, error: error.message };
   await Promise.all([arrivalRidesStore.refetch(), patientsStore.refetch(), input.tripId ? pickupsStore.refetch() : null]);
-  return { ok: true };
+  const result = (data ?? {}) as { ride_id?: string | null; trip_id?: string | null };
+  return { ok: true, rideId: result.ride_id ?? null, tripId: result.trip_id ?? null };
 }
 
 export function useArrivalRides() {

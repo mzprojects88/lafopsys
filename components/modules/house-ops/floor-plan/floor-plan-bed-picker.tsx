@@ -4,6 +4,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
+import { useBedReservations } from "@/lib/hooks/use-bed-reservations";
 import { useRole } from "@/lib/rbac/use-role";
 import { canSeeClinicalDetail } from "@/lib/rbac/roles";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,9 +26,10 @@ export function FloorPlanBedPicker({ value, onChange, options }: { value: string
   const { rooms, units, bedPositions, labels } = useHouseLayout();
   const { patients, carers, stays } = usePatientsData();
   const { role } = useRole();
+  const { reservations } = useBedReservations();
   const beds = React.useMemo(
-    () => buildBedViews({ units, rooms, bedPositions, stays, patients, carers, draftFor: noDraft }),
-    [units, rooms, bedPositions, stays, patients, carers]
+    () => buildBedViews({ units, rooms, bedPositions, stays, patients, carers, draftFor: noDraft, holds: reservations }),
+    [units, rooms, bedPositions, stays, patients, carers, reservations]
   );
   const placed = beds.filter((b) => b.x !== null && b.y !== null);
   const allowed = React.useMemo(() => new Set(options.map((o) => o.unit.id)), [options]);
@@ -60,7 +62,7 @@ export function FloorPlanBedPicker({ value, onChange, options }: { value: string
             if (allowed.has(sel.id)) return onChange(sel.id);
             const bed = beds.find((b) => b.id === sel.id);
             if (!bed) return;
-            toast.info(`Bed ${bed.code} is not free${bed.bedStatus === "occupied" ? ": someone is in it" : bed.bedStatus === "available" ? "" : `: ${bed.bedStatus}`}.`);
+            toast.info(`Bed ${bed.code} is not free${bed.bedStatus === "occupied" ? ": someone is in it" : bed.bedStatus === "reserved" ? `: reserved for ${bed.holds.map((h) => h.reservedFor).join(", ")}` : bed.bedStatus === "available" ? "" : `: ${bed.bedStatus}`}.`);
           }}
           onMove={noop}
           onDrop={noop}

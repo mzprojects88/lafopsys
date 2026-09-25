@@ -2,7 +2,7 @@ import type { BedCounts } from "@/lib/utils/beds";
 import type { BedStatus } from "@/lib/types/house-ops";
 import { STATUS_FILL, STATUS_LABEL, STATUS_STROKE } from "./bed-view";
 
-const ORDER: BedStatus[] = ["available", "occupied", "maintenance", "blocked"];
+const ORDER: BedStatus[] = ["available", "reserved", "occupied", "maintenance", "blocked"];
 
 export function FloorPlanLegend({ counts }: { counts: BedCounts }) {
   return (

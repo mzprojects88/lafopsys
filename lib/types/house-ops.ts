@@ -11,7 +11,8 @@ export type UnitStatus = "available" | "maintenance" | "blocked";
 
 /** What the floor plan and the dialogs show: the stored lock, or occupancy
  * derived from active stays (lib/utils/beds.ts). */
-export type BedStatus = UnitStatus | "occupied";
+/** "reserved": free, but held for a child who has not arrived yet (0065). */
+export type BedStatus = UnitStatus | "occupied" | "reserved";
 
 /** A physical bed (0047). One admission slot by default (capacity 1); the
  * A-D positions underneath are where ops.stays point. */

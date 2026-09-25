@@ -3,6 +3,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { countLayoutChanges, useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
+import { useBedReservations } from "@/lib/hooks/use-bed-reservations";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useRole } from "@/lib/rbac/use-role";
 import { canEditFloorPlan, canSeeClinicalDetail } from "@/lib/rbac/roles";
@@ -60,16 +61,17 @@ export function FloorPlanView() {
   const canSeeClinical = canSeeClinicalDetail(role);
   const editing = canEdit && editor.editing;
 
+  const { reservations } = useBedReservations();
   const beds = React.useMemo(
-    () => buildBedViews({ units, rooms, bedPositions, stays, patients, carers, draftFor: editor.draftFor }),
-    [units, rooms, bedPositions, stays, patients, carers, editor.draftFor]
+    () => buildBedViews({ units, rooms, bedPositions, stays, patients, carers, draftFor: editor.draftFor, holds: reservations }),
+    [units, rooms, bedPositions, stays, patients, carers, editor.draftFor, reservations]
   );
   const drawnLabels = React.useMemo(() => editor.labelsFor(labels), [editor, labels]);
   const placed = beds.filter((b) => b.x !== null && b.y !== null);
   const unplaced = beds.filter((b) => b.x === null || b.y === null);
   const selectedBed = selection?.kind === "bed" ? (beds.find((b) => b.id === selection.id) ?? null) : null;
   const selectedLabel = selection?.kind === "label" ? (drawnLabels.find((l) => l.id === selection.id) ?? null) : null;
-  const counts = React.useMemo(() => bedCounts(units, bedPositions, stays), [units, bedPositions, stays]);
+  const counts = React.useMemo(() => bedCounts(units, bedPositions, stays, reservations), [units, bedPositions, stays, reservations]);
   const changes = editor.changesFor(units, labels);
   const dirtyCount = countLayoutChanges(changes);
   const dirty = dirtyCount > 0;

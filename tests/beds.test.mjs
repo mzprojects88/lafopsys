@@ -138,10 +138,39 @@ describe("capacity and counts", () => {
     ];
     const positions = positionsFor(...units);
     const counts = bedCounts(units, positions, [stay("unit-B1-A"), stay("unit-B5-A")]);
-    assert.deepEqual(counts, { available: 1, occupied: 1, maintenance: 1, blocked: 1, unplaced: 1, total: 4 });
+    assert.deepEqual(counts, { available: 1, occupied: 1, reserved: 0, maintenance: 1, blocked: 1, unplaced: 1, total: 4 });
   });
 
   it("orders codes naturally", () => {
     assert.deepEqual(["B10", "B2", "B1"].sort(compareBedCodes), ["B1", "B2", "B10"]);
+  });
+});
+
+describe("holds (0065): a bed reserved for a child who has not arrived", () => {
+  const b1 = unit("B1");
+  const b2 = unit("B2", { capacity: 2 });
+  const positions = positionsFor(b1, b2);
+  const hold = (u, id = "h1") => ({ id, unitId: u.id, reservedFor: "Juan", expectedOn: "2026-09-25" });
+
+  it("shows as reserved, and is offered to no one else", () => {
+    assert.equal(deriveBedStatus(b1, positions, [], [hold(b1)]), "reserved");
+    assert.equal(isBedAssignable(b1, positions, [], [hold(b1)]), false);
+    assert.deepEqual(assignableBeds([b1], positions, [], rooms, { holds: [hold(b1)] }), []);
+  });
+  it("is offered to the child it is held for", () => {
+    assert.equal(isBedAssignable(b1, positions, [], [hold(b1)], "h1"), true);
+    assert.equal(assignableBeds([b1], positions, [], rooms, { holds: [hold(b1)], forHoldId: "h1" }).length, 1);
+  });
+  it("a two-slot bed with one hold keeps its other slot free", () => {
+    assert.equal(deriveBedStatus(b2, positions, [], [hold(b2)]), "available");
+    assert.equal(isBedAssignable(b2, positions, [], [hold(b2)]), true);
+    assert.equal(deriveBedStatus(b2, positions, [stay("unit-B2-A")], [hold(b2)]), "reserved");
+  });
+  it("occupancy wins over a hold, the lock over both", () => {
+    assert.equal(deriveBedStatus(b1, positions, [stay("unit-B1-A")], [hold(b1)]), "occupied");
+    assert.equal(deriveBedStatus(unit("B1", { status: "maintenance" }), positions, [], [hold(b1)]), "maintenance");
+  });
+  it("counts a held bed as reserved", () => {
+    assert.equal(bedCounts([b1], positions, [], [hold(b1)]).reserved, 1);
   });
 });

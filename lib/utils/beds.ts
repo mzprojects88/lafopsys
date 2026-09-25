@@ -12,6 +12,19 @@ import { compareBedCodes } from "./floor-plan-geometry.ts";
 
 export { compareBedCodes };
 
+/** A bed held for a child who has not arrived yet (0065): not a stay, but not free for anyone else either. */
+export interface BedHold {
+  id: string;
+  unitId: string;
+  reservedFor: string;
+  expectedOn: string;
+}
+
+/** Holds on this bed, other than the one being used right now. */
+function holdsOn(unit: Unit, holds: readonly BedHold[], exceptHoldId?: string): number {
+  return holds.filter((h) => h.unitId === unit.id && h.id !== exceptHoldId).length;
+}
+
 export function isActiveStay(stay: Stay): boolean {
   return stay.status === "in_house" || stay.status === "overdue";
 }
@@ -30,15 +43,21 @@ export function isBedOccupied(unit: Unit, positions: BedPosition[], stays: Stay[
   return activeStaysForUnit(unit, positions, stays).length >= unit.capacity;
 }
 
-/** What the floor plan shows: the lock wins over occupancy. */
-export function deriveBedStatus(unit: Unit, positions: BedPosition[], stays: Stay[]): BedStatus {
+/** What the floor plan shows: the lock wins over occupancy, occupancy over a hold. */
+export function deriveBedStatus(unit: Unit, positions: BedPosition[], stays: Stay[], holds: readonly BedHold[] = []): BedStatus {
   if (unit.status !== "available") return unit.status;
-  return isBedOccupied(unit, positions, stays) ? "occupied" : "available";
+  const inUse = activeStaysForUnit(unit, positions, stays).length;
+  if (inUse >= unit.capacity) return "occupied";
+  return inUse + holdsOn(unit, holds) >= unit.capacity ? "reserved" : "available";
 }
 
-/** May an admission or transfer land here? */
-export function isBedAssignable(unit: Unit, positions: BedPosition[], stays: Stay[]): boolean {
-  return unit.active && unit.status === "available" && !isBedOccupied(unit, positions, stays);
+/** May an admission or transfer land here? A held bed only for the child it is held for (`exceptHoldId`). */
+export function isBedAssignable(unit: Unit, positions: BedPosition[], stays: Stay[], holds: readonly BedHold[] = [], exceptHoldId?: string): boolean {
+  return (
+    unit.active &&
+    unit.status === "available" &&
+    activeStaysForUnit(unit, positions, stays).length + holdsOn(unit, holds, exceptHoldId) < unit.capacity
+  );
 }
 
 /** The lowest position label with no active stay, or null when the bed is full. */
@@ -73,12 +92,12 @@ export function assignableBeds(
   positions: BedPosition[],
   stays: Stay[],
   rooms: Room[],
-  opts: { excludeUnitId?: string } = {}
+  opts: { excludeUnitId?: string; holds?: readonly BedHold[]; forHoldId?: string } = {}
 ): AssignableBed[] {
   const out: AssignableBed[] = [];
   for (const unit of units) {
     if (unit.id === opts.excludeUnitId) continue;
-    if (!isBedAssignable(unit, positions, stays)) continue;
+    if (!isBedAssignable(unit, positions, stays, opts.holds ?? [], opts.forHoldId)) continue;
     const position = nextFreePosition(unit, positions, stays);
     if (!position) continue;
     out.push({ unit, position, room: roomForUnit(unit, rooms), label: bedLabel(unit, rooms) });
@@ -104,6 +123,7 @@ export function houseCapacity(units: Unit[]): number {
 export interface BedCounts {
   available: number;
   occupied: number;
+  reserved: number;
   maintenance: number;
   blocked: number;
   unplaced: number;
@@ -111,12 +131,12 @@ export interface BedCounts {
 }
 
 /** Live beds only; a retired bed counts nowhere. */
-export function bedCounts(units: Unit[], positions: BedPosition[], stays: Stay[]): BedCounts {
-  const counts: BedCounts = { available: 0, occupied: 0, maintenance: 0, blocked: 0, unplaced: 0, total: 0 };
+export function bedCounts(units: Unit[], positions: BedPosition[], stays: Stay[], holds: readonly BedHold[] = []): BedCounts {
+  const counts: BedCounts = { available: 0, occupied: 0, reserved: 0, maintenance: 0, blocked: 0, unplaced: 0, total: 0 };
   for (const unit of units) {
     if (!unit.active) continue;
     counts.total += 1;
-    counts[deriveBedStatus(unit, positions, stays)] += 1;
+    counts[deriveBedStatus(unit, positions, stays, holds)] += 1;
     if (unit.x === null || unit.y === null) counts.unplaced += 1;
   }
   return counts;
