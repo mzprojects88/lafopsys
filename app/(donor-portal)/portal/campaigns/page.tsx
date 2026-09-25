@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
@@ -44,7 +45,7 @@ export default function DonorPortalCampaignsPage() {
   const [itemDescription, setItemDescription] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
 
-  if (campaignsLoading) return null;
+  if (campaignsLoading) return <LoadingState />;
 
   const today = todayIso();
   const activeCampaigns = campaigns.filter((c) => isActive(c, today));

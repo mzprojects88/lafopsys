@@ -18,7 +18,11 @@ export default function DonorPortalLayout({ children }: { children: ReactNode })
   const pathname = usePathname();
 
   if (BARE_PATHS.includes(pathname)) {
-    return <AuthBackdrop>{children}</AuthBackdrop>;
+    return (
+      <AuthBackdrop panelTitle="Donor portal" panelText="Your gifts to Little Ark Foundation, the receipts for them, and what they did for the children in the house.">
+        {children}
+      </AuthBackdrop>
+    );
   }
 
   return (

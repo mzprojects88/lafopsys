@@ -64,12 +64,12 @@ export default function DonorChangePasswordPage() {
   if (checkingSession) return null;
 
   return (
-    <Card className="w-full max-w-lg">
-      <CardContent className="flex flex-col items-center gap-6 px-8 py-10 sm:px-10">
-        <Image src="/logo/laf-mark.png" alt="Little Ark Foundation" width={140} height={150} priority />
+    <Card className="w-full max-w-lg border-0 bg-transparent shadow-none">
+      <CardContent className="flex flex-col items-center gap-6 px-2 py-4 sm:px-6">
+        <Image src="/logo/laf-mark.png" alt="Little Ark Foundation" width={120} height={129} priority className="lg:hidden" />
 
         <div className="flex flex-col items-center gap-1.5 text-center">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Set a New Password</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Set a new password</h1>
           <p className="text-sm text-muted-foreground">
             You&apos;re using a temporary password — choose a new one (at least {MIN_LENGTH} characters) to continue.
           </p>
@@ -77,35 +77,35 @@ export default function DonorChangePasswordPage() {
 
         <form onSubmit={handleSubmit} className="flex w-full flex-col gap-5">
           <div className="flex flex-col gap-2">
-            <span className="flex items-center gap-1.5 text-sm font-medium text-primary">
-              <Lock className="size-4" />
+            <label htmlFor="new-password" className="flex items-center gap-1.5 text-theme-sm font-medium text-foreground">
+              <Lock className="size-4 text-muted-foreground" />
               New password
-            </span>
+            </label>
             <Input
+              id="new-password"
               type="password"
               autoComplete="new-password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="h-11 rounded-xl"
             />
           </div>
 
           <div className="flex flex-col gap-2">
-            <span className="flex items-center gap-1.5 text-sm font-medium text-primary">
-              <Lock className="size-4" />
+            <label htmlFor="confirm-password" className="flex items-center gap-1.5 text-theme-sm font-medium text-foreground">
+              <Lock className="size-4 text-muted-foreground" />
               Confirm password
-            </span>
+            </label>
             <Input
+              id="confirm-password"
               type="password"
               autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="h-11 rounded-xl"
             />
             {mismatch && <span className="text-xs text-destructive">Passwords don&apos;t match.</span>}
           </div>
 
-          <Button type="submit" size="lg" className="h-12 w-full gap-2 rounded-xl text-base" disabled={!canSubmit || submitting}>
+          <Button type="submit" size="lg" className="h-12 w-full gap-2 text-base" disabled={!canSubmit || submitting}>
             {submitting ? "Saving…" : "Save & Continue"}
             <ArrowRight className="size-4" />
           </Button>

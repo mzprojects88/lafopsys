@@ -39,11 +39,11 @@ export default function DonorPortalImpactPage() {
       <PageHeader title="Our Impact" description="What your giving helps make possible, year to date." />
 
       <KpiGrid>
-        <KpiCard label="Bed Nights" value={ytd.bedNights.toLocaleString()} icon={Bed} color="blue" />
-        <KpiCard label="Meals" value={ytd.meals.toLocaleString()} icon={Utensils} color="green" />
-        <KpiCard label="Trips" value={ytd.trips.toLocaleString()} icon={Car} color="cyan" />
-        <KpiCard label="Care Cart Meals" value={ytd.careCartMeals.toLocaleString()} icon={HandCoins} color="orange" />
-        <KpiCard label="Activity Participants" value={ytd.activityParticipants.toLocaleString()} icon={Sparkles} color="purple" />
+        <KpiCard label="Bed Nights" value={ytd.bedNights.toLocaleString()} icon={Bed} />
+        <KpiCard label="Meals" value={ytd.meals.toLocaleString()} icon={Utensils} />
+        <KpiCard label="Trips" value={ytd.trips.toLocaleString()} icon={Car} />
+        <KpiCard label="Care Cart Meals" value={ytd.careCartMeals.toLocaleString()} icon={HandCoins} />
+        <KpiCard label="Activity Participants" value={ytd.activityParticipants.toLocaleString()} icon={Sparkles} />
       </KpiGrid>
 
       <Card>

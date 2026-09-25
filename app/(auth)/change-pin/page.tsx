@@ -103,34 +103,34 @@ function ChangePinForm() {
   if (checkingSession) return null;
 
   return (
-    <Card className="w-full max-w-lg">
-      <CardContent className="flex flex-col items-center gap-6 px-8 py-10 sm:px-10">
-        <Image src="/logo/laf-mark.png" alt="Little Ark Foundation" width={140} height={150} priority />
+    <Card className="w-full max-w-lg border-0 bg-transparent shadow-none">
+      <CardContent className="flex flex-col items-center gap-6 px-2 py-4 sm:px-6">
+        <Image src="/logo/laf-mark.png" alt="Little Ark Foundation" width={120} height={129} priority className="lg:hidden" />
 
         <div className="flex flex-col items-center gap-1.5 text-center">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Set a New PIN</h1>
-          <p className="text-sm text-muted-foreground">You&apos;re using a temporary PIN — choose a new 6-digit PIN to continue.</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Set a new PIN</h1>
+          <p className="text-sm text-muted-foreground">Choose the 6-digit PIN you&apos;ll sign in with.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex w-full flex-col gap-5">
           <div className="flex flex-col gap-2">
-            <span className="flex items-center gap-1.5 text-sm font-medium text-primary">
-              <ShieldCheck className="size-4" />
+            <span className="flex items-center gap-1.5 text-theme-sm font-medium text-foreground">
+              <ShieldCheck className="size-4 text-muted-foreground" />
               New PIN
             </span>
             <PinInput length={PIN_LENGTH} value={newPin} onChange={setNewPin} />
           </div>
 
           <div className="flex flex-col gap-2">
-            <span className="flex items-center gap-1.5 text-sm font-medium text-primary">
-              <ShieldCheck className="size-4" />
+            <span className="flex items-center gap-1.5 text-theme-sm font-medium text-foreground">
+              <ShieldCheck className="size-4 text-muted-foreground" />
               Confirm PIN
             </span>
             <PinInput length={PIN_LENGTH} value={confirmPin} onChange={setConfirmPin} />
             {mismatch && <span className="text-xs text-destructive">PINs don&apos;t match.</span>}
           </div>
 
-          <Button type="submit" size="lg" className="h-12 w-full gap-2 rounded-xl text-base" disabled={!canSubmit || submitting}>
+          <Button type="submit" size="lg" className="h-12 w-full gap-2 text-base" disabled={!canSubmit || submitting}>
             {submitting ? "Saving…" : "Save & Continue"}
             <ArrowRight className="size-4" />
           </Button>

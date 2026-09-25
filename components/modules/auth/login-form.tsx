@@ -92,23 +92,23 @@ export function LoginForm({ roster }: { roster: LoginRosterEntry[] }) {
   }
 
   return (
-    <Card className="w-full max-w-lg">
-      <CardContent className="flex flex-col items-center gap-6 px-8 py-10 sm:px-10">
-        <Image src="/logo/laf-mark.png" alt="Little Ark Foundation" width={140} height={150} priority />
+    <Card className="w-full max-w-lg border-0 bg-transparent shadow-none">
+      <CardContent className="flex flex-col items-center gap-6 px-2 py-4 sm:px-6">
+        <Image src="/logo/laf-mark.png" alt="Little Ark Foundation" width={120} height={129} priority className="lg:hidden" />
 
         <div className="flex flex-col items-center gap-1.5 text-center">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">LAF Staff Login</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Sign in</h1>
           <p className="text-sm text-muted-foreground">Select your name and enter your 6-digit PIN.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex w-full flex-col gap-5">
           <div className="flex flex-col gap-2">
-            <span className="flex items-center gap-1.5 text-sm font-medium text-primary">
-              <User className="size-4" />
-              Select Staff
+            <span className="flex items-center gap-1.5 text-theme-sm font-medium text-foreground">
+              <User className="size-4 text-muted-foreground" />
+              Staff member
             </span>
             <Select value={staffId} onValueChange={setStaffId}>
-              <SelectTrigger size="default" className="h-11 w-full rounded-xl">
+              <SelectTrigger size="default" className="w-full">
                 <SelectValue placeholder="Select your name" />
               </SelectTrigger>
               <SelectContent>
@@ -122,14 +122,14 @@ export function LoginForm({ roster }: { roster: LoginRosterEntry[] }) {
           </div>
 
           <div className="flex flex-col gap-2">
-            <span className="flex items-center gap-1.5 text-sm font-medium text-primary">
-              <ShieldCheck className="size-4" />
+            <span className="flex items-center gap-1.5 text-theme-sm font-medium text-foreground">
+              <ShieldCheck className="size-4 text-muted-foreground" />
               PIN
             </span>
             <PinInput length={PIN_LENGTH} value={pin} onChange={setPin} />
           </div>
 
-          <Button type="submit" size="lg" className="h-12 w-full gap-2 rounded-xl text-base" disabled={!canSubmit || submitting}>
+          <Button type="submit" size="lg" className="h-12 w-full gap-2 text-base" disabled={!canSubmit || submitting}>
             {submitting ? "Signing in…" : "Continue"}
             <ArrowRight className="size-4" />
           </Button>

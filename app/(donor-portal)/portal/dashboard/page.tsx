@@ -1,6 +1,7 @@
 "use client";
 
 import { Gift, Wallet, Calendar, Repeat } from "lucide-react";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { PageHeader } from "@/components/patterns/page-header";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { StatusBadge } from "@/components/patterns/status-badge";
@@ -29,7 +30,7 @@ export default function DonorPortalDashboardPage() {
   const donor = donors[0];
   const pledge = pledges.find((p) => p.status === "active") ?? pledges[0];
 
-  if (donorsLoading || pledgesLoading) return null;
+  if (donorsLoading || pledgesLoading) return <LoadingState />;
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -37,10 +38,10 @@ export default function DonorPortalDashboardPage() {
 
       {donor && (
         <KpiGrid>
-          <KpiCard label="Lifetime Value" value={formatCurrency(donor.lifetimeValue)} icon={Wallet} color="green" />
-          <KpiCard label="Total Gifts" value={donor.giftCount} icon={Gift} color="blue" />
-          <KpiCard label="First Gift" value={formatDate(donor.firstGiftDate)} icon={Calendar} color="cyan" />
-          <KpiCard label="Last Gift" value={formatDate(donor.lastGiftDate)} icon={Calendar} color="amber" />
+          <KpiCard label="Lifetime Value" value={formatCurrency(donor.lifetimeValue)} icon={Wallet} />
+          <KpiCard label="Total Gifts" value={donor.giftCount} icon={Gift} />
+          <KpiCard label="First Gift" value={formatDate(donor.firstGiftDate)} icon={Calendar} />
+          <KpiCard label="Last Gift" value={formatDate(donor.lastGiftDate)} icon={Calendar} />
         </KpiGrid>
       )}
 

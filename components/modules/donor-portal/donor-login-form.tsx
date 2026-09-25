@@ -65,39 +65,39 @@ export function DonorLoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-lg">
-      <CardContent className="flex flex-col items-center gap-6 px-8 py-10 sm:px-10">
-        <Image src="/logo/laf-mark.png" alt="Little Ark Foundation" width={140} height={150} priority />
+    <Card className="w-full max-w-lg border-0 bg-transparent shadow-none">
+      <CardContent className="flex flex-col items-center gap-6 px-2 py-4 sm:px-6">
+        <Image src="/logo/laf-mark.png" alt="Little Ark Foundation" width={120} height={129} priority className="lg:hidden" />
 
         <div className="flex flex-col items-center gap-1.5 text-center">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Donors Portal</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Donor portal</h1>
           <p className="text-sm text-muted-foreground">Sign in with the email and password we sent you.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex w-full flex-col gap-5">
           <div className="flex flex-col gap-2">
-            <span className="flex items-center gap-1.5 text-sm font-medium text-primary">
-              <Mail className="size-4" />
+            <label htmlFor="donor-email" className="flex items-center gap-1.5 text-theme-sm font-medium text-foreground">
+              <Mail className="size-4 text-muted-foreground" />
               Email
-            </span>
-            <Input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-11 rounded-xl" />
+            </label>
+            <Input id="donor-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
 
           <div className="flex flex-col gap-2">
-            <span className="flex items-center gap-1.5 text-sm font-medium text-primary">
-              <Lock className="size-4" />
+            <label htmlFor="donor-password" className="flex items-center gap-1.5 text-theme-sm font-medium text-foreground">
+              <Lock className="size-4 text-muted-foreground" />
               Password
-            </span>
+            </label>
             <Input
+              id="donor-password"
               type="password"
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="h-11 rounded-xl"
             />
           </div>
 
-          <Button type="submit" size="lg" className="h-12 w-full gap-2 rounded-xl text-base" disabled={!canSubmit || submitting}>
+          <Button type="submit" size="lg" className="h-12 w-full gap-2 text-base" disabled={!canSubmit || submitting}>
             {submitting ? "Signing in…" : "Continue"}
             <ArrowRight className="size-4" />
           </Button>
