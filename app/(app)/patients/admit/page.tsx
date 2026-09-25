@@ -211,6 +211,7 @@ function NewReferralForm() {
         p_carer_relationship: null,
         p_carer_mobile: null,
         p_expected_checkout_at: expectedCheckoutAt || null,
+        p_rules_discussed: rulesDraft.discussed,
       });
       if (error) {
         toast.error(`Couldn't admit: ${error.message}`);
@@ -224,7 +225,6 @@ function NewReferralForm() {
           stayId,
           patientId,
           appointment: manualAppointment ? appointment : null,
-          topics: rules.topics,
           rules: rulesDraft,
           group: rules.group,
           groupTalkExists: !!rules.groupTalk,

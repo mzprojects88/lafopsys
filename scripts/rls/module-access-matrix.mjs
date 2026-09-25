@@ -137,7 +137,7 @@ const withPatient = (extra) => ({
 });
 const insertAppt = `insert into ops.appointments (patient_id, date, time, clinic, purpose) values ('${PT}', current_date + 1, '08:00', 'NCH', 'Test')`;
 const readPatient = `select id from ops.patients where id = '${PT}'`;
-const checkIn = `select ops.check_in(p_unit_id => 'unit-B1', p_check_in_at => (now() at time zone 'Asia/Manila')::date, p_patient_id => '${PT}')`;
+const checkIn = `select ops.check_in(p_rules_discussed => true, p_unit_id => 'unit-B1', p_check_in_at => (now() at time zone 'Asia/Manila')::date, p_patient_id => '${PT}')`;
 const lock = "update ops.units set status = 'maintenance', lock_reason = 'Broken slat' where id = 'unit-B1'";
 
 async function main() {

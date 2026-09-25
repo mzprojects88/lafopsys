@@ -163,6 +163,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
             p_carer_relationship: fromSheet ? relationshipFromSheet(sheetRow.relationship) || "Guardian" : newCarer ? carerRelationship : null,
             p_carer_mobile: fromSheet ? sheetRow.phone : newCarer ? carerMobile.trim() || null : null,
             p_expected_checkout_at: expectedCheckoutAt || null,
+            p_rules_discussed: rulesDraft.discussed,
           })
       : await createClient()
           .schema("ops")
@@ -178,6 +179,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
             p_carer_relationship: newCarer ? carerRelationship : null,
             p_carer_mobile: newCarer ? carerMobile.trim() || null : null,
             p_expected_checkout_at: expectedCheckoutAt || null,
+            p_rules_discussed: rulesDraft.discussed,
             p_appt_date: appointment.date || null,
             p_appt_time: appointment.date ? appointment.time : null,
             p_appt_clinic: appointment.date ? appointment.clinic.trim() : null,
@@ -200,7 +202,6 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
         patientId: newPatientId,
         // check_in takes the appointment itself; the sheet's path does not.
         appointment: sheetRow && manualAppointment ? appointment : null,
-        topics: rules.topics,
         rules: rulesDraft,
         group: rules.group,
         groupTalkExists: !!rules.groupTalk,

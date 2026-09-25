@@ -198,7 +198,7 @@ async function main() {
   // ---- 0067: the database keeps holds honest; the whole flow ----
   const holdOn = (unit, who = KID) => client.query(
     `insert into ops.bed_reservations (unit_id, patient_id, reserved_for, expected_on) values ($1, $2, 'x', ${TODAY})`, [unit, who]);
-  const checkIn = (who, unit) => ({ sql: `select ops.check_in(p_unit_id => '${unit}', p_check_in_at => ${TODAY}, p_patient_id => '${who}')` });
+  const checkIn = (who, unit) => ({ sql: `select ops.check_in(p_rules_discussed => true, p_unit_id => '${unit}', p_check_in_at => ${TODAY}, p_patient_id => '${who}')` });
   const holdState = (who) => ({ sql: `select string_agg(r.status || ':' || coalesce(bp.unit_id, '-'), ',' order by r.created_at) as s
       from ops.bed_reservations r left join ops.stays st on st.id = r.used_stay_id left join ops.bed_positions bp on bp.id = st.bed_position_id
       where r.patient_id = '${who}'` });
@@ -227,7 +227,7 @@ async function main() {
   const newKid = JSON.stringify({ patient_first_name: "Sheet", patient_last_name: "Holdkid", patient_sex: "M", carer_name: "Papa Hold", carer_relationship: "Father", hospital_id: null, diagnosis_ids: [] });
   await scenario(ids, "FLOW new child from the sheet: admitting closes the sheet-line hold", "social_worker",
     withSeed(() => client.query(`insert into ops.bed_reservations (unit_id, house_sheet_person_id, reserved_for, expected_on) values ('unit-B1', $1, 'Holdkid, Sheet', ${TODAY})`, [ROW])),
-    last({ sql: `select ops.admit_from_sheet(p_sheet_row_id => '${ROW}', p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_referral => '${newKid}'::jsonb)` },
+    last({ sql: `select ops.admit_from_sheet(p_rules_discussed => true, p_sheet_row_id => '${ROW}', p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_referral => '${newKid}'::jsonb)` },
       { sql: `select status, used_stay_id is not null as linked from ops.bed_reservations where house_sheet_person_id = '${ROW}'` }),
     (r) => r.ok && r.rows === 1 && r.data[0].status === "used" && r.data[0].linked === true);
   await scenario(ids, "FLOW group: the second family of a trip finds the talk already recorded", "social_worker",

@@ -149,9 +149,9 @@ const withSeed = (extra) => ({
 });
 const TODAY = "(now() at time zone 'Asia/Manila')::date";
 const ciPatient = (patient, extra = "") =>
-  `select ops.check_in(p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_patient_id => '${patient}'${extra}) as r`;
+  `select ops.check_in(p_rules_discussed => true, p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_patient_id => '${patient}'${extra}) as r`;
 const ciReferral = (extra = "") =>
-  `select ops.check_in(p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_referral_id => '${REF}'${extra}) as r`;
+  `select ops.check_in(p_rules_discussed => true, p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_referral_id => '${REF}'${extra}) as r`;
 const badInput = (r) => !r.ok && r.code === "22023";
 const notFound = (r) => !r.ok && r.code === "P0002";
 
@@ -197,7 +197,7 @@ async function main() {
   await scenario(ids, "an admitted referral cannot be admitted twice", "social_worker",
     withSeed(() => client.query("update ops.referrals set status = 'admitted' where id = $1", [REF])), q(ciReferral()), checkFailed);
   await scenario(ids, "neither patient nor referral is refused", "social_worker", withSeed(),
-    q(`select ops.check_in(p_unit_id => 'unit-B1', p_check_in_at => ${TODAY})`), badInput);
+    q(`select ops.check_in(p_rules_discussed => true, p_unit_id => 'unit-B1', p_check_in_at => ${TODAY})`), badInput);
 
   // --- the bed -----------------------------------------------------------------
   await scenario(ids, "a taken bed is refused", "social_worker",
@@ -207,7 +207,7 @@ async function main() {
     withSeed(() => client.query("update ops.units set status = 'maintenance', lock_reason = 'Broken slat' where id = 'unit-B1'")),
     q(ciPatient(P1)), checkFailed);
   await scenario(ids, "an unknown bed is refused", "social_worker", withSeed(),
-    q(`select ops.check_in(p_unit_id => 'unit-B999', p_check_in_at => ${TODAY}, p_patient_id => '${P1}')`), notFound);
+    q(`select ops.check_in(p_rules_discussed => true, p_unit_id => 'unit-B999', p_check_in_at => ${TODAY}, p_patient_id => '${P1}')`), notFound);
 
   // --- the patient -------------------------------------------------------------
   await scenario(ids, "a patient already in the house is refused", "social_worker",
@@ -220,9 +220,9 @@ async function main() {
 
   // --- dates and the appointment ------------------------------------------------
   await scenario(ids, "a future check-in is refused", "social_worker", withSeed(),
-    q(`select ops.check_in(p_unit_id => 'unit-B1', p_check_in_at => ${TODAY} + 1, p_patient_id => '${P1}')`), badInput);
+    q(`select ops.check_in(p_rules_discussed => true, p_unit_id => 'unit-B1', p_check_in_at => ${TODAY} + 1, p_patient_id => '${P1}')`), badInput);
   await scenario(ids, "a family already in the house keeps its arrival day", "social_worker", withSeed(),
-    last({ sql: `select ops.check_in(p_unit_id => 'unit-B1', p_check_in_at => ${TODAY} - 12, p_patient_id => '${P1}', p_expected_checkout_at => ${TODAY} + 5)` },
+    last({ sql: `select ops.check_in(p_rules_discussed => true, p_unit_id => 'unit-B1', p_check_in_at => ${TODAY} - 12, p_patient_id => '${P1}', p_expected_checkout_at => ${TODAY} + 5)` },
       { sql: `select check_in_at = ${TODAY} - 12 as ok from ops.stays where patient_id = $1`, params: [P1] }),
     value("ok", true));
   await scenario(ids, "expected check-out before check-in is refused", "social_worker", withSeed(),
@@ -232,6 +232,21 @@ async function main() {
       { sql: "select needs_transport and time = '07:30' as ok from ops.appointments where patient_id = $1", params: [P1] }),
     value("ok", true));
   await scenario(ids, "an appointment needs a clinic", "social_worker", withSeed(), q(ciPatient(P1, `, p_appt_date => ${TODAY} + 1`)), checkFailed);
+
+  // ---- 0068: the house rules are the last step, enforced here ----
+  await scenario(ids, "check-in is refused until the house rules are discussed", "social_worker", withSeed(),
+    q(ciPatient(P2).replace("p_rules_discussed => true", "p_rules_discussed => false")), checkFailed);
+  await scenario(ids, "leaving the rules out is refused too", "social_worker", withSeed(),
+    q(ciPatient(P2).replace("p_rules_discussed => true, ", "")), checkFailed);
+  const ticked = (who) => `select (select count(*) from ops.stay_orientation_checks c join ops.stays s on s.id = c.stay_id
+      where s.patient_id = '${who}' and s.status = 'in_house' and c.covered_by_staff_id = auth.uid())`;
+  await scenario(ids, "first stay: every rule is ticked on the stay, by the checker", "social_worker", withSeed(),
+    last({ sql: ciPatient(P2) }, { sql: `${ticked(P2)} = (select count(*) from ops.orientation_topics) as ok` }), value("ok", true));
+  await scenario(ids, "returning family: the returnee list is ticked", "social_worker",
+    withSeed(() => client.query(
+      `insert into ops.stays (patient_id, bed_position_id, check_in_at, status, check_out_at, check_out_reason)
+       values ($1, 'unit-B1-A', '2026-01-10', 'checked_out', '2026-01-20', 'completed_treatment')`, [P1])),
+    last({ sql: ciPatient(P1) }, { sql: `${ticked(P1)} = (select count(*) from ops.orientation_topics where returnee_too) as ok` }), value("ok", true));
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();

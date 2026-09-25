@@ -155,7 +155,7 @@ const setLevel = (role, module, level) =>
      on conflict (role, module) do update set level = excluded.level`,
     [role, module, level]
   );
-const admitA = `select ops.admit_from_sheet(p_sheet_row_id => '${ROW_A}', p_unit_id => 'unit-B1', p_check_in_at => ${TODAY} - 3) as r`;
+const admitA = `select ops.admit_from_sheet(p_rules_discussed => true, p_sheet_row_id => '${ROW_A}', p_unit_id => 'unit-B1', p_check_in_at => ${TODAY} - 3) as r`;
 const newKid = JSON.stringify({
   patient_first_name: "Sheet",
   patient_last_name: "Newkid",
@@ -166,7 +166,7 @@ const newKid = JSON.stringify({
   diagnosis_ids: [],
 });
 const admitB = (json = newKid) =>
-  `select ops.admit_from_sheet(p_sheet_row_id => '${ROW_B}', p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_referral => '${json}'::jsonb) as r`;
+  `select ops.admit_from_sheet(p_rules_discussed => true, p_sheet_row_id => '${ROW_B}', p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_referral => '${json}'::jsonb) as r`;
 
 async function main() {
   await client.connect();
@@ -202,9 +202,9 @@ async function main() {
   await scenario(ids, "a new child needs a sex", "social_worker", withSeed(),
     q(admitB(JSON.stringify({ patient_first_name: "Sheet", patient_last_name: "Newkid" }))), checkFailed);
   await scenario(ids, "an unlinked name needs the form or a patient", "social_worker", withSeed(),
-    q(`select ops.admit_from_sheet(p_sheet_row_id => '${ROW_B}', p_unit_id => 'unit-B1', p_check_in_at => ${TODAY})`), checkFailed);
+    q(`select ops.admit_from_sheet(p_rules_discussed => true, p_sheet_row_id => '${ROW_B}', p_unit_id => 'unit-B1', p_check_in_at => ${TODAY})`), checkFailed);
   await scenario(ids, "an unlinked name can be admitted as a patient picked by hand", "social_worker", withSeed(),
-    last({ sql: `select ops.admit_from_sheet(p_sheet_row_id => '${ROW_B}', p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_patient_id => '${P2}')` },
+    last({ sql: `select ops.admit_from_sheet(p_rules_discussed => true, p_sheet_row_id => '${ROW_B}', p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_patient_id => '${P2}')` },
       { sql: "select match_status = 'confirmed' and matched_patient_id = $2 and match_method = 'manual' as ok from ops.house_sheet_people where id = $1", params: [ROW_B, P2] }),
     value("ok", true));
   await scenario(ids, "a 'not a patient' row is refused", "social_worker",
@@ -214,7 +214,7 @@ async function main() {
   await scenario(ids, "a view-only social worker cannot admit", "social_worker",
     withSeed(() => setLevel("social_worker", "patients", "view")), q(admitA), denied);
   await scenario(ids, "a plain check-in also records tonight's bed", "social_worker", withSeed(),
-    last({ sql: `select ops.check_in(p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_patient_id => '${P2}')` },
+    last({ sql: `select ops.check_in(p_rules_discussed => true, p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_patient_id => '${P2}')` },
       { sql: `select count(*)::int as n from ops.bed_nights n join ops.stays s on s.id = n.stay_id where s.patient_id = $1 and n.night = ${TODAY}`, params: [P2] }),
     value("n", 1));
 

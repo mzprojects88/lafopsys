@@ -134,7 +134,7 @@ const withSeed = (extra) => ({
 });
 const oldPatient = () =>
   client.query(`insert into ops.patients (id, first_name, last_name, sex, status, admitted_at) values ($1, 'Old', 'Admit', 'M', 'ongoing', '2024-05-01')`, [OLD]);
-const admitSql = (ref, unit) => `ops.check_in(p_unit_id => '${unit}', p_check_in_at => ${TODAY}, p_referral_id => '${ref}')`;
+const admitSql = (ref, unit) => `ops.check_in(p_rules_discussed => true, p_unit_id => '${unit}', p_check_in_at => ${TODAY}, p_referral_id => '${ref}')`;
 const numberOf = (ref) =>
   `(select substr(p.case_number, 11)::int from ops.patients p join ops.referrals r on r.admitted_patient_id = p.id where r.id = '${ref}')`;
 

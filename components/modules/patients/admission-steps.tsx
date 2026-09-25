@@ -10,7 +10,6 @@ import { closeReservation, type BedReservation } from "@/lib/hooks/use-bed-reser
 import { recordGroupOrientation, useGroupOrientations } from "@/lib/hooks/use-group-orientations";
 import { useOrientationTopics } from "@/lib/hooks/use-orientation-topics";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
-import type { OrientationTopic } from "@/lib/types/patient";
 
 /**
  * The shared end of an admission (user, 2026-09-25), used by Check in and by
@@ -148,14 +147,13 @@ export function HouseRulesStep({
 
 /**
  * What an admission records once the stay is saved: the typed-in
- * appointment (when asked), every rule ticked on the stay, the group's talk
- * (first of the group), and the bed hold used. Returns what could not be saved.
+ * appointment (when asked), the group's talk (first of the group), and the
+ * bed hold used. The rules are ticked by check_in itself (0068). Returns what could not be saved.
  */
 export async function finishAdmission(input: {
   stayId: string;
   patientId: string;
   appointment: AppointmentDraft | null;
-  topics: OrientationTopic[];
   rules: RulesDraft;
   group: ReturnType<typeof arrivalGroup>;
   groupTalkExists: boolean;
@@ -180,12 +178,7 @@ export async function finishAdmission(input: {
     });
     if (error) problems.push(`the appointment (${error.message})`);
   }
-  if (input.topics.length) {
-    const { error } = await ops
-      .from("stay_orientation_checks")
-      .upsert(input.topics.map((t) => ({ stay_id: input.stayId, topic_id: t.id })), { onConflict: "stay_id,topic_id" });
-    if (error) problems.push(`the house rules ticks (${error.message})`);
-  }
+  // The rules themselves are ticked on the stay by check_in (0068).
   if (input.group && input.rules.asGroup && !input.groupTalkExists) {
     const tripId = input.arrived?.tripId ?? input.group.tripId;
     const rideId = input.arrived?.rideId ?? input.group.rideId;

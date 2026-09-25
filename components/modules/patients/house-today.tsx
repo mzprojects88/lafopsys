@@ -12,7 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useBedReservations } from "@/lib/hooks/use-bed-reservations";
 import { FloorPlanBedPicker } from "@/components/modules/house-ops/floor-plan/floor-plan-bed-picker";
-import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
+import { CheckInDialog, type CheckInTarget } from "@/components/modules/patients/check-in-dialog";
+import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
+import { isHiddenPath } from "@/lib/rbac/hidden";
 import { DischargeDialog } from "@/components/modules/patients/discharge-dialog";
 import { confirmHouseSheetMatch } from "@/app/(app)/patients/house-sheet/actions";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
@@ -26,7 +28,7 @@ import { assignableBeds, isActiveStay, unitForBedPosition, type AssignableBed } 
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { PRIORITIES } from "@/lib/utils/master-sheet";
 import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
-import type { Patient, Stay } from "@/lib/types/patient";
+import type { Stay } from "@/lib/types/patient";
 
 const dayAfter = (iso: string) => {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -50,7 +52,8 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const { nights, confirmNight } = useBedNights();
   const { pickups } = usePickups();
   const { topics, checks } = useAllOrientationChecks();
-  const [checkIn, setCheckIn] = React.useState<{ patient: Patient; sheetRow: HouseSheetPerson } | null>(null);
+  const [checkIn, setCheckIn] = React.useState<CheckInTarget | null>(null);
+  const { referrals } = useReferralsData();
   const [discharge, setDischarge] = React.useState<{ stay: Stay; name: string; on: string } | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   // A bed held before the child arrives (user, 2026-09-25; 0065).
@@ -191,9 +194,25 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                         <Check className="size-3.5" /> It&apos;s {nameOf(p.matchedPatientId)}
                       </Button>
                     ) : p.matchStatus === "encoded" ? (
-                      <Link href="/patients/referrals" className="text-xs text-primary hover:underline">
-                        Referral waiting on the board
-                      </Link>
+                      // Encoded through the referral form: an approved referral checks in from here;
+                      // one still waiting links to the board only where the board is shown.
+                      (() => {
+                        const referral = referrals.find((r) => r.id === p.referralId);
+                        if (referral?.status === "approved") {
+                          return (
+                            <Button size="sm" className="h-7 gap-1" onClick={() => setCheckIn({ referral })}>
+                              <BedDouble className="size-3.5" /> Check in
+                            </Button>
+                          );
+                        }
+                        return isHiddenPath("/patients/referrals") ? (
+                          <span className="text-xs text-muted-foreground">Referral waiting for approval</span>
+                        ) : (
+                          <Link href="/patients/referrals" className="text-xs text-primary hover:underline">
+                            Referral waiting on the board
+                          </Link>
+                        );
+                      })()
                     ) : (
                       <Button asChild size="sm" variant="outline" className="h-7 gap-1">
                         <Link href={`/patients/admit?fromSheet=${p.id}`}>
@@ -335,7 +354,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
           }}
         />
       ) : null}
-      <CheckInDialog key={checkIn?.sheetRow.id} target={checkIn} onOpenChange={(open) => !open && setCheckIn(null)} />
+      <CheckInDialog key={checkIn?.sheetRow?.id ?? checkIn?.referral?.id} target={checkIn} onOpenChange={(open) => !open && setCheckIn(null)} />
       <DischargeDialog
         stay={discharge?.stay ?? null}
         patientName={discharge?.name ?? ""}
