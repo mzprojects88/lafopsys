@@ -1,12 +1,9 @@
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { CategoryColor } from "@/lib/utils/category-colors";
 import type { StatTone } from "@/components/patterns/kpi-card";
 
 interface IconCircleProps {
   icon: LucideIcon;
-  /** @deprecated Modules no longer have colours (DESIGN.md); use `tone`. */
-  color?: CategoryColor;
   /** "default" is the blue accent wash; the others mean something (see KpiCard). */
   tone?: StatTone;
   size?: "sm" | "md" | "lg";

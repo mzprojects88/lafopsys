@@ -1,14 +1,11 @@
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/patterns/empty-state";
-import type { CategoryColor } from "@/lib/utils/category-colors";
 
 export interface BoardColumn<T> {
   id: string;
   title: string;
   items: T[];
-  /** @deprecated Columns share one surface now (DESIGN.md). */
-  color?: CategoryColor;
   icon?: LucideIcon;
 }
 

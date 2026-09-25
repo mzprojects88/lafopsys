@@ -1,14 +1,11 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import type { CategoryColor } from "@/lib/utils/category-colors";
 import { isHiddenPath } from "@/lib/rbac/hidden";
 
 export interface ModuleSubNavItem {
   href: string;
   label: string;
   icon: LucideIcon;
-  /** @deprecated Modules no longer have colours (DESIGN.md). */
-  color?: CategoryColor;
 }
 
 export function ModuleSubNav({ items }: { items: ModuleSubNavItem[] }) {

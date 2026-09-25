@@ -1,6 +1,5 @@
 import type { LucideIcon } from "lucide-react";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
-import type { CategoryColor } from "@/lib/utils/category-colors";
 import { cn } from "@/lib/utils";
 
 export type StatTone = "default" | "warning" | "negative" | "positive";
@@ -19,8 +18,6 @@ interface KpiCardProps {
   /** Tints the icon when the figure is a signal: warning (needs attention),
    * negative (a problem), positive (good news). Most figures are "default". */
   tone?: StatTone;
-  /** @deprecated Modules no longer have colours (DESIGN.md); use `tone`. */
-  color?: CategoryColor;
   sublabel?: string;
   deltaPct?: number;
   deltaLabel?: string;
