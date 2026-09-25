@@ -76,8 +76,8 @@ export function HouseSheetStatus({ canRun }: { canRun: boolean }) {
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border px-3 py-2 text-xs",
-        stale && !runsLoading ? "border-amber-200 bg-amber-50/60 text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300" : "bg-muted/30 text-muted-foreground"
+        "flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl border px-4 py-3 text-theme-xs",
+        stale && !runsLoading ? "border-warning/30 bg-warning/10 text-warning-foreground dark:text-warning" : "border-border bg-card text-muted-foreground"
       )}
     >
       {stale && !runsLoading ? <AlertTriangle className="size-3.5 shrink-0" /> : <Table2 className="size-3.5 shrink-0" />}
@@ -100,7 +100,7 @@ export function HouseSheetStatus({ canRun }: { canRun: boolean }) {
       )}
       {canRun && houseSheetSyncEnabled ? (
         <span className="ml-auto">
-          <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={checkNow} disabled={syncing || running}>
+          <Button size="sm" variant="outline" onClick={checkNow} disabled={syncing || running}>
             <RefreshCw className={cn("size-3.5", (syncing || running) && "animate-spin")} />
             {syncing ? "Checking…" : "Check now"}
           </Button>

@@ -141,7 +141,7 @@ export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged,
           <Input id="destination" placeholder="e.g. Home, referring hospital" value={destination} onChange={(e) => setDestination(e.target.value)} />
         </Field>
 
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-theme-sm">
           <Checkbox checked={scheduleFollowUp} onCheckedChange={(v) => setScheduleFollowUp(!!v)} />
           Schedule a follow-up appointment
         </label>

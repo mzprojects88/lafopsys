@@ -326,7 +326,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
           )}
 
           {sheetRow?.nextAppointmentOn ? (
-            <p className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+            <p className="rounded-xl bg-muted/60 p-3 text-theme-xs text-muted-foreground">
               Next appointment from NCH&apos;s sheet: {formatDate(sheetRow.nextAppointmentOn)}. It is added with the ride box ticked, and follows the sheet if NCH changes it.
             </p>
           ) : (

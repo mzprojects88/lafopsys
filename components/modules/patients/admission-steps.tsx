@@ -33,9 +33,9 @@ export const appointmentReady = (a: AppointmentDraft) => !a.date || !!a.clinic.t
 
 export function NextAppointmentFields({ value, onChange, note }: { value: AppointmentDraft; onChange: (next: AppointmentDraft) => void; note?: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-3 rounded-md border p-3">
-      <span className="text-sm font-medium">Next hospital appointment (optional)</span>
-      {note ? <span className="text-xs text-muted-foreground">{note}</span> : null}
+    <div className="flex flex-col gap-3 rounded-xl bg-muted/60 p-4">
+      <span className="text-theme-sm font-medium">Next hospital appointment (optional)</span>
+      {note ? <span className="text-theme-xs text-muted-foreground">{note}</span> : null}
       <div className="grid grid-cols-2 gap-3">
         <Field>
           <FieldLabel htmlFor="apptDate">Date</FieldLabel>
@@ -52,7 +52,7 @@ export function NextAppointmentFields({ value, onChange, note }: { value: Appoin
             <FieldLabel htmlFor="apptClinic">Clinic</FieldLabel>
             <Input id="apptClinic" placeholder="e.g. NCH Pediatric Oncology" value={value.clinic} onChange={(e) => onChange({ ...value, clinic: e.target.value })} />
           </Field>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-theme-sm">
             <Checkbox checked={value.needsTransport} onCheckedChange={(v) => onChange({ ...value, needsTransport: !!v })} />
             Needs a ride (goes on the transport manifest)
           </label>
@@ -103,37 +103,37 @@ export function HouseRulesStep({
     <div className="flex flex-col gap-3">
       {group ? (
         groupTalk ? (
-          <p className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3 text-xs text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-500/10 dark:text-emerald-200">
+          <p className="rounded-xl border border-success/30 bg-success/12 p-3 text-theme-xs text-success-foreground dark:bg-success/15 dark:text-success">
             The rules were discussed with this {groupName} group at{" "}
             {new Date(groupTalk.heldAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" })}
             {heldByName ? ` by ${heldByName}` : ""}. If {name} and their carer were there, tick below.
           </p>
         ) : (
-          <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
+          <label className="flex items-start gap-2 rounded-xl border border-border p-3 text-theme-sm">
             <Checkbox className="mt-0.5" checked={value.asGroup} onCheckedChange={(v) => onChange({ ...value, asGroup: !!v })} />
             <span>
               Discussed with everyone who came on this {groupName}.
-              <span className="block text-xs text-muted-foreground">The others in the group are then checked in on this talk.</span>
+              <span className="block text-theme-xs text-muted-foreground">The others in the group are then checked in on this talk.</span>
             </span>
           </label>
         )
       ) : null}
 
       {topics.length ? (
-        <ol className="flex max-h-[45dvh] list-decimal flex-col gap-2 overflow-y-auto rounded-md border bg-muted/20 p-3 pl-8 text-sm">
+        <ol className="flex max-h-[45dvh] list-decimal flex-col gap-2 overflow-y-auto rounded-xl bg-muted/60 p-4 pl-8 text-theme-sm">
           {topics.map((t) => (
             <li key={t.id}>
               {t.topic}
-              {t.topicEn ? <span className="block text-xs text-muted-foreground">{t.topicEn}</span> : null}
+              {t.topicEn ? <span className="block text-theme-xs text-muted-foreground">{t.topicEn}</span> : null}
             </li>
           ))}
         </ol>
       ) : (
-        <p className="text-xs text-muted-foreground">No house rules are set up yet.</p>
+        <p className="text-theme-xs text-muted-foreground">No house rules are set up yet.</p>
       )}
-      {!firstStay ? <p className="text-xs text-muted-foreground">A returning family: the shorter list.</p> : null}
+      {!firstStay ? <p className="text-theme-xs text-muted-foreground">A returning family: the shorter list.</p> : null}
 
-      <label className="flex items-start gap-2 text-sm font-medium">
+      <label className="flex items-start gap-2 text-theme-sm font-medium">
         <Checkbox className="mt-0.5" checked={value.discussed} onCheckedChange={(v) => onChange({ ...value, discussed: !!v })} />
         {groupTalk ? `${name} and their carer heard the rules with the group.` : `The house rules were discussed with ${name} and their carer.`}
       </label>

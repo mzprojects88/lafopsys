@@ -6,11 +6,11 @@ import { toast } from "sonner";
 import { Car, CircleCheck, Paperclip, Receipt, Undo2, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { FileLibrary } from "@/components/patterns/file-library";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -65,9 +65,9 @@ export default function RidesPage() {
       />
 
       <KpiGrid>
-        <KpiCard label="To pay back" value={loading ? "…" : due.length} icon={Wallet} color="amber" sublabel={formatCurrency(due.reduce((s, r) => s + (r.fare ?? 0), 0))} />
-        <KpiCard label="Paid back this month" value={formatCurrency(paidThisMonth)} icon={CircleCheck} color="green" />
-        <KpiCard label="Rides recorded" value={loading ? "…" : rides.length} icon={Car} color="blue" />
+        <KpiCard label="To pay back" value={loading ? "…" : due.length} icon={Wallet} tone={!loading && due.length > 0 ? "warning" : "default"} sublabel={formatCurrency(due.reduce((s, r) => s + (r.fare ?? 0), 0))} />
+        <KpiCard label="Paid back this month" value={formatCurrency(paidThisMonth)} icon={CircleCheck} />
+        <KpiCard label="Rides recorded" value={loading ? "…" : rides.length} icon={Car} />
       </KpiGrid>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as "due" | "all")}>
@@ -77,81 +77,81 @@ export default function RidesPage() {
         </TabsList>
       </Tabs>
 
-      {shown.length === 0 ? (
+      {loading ? (
+        <LoadingState />
+      ) : shown.length === 0 ? (
         <EmptyState
           title={tab === "due" ? "Nothing to pay back" : "No rides yet"}
           description={tab === "due" ? "Every qualifying ride has been paid back." : "Rides appear when a check-in says the family came by a ride app."}
         />
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col divide-y divide-border rounded-2xl border border-border bg-card">
           {shown.map((r) => {
             const riders = ridersOf(r.id);
             const nReceipts = receipts(r.id);
             return (
-              <Card key={r.id}>
-                <CardContent className="flex flex-wrap items-start justify-between gap-3 p-3 text-sm">
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <span className="flex flex-wrap items-center gap-2 font-medium">
-                      {formatDate(r.rideDate)} · {ARRIVAL_APP_LABELS[r.app]} · {r.fare !== null ? formatCurrency(r.fare) : "fare not set"}
-                      {r.reimbursedAt ? (
-                        <Badge variant="secondary">Paid back</Badge>
-                      ) : r.reimbursable ? (
-                        <Badge>Reimbursable</Badge>
-                      ) : (
-                        <Badge variant="outline">Not reimbursable</Badge>
-                      )}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {riders.length === 0
-                        ? "No riders"
-                        : riders.map(({ stay, patient }, i) => (
-                            <React.Fragment key={stay.id}>
-                              {i > 0 && ", "}
-                              <Link href={`/patients/${stay.patientId}`} className="hover:underline">
-                                {patient ? `${patient.lastName}, ${patient.firstName}` : "Unknown"}
-                              </Link>
-                            </React.Fragment>
-                          ))}
-                      {!r.reimbursable && !r.reimbursedAt ? ` · ${whyNot(r)}` : ""}
-                    </span>
-                    {r.reimbursedAt && (
-                      <span className="text-xs text-muted-foreground">
-                        {formatCurrency(r.reimbursedAmount ?? 0)} to {r.reimbursedTo} on {formatDate(r.reimbursedAt)} · recorded by {staffName(r.reimbursedBy)}
-                      </span>
+              <div key={r.id} className="flex flex-wrap items-start justify-between gap-3 px-5 py-3 text-theme-sm">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <span className="flex flex-wrap items-center gap-2 font-medium">
+                    {formatDate(r.rideDate)} · {ARRIVAL_APP_LABELS[r.app]} · {r.fare !== null ? formatCurrency(r.fare) : "fare not set"}
+                    {r.reimbursedAt ? (
+                      <Badge variant="secondary">Paid back</Badge>
+                    ) : r.reimbursable ? (
+                      <Badge>Reimbursable</Badge>
+                    ) : (
+                      <Badge variant="outline">Not reimbursable</Badge>
                     )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1">
-                    <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => setReceiptFor(r)}>
-                      <Paperclip className="size-3.5" />
-                      {nReceipts ? `Receipt (${nReceipts})` : "Receipt"}
+                  </span>
+                  <span className="text-theme-xs text-muted-foreground">
+                    {riders.length === 0
+                      ? "No riders"
+                      : riders.map(({ stay, patient }, i) => (
+                          <React.Fragment key={stay.id}>
+                            {i > 0 && ", "}
+                            <Link href={`/patients/${stay.patientId}`} className="hover:underline">
+                              {patient ? `${patient.lastName}, ${patient.firstName}` : "Unknown"}
+                            </Link>
+                          </React.Fragment>
+                        ))}
+                    {!r.reimbursable && !r.reimbursedAt ? ` · ${whyNot(r)}` : ""}
+                  </span>
+                  {r.reimbursedAt && (
+                    <span className="text-theme-xs text-muted-foreground">
+                      {formatCurrency(r.reimbursedAmount ?? 0)} to {r.reimbursedTo} on {formatDate(r.reimbursedAt)} · recorded by {staffName(r.reimbursedBy)}
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-1">
+                  <Button size="sm" variant="ghost" onClick={() => setReceiptFor(r)}>
+                    <Paperclip />
+                    {nReceipts ? `Receipt (${nReceipts})` : "Receipt"}
+                  </Button>
+                  {canEdit && !r.reimbursedAt && (
+                    <Button size="sm" variant="ghost" onClick={() => setFareFor(r)}>
+                      {r.fare === null ? "Set fare" : "Edit fare"}
                     </Button>
-                    {canEdit && !r.reimbursedAt && (
-                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setFareFor(r)}>
-                        {r.fare === null ? "Set fare" : "Edit fare"}
-                      </Button>
-                    )}
-                    {canEdit && r.reimbursable && !r.reimbursedAt && (
-                      <Button size="sm" className="h-7 gap-1 text-xs" onClick={() => setPayFor(r)}>
-                        <Receipt className="size-3.5" /> Paid back
-                      </Button>
-                    )}
-                    {canEdit && r.reimbursedAt && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 gap-1 text-xs text-muted-foreground"
-                        onClick={async () => {
-                          const res = await undoReimbursed(r.id);
-                          if (res.ok) toast.success("Pay-out removed");
-                          else toast.error(res.error);
-                        }}
-                      >
-                        <Undo2 className="size-3.5" /> Undo
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+                  )}
+                  {canEdit && r.reimbursable && !r.reimbursedAt && (
+                    <Button size="sm" onClick={() => setPayFor(r)}>
+                      <Receipt /> Paid back
+                    </Button>
+                  )}
+                  {canEdit && r.reimbursedAt && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-muted-foreground"
+                      onClick={async () => {
+                        const res = await undoReimbursed(r.id);
+                        if (res.ok) toast.success("Pay-out removed");
+                        else toast.error(res.error);
+                      }}
+                    >
+                      <Undo2 /> Undo
+                    </Button>
+                  )}
+                </div>
+              </div>
             );
           })}
         </div>

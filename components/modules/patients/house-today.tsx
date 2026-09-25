@@ -5,7 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { ArrowLeftRight, BedDouble, BookmarkPlus, Check, DoorOpen, FilePlus2, LogOut, MoonStar } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -115,7 +115,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-2xl border border-border bg-card px-4 py-3 text-theme-xs text-muted-foreground">
         <span>On NCH&apos;s sheet today: <b className="text-foreground">{onSheet.length}</b></span>
         <span>Checked in: <b className="text-foreground">{activeStays.length}</b></span>
         <span>Need a bed: <b className="text-foreground">{arrivals.length}</b></span>
@@ -124,193 +124,199 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Card>
-          <CardHeader className="flex-row items-center gap-2 space-y-0">
-            <DoorOpen className="size-4 text-muted-foreground" />
-            <CardTitle className="text-sm">Arrived, needs a bed ({arrivals.length})</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {arrivals.length === 0 ? <p className="text-xs text-muted-foreground">Everyone on today&apos;s sheet has a bed.</p> : null}
-            {arrivals.map((p) => {
-              const patient = patientById.get(settledPatientId(p) ?? "");
-              const hold = holdFor(patient?.id, p.id);
-              return (
-                <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2 text-sm">
-                  <div className="flex min-w-0 flex-col">
-                    <span className="truncate font-medium">{p.patientName}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {patient ? `${patient.patientNumber}${patient.priority ? ` · Priority ${patient.priority}, ${PRIORITIES[patient.priority]}` : ""} · on file` : p.matchStatus === "suggested" ? "AI suggests a record" : "Not on file"} · since {formatDate(p.runStartedOn, "MMM d")}
-                      {pickups.some((t) => t.date >= p.runStartedOn && t.manifest.some((m) => m.sheetRowId === p.id && m.boardedAt)) ? " · came on LAF HOPE" : ""}
-                    </span>
-                    {hold ? (
-                      <span className="text-xs text-violet-700 dark:text-violet-300">
-                        Bed {units.find((u) => u.id === hold.unitId)?.code ?? "?"} reserved, expected {formatDate(hold.expectedOn, "MMM d")}
-                        {canEdit ? (
-                          <button
-                            type="button"
-                            className="ml-2 text-muted-foreground underline hover:text-foreground"
-                            disabled={busy === hold.id}
-                            onClick={() => run(hold.id, () => release(hold.id), "Reservation released.")}
-                          >
-                            Release
-                          </button>
-                        ) : null}
-                        {canEdit ? (
-                          <button
-                            type="button"
-                            className="ml-2 text-muted-foreground underline hover:text-foreground"
-                            onClick={() => setReplacing({ holdId: hold.id, bed: units.find((u) => u.id === hold.unitId)?.code ?? "?", from: p.patientName })}
-                          >
-                            Replace
-                          </button>
-                        ) : null}
-                      </span>
-                    ) : null}
-                  </div>
-                  {canEdit && !hold && p.matchStatus !== "encoded" ? (
-                    <Button size="sm" variant="ghost" className="h-7 gap-1" onClick={() => setReserving({ row: p, patientId: patient?.id ?? null })}>
-                      <BookmarkPlus className="size-3.5" /> Reserve bed
-                    </Button>
-                  ) : null}
-                  {canEdit ? (
-                    patient ? (
-                      <Button size="sm" className="h-7 gap-1" onClick={() => setCheckIn({ patient, sheetRow: p })}>
-                        <BedDouble className="size-3.5" /> {hold ? `Confirm bed ${units.find((u) => u.id === hold.unitId)?.code ?? ""}` : "Check in"}
-                      </Button>
-                    ) : p.matchStatus === "suggested" && p.matchedPatientId ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 gap-1"
-                        disabled={busy === p.id}
-                        onClick={() =>
-                          run(p.id, async () => {
-                            const r = await confirmHouseSheetMatch(p.id, p.matchedPatientId!);
-                            if (r.ok) await houseSheetPeopleStore.refetch();
-                            return r;
-                          }, `Linked to ${nameOf(p.matchedPatientId!)}.`)
-                        }
-                      >
-                        <Check className="size-3.5" /> It&apos;s {nameOf(p.matchedPatientId)}
-                      </Button>
-                    ) : p.matchStatus === "encoded" ? (
-                      // Encoded through the referral form: an approved referral checks in from here;
-                      // one still waiting links to the board only where the board is shown.
-                      (() => {
-                        const referral = referrals.find((r) => r.id === p.referralId);
-                        if (referral?.status === "approved") {
-                          return (
-                            <Button size="sm" className="h-7 gap-1" onClick={() => setCheckIn({ referral })}>
-                              <BedDouble className="size-3.5" /> Check in
-                            </Button>
-                          );
-                        }
-                        return isHiddenPath("/patients/referrals") ? (
-                          <span className="text-xs text-muted-foreground">Referral waiting for approval</span>
-                        ) : (
-                          <Link href="/patients/referrals" className="text-xs text-primary hover:underline">
-                            Referral waiting on the board
-                          </Link>
-                        );
-                      })()
-                    ) : (
-                      <Button asChild size="sm" variant="outline" className="h-7 gap-1">
-                        <Link href={`/patients/admit?fromSheet=${p.id}`}>
-                          <FilePlus2 className="size-3.5" /> Admit new child
-                        </Link>
-                      </Button>
-                    )
-                  ) : null}
-                </div>
-              );
-            })}
-            {canEdit && arrivals.some((p) => settledPatientId(p) === null && p.matchStatus !== "suggested" && p.matchStatus !== "encoded") ? (
-              <p className="text-[11px] text-muted-foreground">Already on file under another spelling? Use Choose… in the list below first.</p>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
-            <div className="flex items-center gap-2">
-              <MoonStar className="size-4 text-muted-foreground" />
-              <CardTitle className="text-sm">Tonight&apos;s beds ({tonight.length})</CardTitle>
-            </div>
-            {canEdit && unconfirmed.length > 1 ? (
-              <Button size="sm" variant="outline" className="h-7" disabled={busy === "all"} onClick={confirmAllSame}>
-                All same beds
-              </Button>
-            ) : null}
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {tonight.length === 0 ? <p className="text-xs text-muted-foreground">Nobody is checked in.</p> : null}
-            {tonight.map((s) => {
-              const night = tonightNight(s);
-              const moves = assignableBeds(units, bedPositions, stays, rooms, { excludeUnitId: unitForBedPosition(s.bedPositionId, units, bedPositions)?.id, holds: reservations });
-              const tasks = orientationProgress(s, stays, topics, checks);
-              return (
-                <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2 text-sm">
-                  <div className="flex min-w-0 flex-col">
-                    <Link href={`/patients/${s.patientId}`} className="truncate font-medium hover:underline">
-                      {nameOf(s.patientId)}
-                    </Link>
-                    <span className="text-xs text-muted-foreground">
-                      Bed {bedOf(s.bedPositionId)} · {night ? "confirmed for tonight" : "not confirmed yet"}
-                      {tasks.total > 0 && tasks.done < tasks.total ? ` · orientation ${tasks.done}/${tasks.total}` : ""}
-                    </span>
-                  </div>
-                  {canEdit && !night ? (
-                    <div className="flex items-center gap-1">
-                      <Button size="sm" className="h-7 gap-1" disabled={busy === s.id} onClick={() => run(s.id, () => confirmNight(s.id), "Same bed tonight.")}>
-                        <Check className="size-3.5" /> Same bed
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 gap-1"
-                        disabled={busy === s.id}
-                        aria-label={`Move ${nameOf(s.patientId)} to another bed`}
-                        onClick={() => setMoving({ stayId: s.id, name: nameOf(s.patientId), from: bedOf(s.bedPositionId), options: moves })}
-                      >
-                        <BedDouble className="size-3.5" /> Move…
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex-row items-center gap-2 space-y-0">
-            <LogOut className="size-4 text-muted-foreground" />
-            <CardTitle className="text-sm">Left the sheet ({left.length})</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {left.length === 0 ? <p className="text-xs text-muted-foreground">Nobody checked in has left NCH&apos;s sheet.</p> : null}
-            {left.map(({ stay, row }) => (
-              <div key={stay.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2 text-sm">
+        <SectionCard
+          title={
+            <span className="flex items-center gap-2">
+              <DoorOpen className="size-4 text-muted-foreground" strokeWidth={1.75} />
+              Arrived, needs a bed ({arrivals.length})
+            </span>
+          }
+          flush
+          bodyClassName="flex flex-col divide-y divide-border"
+        >
+          {arrivals.length === 0 ? <p className="px-5 py-3 text-theme-xs text-muted-foreground">Everyone on today&apos;s sheet has a bed.</p> : null}
+          {arrivals.map((p) => {
+            const patient = patientById.get(settledPatientId(p) ?? "");
+            const hold = holdFor(patient?.id, p.id);
+            return (
+              <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
                 <div className="flex min-w-0 flex-col">
-                  <span className="truncate font-medium">{nameOf(stay.patientId)}</span>
-                  <span className="text-xs text-muted-foreground">
-                    Bed {bedOf(stay.bedPositionId)} · last on the sheet {formatDate(row.lastSeenOn, "MMM d")}
+                  <span className="truncate font-medium">{p.patientName}</span>
+                  <span className="text-theme-xs text-muted-foreground">
+                    {patient ? `${patient.patientNumber}${patient.priority ? ` · Priority ${patient.priority}, ${PRIORITIES[patient.priority]}` : ""} · on file` : p.matchStatus === "suggested" ? "AI suggests a record" : "Not on file"} · since {formatDate(p.runStartedOn, "MMM d")}
+                    {pickups.some((t) => t.date >= p.runStartedOn && t.manifest.some((m) => m.sheetRowId === p.id && m.boardedAt)) ? " · came on LAF HOPE" : ""}
                   </span>
+                  {hold ? (
+                    <span className="text-theme-xs text-primary">
+                      Bed {units.find((u) => u.id === hold.unitId)?.code ?? "?"} reserved, expected {formatDate(hold.expectedOn, "MMM d")}
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          className="ml-2 text-muted-foreground underline hover:text-foreground"
+                          disabled={busy === hold.id}
+                          onClick={() => run(hold.id, () => release(hold.id), "Reservation released.")}
+                        >
+                          Release
+                        </button>
+                      ) : null}
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          className="ml-2 text-muted-foreground underline hover:text-foreground"
+                          onClick={() => setReplacing({ holdId: hold.id, bed: units.find((u) => u.id === hold.unitId)?.code ?? "?", from: p.patientName })}
+                        >
+                          Replace
+                        </button>
+                      ) : null}
+                    </span>
+                  ) : null}
                 </div>
-                {canEdit ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 gap-1"
-                    onClick={() => setDischarge({ stay, name: nameOf(stay.patientId), on: dayAfter(row.lastSeenOn) <= today ? dayAfter(row.lastSeenOn) : today })}
-                  >
-                    <LogOut className="size-3.5" /> Discharge
+                {canEdit && !hold && p.matchStatus !== "encoded" ? (
+                  <Button size="sm" variant="ghost" onClick={() => setReserving({ row: p, patientId: patient?.id ?? null })}>
+                    <BookmarkPlus /> Reserve bed
                   </Button>
                 ) : null}
+                {canEdit ? (
+                  patient ? (
+                    <Button size="sm" onClick={() => setCheckIn({ patient, sheetRow: p })}>
+                      <BedDouble /> {hold ? `Confirm bed ${units.find((u) => u.id === hold.unitId)?.code ?? ""}` : "Check in"}
+                    </Button>
+                  ) : p.matchStatus === "suggested" && p.matchedPatientId ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy === p.id}
+                      onClick={() =>
+                        run(p.id, async () => {
+                          const r = await confirmHouseSheetMatch(p.id, p.matchedPatientId!);
+                          if (r.ok) await houseSheetPeopleStore.refetch();
+                          return r;
+                        }, `Linked to ${nameOf(p.matchedPatientId!)}.`)
+                      }
+                    >
+                      <Check /> It&apos;s {nameOf(p.matchedPatientId)}
+                    </Button>
+                  ) : p.matchStatus === "encoded" ? (
+                    // Encoded through the referral form: an approved referral checks in from here;
+                    // one still waiting links to the board only where the board is shown.
+                    (() => {
+                      const referral = referrals.find((r) => r.id === p.referralId);
+                      if (referral?.status === "approved") {
+                        return (
+                          <Button size="sm" onClick={() => setCheckIn({ referral })}>
+                            <BedDouble /> Check in
+                          </Button>
+                        );
+                      }
+                      return isHiddenPath("/patients/referrals") ? (
+                        <span className="text-theme-xs text-muted-foreground">Referral waiting for approval</span>
+                      ) : (
+                        <Link href="/patients/referrals" className="text-theme-xs text-primary hover:underline">
+                          Referral waiting on the board
+                        </Link>
+                      );
+                    })()
+                  ) : (
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/patients/admit?fromSheet=${p.id}`}>
+                        <FilePlus2 /> Admit new child
+                      </Link>
+                    </Button>
+                  )
+                ) : null}
               </div>
-            ))}
-          </CardContent>
-        </Card>
+            );
+          })}
+          {canEdit && arrivals.some((p) => settledPatientId(p) === null && p.matchStatus !== "suggested" && p.matchStatus !== "encoded") ? (
+            <p className="px-5 py-3 text-theme-xs text-muted-foreground">Already on file under another spelling? Use Choose… in the list below first.</p>
+          ) : null}
+        </SectionCard>
+
+        <SectionCard
+          title={
+            <span className="flex items-center gap-2">
+              <MoonStar className="size-4 text-muted-foreground" strokeWidth={1.75} />
+              Tonight&apos;s beds ({tonight.length})
+            </span>
+          }
+          actions={
+            canEdit && unconfirmed.length > 1 ? (
+              <Button size="sm" variant="outline" disabled={busy === "all"} onClick={confirmAllSame}>
+                All same beds
+              </Button>
+            ) : undefined
+          }
+          flush
+          bodyClassName="flex flex-col divide-y divide-border"
+        >
+          {tonight.length === 0 ? <p className="px-5 py-3 text-theme-xs text-muted-foreground">Nobody is checked in.</p> : null}
+          {tonight.map((s) => {
+            const night = tonightNight(s);
+            const moves = assignableBeds(units, bedPositions, stays, rooms, { excludeUnitId: unitForBedPosition(s.bedPositionId, units, bedPositions)?.id, holds: reservations });
+            const tasks = orientationProgress(s, stays, topics, checks);
+            return (
+              <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
+                <div className="flex min-w-0 flex-col">
+                  <Link href={`/patients/${s.patientId}`} className="truncate font-medium hover:underline">
+                    {nameOf(s.patientId)}
+                  </Link>
+                  <span className="text-theme-xs text-muted-foreground">
+                    Bed {bedOf(s.bedPositionId)} · {night ? "confirmed for tonight" : "not confirmed yet"}
+                    {tasks.total > 0 && tasks.done < tasks.total ? ` · orientation ${tasks.done}/${tasks.total}` : ""}
+                  </span>
+                </div>
+                {canEdit && !night ? (
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" disabled={busy === s.id} onClick={() => run(s.id, () => confirmNight(s.id), "Same bed tonight.")}>
+                      <Check /> Same bed
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy === s.id}
+                      aria-label={`Move ${nameOf(s.patientId)} to another bed`}
+                      onClick={() => setMoving({ stayId: s.id, name: nameOf(s.patientId), from: bedOf(s.bedPositionId), options: moves })}
+                    >
+                      <BedDouble /> Move…
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </SectionCard>
+
+        <SectionCard
+          title={
+            <span className="flex items-center gap-2">
+              <LogOut className="size-4 text-muted-foreground" strokeWidth={1.75} />
+              Left the sheet ({left.length})
+            </span>
+          }
+          flush
+          bodyClassName="flex flex-col divide-y divide-border"
+        >
+          {left.length === 0 ? <p className="px-5 py-3 text-theme-xs text-muted-foreground">Nobody checked in has left NCH&apos;s sheet.</p> : null}
+          {left.map(({ stay, row }) => (
+            <div key={stay.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate font-medium">{nameOf(stay.patientId)}</span>
+                <span className="text-theme-xs text-muted-foreground">
+                  Bed {bedOf(stay.bedPositionId)} · last on the sheet {formatDate(row.lastSeenOn, "MMM d")}
+                </span>
+              </div>
+              {canEdit ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setDischarge({ stay, name: nameOf(stay.patientId), on: dayAfter(row.lastSeenOn) <= today ? dayAfter(row.lastSeenOn) : today })}
+                >
+                  <LogOut /> Discharge
+                </Button>
+              ) : null}
+            </div>
+          ))}
+        </SectionCard>
       </div>
 
       {moving ? (
@@ -506,7 +512,7 @@ function ReplaceHoldDialog({
               setBusy(false);
             }}
           >
-            <ArrowLeftRight className="size-3.5" /> {busy ? "Replacing…" : "Replace"}
+            <ArrowLeftRight /> {busy ? "Replacing…" : "Replace"}
           </Button>
         </DialogFooter>
       </DialogContent>

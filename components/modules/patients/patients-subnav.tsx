@@ -10,16 +10,16 @@ import { useSheetChanges } from "@/lib/hooks/use-sheet-changes";
  * hidden on this deployment drop out by themselves (ModuleSubNav).
  */
 export const PATIENTS_SUB_NAV: ModuleSubNavItem[] = [
-  { href: "/patients/house-sheet", label: "House Sheet", icon: Home, color: "teal" },
-  { href: "/patients/today", label: "Today Board", icon: KanbanSquare, color: "blue" },
-  { href: "/patients/floor-plan", label: "Floor Plan", icon: LayoutGrid, color: "cyan" },
-  { href: "/patients", label: "All Patients", icon: Users, color: "indigo" },
-  { href: "/patients/appointments", label: "Appointments", icon: CalendarClock, color: "purple" },
-  { href: "/patients/manifest", label: "Manifest", icon: Bus, color: "green" },
-  { href: "/patients/rides", label: "Rides", icon: Car, color: "amber" },
-  { href: "/patients/stays", label: "Stay History", icon: BedDouble, color: "slate" },
-  { href: "/patients/waitlist", label: "Waitlist", icon: ListOrdered, color: "amber" },
-  { href: "/patients/referrals", label: "Referrals", icon: Share2, color: "purple" },
+  { href: "/patients/house-sheet", label: "House Sheet", icon: Home },
+  { href: "/patients/today", label: "Today Board", icon: KanbanSquare },
+  { href: "/patients/floor-plan", label: "Floor Plan", icon: LayoutGrid },
+  { href: "/patients", label: "All Patients", icon: Users },
+  { href: "/patients/appointments", label: "Appointments", icon: CalendarClock },
+  { href: "/patients/manifest", label: "Manifest", icon: Bus },
+  { href: "/patients/rides", label: "Rides", icon: Car },
+  { href: "/patients/stays", label: "Stay History", icon: BedDouble },
+  { href: "/patients/waitlist", label: "Waitlist", icon: ListOrdered },
+  { href: "/patients/referrals", label: "Referrals", icon: Share2 },
 ];
 
 /** Every patients page carries it, so a phone never has to go back to jump. */

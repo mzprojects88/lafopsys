@@ -34,7 +34,7 @@ function buildColumns(patients: Patient[], units: Unit[], bedPositions: BedPosit
             <PersonAvatar name={name} size="sm" />
             <div className="flex flex-col">
               <span className="font-medium">{name}</span>
-              {p && <span className="text-xs text-muted-foreground">{p.patientNumber}</span>}
+              {p && <span className="text-theme-xs text-muted-foreground">{p.patientNumber}</span>}
             </div>
           </div>
         );
@@ -101,10 +101,10 @@ export default function StayHistoryPage() {
       <PageHeader title="Stay History" description="Every house stay on record, past and present." />
 
       <KpiGrid>
-        <KpiCard label="Total Stays" value={stays.length} icon={BedDouble} color="indigo" />
-        <KpiCard label="Currently In-House" value={inHouseCount} icon={DoorOpen} color="blue" />
-        <KpiCard label="Discharged" value={discharged} icon={LogOut} color="slate" />
-        <KpiCard label="Avg. Length of Stay" value={`${avgLengthDays}d`} icon={Timer} color="purple" />
+        <KpiCard label="Total Stays" value={stays.length} icon={BedDouble} />
+        <KpiCard label="Currently In-House" value={inHouseCount} icon={DoorOpen} />
+        <KpiCard label="Discharged" value={discharged} icon={LogOut} />
+        <KpiCard label="Avg. Length of Stay" value={`${avgLengthDays}d`} icon={Timer} />
       </KpiGrid>
 
       <DataTable

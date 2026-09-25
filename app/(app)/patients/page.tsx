@@ -99,9 +99,9 @@ export default function PatientsPage() {
       {canEdit ? <NeedsDetails patients={patients} carers={carers} /> : null}
 
       <KpiGrid>
-        <KpiCard label="Total Patients" value={patients.length} icon={Users} color="purple" />
-        <KpiCard label="Ongoing" value={ongoingCount} icon={UserCheck} color="blue" />
-        <KpiCard label="Admitted This Month" value={admittedThisMonth} icon={CalendarPlus} color="green" />
+        <KpiCard label="Total Patients" value={patients.length} icon={Users} />
+        <KpiCard label="Ongoing" value={ongoingCount} icon={UserCheck} />
+        <KpiCard label="Admitted This Month" value={admittedThisMonth} icon={CalendarPlus} />
       </KpiGrid>
 
       <DataTable
@@ -131,7 +131,7 @@ function NeedsDetails({ patients, carers }: { patients: Patient[]; carers: Carer
     .filter((x) => x.gaps.length > 0);
   if (open.length === 0) return null;
   return (
-    <details className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300">
+    <details className="rounded-2xl border border-warning/30 bg-warning/10 px-4 py-3 text-theme-xs text-warning-foreground dark:text-warning">
       <summary className="cursor-pointer">
         {open.length} {open.length === 1 ? "child needs" : "children need"} details the sheet does not have — open a record and use Edit details
       </summary>

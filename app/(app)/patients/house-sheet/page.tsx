@@ -10,9 +10,10 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
+import { LoadingState } from "@/components/patterns/loading-state";
+import { SectionCard } from "@/components/patterns/section-card";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -77,7 +78,7 @@ export default function HouseSheetPage() {
           <Link href={`/patients/${patient.id}`} className="font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
             {patient.lastName}, {patient.firstName}
           </Link>
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-theme-xs text-muted-foreground">
             {patient.patientNumber}
             {patient.priority ? ` · Priority ${patient.priority}, ${PRIORITIES[patient.priority]}` : ""}
             {p.matchStatus === "suggested" ? ` · AI suggests${p.matchConfidence !== null ? ` · ${Math.round(p.matchConfidence * 100)}%` : ""}` : p.matchMethod === "loose" ? " · matched on first name" : ""}
@@ -90,7 +91,7 @@ export default function HouseSheetPage() {
       <span className="flex flex-col leading-tight">
         <span className="text-muted-foreground">Not in the system</span>
         {p.aiCandidates.length > 0 ? (
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-theme-xs text-muted-foreground">
             Similar: {p.aiCandidates.slice(0, 3).map((c) => `${c.name} (${c.patientNumber})`).join(", ")}
           </span>
         ) : null}
@@ -107,7 +108,7 @@ export default function HouseSheetPage() {
       cell: ({ row }) => (
         <span className="flex flex-col leading-tight">
           <span className="font-medium">{row.original.patientName}</span>
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-theme-xs text-muted-foreground">
             {row.original.daysSeen} day{row.original.daysSeen === 1 ? "" : "s"} · since {formatDate(row.original.firstSeenOn, "MMM d")}
             {row.original.offSheetAt ? ` · left ${formatDate(row.original.lastSeenOn, "MMM d")}` : ""}
           </span>
@@ -131,9 +132,9 @@ export default function HouseSheetPage() {
                 <Sparkles className="size-3 text-muted-foreground" />
               </span>
             </HoverCardTrigger>
-            <HoverCardContent className="w-72 text-xs">
+            <HoverCardContent className="w-72 text-theme-xs">
               {p.aiReason ? <p>{p.aiReason}</p> : null}
-              {p.aiError ? <p className="text-rose-700">Model: {p.aiError}</p> : null}
+              {p.aiError ? <p className="text-destructive">Model: {p.aiError}</p> : null}
             </HoverCardContent>
           </HoverCard>
         );
@@ -146,7 +147,7 @@ export default function HouseSheetPage() {
       cell: ({ row }) => (
         <span className="flex flex-col leading-tight">
           <span>{row.original.carerName ?? "—"}</span>
-          <span className="text-[11px] text-muted-foreground">{[row.original.relationship, row.original.phone].filter(Boolean).join(" · ")}</span>
+          <span className="text-theme-xs text-muted-foreground">{[row.original.relationship, row.original.phone].filter(Boolean).join(" · ")}</span>
         </span>
       ),
     },
@@ -158,7 +159,7 @@ export default function HouseSheetPage() {
         row.original.nextAppointmentRaw ? (
           <span className="flex flex-col leading-tight">
             <span>{row.original.nextAppointmentOn ? formatDate(row.original.nextAppointmentOn, "EEE, MMM d") : row.original.nextAppointmentRaw}</span>
-            {row.original.nextAppointmentOn ? <span className="text-[11px] text-muted-foreground">{row.original.nextAppointmentRaw}</span> : null}
+            {row.original.nextAppointmentOn ? <span className="text-theme-xs text-muted-foreground">{row.original.nextAppointmentRaw}</span> : null}
           </span>
         ) : (
           <span className="text-muted-foreground">—</span>
@@ -179,27 +180,27 @@ export default function HouseSheetPage() {
               return (
                 <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                   {p.matchStatus === "suggested" && p.matchedPatientId ? (
-                    <Button size="sm" variant="outline" className="h-7 gap-1" disabled={b} onClick={() => act(p.id, () => confirmHouseSheetMatch(p.id, p.matchedPatientId!), "Confirmed.")}>
-                      <Check className="size-3.5" /> Confirm
+                    <Button size="sm" variant="outline" disabled={b} onClick={() => act(p.id, () => confirmHouseSheetMatch(p.id, p.matchedPatientId!), "Confirmed.")}>
+                      <Check /> Confirm
                     </Button>
                   ) : null}
                   {["suggested", "unmatched", "auto_matched"].includes(p.matchStatus) ? (
-                    <Button size="sm" variant="ghost" className="h-7 gap-1" disabled={b} onClick={() => setPicker(p)} aria-label="Choose patient">
-                      <Search className="size-3.5" /> {p.matchStatus === "auto_matched" ? "Change" : "Choose…"}
+                    <Button size="sm" variant="ghost" disabled={b} onClick={() => setPicker(p)} aria-label="Choose patient">
+                      <Search /> {p.matchStatus === "auto_matched" ? "Change" : "Choose…"}
                     </Button>
                   ) : null}
                   {p.matchStatus === "unmatched" || p.matchStatus === "suggested" ? (
-                    <Button size="sm" variant="ghost" className="h-7 gap-1" disabled={b} onClick={() => router.push(encodeHref)}>
-                      <FilePlus2 className="size-3.5" /> {p.matchStatus === "suggested" ? "Not them, admit new" : "Admit new"}
+                    <Button size="sm" variant="ghost" disabled={b} onClick={() => router.push(encodeHref)}>
+                      <FilePlus2 /> {p.matchStatus === "suggested" ? "Not them, admit new" : "Admit new"}
                     </Button>
                   ) : null}
                   {p.matchStatus !== "dismissed" && p.matchStatus !== "encoded" ? (
-                    <Button size="sm" variant="ghost" className="h-7 text-muted-foreground" disabled={b} aria-label="Not a patient" onClick={() => act(p.id, () => dismissHouseSheetRow(p.id), "Dismissed.")}>
-                      <X className="size-3.5" />
+                    <Button size="sm" variant="ghost" className="text-muted-foreground" disabled={b} aria-label="Not a patient" onClick={() => act(p.id, () => dismissHouseSheetRow(p.id), "Dismissed.")}>
+                      <X />
                     </Button>
                   ) : (
-                    <Button size="sm" variant="ghost" className="h-7 gap-1 text-muted-foreground" disabled={b} onClick={() => act(p.id, () => reopenHouseSheetRow(p.id), "Reopened.")}>
-                      <RotateCcw className="size-3.5" /> Reopen
+                    <Button size="sm" variant="ghost" className="text-muted-foreground" disabled={b} onClick={() => act(p.id, () => reopenHouseSheetRow(p.id), "Reopened.")}>
+                      <RotateCcw /> Reopen
                     </Button>
                   )}
                 </div>
@@ -223,23 +224,25 @@ export default function HouseSheetPage() {
       <HouseToday people={people} canEdit={canReview} />
 
       <KpiGrid>
-        <KpiCard label="In the house" value={loading ? "…" : onSheet.length} icon={Home} color="blue" sublabel={latestTab ? `tab ${formatDate(latestTab, "MMM d")}` : undefined} />
-        <KpiCard label="Matched" value={loading ? "…" : matched} icon={UserCheck} color="green" />
-        <KpiCard label="To confirm" value={loading ? "…" : toReview} icon={Sparkles} color="indigo" sublabel="AI suggestions" />
-        <KpiCard label="Not in the system" value={loading ? "…" : toEncode} icon={UserX} color="amber" sublabel="admit as a new child" />
+        <KpiCard label="In the house" value={loading ? "…" : onSheet.length} icon={Home} sublabel={latestTab ? `tab ${formatDate(latestTab, "MMM d")}` : undefined} />
+        <KpiCard label="Matched" value={loading ? "…" : matched} icon={UserCheck} />
+        <KpiCard label="To confirm" value={loading ? "…" : toReview} icon={Sparkles} tone={!loading && toReview > 0 ? "warning" : "default"} sublabel="AI suggestions" />
+        <KpiCard label="Not in the system" value={loading ? "…" : toEncode} icon={UserX} tone={!loading && toEncode > 0 ? "warning" : "default"} sublabel="admit as a new child" />
       </KpiGrid>
 
       {error ? (
         <EmptyState title="Couldn't load the house sheet" description={error} />
+      ) : loading ? (
+        <LoadingState rows={6} />
       ) : (
         <DataTable
           columns={columns}
           data={shown}
           searchPlaceholder="Search names, carers, addresses…"
           pageSize={25}
-          emptyMessage={loading ? "Loading…" : "Nothing read from the sheet yet. Use Check now."}
+          emptyMessage="Nothing read from the sheet yet. Use Check now."
           toolbar={
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <label className="flex items-center gap-2 text-theme-xs text-muted-foreground">
               <Switch checked={showOff} onCheckedChange={setShowOff} aria-label="Show people who left" />
               Show people who left
             </label>
@@ -247,31 +250,31 @@ export default function HouseSheetPage() {
         />
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <ClipboardList className="size-4 text-muted-foreground" />
+      <SectionCard
+        title={
+          <span className="flex items-center gap-2">
+            <ClipboardList className="size-4 text-muted-foreground" strokeWidth={1.75} />
             Checks
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {runs.length === 0 ? <p>No checks yet.</p> : null}
-          {runs.slice(0, 8).map((r) => (
-            <div key={r.id} className="flex flex-wrap items-center gap-x-2">
-              <span className="tabular-nums">{formatDate(r.startedAt, "MMM d, HH:mm")}</span>
-              <StatusBadge domain="calendarSync" status={r.status} label={r.status} />
-              <span>{r.tabDate ? `tab ${formatDate(r.tabDate, "MMM d")}` : ""}</span>
-              {r.status === "success" ? (
-                <span>
-                  {r.rowsSeen} on the sheet · {r.inserted} new · {r.autoMatched} matched · {r.suggested} suggested · {r.unmatched} not found
-                  {r.aiCalls ? ` · ${r.aiCalls} model call${r.aiCalls === 1 ? "" : "s"}` : ""}
-                </span>
-              ) : null}
-              {r.error ? <span className="text-rose-700">{r.error.split("\n")[0]}</span> : null}
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+          </span>
+        }
+        bodyClassName="flex flex-col gap-1 text-theme-xs text-muted-foreground"
+      >
+        {runs.length === 0 ? <p>No checks yet.</p> : null}
+        {runs.slice(0, 8).map((r) => (
+          <div key={r.id} className="flex flex-wrap items-center gap-x-2">
+            <span className="tabular-nums">{formatDate(r.startedAt, "MMM d, HH:mm")}</span>
+            <StatusBadge domain="calendarSync" status={r.status} label={r.status} />
+            <span>{r.tabDate ? `tab ${formatDate(r.tabDate, "MMM d")}` : ""}</span>
+            {r.status === "success" ? (
+              <span>
+                {r.rowsSeen} on the sheet · {r.inserted} new · {r.autoMatched} matched · {r.suggested} suggested · {r.unmatched} not found
+                {r.aiCalls ? ` · ${r.aiCalls} model call${r.aiCalls === 1 ? "" : "s"}` : ""}
+              </span>
+            ) : null}
+            {r.error ? <span className="text-destructive">{r.error.split("\n")[0]}</span> : null}
+          </div>
+        ))}
+      </SectionCard>
 
       <PatientPicker
         person={picker}
@@ -307,7 +310,7 @@ function PatientPicker({ person, patients, onClose, onPick }: { person: HouseShe
                   .filter((p) => candidates.has(p.id))
                   .map((p) => (
                     <CommandItem key={`c-${p.id}`} value={`${p.lastName} ${p.firstName} ${p.patientNumber}`} onSelect={() => onPick(p)}>
-                      {p.lastName}, {p.firstName} <span className="ml-auto text-xs text-muted-foreground">{p.patientNumber}</span>
+                      {p.lastName}, {p.firstName} <span className="ml-auto text-theme-xs text-muted-foreground">{p.patientNumber}</span>
                     </CommandItem>
                   ))}
               </CommandGroup>
@@ -315,7 +318,7 @@ function PatientPicker({ person, patients, onClose, onPick }: { person: HouseShe
             <CommandGroup heading="All patients">
               {sorted.map((p) => (
                 <CommandItem key={p.id} value={`${p.lastName} ${p.firstName} ${p.patientNumber}`} onSelect={() => onPick(p)}>
-                  {p.lastName}, {p.firstName} <span className="ml-auto text-xs text-muted-foreground">{p.patientNumber}</span>
+                  {p.lastName}, {p.firstName} <span className="ml-auto text-theme-xs text-muted-foreground">{p.patientNumber}</span>
                 </CommandItem>
               ))}
             </CommandGroup>

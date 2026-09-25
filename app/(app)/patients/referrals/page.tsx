@@ -14,16 +14,15 @@ import { hospitals } from "@/lib/mock-data";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import type { Referral, ReferralStatus } from "@/lib/types/patient";
-import type { CategoryColor } from "@/lib/utils/category-colors";
 import { formatDate } from "@/lib/utils/date";
 import type { LucideIcon } from "lucide-react";
 
-const STATUSES: { id: ReferralStatus; title: string; color: CategoryColor; icon: LucideIcon }[] = [
-  { id: "submitted", title: "Submitted", color: "blue", icon: Inbox },
-  { id: "approved", title: "Approved", color: "green", icon: CheckCircle2 },
-  { id: "waitlisted", title: "Waitlisted", color: "amber", icon: Clock },
-  { id: "declined", title: "Declined", color: "red", icon: XCircle },
-  { id: "admitted", title: "Admitted", color: "indigo", icon: BedDouble },
+const STATUSES: { id: ReferralStatus; title: string; icon: LucideIcon }[] = [
+  { id: "submitted", title: "Submitted", icon: Inbox },
+  { id: "approved", title: "Approved", icon: CheckCircle2 },
+  { id: "waitlisted", title: "Waitlisted", icon: Clock },
+  { id: "declined", title: "Declined", icon: XCircle },
+  { id: "admitted", title: "Admitted", icon: BedDouble },
 ];
 
 export default function ReferralsPage() {
@@ -35,7 +34,6 @@ export default function ReferralsPage() {
   const columns: BoardColumn<Referral>[] = STATUSES.map((s) => ({
     id: s.id,
     title: s.title,
-    color: s.color,
     icon: s.icon,
     items: referrals.filter((r) => r.status === s.id),
   }));
@@ -78,42 +76,42 @@ export default function ReferralsPage() {
             <Card>
               <CardContent className="flex flex-col gap-2 p-2.5">
                 <div className="flex flex-col">
-                  <span className="text-sm font-medium">{r.patientName}</span>
-                  <span className="text-xs text-muted-foreground">{r.referringPerson}</span>
+                  <span className="text-theme-sm font-medium">{r.patientName}</span>
+                  <span className="text-theme-xs text-muted-foreground">{r.referringPerson}</span>
                 </div>
                 {hospital && (
-                  <span className="flex w-fit items-center gap-1 rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-medium text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-400">
+                  <span className="flex w-fit items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-theme-xs font-medium text-muted-foreground">
                     <Building2 className="size-3" />
                     {hospital.code}
                   </span>
                 )}
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                <div className="flex items-center justify-between gap-2 text-theme-xs text-muted-foreground">
                   <span>{r.department}</span>
                   <span>{formatDate(r.date)}</span>
                 </div>
                 {r.urgency !== "routine" && (
-                  <span className="w-fit rounded-sm bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-500/10 dark:text-red-400">
+                  <span className="w-fit rounded-full bg-destructive/10 px-2 py-0.5 text-theme-xs font-medium text-destructive dark:bg-destructive/15">
                     {r.urgency}
                   </span>
                 )}
-                {r.reason && <span className="text-[11px] italic text-muted-foreground">{r.reason}</span>}
+                {r.reason && <span className="text-theme-xs italic text-muted-foreground">{r.reason}</span>}
                 {canEdit && r.status === "submitted" && (
                   <div className="flex gap-1.5 pt-1">
-                    <Button size="sm" className="h-6 flex-1 text-[11px]" onClick={() => setStatus(r.id, "approved")}>
+                    <Button size="xs" className="flex-1" onClick={() => setStatus(r.id, "approved")}>
                       Approve
                     </Button>
-                    <Button size="sm" variant="outline" className="h-6 flex-1 text-[11px]" onClick={() => setStatus(r.id, "waitlisted")}>
+                    <Button size="xs" variant="outline" className="flex-1" onClick={() => setStatus(r.id, "waitlisted")}>
                       Waitlist
                     </Button>
-                    <Button size="sm" variant="outline" className="h-6 flex-1 text-[11px] text-red-600" onClick={() => setDeclineTarget(r.id)}>
+                    <Button size="xs" variant="destructive" className="flex-1" onClick={() => setDeclineTarget(r.id)}>
                       Decline
                     </Button>
                   </div>
                 )}
                 {canEdit && r.status === "approved" && (
                   <div className="flex gap-1.5 pt-1">
-                    <Button size="sm" className="h-6 flex-1 gap-1 text-[11px]" onClick={() => setArrivalTarget(r.id)}>
-                      <BedDouble className="size-3" />
+                    <Button size="xs" className="flex-1" onClick={() => setArrivalTarget(r.id)}>
+                      <BedDouble />
                       Check in
                     </Button>
                   </div>

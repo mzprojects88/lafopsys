@@ -125,7 +125,7 @@ export function ArrivalFields({ value, onChange, arrivalDate, excludeStayId }: {
 
       {value.mode === "ride_app" && (
         <>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-theme-sm">
             <Checkbox
               checked={value.shared}
               onCheckedChange={(v) => onChange({ ...value, shared: !!v, ride: v ? value.ride : NEW_RIDE })}

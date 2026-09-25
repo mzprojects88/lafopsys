@@ -294,7 +294,7 @@ function NewReferralForm() {
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit(onSubmit)}>
             <FieldGroup>
-              <span className="text-sm font-semibold text-muted-foreground">Patient</span>
+              <span className="text-base font-medium text-foreground">Patient</span>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field data-invalid={!!errors.patientFirstName}>
                   <FieldLabel htmlFor="patientFirstName">First Name</FieldLabel>
@@ -438,7 +438,7 @@ function NewReferralForm() {
               </Field>
 
               <FieldSeparator />
-              <span className="text-sm font-semibold text-muted-foreground">Referring Hospital</span>
+              <span className="text-base font-medium text-foreground">Referring Hospital</span>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field data-invalid={!!errors.hospitalId}>
@@ -492,7 +492,7 @@ function NewReferralForm() {
               </Field>
 
               <FieldSeparator />
-              <span className="text-sm font-semibold text-muted-foreground">Carer</span>
+              <span className="text-base font-medium text-foreground">Carer</span>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field data-invalid={!!errors.carerName}>
@@ -533,14 +533,14 @@ function NewReferralForm() {
               {fromSheet ? (
                 <>
                   <FieldSeparator />
-                  <span className="text-sm font-semibold text-muted-foreground">Admission</span>
+                  <span className="text-base font-medium text-foreground">Admission</span>
                   <Field>
                     <FieldLabel>Tonight&apos;s bed</FieldLabel>
                     <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={beds} />
                   </Field>
                   <ArrivalFields value={arrival} onChange={setArrival} arrivalDate={arrivedOn} />
                   {hold ? (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-theme-xs text-muted-foreground">
                       A bed was reserved for them{hold.unitId === unitId ? "" : " (another bed is chosen, so the reserved one is freed)"}. Staying on it confirms it; tap another green bed if not.
                     </p>
                   ) : null}
@@ -562,7 +562,7 @@ function NewReferralForm() {
                     />
                   ) : null}
                   <FieldSeparator />
-                  <span className="text-sm font-semibold text-muted-foreground">House rules (last step)</span>
+                  <span className="text-base font-medium text-foreground">House rules (last step)</span>
                   <HouseRulesStep
                     name={firstName || "the child"}
                     firstStay

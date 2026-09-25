@@ -3,7 +3,6 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { CheckCircle2, Circle, Upload, Plus, X, FileText } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -69,80 +68,77 @@ export function AdmissionChecklist({ patientId, canEdit, stay, firstStay }: { pa
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h4 className="mb-2 text-sm font-semibold text-muted-foreground">
-          Admission Documents <span className="font-normal">(non-blocking — doesn&apos;t gate admission)</span>
+        <h4 className="mb-2 text-base font-medium">
+          Admission Documents <span className="text-theme-sm font-normal text-muted-foreground">(non-blocking — doesn&apos;t gate admission)</span>
         </h4>
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col divide-y divide-border rounded-2xl border border-border bg-card">
           {DOCUMENT_TYPES.map((type) => {
             const doc = documents.find((d) => d.documentType === type);
             const collected = !!doc?.collectedAt;
             return (
-              <Card key={type}>
-                <CardContent className="flex flex-wrap items-center justify-between gap-2 p-3">
-                  <div className="flex items-center gap-2.5">
-                    {collected ? (
-                      <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
-                    ) : (
-                      <Circle className="size-4 shrink-0 text-muted-foreground" />
+              <div key={type} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
+                <div className="flex items-center gap-2.5">
+                  {collected ? (
+                    <CheckCircle2 className="size-4 shrink-0 text-success-foreground dark:text-success" />
+                  ) : (
+                    <Circle className="size-4 shrink-0 text-muted-foreground" />
+                  )}
+                  <div className="flex flex-col">
+                    <span className="text-theme-sm font-medium">{DOCUMENT_TYPE_LABELS[type]}</span>
+                    {collected && (
+                      <span className="text-theme-xs text-muted-foreground">Collected {formatDate(doc.collectedAt!)}</span>
                     )}
-                    <div className="flex flex-col">
-                      <span className="text-sm font-medium">{DOCUMENT_TYPE_LABELS[type]}</span>
-                      {collected && (
-                        <span className="text-xs text-muted-foreground">Collected {formatDate(doc.collectedAt!)}</span>
-                      )}
-                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    {doc?.storagePath && (
-                      <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => handleView(doc.storagePath!)}>
-                        <FileText className="size-3.5" />
-                        View
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {doc?.storagePath && (
+                    <Button size="sm" variant="ghost" onClick={() => handleView(doc.storagePath!)}>
+                      <FileText />
+                      View
+                    </Button>
+                  )}
+                  {canEdit && (
+                    <>
+                      <input
+                        ref={(el) => {
+                          fileInputs.current[type] = el;
+                        }}
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => handleFileChange(type, e.target.files?.[0])}
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => fileInputs.current[type]?.click()}
+                      >
+                        <Upload />
+                        Upload
                       </Button>
-                    )}
-                    {canEdit && (
-                      <>
-                        <input
-                          ref={(el) => {
-                            fileInputs.current[type] = el;
-                          }}
-                          type="file"
-                          className="hidden"
-                          onChange={(e) => handleFileChange(type, e.target.files?.[0])}
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 gap-1 text-xs"
-                          onClick={() => fileInputs.current[type]?.click()}
-                        >
-                          <Upload className="size-3.5" />
-                          Upload
+                      {!collected && (
+                        <Button size="sm" variant="ghost" onClick={() => handleMarkCollected(type)}>
+                          Mark collected
                         </Button>
-                        {!collected && (
-                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handleMarkCollected(type)}>
-                            Mark collected
-                          </Button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
             );
           })}
         </div>
       </div>
 
       <div>
-        <h4 className="mb-1 text-sm font-semibold text-muted-foreground">
+        <h4 className="mb-1 text-base font-medium">
           House rules orientation{" "}
-          <span className="font-normal">
+          <span className="text-theme-sm font-normal text-muted-foreground">
             {stay
               ? `(${firstStay ? "first stay: the full list" : "returning family: the short list"} — ${covered} of ${topics.length} covered)`
               : "(ticks start when the family is checked in)"}
           </span>
         </h4>
-        <p className="mb-2 text-xs text-muted-foreground">
+        <p className="mb-2 text-theme-xs text-muted-foreground">
           The list is the house&apos;s own &ldquo;Mga Paalala&rdquo; —{" "}
           <a href="/house-rules/mga-paalala.jpg" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
             the printed sheet
@@ -150,24 +146,24 @@ export function AdmissionChecklist({ patientId, canEdit, stay, firstStay }: { pa
           as it hangs in the house.
         </p>
         {topics.length === 0 ? (
-          <p className="text-xs italic text-muted-foreground">
+          <p className="text-theme-xs italic text-muted-foreground">
             No orientation topics defined yet. Add the real topics your team covers with families on arrival day below.
           </p>
         ) : (
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col divide-y divide-border rounded-2xl border border-border bg-card">
             {topics.map((t) => {
               const isCovered = checks.some((c) => c.topicId === t.id);
               return (
-                <div key={t.id} className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm">
+                <div key={t.id} className="flex flex-wrap items-center gap-2 px-5 py-3 text-theme-sm">
                   <label className="flex flex-1 items-start gap-2">
                     <Checkbox className="mt-0.5" checked={isCovered} disabled={!canEdit || !stay} onCheckedChange={(v) => toggleCheck(t.id, !!v)} />
                     <span className="flex flex-col">
                       <span>{t.topic}</span>
-                      {t.topicEn && <span className="text-xs text-muted-foreground">{t.topicEn}</span>}
+                      {t.topicEn && <span className="text-theme-xs text-muted-foreground">{t.topicEn}</span>}
                     </span>
                   </label>
                   {canEdit && (
-                    <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <label className="flex items-center gap-1.5 text-theme-xs text-muted-foreground">
                       <Switch checked={t.returneeToo} onCheckedChange={(v) => setReturneeToo(t.id, v)} aria-label={`Cover "${t.topic}" with returning families too`} />
                       Returnees too
                     </label>
@@ -189,7 +185,7 @@ export function AdmissionChecklist({ patientId, canEdit, stay, firstStay }: { pa
           </div>
         )}
         {canEdit && (
-          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <Input
               placeholder="Add a rule, as the house says it…"
               value={newTopic}

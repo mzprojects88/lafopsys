@@ -3,7 +3,6 @@
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { addDays, format, parseISO } from "date-fns";
@@ -31,22 +30,20 @@ export default function ManifestPage() {
       {manifestRows.length === 0 ? (
         <EmptyState title="No transport needed tomorrow" description="No appointments requiring a ride were found for tomorrow." />
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col divide-y divide-border rounded-2xl border border-border bg-card">
           {manifestRows.map((row) => (
-            <Card key={row.id}>
-              <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
-                <div className="flex items-center gap-2.5">
-                  <PersonAvatar name={`${row.patient?.firstName ?? ""} ${row.patient?.lastName ?? ""}`} size="sm" />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium">{row.patient?.firstName} {row.patient?.lastName}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {row.clinic} · {row.purpose} · Carer: {row.carer?.name ?? "—"}
-                    </span>
-                  </div>
+            <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+              <div className="flex items-center gap-2.5">
+                <PersonAvatar name={`${row.patient?.firstName ?? ""} ${row.patient?.lastName ?? ""}`} size="sm" />
+                <div className="flex flex-col">
+                  <span className="text-theme-sm font-medium">{row.patient?.firstName} {row.patient?.lastName}</span>
+                  <span className="text-theme-xs text-muted-foreground">
+                    {row.clinic} · {row.purpose} · Carer: {row.carer?.name ?? "—"}
+                  </span>
                 </div>
-                <Badge variant="secondary">{row.time} departure</Badge>
-              </CardContent>
-            </Card>
+              </div>
+              <Badge variant="secondary">{row.time} departure</Badge>
+            </div>
           ))}
         </div>
       )}

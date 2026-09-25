@@ -26,10 +26,10 @@ export default function TodayBoardPage() {
   const overdue = stays.filter((s) => s.status === "overdue");
 
   const columns: BoardColumn<Stay>[] = [
-    { id: "arrivals", title: "Arrivals Today", color: "blue", icon: PlaneLanding, items: arrivals },
-    { id: "departures", title: "Departures Today", color: "green", icon: PlaneTakeoff, items: departures },
-    { id: "in-house", title: "In-House Now", color: "purple", icon: Home, items: inHouse },
-    { id: "overdue", title: "Overdue Check-outs", color: "red", icon: Clock, items: overdue },
+    { id: "arrivals", title: "Arrivals Today", icon: PlaneLanding, items: arrivals },
+    { id: "departures", title: "Departures Today", icon: PlaneTakeoff, items: departures },
+    { id: "in-house", title: "In-House Now", icon: Home, items: inHouse },
+    { id: "overdue", title: "Overdue Check-outs", icon: Clock, items: overdue },
   ];
 
   return (
@@ -47,13 +47,13 @@ export default function TodayBoardPage() {
             <Card className="cursor-pointer" onClick={() => router.push(`/patients/${stay.patientId}`)}>
               <CardContent className="flex items-center gap-2.5 p-2.5">
                 <PersonAvatar name={name} size="sm" />
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">{name}</span>
-                  <span className="text-[11px] text-muted-foreground">
+                <div className="flex min-w-0 flex-col">
+                  <span className="text-theme-sm font-medium">{name}</span>
+                  <span className="text-theme-xs text-muted-foreground">
                     Bed {unit?.code ?? "—"} · Expected {stay.expectedCheckoutAt ? formatDate(stay.expectedCheckoutAt) : "—"}
                   </span>
                   {tasks.total > 0 && tasks.done < tasks.total && (
-                    <span className="text-[11px] text-amber-700 dark:text-amber-400">
+                    <span className="text-theme-xs text-warning-foreground dark:text-warning">
                       Orientation {tasks.done}/{tasks.total} — {tasks.firstStay ? "first stay" : "returning"}
                     </span>
                   )}

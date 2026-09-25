@@ -7,7 +7,6 @@ import { EntityDetailHeader } from "@/components/patterns/entity-detail-header";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cities } from "@/lib/mock-data";
@@ -116,20 +115,20 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
         <div
           className={
             gaps.length > 0
-              ? "flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300"
+              ? "flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl border border-warning/30 bg-warning/10 px-4 py-3 text-theme-xs text-warning-foreground dark:text-warning"
               : "flex justify-end"
           }
         >
           {gaps.length > 0 ? <span>Details to complete: {gaps.join(", ")}. The Patients Database sheet does not have them.</span> : null}
-          <Button size="sm" variant="outline" className="ml-auto h-7 gap-1.5" onClick={() => setEditing(true)}>
-            <PencilLine className="size-3.5" />
+          <Button size="sm" variant="outline" className="ml-auto" onClick={() => setEditing(true)}>
+            <PencilLine />
             Edit details
           </Button>
         </div>
       ) : null}
 
       {onHouseSheet ? (
-        <Link href="/patients/house-sheet" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground hover:bg-muted/60">
+        <Link href="/patients/house-sheet" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-border bg-card px-4 py-3 text-theme-xs text-muted-foreground transition-colors hover:bg-muted/60">
           <Home className="size-3.5 shrink-0" />
           <span>
             On the house sheet as &ldquo;{onHouseSheet.patientName}&rdquo; · {onHouseSheet.daysSeen} day{onHouseSheet.daysSeen === 1 ? "" : "s"} since {formatDate(onHouseSheet.firstSeenOn)}
@@ -150,7 +149,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
 
         <TabsContent value="overview" className="pt-4">
           {!canSeeClinical && (
-            <div className="mb-3 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+            <div className="mb-3 flex items-center gap-2 rounded-2xl bg-muted px-4 py-3 text-theme-xs text-muted-foreground">
               <ShieldAlert className="size-3.5 shrink-0" />
               Diagnosis, address and birthdate are hidden for your role (Finance / Board see aggregates only).
             </div>
@@ -184,57 +183,55 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
 
         <TabsContent value="stays" className="flex flex-col gap-3 pt-4">
           {showCheckIn && (
-            <Button className="w-fit gap-1.5" onClick={() => setCheckingIn(true)}>
-              <BedDouble className="size-4" />
+            <Button className="w-fit" onClick={() => setCheckingIn(true)}>
+              <BedDouble />
               Check in
             </Button>
           )}
           {patientStays.length === 0 ? (
             <EmptyState title="No stays recorded" />
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col divide-y divide-border rounded-2xl border border-border bg-card">
               {patientStays.map((stay) => {
                 const unit = unitForBedPosition(stay.bedPositionId, units, bedPositions);
                 const isActive = stay.status === "in_house" || stay.status === "overdue";
                 return (
-                  <Card key={stay.id}>
-                    <CardContent className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
-                      <div className="flex flex-col">
-                        <span className="font-medium">Bed {unit?.code ?? "—"}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {formatDate(stay.checkInAt)} — {stay.checkOutAt ? formatDate(stay.checkOutAt) : "current"}
-                          {stay.expectedCheckoutAt && !stay.checkOutAt && ` · expected ${formatDate(stay.expectedCheckoutAt)}`}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          Arrived by {arrivalLabel(stay.arrivalMode, rides.find((r) => r.id === stay.arrivalRideId)?.app)}
-                          {canEdit && (
-                            <button type="button" className="ml-1.5 text-primary hover:underline" onClick={() => setArrivalTarget(stay)}>
-                              {stay.arrivalMode ? "Change" : "Set"}
-                            </button>
-                          )}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <StatusBadge domain="stay" status={stay.status} />
-                        {isActive && canEdit && (
-                          <div className="flex gap-1">
-                            <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => setExtendTarget(stay)}>
-                              <CalendarClock className="size-3.5" />
-                              Extend
-                            </Button>
-                            <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => setTransferTarget(stay)}>
-                              <ArrowRightLeft className="size-3.5" />
-                              Transfer
-                            </Button>
-                            <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setDischargeTarget(stay)}>
-                              <LogOut className="size-3.5" />
-                              Discharge
-                            </Button>
-                          </div>
+                  <div key={stay.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
+                    <div className="flex flex-col">
+                      <span className="font-medium">Bed {unit?.code ?? "—"}</span>
+                      <span className="text-theme-xs text-muted-foreground">
+                        {formatDate(stay.checkInAt)} — {stay.checkOutAt ? formatDate(stay.checkOutAt) : "current"}
+                        {stay.expectedCheckoutAt && !stay.checkOutAt && ` · expected ${formatDate(stay.expectedCheckoutAt)}`}
+                      </span>
+                      <span className="text-theme-xs text-muted-foreground">
+                        Arrived by {arrivalLabel(stay.arrivalMode, rides.find((r) => r.id === stay.arrivalRideId)?.app)}
+                        {canEdit && (
+                          <button type="button" className="ml-1.5 text-primary hover:underline" onClick={() => setArrivalTarget(stay)}>
+                            {stay.arrivalMode ? "Change" : "Set"}
+                          </button>
                         )}
-                      </div>
-                    </CardContent>
-                  </Card>
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge domain="stay" status={stay.status} />
+                      {isActive && canEdit && (
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="ghost" onClick={() => setExtendTarget(stay)}>
+                            <CalendarClock />
+                            Extend
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setTransferTarget(stay)}>
+                            <ArrowRightLeft />
+                            Transfer
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setDischargeTarget(stay)}>
+                            <LogOut />
+                            Discharge
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 );
               })}
             </div>
@@ -245,20 +242,18 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
           {patientAppointments.length === 0 ? (
             <EmptyState title="No appointments scheduled" />
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col divide-y divide-border rounded-2xl border border-border bg-card">
               {patientAppointments.map((a) => (
-                <Card key={a.id}>
-                  <CardContent className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
-                    <div className="flex flex-col">
-                      <span className="font-medium">{a.clinic}</span>
-                      <span className="text-xs text-muted-foreground">{a.purpose}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {a.needsTransport && <Badge variant="secondary" className="text-[11px]">Needs Transport</Badge>}
-                      <span className="text-xs text-muted-foreground">{formatDate(a.date)} · {a.time}</span>
-                    </div>
-                  </CardContent>
-                </Card>
+                <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
+                  <div className="flex flex-col">
+                    <span className="font-medium">{a.clinic}</span>
+                    <span className="text-theme-xs text-muted-foreground">{a.purpose}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {a.needsTransport && <Badge variant="secondary">Needs Transport</Badge>}
+                    <span className="text-theme-xs text-muted-foreground">{formatDate(a.date)} · {a.time}</span>
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -268,19 +263,17 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
           {patientCarers.length === 0 ? (
             <EmptyState title="No carers on file" />
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col divide-y divide-border rounded-2xl border border-border bg-card">
               {patientCarers.map((c) => (
-                <Card key={c.id}>
-                  <CardContent className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
-                    <div className="flex flex-col">
-                      <span className="font-medium">{c.name}</span>
-                      <span className="text-xs text-muted-foreground">{c.relationship ?? "—"}</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {canSeeClinical ? (c.mobileNumber ?? "—") : <Restricted />}
-                    </span>
-                  </CardContent>
-                </Card>
+                <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
+                  <div className="flex flex-col">
+                    <span className="font-medium">{c.name}</span>
+                    <span className="text-theme-xs text-muted-foreground">{c.relationship ?? "—"}</span>
+                  </div>
+                  <span className="text-theme-xs text-muted-foreground">
+                    {canSeeClinical ? (c.mobileNumber ?? "—") : <Restricted />}
+                  </span>
+                </div>
               ))}
             </div>
           )}
@@ -344,9 +337,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
 
 function InfoTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col gap-0.5 rounded-md border p-3">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className="text-sm font-medium">{value}</span>
+    <div className="flex flex-col gap-0.5 rounded-xl border border-border bg-card p-3">
+      <span className="text-theme-xs text-muted-foreground">{label}</span>
+      <span className="text-theme-sm font-medium">{value}</span>
     </div>
   );
 }
@@ -371,9 +364,9 @@ function IntakeDetails({ patient }: { patient: Patient }) {
   ].filter((l): l is [string, string] => !!l[1]);
   return (
     <section className="mt-6 flex flex-col gap-3">
-      <h3 className="text-sm font-semibold">Intake form</h3>
+      <h3 className="text-base font-medium">Intake form</h3>
       {shown.length === 0 && links.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No intake form response matched this child (by name and birthday).</p>
+        <p className="text-theme-xs text-muted-foreground">No intake form response matched this child (by name and birthday).</p>
       ) : (
         <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -382,7 +375,7 @@ function IntakeDetails({ patient }: { patient: Patient }) {
             ))}
           </div>
           {links.length > 0 && (
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-theme-sm">
               {links.map(([label, href]) => (
                 <a key={label} href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-4 hover:underline">
                   {label}

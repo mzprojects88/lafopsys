@@ -120,7 +120,7 @@ export function LogVisitDialog({ patientId, patientName, onOpenChange, onLogged 
           </Select>
         </Field>
 
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-theme-sm">
           <Checkbox checked={needsTransport} onCheckedChange={(v) => setNeedsTransport(!!v)} />
           Needs transport from LAF House
         </label>
