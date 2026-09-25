@@ -86,10 +86,11 @@ export function Breadcrumbs() {
   const pathname = usePathname();
   const segments = pathname.split("/").filter(Boolean);
 
-  if (segments.length === 0) return null;
+  // A top-level page's only crumb would repeat its title.
+  if (segments.length < 2) return null;
 
   return (
-    <Breadcrumb className="min-w-0">
+    <Breadcrumb className="min-w-0 text-theme-sm">
       {/* One line, cut off at the end, never wrapped under the bar's height. */}
       <BreadcrumbList className="flex-nowrap overflow-hidden whitespace-nowrap [&>*]:truncate">
         {segments.map((segment, i) => {

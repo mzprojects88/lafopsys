@@ -54,7 +54,7 @@ export function PinInput({ length = 6, value, onChange, className }: PinInputPro
           onChange={(e) => handleChange(i, e.target.value)}
           onKeyDown={(e) => handleKeyDown(i, e)}
           onPaste={handlePaste}
-          className="h-14 w-full min-w-0 rounded-xl border bg-background text-center text-lg text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring"
+          className="h-14 w-full min-w-0 rounded-lg border border-input bg-card text-center text-lg text-foreground shadow-theme-xs placeholder:text-muted-foreground/50 focus:border-ring focus:ring-3 focus:ring-ring/20 focus:outline-none"
         />
       ))}
     </div>

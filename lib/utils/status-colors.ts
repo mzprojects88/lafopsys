@@ -1,16 +1,25 @@
 /**
- * Semantic status palette, independent of shadcn's default badge colors.
- * The spec has many multi-state lifecycles (AR, Donee Cert, referrals,
- * bed units, stock) that all reduce to the same five tones.
+ * Semantic status palette on the design tokens (DESIGN.md: colour means
+ * something). The spec has many multi-state lifecycles (AR, Donee Cert,
+ * referrals, bed units, stock) that all reduce to the same five tones.
  */
 export type StatusTone = "positive" | "info" | "warning" | "negative" | "neutral";
 
 export const STATUS_TONE_CLASSES: Record<StatusTone, string> = {
-  positive: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400",
-  info: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400",
-  warning: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400",
-  negative: "bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400",
-  neutral: "bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-400",
+  positive: "bg-success/12 text-success-foreground dark:bg-success/15 dark:text-success",
+  info: "bg-accent text-accent-foreground",
+  warning: "bg-warning/12 text-warning-foreground dark:bg-warning/15 dark:text-warning",
+  negative: "bg-destructive/10 text-destructive dark:bg-destructive/15",
+  neutral: "bg-muted text-muted-foreground",
+};
+
+/** The same tones as plain text (figures, icons, inline notes). */
+export const STATUS_TONE_TEXT: Record<StatusTone, string> = {
+  positive: "text-success-foreground dark:text-success",
+  info: "text-accent-foreground",
+  warning: "text-warning-foreground dark:text-warning",
+  negative: "text-destructive",
+  neutral: "text-muted-foreground",
 };
 
 /** domain -> status value -> tone. Add a domain here whenever a new state machine appears. */

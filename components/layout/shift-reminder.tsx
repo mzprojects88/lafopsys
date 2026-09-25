@@ -42,7 +42,7 @@ export function ShiftReminder() {
 
   const dueLabel = due.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" });
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-200">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-warning/30 bg-warning/10 px-4 py-3 text-theme-sm text-warning-foreground dark:text-warning">
       <AlarmClock className="size-4 shrink-0" />
       <span className="min-w-0 flex-1">
         {shift ? `Your shift ended at ${dueLabel}.` : `You have been clocked in since ${openEntry.clockIn}.`} Still working? Remember to clock out.

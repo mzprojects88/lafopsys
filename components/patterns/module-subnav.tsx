@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { IconCircle } from "@/components/patterns/icon-circle";
 import type { CategoryColor } from "@/lib/utils/category-colors";
 import { isHiddenPath } from "@/lib/rbac/hidden";
 
@@ -8,7 +7,8 @@ export interface ModuleSubNavItem {
   href: string;
   label: string;
   icon: LucideIcon;
-  color: CategoryColor;
+  /** @deprecated Modules no longer have colours (DESIGN.md). */
+  color?: CategoryColor;
 }
 
 export function ModuleSubNav({ items }: { items: ModuleSubNavItem[] }) {
@@ -23,9 +23,9 @@ export function ModuleSubNav({ items }: { items: ModuleSubNavItem[] }) {
         <Link
           key={item.href}
           href={item.href}
-          className="flex shrink-0 items-center gap-2.5 rounded-xl border bg-card px-4 py-2.5 text-sm font-medium shadow-sm transition-colors hover:bg-accent/40"
+          className="flex h-10 shrink-0 items-center gap-2 rounded-lg border border-input bg-card px-3.5 text-theme-sm font-medium text-foreground shadow-theme-xs transition-colors hover:bg-muted"
         >
-          <IconCircle icon={item.icon} color={item.color} size="sm" />
+          <item.icon className="size-4 text-muted-foreground" strokeWidth={1.75} />
           {item.label}
         </Link>
       ))}

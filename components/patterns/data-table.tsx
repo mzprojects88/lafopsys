@@ -115,17 +115,18 @@ export function DataTable<TData>({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative max-w-xs flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <div className="relative w-full max-w-sm sm:flex-1">
+          <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
             placeholder={searchPlaceholder}
-            className="h-9 rounded-full pl-8"
+            aria-label={searchPlaceholder}
+            className="pl-10"
           />
         </div>
         {toolbar}
-        <span className="ml-auto text-xs text-muted-foreground">
+        <span className="ml-auto text-theme-xs text-muted-foreground">
           {table.getFilteredRowModel().rows.length} of {data.length}
         </span>
       </div>
@@ -159,8 +160,8 @@ export function DataTable<TData>({
                   }
                 }}
                 className={cn(
-                  "flex flex-col gap-2.5 rounded-xl border bg-card p-3 text-sm",
-                  onRowClick && "cursor-pointer transition-colors hover:bg-accent/40"
+                  "flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 text-theme-sm",
+                  onRowClick && "cursor-pointer transition-colors hover:bg-muted/60"
                 )}
               >
                 {titleCell && (
@@ -169,7 +170,7 @@ export function DataTable<TData>({
                   </div>
                 )}
                 {fieldCells.length > 0 && (
-                  <dl className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
+                  <dl className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-theme-xs">
                     {fieldCells.map((cell) => (
                       <React.Fragment key={cell.id}>
                         <dt className="truncate text-muted-foreground">{headerLabel(cell.column)}</dt>
@@ -181,7 +182,7 @@ export function DataTable<TData>({
                   </dl>
                 )}
                 {footerCells.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5 border-t pt-2.5">
+                  <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-3">
                     {footerCells.map((cell) => (
                       <React.Fragment key={cell.id}>
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -193,31 +194,31 @@ export function DataTable<TData>({
             );
           })
         ) : (
-          <div className="rounded-xl border bg-card px-3 py-10 text-center text-sm text-muted-foreground">
+          <div className="rounded-2xl border border-dashed border-border bg-card px-4 py-10 text-center text-theme-sm text-muted-foreground">
             {emptyMessage}
           </div>
         )}
       </div>
 
-      <div className="hidden overflow-hidden rounded-xl border bg-card sm:block">
+      <div className="hidden overflow-hidden rounded-2xl border border-border bg-card sm:block">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="hover:bg-transparent">
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="h-10 py-2 text-xs">
+                  <TableHead key={header.id} className="h-11 px-5 text-theme-xs font-medium text-muted-foreground">
                     {header.isPlaceholder ? null : (
                       <button
                         type="button"
                         className={cn(
-                          "flex items-center gap-1 font-semibold",
+                          "flex items-center gap-1 font-medium",
                           header.column.getCanSort() && "cursor-pointer select-none"
                         )}
                         onClick={header.column.getToggleSortingHandler()}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
                         {header.column.getCanSort() && (
-                          <ChevronsUpDown className="size-3 text-muted-foreground" />
+                          <ChevronsUpDown className="size-3.5" />
                         )}
                       </button>
                     )}
@@ -235,20 +236,20 @@ export function DataTable<TData>({
                   <TableRow
                     key={row.id}
                     onClick={() => onRowClick?.(row.original)}
-                    className={cn("py-2 text-sm", onRowClick && "cursor-pointer", continues && "border-b-border/40")}
+                    className={cn("text-theme-sm hover:bg-muted/60", onRowClick && "cursor-pointer", continues && "border-b-border/40")}
                   >
                     {row.getVisibleCells().map((cell) => {
                       if (spans !== null && cell.column.id === mergeColumnId) {
                         const span = spans[index];
                         if (span === 0) return null;
                         return (
-                          <TableCell key={cell.id} rowSpan={span} className="py-2.5 align-top">
+                          <TableCell key={cell.id} rowSpan={span} className="px-5 py-3 align-top">
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </TableCell>
                         );
                       }
                       return (
-                        <TableCell key={cell.id} className="py-2.5">
+                        <TableCell key={cell.id} className="px-5 py-3">
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </TableCell>
                       );
@@ -258,7 +259,7 @@ export function DataTable<TData>({
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={columns.length} className="h-24 text-center text-theme-sm text-muted-foreground">
                   {emptyMessage}
                 </TableCell>
               </TableRow>
@@ -267,46 +268,33 @@ export function DataTable<TData>({
         </Table>
       </div>
 
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">
-          Page {pageIndex + 1} of {pageCount}
-        </span>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="icon"
-            className="size-8 rounded-full"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            <ChevronLeft className="size-3.5" />
-          </Button>
-          {pageNumbers.length <= 7 ? (
-            pageNumbers.map((i) => (
-              <Button
-                key={i}
-                variant={i === pageIndex ? "default" : "outline"}
-                size="icon"
-                className="size-8 rounded-full text-xs"
-                onClick={() => table.setPageIndex(i)}
-              >
-                {i + 1}
-              </Button>
-            ))
-          ) : (
-            <span className="px-2 text-xs text-muted-foreground">{pageIndex + 1} / {pageCount}</span>
-          )}
-          <Button
-            variant="outline"
-            size="icon"
-            className="size-8 rounded-full"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            <ChevronRight className="size-3.5" />
-          </Button>
+      {pageCount > 1 ? (
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-theme-xs text-muted-foreground">
+            Showing {pageIndex * table.getState().pagination.pageSize + 1} to{" "}
+            {Math.min((pageIndex + 1) * table.getState().pagination.pageSize, table.getFilteredRowModel().rows.length)} of {table.getFilteredRowModel().rows.length}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="icon-sm" aria-label="Previous page" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+              <ChevronLeft className="size-4" />
+            </Button>
+            {pageNumbers.length <= 7 ? (
+              pageNumbers.map((i) => (
+                <Button key={i} variant={i === pageIndex ? "default" : "ghost"} size="icon-sm" className="text-theme-xs" onClick={() => table.setPageIndex(i)}>
+                  {i + 1}
+                </Button>
+              ))
+            ) : (
+              <span className="px-2 text-theme-xs text-muted-foreground">
+                {pageIndex + 1} / {pageCount}
+              </span>
+            )}
+            <Button variant="outline" size="icon-sm" aria-label="Next page" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }

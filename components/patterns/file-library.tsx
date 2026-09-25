@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ExternalLink, FileText, FolderOpen, Trash2, Upload } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -143,27 +144,27 @@ export function FileLibrary({
             <Upload className="size-3.5" />
             Upload
           </Button>
-          <span className="text-xs text-muted-foreground">PDF, images, Word, Excel, CSV · up to 50 MB each</span>
+          <span className="text-theme-xs text-muted-foreground">PDF, images, Word, Excel, CSV · up to 50 MB each</span>
         </div>
       ) : null}
 
       {queue.map((q, i) => (
-        <div key={`${q.name}-${i}`} className="flex flex-col gap-1 rounded-xl border px-3 py-2 text-xs">
+        <div key={`${q.name}-${i}`} className="flex flex-col gap-1 rounded-xl border border-border px-4 py-2.5 text-theme-xs">
           <div className="flex items-center justify-between gap-2">
             <span className="truncate">{q.name}</span>
-            <span className={q.state === "failed" ? "text-rose-700" : "text-muted-foreground"}>{q.state === "failed" ? q.error : q.state === "done" ? "Uploaded" : `${q.progress}%`}</span>
+            <span className={q.state === "failed" ? "text-destructive" : "text-muted-foreground"}>{q.state === "failed" ? q.error : q.state === "done" ? "Uploaded" : `${q.progress}%`}</span>
           </div>
           {q.state === "uploading" ? <Progress value={q.progress} /> : null}
         </div>
       ))}
 
       {loading && ready.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <LoadingState rows={2} />
       ) : ready.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No files yet.</p>
+        <p className="text-theme-sm text-muted-foreground">No files yet.</p>
       ) : (
         ready.map((f) => (
-          <div key={f.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm">
+          <div key={f.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border px-4 py-2.5 text-theme-sm">
             <button type="button" className="flex min-w-0 items-center gap-2 text-left hover:underline" onClick={() => void openStoredFile(f.id)}>
               <FileText className="size-4 shrink-0 text-muted-foreground" />
               <span className="flex min-w-0 flex-col">
@@ -179,7 +180,7 @@ export function FileLibrary({
                 <ExternalLink className="size-3.5" />
               </Button>
               {canDelete ? (
-                <Button size="sm" variant="ghost" aria-label="Remove" className="text-rose-700" onClick={() => setConfirmDelete(f)}>
+                <Button size="sm" variant="ghost" aria-label="Remove" className="text-destructive" onClick={() => setConfirmDelete(f)}>
                   <Trash2 className="size-3.5" />
                 </Button>
               ) : null}
@@ -196,7 +197,7 @@ export function FileLibrary({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Keep it</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={busy} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction onClick={handleDelete} disabled={busy} className="bg-destructive text-white hover:bg-destructive/90">
               Remove
             </AlertDialogAction>
           </AlertDialogFooter>

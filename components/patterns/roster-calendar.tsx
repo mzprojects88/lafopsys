@@ -27,17 +27,17 @@ interface RosterCalendarProps {
 }
 
 const TONE_CLASSES: Record<NonNullable<CalendarEvent["tone"]>, string> = {
-  info: "border-blue-200 bg-blue-50 dark:border-blue-500/25 dark:bg-blue-500/10",
-  warning: "border-amber-200 bg-amber-50 dark:border-amber-500/25 dark:bg-amber-500/10",
-  positive: "border-emerald-200 bg-emerald-50 dark:border-emerald-500/25 dark:bg-emerald-500/10",
-  neutral: "border-slate-200 bg-slate-50 dark:border-slate-500/25 dark:bg-slate-500/10",
+  info: "border-primary/20 bg-accent",
+  warning: "border-warning/25 bg-warning/10",
+  positive: "border-success/25 bg-success/10",
+  neutral: "border-border bg-muted",
 };
 
 const DOT_CLASSES: Record<NonNullable<CalendarEvent["tone"]>, string> = {
-  info: "bg-blue-500",
-  warning: "bg-amber-500",
-  positive: "bg-emerald-500",
-  neutral: "bg-slate-400",
+  info: "bg-primary",
+  warning: "bg-warning",
+  positive: "bg-success",
+  neutral: "bg-muted-foreground",
 };
 
 export function RosterCalendar({ events = [], eventsFor, onEventClick, onDayClick, legend, className }: RosterCalendarProps) {
@@ -49,18 +49,18 @@ export function RosterCalendar({ events = [], eventsFor, onEventClick, onDayClic
   return (
     <div className={cn("flex flex-col gap-3", className)}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="flex items-center gap-2 text-sm font-semibold">
+        <span className="flex items-center gap-2 text-base font-medium text-foreground">
           <CalendarIcon className="size-4 text-muted-foreground" />
           {format(weekStart, "MMM d")} – {format(addDays(weekStart, 6), "MMM d, yyyy")}
         </span>
         <div className="flex gap-1.5">
-          <Button variant="outline" size="icon" className="size-8" onClick={() => setWeekStart((d) => addDays(d, -7))}>
+          <Button variant="outline" size="icon" aria-label="Previous week" onClick={() => setWeekStart((d) => addDays(d, -7))}>
             <ChevronLeft className="size-4" />
           </Button>
-          <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={() => setWeekStart(startOfWeek(parseISO(today), { weekStartsOn: 1 }))}>
+          <Button variant="outline" onClick={() => setWeekStart(startOfWeek(parseISO(today), { weekStartsOn: 1 }))}>
             Today
           </Button>
-          <Button variant="outline" size="icon" className="size-8" onClick={() => setWeekStart((d) => addDays(d, 7))}>
+          <Button variant="outline" size="icon" aria-label="Next week" onClick={() => setWeekStart((d) => addDays(d, 7))}>
             <ChevronRight className="size-4" />
           </Button>
         </div>
@@ -75,13 +75,13 @@ export function RosterCalendar({ events = [], eventsFor, onEventClick, onDayClic
             <div
               key={day.toISOString()}
               className={cn(
-                "flex min-h-44 flex-col gap-2 rounded-xl border bg-card p-2.5",
-                isToday && "border-primary/40 ring-1 ring-primary/20",
-                onDayClick && "cursor-pointer hover:bg-accent/30"
+                "flex min-h-44 flex-col gap-2 rounded-2xl border border-border bg-card p-2.5",
+                isToday && "border-primary/40 ring-3 ring-ring/15",
+                onDayClick && "cursor-pointer hover:bg-muted/60"
               )}
               onClick={() => onDayClick?.(dayIso)}
             >
-              <div className={cn("flex items-center justify-between px-0.5 text-xs", isToday && "font-semibold text-primary")}>
+              <div className={cn("flex items-center justify-between px-0.5 text-theme-xs text-muted-foreground", isToday && "font-semibold text-primary")}>
                 <span>{format(day, "EEE")}</span>
                 <span>{format(day, "d")}</span>
               </div>

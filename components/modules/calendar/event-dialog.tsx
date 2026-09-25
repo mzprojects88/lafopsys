@@ -233,7 +233,7 @@ function EventForm({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={saving}>Keep it</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={saving} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction onClick={handleDelete} disabled={saving} className="bg-destructive text-white hover:bg-destructive/90">
               Remove
             </AlertDialogAction>
           </AlertDialogFooter>

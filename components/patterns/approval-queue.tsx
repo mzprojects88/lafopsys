@@ -40,17 +40,16 @@ export function ApprovalQueue({
   return (
     <div className="flex flex-col gap-2">
       {items.map((item) => (
-        <Card key={item.id} className="flex-row items-center justify-between gap-3 p-3">
+        <Card key={item.id} className="flex-row items-center justify-between gap-3 px-5 py-3">
           <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="truncate text-sm font-medium">{item.title}</span>
-            {item.subtitle && <span className="truncate text-xs text-muted-foreground">{item.subtitle}</span>}
+            <span className="truncate text-theme-sm font-medium text-foreground">{item.title}</span>
+            {item.subtitle && <span className="truncate text-theme-xs text-muted-foreground">{item.subtitle}</span>}
             {item.meta}
           </div>
           <div className="flex shrink-0 gap-1.5">
             <Button
               size="sm"
-              variant="outline"
-              className="h-7 gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/30 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
+              className="gap-1"
               onClick={() => setDialog({ id: item.id, action: "approve" })}
             >
               <Check className="size-3.5" />
@@ -58,8 +57,8 @@ export function ApprovalQueue({
             </Button>
             <Button
               size="sm"
-              variant="outline"
-              className="h-7 gap-1 border-red-200 text-red-700 hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
+              variant="destructive"
+              className="gap-1"
               onClick={() => setDialog({ id: item.id, action: "reject" })}
             >
               <X className="size-3.5" />
