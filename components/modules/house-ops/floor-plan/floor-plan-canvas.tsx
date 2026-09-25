@@ -296,7 +296,7 @@ export function FloorPlanCanvas({
   };
 
   return (
-    <div className="relative overflow-hidden rounded-lg border bg-white">
+    <div className="relative overflow-hidden rounded-2xl border border-border bg-card">
       <svg ref={svgRef} viewBox={`0 0 ${PLAN_W} ${PLAN_H}`} className={cn("block h-auto w-full select-none", editing && "touch-none")}>
         <image href={PLAN_IMAGE} x={0} y={0} width={PLAN_W} height={PLAN_H} preserveAspectRatio="none" />
         <rect x={0} y={0} width={PLAN_W} height={PLAN_H} fill="transparent" onPointerDown={() => onSelect(null)} />
@@ -310,8 +310,9 @@ export function FloorPlanCanvas({
               key={room.id}
               pointerEvents="none"
               points={points}
-              fill={active ? "rgba(59,130,246,0.16)" : "rgba(59,130,246,0.05)"}
-              stroke={active ? "#2563eb" : "rgba(37,99,235,0.55)"}
+              style={{ fill: "var(--primary)", stroke: "var(--primary)" }}
+              fillOpacity={active ? 0.16 : 0.05}
+              strokeOpacity={active ? 1 : 0.55}
               strokeWidth={active ? 3 : 2}
               strokeDasharray="8 5"
             />

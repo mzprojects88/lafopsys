@@ -38,7 +38,7 @@ export function FloorPlanBedPicker({ value, onChange, options }: { value: string
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-xs text-muted-foreground">
+      <p className="text-theme-xs text-muted-foreground">
         {options.length ? "Tap a green bed on the plan." : "No bed is free."}
         {chosen ? (
           <>
@@ -88,7 +88,7 @@ export function FloorPlanBedPicker({ value, onChange, options }: { value: string
         </SelectContent>
       </Select>
       {unplaced > 0 ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-theme-xs text-muted-foreground">
           {unplaced} free {unplaced === 1 ? "bed is" : "beds are"} not drawn on the plan yet; pick {unplaced === 1 ? "it" : "them"} from the list.
         </p>
       ) : null}

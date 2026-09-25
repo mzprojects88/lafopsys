@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { Bus, CheckCircle2, Circle, Flag, Plus, Truck, X } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
+import { LoadingState } from "@/components/patterns/loading-state";
+import { StatusBadge } from "@/components/patterns/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,9 +71,11 @@ export default function TransportPage() {
       />
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-muted-foreground">Today · {formatDate(today)}</h2>
-        {todays.length === 0 ? (
-          <EmptyState icon={Bus} title={loading ? "Loading…" : "No pick-up today"} description={canBuild ? "Start one with New pick-up." : undefined} />
+        <h2 className="text-base font-medium text-foreground">Today · {formatDate(today)}</h2>
+        {todays.length === 0 && loading ? (
+          <LoadingState rows={2} />
+        ) : todays.length === 0 ? (
+          <EmptyState icon={Bus} title="No pick-up today" description={canBuild ? "Start one with New pick-up." : undefined} />
         ) : (
           todays.map((p) => <PickupCard key={p.id} pickup={p} mine={p.driverId === staffId} driverName={driverName(p.driverId)} canEdit={canEdit} canBuild={canBuild} />)
         )}
@@ -79,7 +83,7 @@ export default function TransportPage() {
 
       {upcoming.length > 0 && (
         <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold text-muted-foreground">Coming up</h2>
+          <h2 className="text-base font-medium text-foreground">Coming up</h2>
           {upcoming.map((p) => (
             <PickupCard key={p.id} pickup={p} mine={p.driverId === staffId} driverName={driverName(p.driverId)} canEdit={canEdit} canBuild={canBuild} />
           ))}
@@ -87,19 +91,21 @@ export default function TransportPage() {
       )}
 
       {earlier.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold text-muted-foreground">Earlier this week</h2>
-          {earlier.map((p) => (
-            <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
-              <span>
-                {formatDate(p.date, "EEE, MMM d")} · {p.departureTime} · {driverName(p.driverId)}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {p.manifest.filter((m) => m.boardedAt).length} of {p.manifest.length} on board · {STATUS_LABEL[p.status]}
-                {p.arrivedAt ? ` ${time(p.arrivedAt)}` : ""}
-              </span>
-            </div>
-          ))}
+        <section className="flex flex-col gap-3">
+          <h2 className="text-base font-medium text-foreground">Earlier this week</h2>
+          <div className="divide-y divide-border rounded-2xl border border-border bg-card">
+            {earlier.map((p) => (
+              <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
+                <span>
+                  {formatDate(p.date, "EEE, MMM d")} · {p.departureTime} · {driverName(p.driverId)}
+                </span>
+                <span className="text-theme-xs text-muted-foreground">
+                  {p.manifest.filter((m) => m.boardedAt).length} of {p.manifest.length} on board · {STATUS_LABEL[p.status]}
+                  {p.arrivedAt ? ` ${time(p.arrivedAt)}` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
@@ -133,13 +139,13 @@ function PickupCard({ pickup: p, mine, driverName, canEdit, canBuild }: { pickup
             Pick-up {p.departureTime}
             {mine && <Badge>Your trip</Badge>}
           </CardTitle>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-theme-xs text-muted-foreground">
             {formatDate(p.date, "EEE, MMM d")} · {driverName} · {boarded} of {p.manifest.length} on board
             {p.departedAt ? ` · left ${time(p.departedAt)}` : ""}
             {p.arrivedAt ? ` · arrived ${time(p.arrivedAt)}` : ""}
           </span>
         </div>
-        <Badge variant={p.status === "completed" ? "secondary" : "outline"}>{STATUS_LABEL[p.status]}</Badge>
+        <StatusBadge domain="trip" status={p.status} label={STATUS_LABEL[p.status]} />
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
         {p.manifest.map((m) => {
@@ -150,14 +156,14 @@ function PickupCard({ pickup: p, mine, driverName, canEdit, canBuild }: { pickup
                 type="button"
                 disabled={!canEdit || !open || busy === m.id}
                 onClick={() => run(m.id, () => setBoarded(m.id, !on))}
-                className="flex min-h-12 flex-1 items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors hover:bg-muted/50 disabled:opacity-80 aria-pressed:border-emerald-500/60 aria-pressed:bg-emerald-50 dark:aria-pressed:bg-emerald-500/10"
+                className="flex min-h-12 flex-1 items-center gap-3 rounded-lg border border-border px-3 py-2 text-left transition-colors hover:bg-muted/60 disabled:opacity-80 aria-pressed:border-success/30 aria-pressed:bg-success/12 dark:aria-pressed:bg-success/15"
                 aria-pressed={on}
                 aria-label={`${m.name}: ${on ? "on board, tap to undo" : "tap when on board"}`}
               >
-                {on ? <CheckCircle2 className="size-6 shrink-0 text-emerald-600" /> : <Circle className="size-6 shrink-0 text-muted-foreground" />}
+                {on ? <CheckCircle2 className="size-6 shrink-0 text-success-foreground dark:text-success" /> : <Circle className="size-6 shrink-0 text-muted-foreground" />}
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate font-medium">{m.name}</span>
-                  <span className="truncate text-xs text-muted-foreground">
+                  <span className="truncate text-theme-xs text-muted-foreground">
                     {m.carerName ? `with ${m.carerName}` : "carer not on the sheet"}
                     {on ? ` · on board ${time(m.boardedAt)}` : ""}
                   </span>
@@ -193,13 +199,13 @@ function PickupCard({ pickup: p, mine, driverName, canEdit, canBuild }: { pickup
         {canEdit && (
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {p.status === "scheduled" && (
-              <Button className="h-11 flex-1 sm:flex-none" disabled={boarded === 0 || busy === "go"} onClick={() => run("go", () => setStatus(p.id, "in_progress"), "On the road")}>
+              <Button size="lg" className="flex-1 sm:flex-none" disabled={boarded === 0 || busy === "go"} onClick={() => run("go", () => setStatus(p.id, "in_progress"), "On the road")}>
                 <Bus /> Depart with {boarded}
               </Button>
             )}
             {p.status === "in_progress" && (
               <>
-                <Button className="h-11 flex-1 sm:flex-none" disabled={busy === "go"} onClick={() => run("go", () => setStatus(p.id, "completed"), "Arrived at LAF House")}>
+                <Button size="lg" className="flex-1 sm:flex-none" disabled={busy === "go"} onClick={() => run("go", () => setStatus(p.id, "completed"), "Arrived at LAF House")}>
                   <Flag /> Arrived at LAF House
                 </Button>
                 <Button variant="ghost" size="sm" disabled={busy === "go"} onClick={() => run("go", () => setStatus(p.id, "scheduled"))}>
@@ -210,7 +216,7 @@ function PickupCard({ pickup: p, mine, driverName, canEdit, canBuild }: { pickup
           </div>
         )}
         {p.status === "completed" && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-theme-xs text-muted-foreground">
             Check the families in on the{" "}
             <Link href="/patients/house-sheet" className="text-primary hover:underline">
               House Sheet
@@ -308,11 +314,11 @@ function NewPickupDialog({ onClose }: { onClose: () => void }) {
           ) : (
             <div className="flex flex-col gap-1.5">
               {candidates.map((c) => (
-                <label key={c.id} className="flex min-h-10 items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                <label key={c.id} className="flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 py-2 text-theme-sm">
                   <Checkbox checked={picked.has(c.id)} onCheckedChange={(v) => toggle(c.id, !!v)} />
                   <span className="flex flex-col">
                     <span className="font-medium">{c.patientName}</span>
-                    {c.carerName && <span className="text-xs text-muted-foreground">with {c.carerName}</span>}
+                    {c.carerName && <span className="text-theme-xs text-muted-foreground">with {c.carerName}</span>}
                   </span>
                 </label>
               ))}

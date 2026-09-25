@@ -40,7 +40,7 @@ export function DetailPanelShell({ open, title, kicker, placeholder, onClose, ch
           </SheetHeader>
           <div className="mx-auto h-1 w-10 shrink-0 rounded-full bg-muted-foreground/30" aria-hidden />
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{kicker}</span>
+            <span className="text-theme-xs font-medium text-muted-foreground">{kicker}</span>
             <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close">
               <X className="size-4" />
             </Button>
@@ -52,11 +52,11 @@ export function DetailPanelShell({ open, title, kicker, placeholder, onClose, ch
   }
 
   return (
-    <aside className="flex flex-col gap-3 rounded-lg border p-4">
+    <aside className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5">
       {open ? (
         <>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{kicker}</span>
+            <span className="text-theme-xs font-medium text-muted-foreground">{kicker}</span>
             <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close">
               <X className="size-4" />
             </Button>
@@ -64,7 +64,7 @@ export function DetailPanelShell({ open, title, kicker, placeholder, onClose, ch
           {children}
         </>
       ) : (
-        <p className="text-sm text-muted-foreground">{placeholder}</p>
+        <p className="text-theme-sm text-muted-foreground">{placeholder}</p>
       )}
     </aside>
   );

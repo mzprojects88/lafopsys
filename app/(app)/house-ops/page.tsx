@@ -10,10 +10,10 @@ import { useMealServicesData } from "@/lib/hooks/use-meal-services-collection";
 import { todayIso } from "@/lib/utils/date";
 
 const SUB_NAV: ModuleSubNavItem[] = [
-  { href: "/house-ops/meals", label: "Meals", icon: Utensils, color: "green" },
-  { href: "/house-ops/trips", label: "Trips", icon: Car, color: "cyan" },
-  { href: "/house-ops/care-cart", label: "Care Cart", icon: HeartPulse, color: "rose" },
-  { href: "/house-ops/activity-center", label: "Activity Center", icon: Sparkles, color: "purple" },
+  { href: "/house-ops/meals", label: "Meals", icon: Utensils },
+  { href: "/house-ops/trips", label: "Trips", icon: Car },
+  { href: "/house-ops/care-cart", label: "Care Cart", icon: HeartPulse },
+  { href: "/house-ops/activity-center", label: "Activity Center", icon: Sparkles },
 ];
 
 export default function HouseOpsPage() {
@@ -41,7 +41,6 @@ export default function HouseOpsPage() {
           label="In-House Now"
           value={today?.inHouse ?? (loading ? "…" : "—")}
           icon={Users}
-          color="orange"
           deltaPct={
             today && yesterday && yesterday.inHouse > 0
               ? Math.round(((today.inHouse - yesterday.inHouse) / yesterday.inHouse) * 100)
@@ -53,12 +52,11 @@ export default function HouseOpsPage() {
           label="Units Occupied"
           value={today?.unitsOccupied !== undefined ? `${today.unitsOccupied} / ${today.totalUnits}` : "—"}
           icon={Home}
-          color="blue"
         />
-        <KpiCard label="Units Shared" value={today?.unitsShared ?? "—"} icon={Share2} color="purple" />
-        <KpiCard label="Utilization" value={utilization !== undefined ? `${utilization}%` : "—"} icon={Percent} color="amber" />
-        <KpiCard label="Trips Today" value={todaysTrips} icon={Car} color="cyan" />
-        <KpiCard label="Meal Services Today" value={todaysMeals} icon={Utensils} color="green" />
+        <KpiCard label="Units Shared" value={today?.unitsShared ?? "—"} icon={Share2} />
+        <KpiCard label="Utilization" value={utilization !== undefined ? `${utilization}%` : "—"} icon={Percent} />
+        <KpiCard label="Trips Today" value={todaysTrips} icon={Car} />
+        <KpiCard label="Meal Services Today" value={todaysMeals} icon={Utensils} />
       </KpiGrid>
     </div>
   );

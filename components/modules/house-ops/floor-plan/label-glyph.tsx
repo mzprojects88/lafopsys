@@ -3,6 +3,7 @@
 import * as React from "react";
 import type { FloorPlanLabel } from "@/lib/types/house-ops";
 import { PLAN_H, PLAN_W } from "@/lib/utils/floor-plan-geometry";
+import { PLAN_INK, PLAN_PAPER } from "./bed-view";
 
 interface LabelGlyphProps {
   label: FloorPlanLabel;
@@ -57,7 +58,7 @@ export const LabelGlyph = React.forwardRef<SVGGElement, LabelGlyphProps>(functio
           height={boxH}
           rx={4}
           fill="none"
-          stroke="#0f172a"
+          stroke={PLAN_INK}
           strokeWidth={2}
           strokeDasharray={dirty ? "6 4" : undefined}
         />
@@ -67,8 +68,8 @@ export const LabelGlyph = React.forwardRef<SVGGElement, LabelGlyphProps>(functio
         dominantBaseline="middle"
         fontSize={label.fontSize}
         fontWeight={700}
-        fill="#0f172a"
-        stroke="#ffffff"
+        fill={PLAN_INK}
+        stroke={PLAN_PAPER}
         strokeWidth={Math.max(2, label.fontSize / 5)}
         strokeLinejoin="round"
         paintOrder="stroke"

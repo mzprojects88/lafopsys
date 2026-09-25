@@ -120,8 +120,8 @@ export function BedDetailPanel({
       )}
 
       {canEdit && editing && (
-        <div className="flex flex-col gap-3 border-t pt-3">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Layout</span>
+        <div className="flex flex-col gap-3 border-t border-border pt-3">
+          <span className="text-theme-xs font-medium text-muted-foreground">Layout</span>
           <div className="flex items-end gap-2">
             <Field className="flex-1">
               <FieldLabel htmlFor="bed-rotation">Rotation (°)</FieldLabel>
@@ -206,7 +206,7 @@ export function BedDetailPanel({
               </SelectContent>
             </Select>
             {bed.occupants.length > bed.capacity && (
-              <span className="text-xs text-amber-700">More people are in this bed than it now holds; it shows as occupied.</span>
+              <span className="text-theme-xs text-warning-foreground dark:text-warning">More people are in this bed than it now holds; it shows as occupied.</span>
             )}
           </Field>
           <Button variant="destructive" size="sm" onClick={() => onRetire(bed)} className="self-start">

@@ -298,7 +298,7 @@ export function FloorPlanView() {
         />
       </div>
 
-      {!loading && beds.length === 0 && <p className="text-sm text-muted-foreground">No beds on record yet.</p>}
+      {!loading && beds.length === 0 && <p className="text-theme-sm text-muted-foreground">No beds on record yet.</p>}
 
       <UnplacedTray
         beds={unplaced}

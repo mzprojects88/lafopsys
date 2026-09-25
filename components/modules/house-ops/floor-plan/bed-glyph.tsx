@@ -4,7 +4,7 @@ import * as React from "react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { PLAN_H, PLAN_W } from "@/lib/utils/floor-plan-geometry";
 import type { BedView } from "./bed-view";
-import { STATUS_FILL, STATUS_STROKE } from "./bed-view";
+import { PLAN_INK, PLAN_PAPER, STATUS_FILL, STATUS_STROKE } from "./bed-view";
 import { BedSummary } from "./bed-summary";
 
 interface BedGlyphProps {
@@ -68,8 +68,7 @@ export const BedGlyph = React.forwardRef<SVGGElement, BedGlyphProps>(function Be
         width={w}
         height={h}
         rx={Math.min(8, small / 6)}
-        fill={STATUS_FILL[bed.bedStatus]}
-        stroke={selected ? "#0f172a" : STATUS_STROKE[bed.bedStatus]}
+        style={{ fill: STATUS_FILL[bed.bedStatus], stroke: selected ? PLAN_INK : STATUS_STROKE[bed.bedStatus] }}
         strokeWidth={selected ? 4 : 2.5}
         strokeDasharray={bed.dirty && editing ? "8 5" : undefined}
       />
@@ -80,36 +79,36 @@ export const BedGlyph = React.forwardRef<SVGGElement, BedGlyphProps>(function Be
         width={w - 2 * inset}
         height={h * 0.2}
         rx={Math.min(5, inset)}
-        fill="#ffffff"
+        fill={PLAN_PAPER}
         fillOpacity={0.9}
-        stroke={STATUS_STROKE[bed.bedStatus]}
+        style={{ stroke: STATUS_STROKE[bed.bedStatus] }}
         strokeWidth={1}
       />
       <g transform={`rotate(${-bed.rotationDeg})`}>
-        <text textAnchor="middle" dominantBaseline="middle" fontSize={codeSize} fontWeight={700} fill="#0f172a" y={subtitle ? -codeSize * 0.3 : 2}>
+        <text textAnchor="middle" dominantBaseline="middle" fontSize={codeSize} fontWeight={700} fill={PLAN_INK} y={subtitle ? -codeSize * 0.3 : 2}>
           {bed.code}
         </text>
         {subtitle && (
-          <text textAnchor="middle" dominantBaseline="middle" fontSize={12} fontWeight={500} fill="#1e3a8a" y={codeSize * 0.7}>
+          <text textAnchor="middle" dominantBaseline="middle" fontSize={12} fontWeight={500} fill={PLAN_INK} y={codeSize * 0.7}>
             {subtitle.length > 12 ? `${subtitle.slice(0, 11)}…` : subtitle}
           </text>
         )}
       </g>
       {bed.status !== "available" && (
         <g transform={`translate(${w / 2 - badgeR - 2} ${h / 2 - badgeR - 2})`}>
-          <circle r={badgeR} fill={STATUS_STROKE[bed.bedStatus]} />
-          <text textAnchor="middle" dominantBaseline="middle" fontSize={badgeR * 1.2} fontWeight={700} fill="#ffffff" y={1}>
+          <circle r={badgeR} style={{ fill: STATUS_STROKE[bed.bedStatus] }} />
+          <text textAnchor="middle" dominantBaseline="middle" fontSize={badgeR * 1.2} fontWeight={700} fill={PLAN_PAPER} y={1}>
             !
           </text>
         </g>
       )}
       {bed.occupants.length > 0 && bed.status === "available" && (
-        <circle cx={w / 2 - badgeR - 2} cy={h / 2 - badgeR - 2} r={badgeR * 0.6} fill={STATUS_STROKE.occupied} />
+        <circle cx={w / 2 - badgeR - 2} cy={h / 2 - badgeR - 2} r={badgeR * 0.6} style={{ fill: STATUS_STROKE.occupied }} />
       )}
       {editing && selected && (
         <g data-handle="resize" transform={`translate(${w / 2} ${h / 2})`} className="cursor-nwse-resize">
           <rect x={-12} y={-12} width={24} height={24} fill="transparent" />
-          <rect x={-7} y={-7} width={14} height={14} rx={2} fill="#ffffff" stroke="#0f172a" strokeWidth={2} />
+          <rect x={-7} y={-7} width={14} height={14} rx={2} fill={PLAN_PAPER} stroke={PLAN_INK} strokeWidth={2} />
         </g>
       )}
     </g>

@@ -23,7 +23,7 @@ function buildColumns(volunteers: Volunteer[]): ColumnDef<CareCartLog>[] {
         row.original.source ? (
           <Badge variant="secondary">{row.original.source}</Badge>
         ) : (
-          <span className="text-xs text-muted-foreground">Unknown</span>
+          <span className="text-theme-xs text-muted-foreground">Unknown</span>
         ),
     },
     {

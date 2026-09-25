@@ -71,13 +71,13 @@ export default function MealsPage() {
       header: "Exceptions",
       cell: ({ row }) =>
         row.original.exceptions.length === 0 ? (
-          <span className="text-xs text-muted-foreground">None</span>
+          <span className="text-theme-xs text-muted-foreground">None</span>
         ) : (
           <div className="flex flex-wrap gap-1">
             {row.original.exceptions.map((ex, i) => {
               const p = patients.find((pt) => pt.id === ex.patientId);
               return (
-                <Badge key={i} variant="secondary" className="text-[10px]">
+                <Badge key={i} variant="secondary">
                   {p?.firstName ?? "Unknown"} — {ex.reason}
                 </Badge>
               );
@@ -92,7 +92,7 @@ export default function MealsPage() {
         <Button
           size="sm"
           variant="outline"
-          className="h-7 text-xs"
+         
           onClick={(e) => {
             e.stopPropagation();
             setExceptionTarget(row.original);

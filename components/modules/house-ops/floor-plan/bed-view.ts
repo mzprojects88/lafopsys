@@ -21,21 +21,29 @@ export interface BedView extends Unit {
   holds: BedHold[];
 }
 
-export const STATUS_FILL: Record<BedStatus, string> = {
-  available: "#d1fae5",
-  occupied: "#dbeafe",
-  reserved: "#ede9fe",
-  maintenance: "#fef3c7",
-  blocked: "#fee2e2",
+/**
+ * Bed states are data colours (DESIGN.md): one token per state, so they
+ * follow the theme. Reserved has no status tone of its own (warning is
+ * maintenance), so it takes the violet chart series it always had.
+ */
+export const STATUS_STROKE: Record<BedStatus, string> = {
+  available: "var(--success)",
+  occupied: "var(--primary)",
+  reserved: "var(--chart-4)",
+  maintenance: "var(--warning)",
+  blocked: "var(--destructive)",
 };
 
-export const STATUS_STROKE: Record<BedStatus, string> = {
-  available: "#10b981",
-  occupied: "#3b82f6",
-  reserved: "#8b5cf6",
-  maintenance: "#f59e0b",
-  blocked: "#ef4444",
-};
+/** The plan image is opaque white paper in both themes, so the ink drawn on it
+ * is fixed like the print pages' (DESIGN.md) -- theme tokens would go white-on-white in dark mode. */
+export const PLAN_INK = "#1d2939"; // design text colour, fixed: drawn on the plan's paper
+export const PLAN_PAPER = "#ffffff"; // the plan image's own paper, fixed
+
+/** The same colours as an opaque wash on the plan's paper: glyphs, legend
+ * swatches and unplaced chips all use it, so they match exactly. */
+export const STATUS_FILL = Object.fromEntries(
+  Object.entries(STATUS_STROKE).map(([k, c]) => [k, `color-mix(in oklab, ${c} 18%, ${PLAN_PAPER})`])
+) as Record<BedStatus, string>;
 
 export const STATUS_LABEL: Record<BedStatus, string> = {
   available: "Available",

@@ -47,8 +47,8 @@ export function LabelDetailPanel({ label, editing, dirty, onPatch, onRotate, onD
       <div className="flex items-start gap-2">
         <Tag className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <div className="flex flex-col">
-          <span className="text-base font-semibold">{label.text}</span>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-base font-medium text-foreground">{label.text}</span>
+          <span className="text-theme-xs text-muted-foreground">
             Label{dirty ? " · unsaved" : ""}
           </span>
         </div>

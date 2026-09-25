@@ -143,11 +143,11 @@ export default function TripsPage() {
                 <Field>
                   <FieldLabel>Passengers (currently in-house)</FieldLabel>
                   {inHousePatients.length === 0 ? (
-                    <p className="text-xs italic text-muted-foreground">No patients currently in-house.</p>
+                    <p className="text-theme-xs italic text-muted-foreground">No patients currently in-house.</p>
                   ) : (
-                    <div className="flex max-h-40 flex-col gap-1.5 overflow-y-auto rounded-md border p-2">
+                    <div className="flex max-h-40 flex-col gap-1.5 overflow-y-auto rounded-lg border border-border p-2">
                       {inHousePatients.map((p) => (
-                        <label key={p.id} className="flex items-center gap-2 text-sm">
+                        <label key={p.id} className="flex items-center gap-2 text-theme-sm">
                           <Checkbox
                             checked={passengerIds.includes(p.id)}
                             onCheckedChange={(v) => togglePassenger(p.id, !!v)}

@@ -36,7 +36,7 @@ export function FloorPlanToolbar({
   }
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs text-muted-foreground">Drag to move · corner handle resizes · R rotates · arrows nudge · Delete removes</span>
+      <span className="text-theme-xs text-muted-foreground">Drag to move · corner handle resizes · R rotates · arrows nudge · Delete removes</span>
       <Button variant="outline" size="sm" onClick={onAddBed} disabled={saving}>
         <Plus className="size-3.5" /> Add bed
       </Button>
