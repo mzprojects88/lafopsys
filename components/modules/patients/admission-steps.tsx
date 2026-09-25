@@ -6,7 +6,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import { arrivalGroup, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
-import { markReservationUsed, type BedReservation } from "@/lib/hooks/use-bed-reservations";
+import { closeReservation, type BedReservation } from "@/lib/hooks/use-bed-reservations";
 import { recordGroupOrientation, useGroupOrientations } from "@/lib/hooks/use-group-orientations";
 import { useOrientationTopics } from "@/lib/hooks/use-orientation-topics";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
@@ -161,6 +161,8 @@ export async function finishAdmission(input: {
   groupTalkExists: boolean;
   arrived: { rideId: string | null; tripId: string | null } | null;
   hold: BedReservation | undefined;
+  /** The bed they were checked into. */
+  unitId: string;
 }): Promise<string[]> {
   const ops = createClient().schema("ops");
   const problems: string[] = [];
@@ -192,6 +194,6 @@ export async function finishAdmission(input: {
       await recordGroupOrientation(target).catch((e: Error) => problems.push(`the group's house rules (${e.message})`));
     }
   }
-  if (input.hold) await markReservationUsed(input.hold.id, input.stayId);
+  if (input.hold) await closeReservation(input.hold, input.stayId, input.unitId);
   return problems;
 }

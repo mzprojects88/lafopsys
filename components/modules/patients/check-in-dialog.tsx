@@ -205,6 +205,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
         groupTalkExists: !!rules.groupTalk,
         arrived: arrived.ok ? arrived : null,
         hold,
+        unitId: bed,
       }))
     );
     setSubmitting(false);
@@ -254,7 +255,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
             <FloorPlanBedPicker value={bed} onChange={setUnitId} options={beds} />
             {hold ? (
               <FieldDescription>
-                A bed was reserved for them{hold.unitId === bed ? "" : " (another one is chosen now)"}. Confirm it, or tap another green bed.
+                A bed was reserved for them{hold.unitId === bed ? "" : " (another bed is chosen, so the reserved one is freed)"}. Staying on it confirms it; tap another green bed if not.
               </FieldDescription>
             ) : null}
           </Field>

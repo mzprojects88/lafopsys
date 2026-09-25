@@ -3,12 +3,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { BedDouble, BookmarkPlus, Check, DoorOpen, FilePlus2, LogOut, MoonStar } from "lucide-react";
+import { ArrowLeftRight, BedDouble, BookmarkPlus, Check, DoorOpen, FilePlus2, LogOut, MoonStar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useBedReservations } from "@/lib/hooks/use-bed-reservations";
 import { FloorPlanBedPicker } from "@/components/modules/house-ops/floor-plan/floor-plan-bed-picker";
 import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
@@ -53,8 +54,10 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const [discharge, setDischarge] = React.useState<{ stay: Stay; name: string; on: string } | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   // A bed held before the child arrives (user, 2026-09-25; 0065).
-  const { reservations, holdFor, reserve, release } = useBedReservations();
+  const { reservations, holdFor, reserve, release, replace } = useBedReservations();
   const [reserving, setReserving] = React.useState<{ row: HouseSheetPerson; patientId: string | null } | null>(null);
+  // The reserved child is not taking the bed: a social worker gives it to another (0066).
+  const [replacing, setReplacing] = React.useState<{ holdId: string; bed: string; from: string } | null>(null);
   // "Move for tonight" picks the new bed on the floor plan (user, 2026-09-25).
   const [moving, setMoving] = React.useState<{ stayId: string; name: string; from: string; options: AssignableBed[] } | null>(null);
 
@@ -149,6 +152,15 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                             Release
                           </button>
                         ) : null}
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            className="ml-2 text-muted-foreground underline hover:text-foreground"
+                            onClick={() => setReplacing({ holdId: hold.id, bed: units.find((u) => u.id === hold.unitId)?.code ?? "?", from: p.patientName })}
+                          >
+                            Replace
+                          </button>
+                        ) : null}
                       </span>
                     ) : null}
                   </div>
@@ -160,7 +172,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                   {canEdit ? (
                     patient ? (
                       <Button size="sm" className="h-7 gap-1" onClick={() => setCheckIn({ patient, sheetRow: p })}>
-                        <BedDouble className="size-3.5" /> Check in
+                        <BedDouble className="size-3.5" /> {hold ? `Confirm bed ${units.find((u) => u.id === hold.unitId)?.code ?? ""}` : "Check in"}
                       </Button>
                     ) : p.matchStatus === "suggested" && p.matchedPatientId ? (
                       <Button
@@ -309,6 +321,20 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
           }}
         />
       ) : null}
+      {replacing ? (
+        <ReplaceHoldDialog
+          bed={replacing.bed}
+          from={replacing.from}
+          candidates={arrivals.filter((a) => !holdFor(settledPatientId(a), a.id))}
+          onClose={() => setReplacing(null)}
+          onReplace={async (row) => {
+            const r = await replace(replacing.holdId, { patientId: settledPatientId(row), sheetPersonId: row.id, reservedFor: row.patientName });
+            if (!r.ok) return toast.error(r.error);
+            toast.success(`Bed ${replacing.bed} is now held for ${row.patientName}. Confirm it at their check-in.`);
+            setReplacing(null);
+          }}
+        />
+      ) : null}
       <CheckInDialog key={checkIn?.sheetRow.id} target={checkIn} onOpenChange={(open) => !open && setCheckIn(null)} />
       <DischargeDialog
         stay={discharge?.stay ?? null}
@@ -406,6 +432,62 @@ function ReserveBedDialog({
             }}
           >
             {busy ? "Reserving…" : "Reserve bed"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Replacement: the reserved child is not taking the bed; it is held for someone else. */
+function ReplaceHoldDialog({
+  bed,
+  from,
+  candidates,
+  onClose,
+  onReplace,
+}: {
+  bed: string;
+  from: string;
+  candidates: HouseSheetPerson[];
+  onClose: () => void;
+  onReplace: (row: HouseSheetPerson) => Promise<unknown>;
+}) {
+  const [rowId, setRowId] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const row = candidates.find((c) => c.id === rowId);
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Replace on bed {bed}</DialogTitle>
+          <DialogDescription>{from} will not stay on this bed. Who takes it instead? Their check-in confirms it.</DialogDescription>
+        </DialogHeader>
+        <Select value={rowId} onValueChange={setRowId}>
+          <SelectTrigger className="w-full" aria-label="Replacement">
+            <SelectValue placeholder={candidates.length ? "Choose who takes the bed" : "Nobody else is waiting for a bed"} />
+          </SelectTrigger>
+          <SelectContent>
+            {candidates.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.patientName}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!row || busy}
+            onClick={async () => {
+              setBusy(true);
+              await onReplace(row!);
+              setBusy(false);
+            }}
+          >
+            <ArrowLeftRight className="size-3.5" /> {busy ? "Replacing…" : "Replace"}
           </Button>
         </DialogFooter>
       </DialogContent>

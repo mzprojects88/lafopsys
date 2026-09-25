@@ -229,6 +229,7 @@ function NewReferralForm() {
           groupTalkExists: !!rules.groupTalk,
           arrived: arrived.ok ? arrived : null,
           hold,
+          unitId,
         }))
       );
       if (problems.length) toast.warning(`Admitted, but not saved: ${problems.join("; ")}.`);
@@ -539,7 +540,7 @@ function NewReferralForm() {
                   <ArrivalFields value={arrival} onChange={setArrival} arrivalDate={arrivedOn} />
                   {hold ? (
                     <p className="text-xs text-muted-foreground">
-                      A bed was reserved for them{hold.unitId === unitId ? "" : " (another one is chosen now)"}. Confirm it, or tap another green bed.
+                      A bed was reserved for them{hold.unitId === unitId ? "" : " (another bed is chosen, so the reserved one is freed)"}. Staying on it confirms it; tap another green bed if not.
                     </p>
                   ) : null}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

@@ -4,6 +4,7 @@
 // scripts/rls/floor-plan-policy-matrix.mjs; RLS_ALLOW_PROD=1 acknowledges
 // that lafopsys has one database.
 //
+// 0066 (replacement) scenarios need 0066 applied, or passed as a pre-flight file.
 // Usage: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/bed-reservation-matrix.mjs
 // Pre-flight: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/bed-reservation-matrix.mjs supabase/migrations/0065_bed_reservations_and_group_orientation.sql
 import { Client } from "pg";
@@ -102,15 +103,22 @@ const rows = (n) => (r) => r.ok && r.rows === n;
 const value = (field, v) => (r) => r.ok && r.rows === 1 && r.data[0][field] === v;
 
 const q = (sql, params) => () => client.query(sql, params);
+const last = (...steps) => async () => {
+  let r;
+  for (const s of steps) r = await client.query(s.sql, s.params);
+  return r;
+};
 const PREFLIGHT = process.argv.slice(2);
 
 // Fixtures: a child on file, a free bed, a LAF HOPE trip today.
 const KID = "00000000-0000-4000-8000-00000000d065";
+const KID2 = "00000000-0000-4000-8000-00000000d066";
 const TRIP = "00000000-0000-4000-8000-00000000e065";
 const TODAY = "(now() at time zone 'Asia/Manila')::date";
 const seed = async () => {
   await client.query("update ops.units set status = 'available', lock_reason = null where id = 'unit-B1'");
   await client.query(`insert into ops.patients (id, first_name, last_name, sex, status, admitted_at) values ($1, 'Held', 'Bed', 'M', 'ongoing', current_date)`, [KID]);
+  await client.query(`insert into ops.patients (id, first_name, last_name, sex, status, admitted_at) values ($1, 'Other', 'Kid', 'F', 'ongoing', current_date)`, [KID2]);
   await client.query(
     `insert into ops.trips (id, date, direction, vehicle, departure_time, status) values ($1, ${TODAY}, 'from_hospital', 'LAF HOPE Transport', '07:30', 'scheduled')`,
     [TRIP]
@@ -166,6 +174,20 @@ async function main() {
   await scenario(ids, "drivers do not read it (Patients only)", "driver",
     withSeed(() => client.query(`insert into ops.group_orientations (trip_id) values ('${TRIP}')`)),
     q("select id from ops.group_orientations where trip_id = $1", [TRIP]), rows(0));
+
+  // ---- 0066: confirmation or replacement ----
+  const replaceSql = `select ops.replace_bed_reservation((select id from ops.bed_reservations where patient_id = '${KID}' and status = 'active'), '${KID2}', null, 'Other Kid') as id`;
+  await scenario(ids, "a social worker gives a reserved bed to another child", "social_worker", withHold,
+    last({ sql: replaceSql },
+      { sql: `select o.status = 'replaced' and o.replaced_by = n.id and n.status = 'active' and n.unit_id = o.unit_id and n.created_by = auth.uid() as ok
+              from ops.bed_reservations o join ops.bed_reservations n on n.id = o.replaced_by where o.patient_id = $1`, params: [KID] }),
+    value("ok", true));
+  await scenario(ids, "house staff cannot replace", "house_staff", withHold, q(replaceSql), (r) => !r.ok);
+  await scenario(ids, "a closed hold cannot be replaced", "social_worker", withSeed(() => hold("released")),
+    q(`select ops.replace_bed_reservation((select id from ops.bed_reservations where patient_id = '${KID}'), '${KID2}', null, 'Other Kid')`), (r) => !r.ok && r.code === "P0002");
+  await scenario(ids, "replaced always names who took the bed", "admin", withHold,
+    asOwner(`update ops.bed_reservations set status = 'replaced', closed_at = now() where patient_id = '${KID}'`), checkFailed);
+  await scenario(ids, "drivers cannot replace", "driver", withHold, q(replaceSql), (r) => !r.ok);
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();

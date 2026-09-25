@@ -80,16 +80,32 @@ export function useBedReservations() {
     return { ok: true };
   }
 
-  return { reservations, loading, holdFor, reserve, release };
+  /** Replacement (0066): the bed goes to another child, held for them to confirm at their check-in. */
+  async function replace(id: string, to: { patientId: string | null; sheetPersonId: string | null; reservedFor: string }): Promise<MutationResult> {
+    const { error } = await createClient().schema("ops").rpc("replace_bed_reservation", {
+      p_id: id,
+      p_patient_id: to.patientId,
+      p_sheet_person_id: to.sheetPersonId,
+      p_reserved_for: to.reservedFor,
+    });
+    if (error) return { ok: false, error: /one_per/.test(error.message) ? `A bed is already held for ${to.reservedFor}; release it first.` : error.message };
+    await bedReservationsStore.refetch();
+    return { ok: true };
+  }
+
+  return { reservations, loading, holdFor, reserve, release, replace };
 }
 
-/** The child arrived and was checked in: the hold becomes their stay. */
-export async function markReservationUsed(id: string, stayId: string): Promise<void> {
+/**
+ * The child was checked in. On the held bed = confirmation ("used"); on
+ * another bed, the held one is freed ("released"). Either way it names the stay.
+ */
+export async function closeReservation(hold: BedHold, stayId: string, unitId: string): Promise<void> {
   await createClient()
     .schema("ops")
     .from("bed_reservations")
-    .update({ status: "used", used_stay_id: stayId, closed_at: new Date().toISOString() })
-    .eq("id", id)
+    .update({ status: hold.unitId === unitId ? "used" : "released", used_stay_id: stayId, closed_at: new Date().toISOString() })
+    .eq("id", hold.id)
     .eq("status", "active");
   await bedReservationsStore.refetch();
 }
