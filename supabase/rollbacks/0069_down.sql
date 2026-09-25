@@ -1,0 +1,21 @@
+-- Undo 0069: today's rooms, beds and labels, for the old drawing (public/floor-plan/actual-floor-plan.png, 1087 x 1447; restore it and PLAN_W/PLAN_H/PLAN_IMAGE with it).
+update ops.rooms set name = '__renaming_' || id;
+update ops.rooms set name = 'Room 1', sort_order = 1, bounds = '[[0.34, 0.75], [0.906, 0.75], [0.906, 0.84], [0.685, 0.84], [0.685, 0.94], [0.34, 0.94]]'::jsonb where id = 'room-1';
+update ops.rooms set name = 'Room 2', sort_order = 2, bounds = '[[0.529, 0.477], [0.906, 0.477], [0.906, 0.674], [0.681, 0.674], [0.681, 0.743], [0.529, 0.743]]'::jsonb where id = 'room-2';
+update ops.rooms set name = 'Room 3', sort_order = 3, bounds = '[[0.184, 0.3], [0.704, 0.3], [0.704, 0.47], [0.184, 0.47]]'::jsonb where id = 'room-3';
+update ops.units set x = 0.23551, y = 0.35936, w = 0.08004, h = 0.11057, rotation_deg = 0 where id = 'unit-B1';
+update ops.units set x = 0.44894, y = 0.77954, w = 0.08004, h = 0.11057, rotation_deg = 90 where id = 'unit-B10';
+update ops.units set x = 0.57406, y = 0.80719, w = 0.08004, h = 0.11057, rotation_deg = 0 where id = 'unit-B11';
+update ops.units set x = 0.59614, y = 0.90117, w = 0.08004, h = 0.11057, rotation_deg = 90 where id = 'unit-B12';
+update ops.units set x = 0.80221, y = 0.78507, w = 0.08004, h = 0.11057, rotation_deg = 90 where id = 'unit-B13';
+update ops.units set x = 0.38270, y = 0.33725, w = 0.08004, h = 0.11057, rotation_deg = 270 where id = 'unit-B2';
+update ops.units set x = 0.60350, y = 0.33725, w = 0.08004, h = 0.11057, rotation_deg = 90 where id = 'unit-B3';
+update ops.units set x = 0.60350, y = 0.42571, w = 0.08004, h = 0.11057, rotation_deg = 90 where id = 'unit-B4';
+update ops.units set x = 0.66237, y = 0.51417, w = 0.08004, h = 0.11057, rotation_deg = 270 where id = 'unit-B5';
+update ops.units set x = 0.81693, y = 0.51417, w = 0.08004, h = 0.11057, rotation_deg = 90 where id = 'unit-B6';
+update ops.units set x = 0.85373, y = 0.60815, w = 0.08004, h = 0.11057, rotation_deg = 0 where id = 'unit-B7';
+update ops.units set x = 0.73597, y = 0.63580, w = 0.08004, h = 0.11057, rotation_deg = 270 where id = 'unit-B8';
+update ops.units set x = 0.57406, y = 0.63027, w = 0.08004, h = 0.11057, rotation_deg = 0 where id = 'unit-B9';
+update ops.floor_plan_labels set x = 0.42686, y = 0.44782, rotation_deg = 0 where id = '95175bf2-4cc1-487f-b4a6-333e5d31cfd3';
+update ops.floor_plan_labels set x = 0.70653, y = 0.57498, rotation_deg = 0 where id = '704ede36-dc94-407f-aae4-ebd8c13558a6';
+update ops.floor_plan_labels set x = 0.42686, y = 0.87353, rotation_deg = 0 where id = 'c2ae7c53-1a93-46f0-9860-4103c043a202';

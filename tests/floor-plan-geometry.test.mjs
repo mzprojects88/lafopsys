@@ -153,7 +153,7 @@ describe("resizeFromPointer", () => {
   });
   it("places the handle at the bottom-right corner", () => {
     const p = resizeHandleLocal(0.08, 0.12);
-    assert.ok(Math.abs(p.x - 43.48) < 0.01 && Math.abs(p.y - 86.82) < 0.01);
+    assert.ok(Math.abs(p.x - (0.08 * PLAN_W) / 2) < 0.01 && Math.abs(p.y - (0.12 * PLAN_H) / 2) < 0.01);
     assert.equal(clampSize(0.001), BED_MIN_SIZE);
     assert.equal(clampSize(0.9), BED_MAX_SIZE);
   });

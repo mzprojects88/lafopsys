@@ -20,7 +20,7 @@ import type { BedView } from "./bed-view";
 import { BedGlyph } from "./bed-glyph";
 import { LabelGlyph } from "./label-glyph";
 
-export const PLAN_IMAGE = "/floor-plan/actual-floor-plan.png";
+export const PLAN_IMAGE = "/floor-plan/second-floor-plan.png";
 
 export type Selection = { kind: "bed"; id: string } | { kind: "label"; id: string } | null;
 

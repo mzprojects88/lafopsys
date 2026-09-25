@@ -6,9 +6,9 @@
  * file directly under node --test.
  */
 
-/** The plan image's pixel size (public/floor-plan/actual-floor-plan.png). */
-export const PLAN_W = 1087;
-export const PLAN_H = 1447;
+/** The plan image's pixel size (public/floor-plan/second-floor-plan.png, the 2nd-floor drawing of 2026-09-25). */
+export const PLAN_W = 2000;
+export const PLAN_H = 1414;
 
 /** Snap grid for dragging and nudging, in plan pixels. */
 export const GRID_PX = 8;
@@ -112,7 +112,8 @@ export function nextBedCode(codes: string[]): string {
 
 export const BED_MIN_SIZE = 0.03; // normalised; ~33 x 43 plan px
 export const BED_MAX_SIZE = 0.4;
-export const BED_DEFAULT_SIZE = { w: 0.08, h: 0.12 } as const;
+// ~0.9 x 1.7 m at this drawing's scale (a door is ~90 px wide).
+export const BED_DEFAULT_SIZE = { w: 0.065, h: 0.17 } as const;
 
 export function clampSize(v: number): number {
   return Math.min(BED_MAX_SIZE, Math.max(BED_MIN_SIZE, v));
