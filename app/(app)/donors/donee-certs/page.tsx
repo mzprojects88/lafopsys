@@ -62,18 +62,18 @@ export default function DoneeCertsPage() {
 
             return (
               <Card key={cert.id}>
-                <CardContent className="flex flex-col gap-4 p-4">
+                <CardContent className="flex flex-col gap-4 p-5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-col">
-                      <span className="text-sm font-medium">{cert.controlNumber} — {donor?.name}</span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-theme-sm font-medium">{cert.controlNumber} — {donor?.name}</span>
+                      <span className="text-theme-xs text-muted-foreground">
                         {donation?.itemDescription ?? "Cash gift"} · requested {ageDays}d ago
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{STAGE_LABELS[stageIdx]}</Badge>
                       {stageIdx < STAGES.length - 1 && (
-                        <Button size="sm" className="h-7 text-xs" onClick={() => advance(cert)}>
+                        <Button size="sm" onClick={() => advance(cert)}>
                           Mark {STAGE_LABELS[stageIdx + 1]}
                         </Button>
                       )}
@@ -87,27 +87,27 @@ export default function DoneeCertsPage() {
 
           {inKindDonationsNeedingCert.length > 0 && (
             <>
-              <span className="mt-2 text-sm font-semibold text-muted-foreground">
+              <h2 className="mt-2 text-base font-medium text-foreground">
                 In-kind donations without a certificate yet ({inKindDonationsNeedingCert.length})
-              </span>
-              {inKindDonationsNeedingCert.slice(0, 20).map((d) => {
-                const donor = donors.find((dn) => dn.id === d.donorId);
-                return (
-                  <Card key={d.id}>
-                    <CardContent className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
+              </h2>
+              <div className="flex flex-col divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
+                {inKindDonationsNeedingCert.slice(0, 20).map((d) => {
+                  const donor = donors.find((dn) => dn.id === d.donorId);
+                  return (
+                    <div key={d.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm hover:bg-muted/60">
                       <div className="flex flex-col">
                         <span className="font-medium">{donor?.name ?? "Unknown donor"}</span>
-                        <span className="text-xs text-muted-foreground">{d.itemDescription}</span>
+                        <span className="text-theme-xs text-muted-foreground">{d.itemDescription}</span>
                       </div>
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleGenerate(d.id)}>
+                      <Button size="sm" variant="outline" onClick={() => handleGenerate(d.id)}>
                         Request Cert
                       </Button>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                    </div>
+                  );
+                })}
+              </div>
               {inKindDonationsNeedingCert.length > 20 && (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-theme-xs text-muted-foreground">
                   +{inKindDonationsNeedingCert.length - 20} more — request certs from the donor detail page.
                 </p>
               )}

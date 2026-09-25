@@ -3,6 +3,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -19,7 +20,7 @@ import { updateHrSettings } from "@/app/(app)/settings/actions";
 export function HrSettingsCard() {
   const settings = useAppSettings();
   const { role } = useRole();
-  if (settings.loading) return <p className="text-xs text-muted-foreground">Loading…</p>;
+  if (settings.loading) return <LoadingState rows={3} />;
   // Keyed on the saved values: a successful save remounts the form on the
   // new baseline, and typing is never overwritten by a background refetch.
   const initial = pick(settings);

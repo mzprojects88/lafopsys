@@ -1,8 +1,9 @@
 import Link from "next/link";
+import type { LucideIcon } from "lucide-react";
 import { Database, Users, Bell, RotateCcw, ClipboardCheck, CalendarDays, UserCog } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { IconCircle } from "@/components/patterns/icon-circle";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
 import { ResetDemoDataButton } from "@/components/modules/settings/reset-demo-data-button";
 import { ClockInRequirementToggle } from "@/components/modules/settings/clock-in-requirement-toggle";
 import { OvertimeThresholdField } from "@/components/modules/settings/overtime-threshold-field";
@@ -25,95 +26,57 @@ export default function SettingsPage() {
       <PageHeader title="Settings" description="Foundation & Access — auth, RBAC, reference data, and demo controls." />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="flex-row items-center gap-2 space-y-0">
-            <IconCircle icon={Database} color="blue" size="sm" />
-            <CardTitle className="text-sm">Reference Data</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-1.5">
-            {REFERENCE_TABLES.map((t) => (
-              <Link key={t.slug} href={`/settings/reference-data/${t.slug}`} className="text-sm text-primary hover:underline">
-                {t.label}
-              </Link>
-            ))}
-          </CardContent>
-        </Card>
+        <SectionCard title={<CardTitleWithIcon icon={Database}>Reference Data</CardTitleWithIcon>} bodyClassName="flex flex-col gap-1.5">
+          {REFERENCE_TABLES.map((t) => (
+            <Link key={t.slug} href={`/settings/reference-data/${t.slug}`} className="text-theme-sm text-primary hover:underline">
+              {t.label}
+            </Link>
+          ))}
+        </SectionCard>
 
-        <Card>
-          <CardHeader className="flex-row items-center gap-2 space-y-0">
-            <IconCircle icon={Users} color="purple" size="sm" />
-            <CardTitle className="text-sm">Users & Roles</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-1.5">
-            <Link href="/settings/users" className="text-sm text-primary hover:underline">Manage users</Link>
-            <Link href="/settings/access" className="text-sm text-primary hover:underline">Roles &amp; access by module</Link>
-          </CardContent>
-        </Card>
+        <SectionCard title={<CardTitleWithIcon icon={Users}>Users & Roles</CardTitleWithIcon>} bodyClassName="flex flex-col gap-1.5">
+          <Link href="/settings/users" className="text-theme-sm text-primary hover:underline">Manage users</Link>
+          <Link href="/settings/access" className="text-theme-sm text-primary hover:underline">Roles &amp; access by module</Link>
+        </SectionCard>
 
-        <Card>
-          <CardHeader className="flex-row items-center gap-2 space-y-0">
-            <IconCircle icon={Bell} color="amber" size="sm" />
-            <CardTitle className="text-sm">Notifications</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Link href="/settings/notifications" className="text-sm text-primary hover:underline">Notification preferences</Link>
-          </CardContent>
-        </Card>
+        <SectionCard title={<CardTitleWithIcon icon={Bell}>Notifications</CardTitleWithIcon>}>
+          <Link href="/settings/notifications" className="text-theme-sm text-primary hover:underline">Notification preferences</Link>
+        </SectionCard>
 
-        <Card>
-          <CardHeader className="flex-row items-center gap-2 space-y-0">
-            <IconCircle icon={ClipboardCheck} color="green" size="sm" />
-            <CardTitle className="text-sm">Attendance Policy</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <ClockInRequirementToggle />
-            <OvertimeThresholdField />
-            <LafHouseLocationField />
-          </CardContent>
-        </Card>
+        <SectionCard title={<CardTitleWithIcon icon={ClipboardCheck}>Attendance Policy</CardTitleWithIcon>} bodyClassName="flex flex-col gap-4">
+          <ClockInRequirementToggle />
+          <OvertimeThresholdField />
+          <LafHouseLocationField />
+        </SectionCard>
 
-        <Card>
-          <CardHeader className="flex-row items-center gap-2 space-y-0">
-            <IconCircle icon={CalendarDays} color="indigo" size="sm" />
-            <CardTitle className="text-sm">Master Calendar</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CalendarSheetSyncToggle />
-          </CardContent>
-        </Card>
+        <SectionCard title={<CardTitleWithIcon icon={CalendarDays}>Master Calendar</CardTitleWithIcon>}>
+          <CalendarSheetSyncToggle />
+        </SectionCard>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">House Occupancy Tracker</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <HouseSheetSyncToggle />
-          </CardContent>
-        </Card>
+        <SectionCard title="House Occupancy Tracker">
+          <HouseSheetSyncToggle />
+        </SectionCard>
 
-        <Card className="md:col-span-2">
-          <CardHeader className="flex-row items-center gap-2 space-y-0">
-            <IconCircle icon={UserCog} color="teal" size="sm" />
-            <CardTitle className="text-sm">Pay & Leave Policy</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <HrSettingsCard />
-          </CardContent>
-        </Card>
+        <SectionCard className="md:col-span-2" title={<CardTitleWithIcon icon={UserCog}>Pay & Leave Policy</CardTitleWithIcon>}>
+          <HrSettingsCard />
+        </SectionCard>
 
-        <Card>
-          <CardHeader className="flex-row items-center gap-2 space-y-0">
-            <IconCircle icon={RotateCcw} color="rose" size="sm" />
-            <CardTitle className="text-sm">Demo Data</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            <p className="text-xs text-muted-foreground">
-              This prototype persists your edits to this browser only. Reset to restore the original seed data.
-            </p>
-            <ResetDemoDataButton />
-          </CardContent>
-        </Card>
+        <SectionCard title={<CardTitleWithIcon icon={RotateCcw}>Demo Data</CardTitleWithIcon>} bodyClassName="flex flex-col gap-2">
+          <p className="text-theme-xs text-muted-foreground">
+            This prototype persists your edits to this browser only. Reset to restore the original seed data.
+          </p>
+          <ResetDemoDataButton />
+        </SectionCard>
       </div>
     </div>
+  );
+}
+
+function CardTitleWithIcon({ icon, children }: { icon: LucideIcon; children: React.ReactNode }) {
+  return (
+    <span className="flex items-center gap-2">
+      <IconCircle icon={icon} size="sm" />
+      {children}
+    </span>
   );
 }

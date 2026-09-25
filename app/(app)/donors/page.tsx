@@ -17,11 +17,12 @@ import type { Donor } from "@/lib/types/donor";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
 import { isVipEligible } from "@/lib/utils/donor-vip";
+import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 
 const SUB_NAV: ModuleSubNavItem[] = [
-  { href: "/donors/receipts", label: "Receipts", icon: Receipt, color: "blue" },
-  { href: "/donors/donee-certs", label: "Donee Certs", icon: Award, color: "green" },
-  { href: "/donors/campaigns", label: "Campaigns", icon: Megaphone, color: "rose" },
+  { href: "/donors/receipts", label: "Receipts", icon: Receipt },
+  { href: "/donors/donee-certs", label: "Donee Certs", icon: Award },
+  { href: "/donors/campaigns", label: "Campaigns", icon: Megaphone },
 ];
 
 function buildColumns(pledges: import("@/lib/types/donor").DonorPledge[]): ColumnDef<Donor>[] {
@@ -34,7 +35,7 @@ function buildColumns(pledges: import("@/lib/types/donor").DonorPledge[]): Colum
           <PersonAvatar name={row.original.name} size="sm" />
           <span className="font-medium">{row.original.name}</span>
           {isVipEligible(row.original, pledges) && (
-            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+            <span className={`rounded-full px-2 py-0.5 text-theme-xs font-medium ${STATUS_TONE_CLASSES.info}`}>
               VIP
             </span>
           )}
@@ -80,10 +81,10 @@ export default function DonorsPage() {
       />
 
       <KpiGrid>
-        <KpiCard label="Total Donors" value={donors.length} icon={Users} color="rose" />
-        <KpiCard label="Total Gifts" value={totalGifts} icon={Gift} color="blue" />
-        <KpiCard label="Lifetime Value" value={formatCurrency(totalLifetimeValue)} icon={Wallet} color="green" />
-        <KpiCard label="Avg Gift" value={formatCurrency(avgGift)} icon={TrendingUp} color="amber" />
+        <KpiCard label="Total Donors" value={donors.length} icon={Users} />
+        <KpiCard label="Total Gifts" value={totalGifts} icon={Gift} />
+        <KpiCard label="Lifetime Value" value={formatCurrency(totalLifetimeValue)} icon={Wallet} />
+        <KpiCard label="Avg Gift" value={formatCurrency(avgGift)} icon={TrendingUp} />
       </KpiGrid>
 
       <DataTable

@@ -6,7 +6,7 @@ import { EntityDetailHeader } from "@/components/patterns/entity-detail-header";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useConsumptionDaily,
@@ -38,7 +38,7 @@ export default function InventoryItemPage({ params }: { params: Promise<{ itemId
   const pathById = new Map(locations.map((l) => [l.id, l.path]));
 
   if (stockLoading) {
-    return <EmptyState title="Loading item…" />;
+    return <LoadingState />;
   }
   if (error) {
     return <EmptyState title="Couldn't load this item" description={error} />;
@@ -100,28 +100,26 @@ export default function InventoryItemPage({ params }: { params: Promise<{ itemId
           {lots.length === 0 ? (
             <EmptyState title="No lots on hand" />
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
               {lots.map((lot) => (
-                <Card key={lot.lot_id}>
-                  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
+                <div key={lot.lot_id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-theme-sm hover:bg-muted/60">
                     <div className="flex flex-col">
                       <span className="font-medium">
                         {lot.qty_remaining} {lot.uom} · {pathById.get(lot.storage_location_id) ?? lot.storage_location_id}
                       </span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-theme-xs text-muted-foreground">
                         Received {formatDate(lot.received_at)} · {formatCurrency(lot.unit_cost)}/{lot.uom} · {lot.source_type === "donation" ? "Donated" : "Purchased"}
                       </span>
                     </div>
                     {lot.expiry_date && lot.days_left != null ? (
                       <div className="flex flex-col items-end">
                         <StatusBadge domain="expiry" status={expiryStatus(lot.days_left)} label={lot.days_left < 0 ? "expired" : `${lot.days_left}d left`} />
-                        <span className="text-[11px] text-muted-foreground">exp {formatDate(lot.expiry_date)}</span>
+                        <span className="text-theme-xs text-muted-foreground">exp {formatDate(lot.expiry_date)}</span>
                       </div>
                     ) : (
-                      <span className="text-xs text-muted-foreground">No expiry</span>
+                      <span className="text-theme-xs text-muted-foreground">No expiry</span>
                     )}
-                  </CardContent>
-                </Card>
+                  </div>
               ))}
             </div>
           )}
@@ -131,18 +129,16 @@ export default function InventoryItemPage({ params }: { params: Promise<{ itemId
           {consumption.length === 0 ? (
             <EmptyState title="Nothing drawn yet" />
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
               {consumption.map((c) => (
-                <Card key={`${c.date}-${c.house_id}-${c.channel ?? "none"}`}>
-                  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
+                <div key={`${c.date}-${c.house_id}-${c.channel ?? "none"}`} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-theme-sm hover:bg-muted/60">
                     <span className="font-medium">
                       {c.qty_issued} {first.uom} · {c.channel ? CHANNEL_LABEL[c.channel] ?? c.channel : "Issued"}
                     </span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-theme-xs text-muted-foreground">
                       {formatDate(c.date)} · {formatCurrency(c.cost)}
                     </span>
-                  </CardContent>
-                </Card>
+                  </div>
               ))}
             </div>
           )}
@@ -152,21 +148,19 @@ export default function InventoryItemPage({ params }: { params: Promise<{ itemId
           {waste.length === 0 ? (
             <EmptyState title="No waste recorded" />
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
               {waste.map((w) => (
-                <Card key={w.transaction_id}>
-                  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
+                <div key={w.transaction_id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-theme-sm hover:bg-muted/60">
                     <div className="flex flex-col">
                       <span className="font-medium">
                         {w.qty} {first.uom}
                         {w.reason ? ` · ${w.reason}` : ""}
                       </span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-theme-xs text-muted-foreground">
                         {formatDate(w.date)} · {w.performed_by} · {formatCurrency(w.value)}
                       </span>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
               ))}
             </div>
           )}

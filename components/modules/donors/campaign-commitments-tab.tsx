@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
@@ -52,28 +51,26 @@ export function CampaignCommitmentsTab({ donorId, donorDonations }: { donorId: s
 
   return (
     <>
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
         {donorCommitments.map((c) => {
           const campaign = campaigns.find((camp) => camp.id === c.campaignId);
           return (
-            <Card key={c.id}>
-              <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
-                <div className="flex flex-col">
-                  <span className="font-medium">{campaign?.name ?? "Unknown campaign"}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {c.kind === "cash" ? formatCurrency(c.pledgedAmount ?? 0, c.currency) : c.itemDescription}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <StatusBadge domain="commitment" status={c.status} />
-                  {c.status === "pledged" && (
-                    <Button size="sm" variant="ghost" className="h-6 text-[11px]" onClick={() => setLinkingId(c.id)}>
-                      Mark Fulfilled
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-theme-sm hover:bg-muted/60">
+              <div className="flex flex-col">
+                <span className="font-medium">{campaign?.name ?? "Unknown campaign"}</span>
+                <span className="text-theme-xs text-muted-foreground">
+                  {c.kind === "cash" ? formatCurrency(c.pledgedAmount ?? 0, c.currency) : c.itemDescription}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <StatusBadge domain="commitment" status={c.status} />
+                {c.status === "pledged" && (
+                  <Button size="sm" variant="ghost" onClick={() => setLinkingId(c.id)}>
+                    Mark Fulfilled
+                  </Button>
+                )}
+              </div>
+            </div>
           );
         })}
       </div>

@@ -49,7 +49,7 @@ function SimpleReferenceTable({ config }: { config: (typeof SIMPLE_TABLES)[strin
 
   return (
     <Card>
-      <CardContent className="flex flex-col gap-3 pt-6">
+      <CardContent className="flex flex-col gap-3">
         <div className="flex gap-2">
           <Input
             placeholder={`New ${config.label.toLowerCase()} entry…`}
@@ -71,14 +71,14 @@ function SimpleReferenceTable({ config }: { config: (typeof SIMPLE_TABLES)[strin
 
         {!loading && rows.length === 0 && <EmptyState title="No entries yet" description="Add the first one above." />}
 
-        <div className="flex flex-col divide-y">
+        <div className="flex flex-col divide-y divide-border">
           {rows.map((row) => (
-            <div key={row.id} className="flex items-center justify-between gap-3 py-2.5">
+            <div key={row.id} className="flex items-center justify-between gap-3 py-3">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">{row.name}</span>
-                {row.meta && <Badge variant="secondary" className="text-[10px]">{row.meta}</Badge>}
+                <span className="text-theme-sm font-medium text-foreground">{row.name}</span>
+                {row.meta && <Badge variant="secondary">{row.meta}</Badge>}
               </div>
-              <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(row.id, row.name)}>
+              <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive" onClick={() => handleDelete(row.id, row.name)}>
                 <Trash2 className="size-3.5" />
               </Button>
             </div>
@@ -113,7 +113,7 @@ function DiagnosesTable() {
 
   return (
     <Card>
-      <CardContent className="flex flex-col gap-3 pt-6">
+      <CardContent className="flex flex-col gap-3">
         <div className="flex gap-2">
           <Input
             placeholder="New diagnosis entry…"
@@ -134,14 +134,14 @@ function DiagnosesTable() {
 
         {!loading && rows.length === 0 && <EmptyState title="No entries yet" description="Add the first one above." />}
 
-        <div className="flex flex-col divide-y">
+        <div className="flex flex-col divide-y divide-border">
           {rows.map((row) => (
-            <div key={row.id} className="flex items-center justify-between gap-3 py-2.5">
+            <div key={row.id} className="flex items-center justify-between gap-3 py-3">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">{row.name}</span>
-                <Badge variant="secondary" className="text-[10px]">{row.category}</Badge>
+                <span className="text-theme-sm font-medium text-foreground">{row.name}</span>
+                <Badge variant="secondary">{row.category}</Badge>
               </div>
-              <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(row.id, row.name)}>
+              <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive" onClick={() => handleDelete(row.id, row.name)}>
                 <Trash2 className="size-3.5" />
               </Button>
             </div>
@@ -155,16 +155,16 @@ function DiagnosesTable() {
 function UnitsOfMeasureTable() {
   return (
     <Card>
-      <CardContent className="flex flex-col gap-3 pt-6">
-        <p className="text-sm text-muted-foreground">
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-theme-sm text-muted-foreground">
           Units of measure are owned and edited by the Inventory app, not lafopsys — shown here read-only for reference.
         </p>
-        <div className="flex flex-col divide-y">
+        <div className="flex flex-col divide-y divide-border">
           {unitsOfMeasure.map((u) => (
-            <div key={u.id} className="flex items-center justify-between gap-3 py-2.5">
-              <span className="text-sm font-medium">{u.name} ({u.code})</span>
+            <div key={u.id} className="flex items-center justify-between gap-3 py-3">
+              <span className="text-theme-sm font-medium text-foreground">{u.name} ({u.code})</span>
               {u.baseUnitCode && (
-                <Badge variant="secondary" className="text-[10px]">= {u.conversionFactor} {u.baseUnitCode}</Badge>
+                <Badge variant="secondary">= {u.conversionFactor} {u.baseUnitCode}</Badge>
               )}
             </div>
           ))}

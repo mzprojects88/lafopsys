@@ -78,7 +78,7 @@ export default function DonationIntakePage() {
     <div className="flex max-w-2xl flex-1 flex-col gap-6">
       <PageHeader title="Donation Intake" description="Cash and in-kind in one flow." />
       <Card>
-        <CardContent className="pt-6">
+        <CardContent>
           <form onSubmit={handleSubmit(onSubmit)}>
             <FieldGroup>
               <Field data-invalid={!!errors.donorId}>

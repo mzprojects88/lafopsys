@@ -3,11 +3,12 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { Landmark, Pencil } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/patterns/empty-state";
+import { LoadingState } from "@/components/patterns/loading-state";
+import { SectionCard } from "@/components/patterns/section-card";
 import { useBankTransactionsData } from "@/lib/hooks/use-bank-transactions-collection";
 import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
 import { useFinanceMonthNotes } from "@/lib/hooks/use-finance-month-notes-collection";
@@ -24,6 +25,8 @@ const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "Ju
 const peso = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const money = (n: number | null) => (n === null ? "—" : peso.format(n));
 const pct = (n: number | null) => (n === null ? "—" : `${(n * 100).toFixed(2)}%`);
+/** Header cell, as in the inventory tables. */
+const TH = "h-11 px-5 text-theme-xs font-medium text-muted-foreground";
 const monthLabel = (m: string) => `${MONTH_NAMES[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
 
 /**
@@ -76,14 +79,12 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <Card>
-        <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
-          <div className="flex flex-col gap-0.5">
-            <CardTitle className="text-base">Financial support</CardTitle>
-            <span className="text-xs text-muted-foreground">
-              Expenses and donations as they cleared the bank. Interest the bank paid is not counted as a donation.
-            </span>
-          </div>
+      <SectionCard
+        flush
+        className="overflow-hidden"
+        title="Financial support"
+        description="Expenses and donations as they cleared the bank. Interest the bank paid is not counted as a donation."
+        actions={
           <Select value={String(shownYear)} onValueChange={(v) => setYear(Number(v))}>
             <SelectTrigger className="w-28">
               <SelectValue />
@@ -96,69 +97,70 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
               ))}
             </SelectContent>
           </Select>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {txnsLoading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : summary.total.monthsWithData === 0 ? (
-            <EmptyState
-              icon={Landmark}
-              title={`No bank statement covers ${shownYear} yet`}
-              description="Upload the month's statement under Financial → Bank import and this fills in."
-              className="py-6"
-            />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                    <th className="py-2 pr-3 font-medium">Month</th>
-                    <th className="py-2 pr-3 text-right font-medium">Expenses</th>
-                    <th className="py-2 pr-3 text-right font-medium">Donation</th>
-                    <th className="py-2 pr-3 text-right font-medium">Net donation</th>
-                    <th className="py-2 pr-3 text-right font-medium">% of donation spent</th>
-                    <th className="py-2 font-medium">Key monthly drivers</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((row) => (
-                    <SummaryRow key={row.month} row={row} canWriteNotes={canWriteNotes} onSave={(text) => upsertNote(row.month, text)} />
-                  ))}
-                  <tr className="border-t-2 font-semibold">
-                    <td className="py-2 pr-3">Total</td>
-                    <td className="py-2 pr-3 text-right tabular-nums">{money(summary.total.expenses)}</td>
-                    <td className="py-2 pr-3 text-right tabular-nums">{money(summary.total.donation)}</td>
-                    <td className={cn("py-2 pr-3 text-right tabular-nums", summary.total.net < 0 && "text-rose-600 dark:text-rose-400")}>{money(summary.total.net)}</td>
-                    <td className="py-2 pr-3 text-right tabular-nums">{pct(summary.total.pctSpent)}</td>
-                    <td className="py-2 text-xs font-normal text-muted-foreground">
-                      {summary.total.monthsWithData} of 12 months have a statement
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
+        }
+      >
+        {txnsLoading ? (
+          <div className="p-5">
+            <LoadingState />
+          </div>
+        ) : summary.total.monthsWithData === 0 ? (
+          <EmptyState
+            icon={Landmark}
+            title={`No bank statement covers ${shownYear} yet`}
+            description="Upload the month's statement under Financial → Bank import and this fills in."
+            className="rounded-none border-0 py-8"
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-theme-sm">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className={TH}>Month</th>
+                  <th className={cn(TH, "text-right")}>Expenses</th>
+                  <th className={cn(TH, "text-right")}>Donation</th>
+                  <th className={cn(TH, "text-right")}>Net donation</th>
+                  <th className={cn(TH, "text-right")}>% of donation spent</th>
+                  <th className={TH}>Key monthly drivers</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRows.map((row) => (
+                  <SummaryRow key={row.month} row={row} canWriteNotes={canWriteNotes} onSave={(text) => upsertNote(row.month, text)} />
+                ))}
+                <tr className="bg-muted/40 font-semibold">
+                  <td className="px-5 py-3">Total</td>
+                  <td className="px-5 py-3 text-right tabular-nums">{money(summary.total.expenses)}</td>
+                  <td className="px-5 py-3 text-right tabular-nums">{money(summary.total.donation)}</td>
+                  <td className={cn("px-5 py-3 text-right tabular-nums", summary.total.net < 0 && "text-destructive")}>{money(summary.total.net)}</td>
+                  <td className="px-5 py-3 text-right tabular-nums">{pct(summary.total.pctSpent)}</td>
+                  <td className="px-5 py-3 text-theme-xs font-normal text-muted-foreground">
+                    {summary.total.monthsWithData} of 12 months have a statement
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
 
-          {bank ? (
-            <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border bg-muted/30 px-4 py-3">
-              <span className="text-sm font-medium">Cash in bank as of {formatDate(bank.asOf, "MMMM d, yyyy")}</span>
-              <span className="text-lg font-bold tabular-nums">{peso.format(bank.amount)}</span>
-              <span className="w-full text-xs text-muted-foreground">
-                The closing balance on the last imported statement line — the bank&apos;s figure, not one worked out from the columns above.
-              </span>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+        {bank ? (
+          <div className="flex flex-wrap items-baseline justify-between gap-2 border-t border-border px-5 py-4">
+            <span className="text-theme-sm font-medium text-foreground">Cash in bank as of {formatDate(bank.asOf, "MMMM d, yyyy")}</span>
+            <span className="text-lg font-bold tabular-nums text-foreground">{peso.format(bank.amount)}</span>
+            <span className="w-full text-theme-xs text-muted-foreground">
+              The closing balance on the last imported statement line — the bank&apos;s figure, not one worked out from the columns above.
+            </span>
+          </div>
+        ) : null}
+      </SectionCard>
 
       {!compact || donors.length > 0 ? (
-        <Card>
-          <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
-            <div className="flex flex-col gap-0.5">
-              <CardTitle className="text-base">Breakdown of monthly donors</CardTitle>
-              <span className="text-xs text-muted-foreground">Donor-attributed receipts. Gifts logged on more than one sheet are shown once.</span>
-            </div>
-            {receiptMonths.length > 0 ? (
+        <SectionCard
+          flush
+          className="overflow-hidden"
+          title="Breakdown of monthly donors"
+          description="Donor-attributed receipts. Gifts logged on more than one sheet are shown once."
+          actions={
+            receiptMonths.length > 0 ? (
               <Select value={shownDonorMonth ?? ""} onValueChange={setDonorMonth}>
                 <SelectTrigger className="w-44">
                   <SelectValue />
@@ -171,49 +173,48 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
                   ))}
                 </SelectContent>
               </Select>
-            ) : null}
-          </CardHeader>
-          <CardContent>
-            {donors.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No donor-attributed receipts for this month.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[420px] text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                      <th className="py-2 pr-3 font-medium">Date</th>
-                      <th className="py-2 pr-3 text-right font-medium">Amount</th>
-                      <th className="py-2 font-medium">Name</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {donors.map((d) => (
-                      <tr key={d.id} className="border-b last:border-0">
-                        <td className="py-1.5 pr-3 whitespace-nowrap text-muted-foreground">{formatDate(d.date, "MMM d")}</td>
-                        <td className="py-1.5 pr-3 text-right tabular-nums">{peso.format(d.amount)}</td>
-                        <td className="py-1.5">
-                          {d.donorName}
-                          {d.duplicates > 0 ? (
-                            <span className="pl-1.5 text-[11px] text-muted-foreground" title="Logged on more than one sheet; shown once">
-                              ×{d.duplicates + 1} logged
-                            </span>
-                          ) : null}
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="font-semibold">
-                      <td className="py-2 pr-3">Total</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{peso.format(donorTotal)}</td>
-                      <td className="py-2 text-xs font-normal text-muted-foreground">
-                        Receipts are logged by the donor&apos;s date and the bank clears on its own, so this will not equal the month&apos;s Donation figure.
+            ) : null
+          }
+        >
+          {donors.length === 0 ? (
+            <p className="px-5 py-4 text-theme-sm text-muted-foreground">No donor-attributed receipts for this month.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[420px] text-theme-sm">
+                <thead>
+                  <tr className="border-b border-border text-left">
+                    <th className={TH}>Date</th>
+                    <th className={cn(TH, "text-right")}>Amount</th>
+                    <th className={TH}>Name</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {donors.map((d) => (
+                    <tr key={d.id} className="border-b border-border hover:bg-muted/60">
+                      <td className="px-5 py-3 whitespace-nowrap text-muted-foreground">{formatDate(d.date, "MMM d")}</td>
+                      <td className="px-5 py-3 text-right tabular-nums">{peso.format(d.amount)}</td>
+                      <td className="px-5 py-3">
+                        {d.donorName}
+                        {d.duplicates > 0 ? (
+                          <span className="pl-1.5 text-theme-xs text-muted-foreground" title="Logged on more than one sheet; shown once">
+                            ×{d.duplicates + 1} logged
+                          </span>
+                        ) : null}
                       </td>
                     </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                  <tr className="bg-muted/40 font-semibold">
+                    <td className="px-5 py-3">Total</td>
+                    <td className="px-5 py-3 text-right tabular-nums">{peso.format(donorTotal)}</td>
+                    <td className="px-5 py-3 text-theme-xs font-normal text-muted-foreground">
+                      Receipts are logged by the donor&apos;s date and the bank clears on its own, so this will not equal the month&apos;s Donation figure.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </SectionCard>
       ) : null}
     </div>
   );
@@ -240,13 +241,13 @@ function SummaryRow({ row, canWriteNotes, onSave }: { row: MonthRow; canWriteNot
   }
 
   return (
-    <tr className={cn("border-b align-top last:border-0", !row.hasData && "text-muted-foreground")}>
-      <td className="py-2 pr-3 whitespace-nowrap font-medium">{MONTH_NAMES[row.monthNumber - 1]}</td>
-      <td className="py-2 pr-3 text-right tabular-nums">{money(row.expenses)}</td>
-      <td className="py-2 pr-3 text-right tabular-nums">{money(row.donation)}</td>
-      <td className={cn("py-2 pr-3 text-right tabular-nums", row.net !== null && row.net < 0 && "text-rose-600 dark:text-rose-400")}>{money(row.net)}</td>
-      <td className={cn("py-2 pr-3 text-right tabular-nums", row.pctSpent !== null && row.pctSpent > 1 && "text-rose-600 dark:text-rose-400")}>{pct(row.pctSpent)}</td>
-      <td className="py-2 text-xs">
+    <tr className={cn("border-b border-border align-top hover:bg-muted/60", !row.hasData && "text-muted-foreground")}>
+      <td className="px-5 py-3 whitespace-nowrap font-medium">{MONTH_NAMES[row.monthNumber - 1]}</td>
+      <td className="px-5 py-3 text-right tabular-nums">{money(row.expenses)}</td>
+      <td className="px-5 py-3 text-right tabular-nums">{money(row.donation)}</td>
+      <td className={cn("px-5 py-3 text-right tabular-nums", row.net !== null && row.net < 0 && "text-destructive")}>{money(row.net)}</td>
+      <td className={cn("px-5 py-3 text-right tabular-nums", row.pctSpent !== null && row.pctSpent > 1 && "text-destructive")}>{pct(row.pctSpent)}</td>
+      <td className="px-5 py-3 text-theme-xs">
         {editing ? (
           <div className="flex flex-col gap-1.5">
             <Textarea

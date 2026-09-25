@@ -9,6 +9,7 @@ import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { EmptyState } from "@/components/patterns/empty-state";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { Button } from "@/components/ui/button";
 import { useStockSummary } from "@/lib/hooks/use-inventory-views";
@@ -17,10 +18,10 @@ import { formatCurrency } from "@/lib/utils/currency";
 import { inventoryAppHref } from "@/lib/utils/inventory-app";
 
 const SUB_NAV: ModuleSubNavItem[] = [
-  { href: "/inventory/assets", label: "Fixed Assets", icon: Archive, color: "indigo" },
-  { href: "/inventory/locations", label: "Locations", icon: MapPin, color: "teal" },
-  { href: "/inventory/expiry", label: "Expiry Alerts", icon: AlertTriangle, color: "amber" },
-  { href: "/inventory/waste", label: "Waste Log", icon: Trash2, color: "red" },
+  { href: "/inventory/assets", label: "Fixed Assets", icon: Archive },
+  { href: "/inventory/locations", label: "Locations", icon: MapPin },
+  { href: "/inventory/expiry", label: "Expiry Alerts", icon: AlertTriangle },
+  { href: "/inventory/waste", label: "Waste Log", icon: Trash2 },
 ];
 
 /** v_stock_summary is one row per item per House; HQ sees the org, so fold
@@ -89,20 +90,22 @@ export default function InventoryPage() {
       />
 
       <KpiGrid>
-        <KpiCard label="Items in Stock" value={loading ? "…" : items.length} icon={Package} color="teal" />
-        <KpiCard label="Low Stock" value={loading ? "…" : lowStock} icon={AlertTriangle} color="amber" sublabel="At or below reorder point" />
-        <KpiCard label="Out of Stock" value={loading ? "…" : outOfStock} icon={XCircle} color="red" />
-        <KpiCard label="Stock Value" value={loading ? "…" : formatCurrency(totalValue)} icon={Wallet} color="green" />
+        <KpiCard label="Items in Stock" value={loading ? "…" : items.length} icon={Package} />
+        <KpiCard label="Low Stock" value={loading ? "…" : lowStock} icon={AlertTriangle} tone={!loading && lowStock > 0 ? "warning" : "default"} sublabel="At or below reorder point" />
+        <KpiCard label="Out of Stock" value={loading ? "…" : outOfStock} icon={XCircle} tone={!loading && outOfStock > 0 ? "negative" : "default"} />
+        <KpiCard label="Stock Value" value={loading ? "…" : formatCurrency(totalValue)} icon={Wallet} />
       </KpiGrid>
 
       {error ? (
         <EmptyState title="Couldn't load inventory" description={error} />
+      ) : loading ? (
+        <LoadingState />
       ) : (
         <DataTable
           columns={columns}
           data={items}
           searchPlaceholder="Search items…"
-          emptyMessage={loading ? "Loading inventory…" : "No items with stock on hand."}
+          emptyMessage="No items with stock on hand."
           onRowClick={(item) => router.push(`/inventory/${item.item_id}`)}
         />
       )}

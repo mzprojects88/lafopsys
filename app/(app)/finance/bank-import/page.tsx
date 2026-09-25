@@ -7,7 +7,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BankImportHistory } from "@/components/modules/finance/bank-import-history";
@@ -17,6 +17,8 @@ import { formatDate } from "@/lib/utils/date";
 import { checkContinuity, naturalKey, parseBankCsv, summarizeBatch, type BankRow, type ContinuityWarning } from "@/lib/utils/bank-statement";
 import { importBankRows } from "./actions";
 import { uploadFileToRecord } from "@/lib/files/upload-client";
+import { STATUS_TONE_TEXT } from "@/lib/utils/status-colors";
+import { cn } from "@/lib/utils";
 
 /** The one account on file today (seeded by 0033). A second account is a
  * second row in ops.accounts and a picker here; nothing else changes. */
@@ -115,14 +117,14 @@ export default function BankImportPage() {
       accessorFn: (r) => r.status,
       cell: ({ row }) =>
         row.original.status === "existing" ? (
-          <span className="text-xs text-muted-foreground">Already in</span>
+          <span className="text-theme-xs text-muted-foreground">Already in</span>
         ) : row.original.status === "review" ? (
-          <span className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
+          <span className={cn("flex items-center gap-1 text-theme-xs", STATUS_TONE_TEXT.warning)}>
             <AlertTriangle className="size-3" />
             No amount
           </span>
         ) : (
-          <span className="flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
+          <span className={cn("flex items-center gap-1 text-theme-xs", STATUS_TONE_TEXT.positive)}>
             <CheckCircle2 className="size-3" />
             New
           </span>
@@ -144,25 +146,27 @@ export default function BankImportPage() {
       />
 
       {canImport ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <FileUp className="size-4 text-muted-foreground" />
-              Statement file
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
+        <>
+          <SectionCard
+            title={
+              <span className="flex items-center gap-2">
+                <FileUp className="size-4 text-muted-foreground" strokeWidth={1.75} />
+                Statement file
+              </span>
+            }
+            bodyClassName="flex flex-col gap-4"
+          >
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="statement-file">CSV export from BDO online banking</Label>
               <Input id="statement-file" type="file" accept=".csv,text/csv" onChange={(e) => handleFile(e.target.files?.[0])} className="max-w-md" />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-theme-xs text-muted-foreground">
                 Columns: Posting Date, Branch, Description, Debit, Credit, Running Balance, Check Number — in any order. An extra unlabelled column is read as the memo.
                 {lastStored ? ` The last line on file is ${formatDate(lastStored.postingDate, "MMM d, yyyy")}, closing at ${peso.format(lastStored.runningBalance)}.` : ""}
               </p>
             </div>
 
             {problems.length > 0 ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300">
+              <Note tone="warn">
                 <p className="font-medium">{problems.length} line{problems.length === 1 ? "" : "s"} could not be read and will be left out:</p>
                 <ul className="mt-1 list-disc pl-4">
                   {problems.slice(0, 8).map((p, i) => (
@@ -170,7 +174,7 @@ export default function BankImportPage() {
                   ))}
                   {problems.length > 8 ? <li>…and {problems.length - 8} more</li> : null}
                 </ul>
-              </div>
+              </Note>
             ) : null}
 
             {summary ? (
@@ -200,52 +204,49 @@ export default function BankImportPage() {
               </Note>
             ) : null}
             {summary && opensFromLast && warnings.length === 0 ? <Note tone="ok">Carries on exactly from the last import, and every day closes where it should.</Note> : null}
+          </SectionCard>
 
-            {rows.length > 0 ? (
-              <>
-                <DataTable columns={columns} data={preview} searchPlaceholder="Search this file…" pageSize={15} />
-                <div className="flex items-center justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    disabled={importing}
-                    onClick={() => {
-                      setRows([]);
-                      setFileName("");
-                      setProblems([]);
-                    }}
-                  >
-                    Discard
-                  </Button>
-                  <Button onClick={handleImport} disabled={importing || newCount === 0}>
-                    <Upload />
-                    {importing ? "Importing…" : newCount === 0 ? "Nothing new to import" : `Import ${newCount} new row${newCount === 1 ? "" : "s"}`}
-                  </Button>
-                </div>
-              </>
-            ) : null}
-          </CardContent>
-        </Card>
+          {/* The preview is its own bordered table, so it sits under the card rather than inside it. */}
+          {rows.length > 0 ? (
+            <div className="flex flex-col gap-3">
+              <DataTable columns={columns} data={preview} searchPlaceholder="Search this file…" pageSize={15} />
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  disabled={importing}
+                  onClick={() => {
+                    setRows([]);
+                    setFileName("");
+                    setProblems([]);
+                  }}
+                >
+                  Discard
+                </Button>
+                <Button onClick={handleImport} disabled={importing || newCount === 0}>
+                  <Upload />
+                  {importing ? "Importing…" : newCount === 0 ? "Nothing new to import" : `Import ${newCount} new row${newCount === 1 ? "" : "s"}`}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : (
         <Note tone="info">Admins and finance import statements. You can see what has been imported below.</Note>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Import history</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <BankImportHistory />
-        </CardContent>
-      </Card>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-base font-medium text-foreground">Import history</h2>
+        <BankImportHistory />
+      </section>
     </div>
   );
 }
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: "warn" }) {
   return (
-    <div className={`rounded-lg border px-3 py-2 ${tone === "warn" ? "border-amber-300 dark:border-amber-900/60" : ""}`}>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm font-medium tabular-nums">{value}</p>
+    <div className={cn("rounded-xl px-3 py-2", tone === "warn" ? "bg-warning/10" : "bg-muted/60")}>
+      <p className="text-theme-xs text-muted-foreground">{label}</p>
+      <p className={cn("text-theme-sm font-medium tabular-nums", tone === "warn" && STATUS_TONE_TEXT.warning)}>{value}</p>
     </div>
   );
 }
@@ -253,9 +254,9 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "wa
 function Note({ tone, children }: { tone: "warn" | "ok" | "info"; children: React.ReactNode }) {
   const cls =
     tone === "warn"
-      ? "border-amber-200 bg-amber-50/60 text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300"
+      ? "border-warning/30 bg-warning/10 text-warning-foreground dark:text-warning"
       : tone === "ok"
-        ? "border-emerald-200 bg-emerald-50/60 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-500/10 dark:text-emerald-300"
-        : "border-border bg-muted/30 text-muted-foreground";
-  return <div className={`rounded-lg border px-3 py-2 text-xs ${cls}`}>{children}</div>;
+        ? "border-success/30 bg-success/10 text-success-foreground dark:text-success"
+        : "border-border bg-muted/60 text-muted-foreground";
+  return <div className={cn("rounded-xl border px-4 py-3 text-theme-xs", cls)}>{children}</div>;
 }

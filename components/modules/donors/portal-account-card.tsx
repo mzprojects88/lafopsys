@@ -11,7 +11,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
@@ -70,21 +71,21 @@ export function PortalAccountCard({ donorId }: { donorId: string }) {
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <KeyRound className="size-4" />
+      <SectionCard
+        title={
+          <span className="flex items-center gap-2">
+            <KeyRound className="size-4 text-muted-foreground" strokeWidth={1.75} />
             VIP Portal Account
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+          </span>
+        }
+      >
           {loading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <LoadingState rows={1} />
           ) : account ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 text-theme-sm">
               <div className="flex flex-col gap-0.5">
                 <span className="font-medium">{account.email}</span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-theme-xs text-muted-foreground">
                   {account.mustChangePassword ? "Awaiting first login" : "Active login"}
                 </span>
               </div>
@@ -92,20 +93,19 @@ export function PortalAccountCard({ donorId }: { donorId: string }) {
             </div>
           ) : eligible ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-muted-foreground">Eligible for the VIP Donors Portal.</p>
+              <p className="text-theme-sm text-muted-foreground">Eligible for the VIP Donors Portal.</p>
               <Button size="sm" disabled={submitting} onClick={handleCreate}>
                 {submitting ? "Creating…" : "Create Portal Account"}
               </Button>
             </div>
           ) : (
-            <ul className="list-inside list-disc text-sm text-muted-foreground">
+            <ul className="list-inside list-disc text-theme-sm text-muted-foreground">
               {eligibilityReasons(donor, hasActivePledge).map((reason) => (
                 <li key={reason}>{reason}</li>
               ))}
             </ul>
           )}
-        </CardContent>
-      </Card>
+      </SectionCard>
 
       <Dialog open={!!credentials} onOpenChange={(next) => !next && setCredentials(null)}>
         <DialogContent className="sm:max-w-md">
@@ -116,7 +116,7 @@ export function PortalAccountCard({ donorId }: { donorId: string }) {
             </DialogDescription>
           </DialogHeader>
           {credentials && (
-            <div className="flex flex-col gap-2 rounded-lg border bg-muted/40 p-3 font-mono text-sm">
+            <div className="flex flex-col gap-2 rounded-xl bg-muted/60 p-4 font-mono text-theme-sm">
               <span>Username: {credentials.email}</span>
               <span>Temporary password: {credentials.tempPassword}</span>
             </div>

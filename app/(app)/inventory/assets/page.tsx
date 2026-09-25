@@ -8,12 +8,13 @@ import { EmptyState } from "@/components/patterns/empty-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { useAssetDisposals, useFixedAssets } from "@/lib/hooks/use-inventory-views";
 import type { AssetDisposalRow, FixedAssetRow } from "@/lib/types/inventory-views";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
 import { inventoryAppHref } from "@/lib/utils/inventory-app";
+import { STATUS_TONE_TEXT } from "@/lib/utils/status-colors";
 
 /**
  * The fixed-asset register, read from laf-inventory's published views. Assets
@@ -94,12 +95,12 @@ export default function FixedAssetsPage() {
       accessorFn: (d) => (d.signed_off ? "Signed off" : "Awaiting"),
       cell: ({ row }) =>
         row.original.signed_off ? (
-          <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+          <span className={`flex items-center gap-1.5 text-theme-xs ${STATUS_TONE_TEXT.positive}`}>
             <ShieldCheck className="size-3.5" />
             {row.original.sign_off_1} &amp; {row.original.sign_off_2}
           </span>
         ) : (
-          <span className="text-xs text-muted-foreground">Awaiting second signature</span>
+          <span className="text-theme-xs text-muted-foreground">Awaiting second signature</span>
         ),
     },
   ];
@@ -125,41 +126,40 @@ export default function FixedAssetsPage() {
           value={loading ? "…" : formatCurrency(registerValue)}
           sublabel={depreciated ? `${formatCurrency(bookValue)} book value` : "Assets still owned"}
           icon={Wallet}
-          color="green"
         />
-        <KpiCard label="Assets Owned" value={loading ? "…" : owned} icon={Archive} color="indigo" />
-        <KpiCard label="Disposed" value={disposalsLoading ? "…" : disposals.length} sublabel={awaitingSignOff > 0 ? `${awaitingSignOff} awaiting sign-off` : "All signed off"} icon={PackageX} color="slate" />
-        <KpiCard label="Disposal Proceeds" value={disposalsLoading ? "…" : formatCurrency(proceeds)} icon={Wallet} color="amber" />
+        <KpiCard label="Assets Owned" value={loading ? "…" : owned} icon={Archive} />
+        <KpiCard label="Disposed" value={disposalsLoading ? "…" : disposals.length} sublabel={awaitingSignOff > 0 ? `${awaitingSignOff} awaiting sign-off` : "All signed off"} icon={PackageX} />
+        <KpiCard label="Disposal Proceeds" value={disposalsLoading ? "…" : formatCurrency(proceeds)} icon={Wallet} />
       </KpiGrid>
 
       {error ? (
         <EmptyState title="Couldn't load the asset register" description={error} />
+      ) : loading ? (
+        <LoadingState />
       ) : (
         <DataTable
           columns={assetColumns}
           data={assets}
           searchPlaceholder="Search assets…"
-          emptyMessage={loading ? "Loading…" : "No fixed assets registered yet."}
+          emptyMessage="No fixed assets registered yet."
         />
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Disposals</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {disposalsError ? (
-            <EmptyState title="Couldn't load disposals" description={disposalsError} className="py-6" />
-          ) : (
-            <DataTable
-              columns={disposalColumns}
-              data={disposals}
-              searchPlaceholder="Search disposals…"
-              emptyMessage={disposalsLoading ? "Loading…" : "Nothing has been disposed of yet."}
-            />
-          )}
-        </CardContent>
-      </Card>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-base font-medium text-foreground">Disposals</h2>
+        {disposalsError ? (
+          <EmptyState title="Couldn't load disposals" description={disposalsError} className="py-6" />
+        ) : disposalsLoading ? (
+          <LoadingState />
+        ) : (
+          <DataTable
+            columns={disposalColumns}
+            data={disposals}
+            searchPlaceholder="Search disposals…"
+            emptyMessage="Nothing has been disposed of yet."
+          />
+        )}
+      </section>
     </div>
   );
 }

@@ -2,7 +2,6 @@
 
 import { toast } from "sonner";
 import { PageHeader } from "@/components/patterns/page-header";
-import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useNotificationPrefs } from "@/lib/hooks/use-notification-prefs";
 
@@ -20,13 +19,12 @@ export default function NotificationSettingsPage() {
   return (
     <div className="flex max-w-xl flex-1 flex-col gap-6">
       <PageHeader title="Notification Preferences" description="Your on/off preferences, saved to your account. No email or SMS provider is connected yet — these control what would be sent once one is." />
-      <Card>
-        <CardContent className="flex flex-col divide-y pt-6">
-          {PREFS.map((pref, i) => (
-            <div key={pref.id} className={`flex items-center justify-between gap-4 py-3 ${i === 0 ? "pt-0" : ""}`}>
+      <div className="flex flex-col divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
+          {PREFS.map((pref) => (
+            <div key={pref.id} className="flex items-center justify-between gap-4 px-5 py-3">
               <div className="flex flex-col">
-                <span className="text-sm font-medium">{pref.label}</span>
-                <span className="text-xs text-muted-foreground">{pref.description}</span>
+                <span className="text-theme-sm font-medium text-foreground">{pref.label}</span>
+                <span className="text-theme-xs text-muted-foreground">{pref.description}</span>
               </div>
               <Switch
                 disabled={loading}
@@ -38,8 +36,7 @@ export default function NotificationSettingsPage() {
               />
             </div>
           ))}
-        </CardContent>
-      </Card>
+      </div>
     </div>
   );
 }

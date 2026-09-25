@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { useRole } from "@/lib/rbac/use-role";
 import { updateLafHouseLocation } from "@/app/(app)/settings/actions";
+import { STATUS_TONE_TEXT } from "@/lib/utils/status-colors";
 
 /**
  * Where LAF House is, for the DTR's on-site check (0063): a punch within the
@@ -84,7 +85,7 @@ function LafHouseLocationForm({ initial }: { initial: { lat: number | null; lng:
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Input
-          className="h-9 min-w-56 flex-1"
+          className="min-w-56 flex-1"
           placeholder="Latitude, longitude"
           value={coords}
           onChange={(e) => setCoords(e.target.value)}
@@ -92,7 +93,7 @@ function LafHouseLocationForm({ initial }: { initial: { lat: number | null; lng:
           aria-label="LAF House latitude and longitude"
         />
         <div className="flex items-center gap-1.5 text-sm">
-          <Input className="h-9 w-20" type="number" min={10} max={1000} value={radius} onChange={(e) => setRadius(e.target.value)} disabled={!canEdit} aria-label="Radius in metres" />
+          <Input className="w-20" type="number" min={10} max={1000} value={radius} onChange={(e) => setRadius(e.target.value)} disabled={!canEdit} aria-label="Radius in metres" />
           m
         </div>
       </div>
@@ -118,7 +119,7 @@ function LafHouseLocationForm({ initial }: { initial: { lat: number | null; lng:
           ) : null}
         </div>
       ) : null}
-      {initial.lat === null ? <span className="text-xs text-amber-700 dark:text-amber-400">Not set yet: punches are not marked on-site or off-site.</span> : null}
+      {initial.lat === null ? <span className={`text-theme-xs ${STATUS_TONE_TEXT.warning}`}>Not set yet: punches are not marked on-site or off-site.</span> : null}
     </div>
   );
 }

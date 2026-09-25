@@ -8,7 +8,6 @@ import { EntityDetailHeader } from "@/components/patterns/entity-detail-header";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useAcknowledgmentReceiptsData } from "@/lib/hooks/use-acknowledgment-receipts-collection";
@@ -85,18 +84,17 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
           {donorDonations.length === 0 ? (
             <EmptyState title="No donations recorded" />
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
               {donorDonations.map((d) => {
                 const ar = receipts.find((a) => a.donationId === d.id);
                 const cert = certificates.find((c) => c.donationId === d.id);
                 return (
-                  <Card key={d.id}>
-                    <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
+                  <div key={d.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-theme-sm hover:bg-muted/60">
                       <div className="flex flex-col">
                         <span className="font-medium">
                           {d.kind === "cash" ? "Cash Donation" : d.itemDescription}
                         </span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-theme-xs text-muted-foreground">
                           {formatDate(d.date)} · {d.receivingEntity === "US_501C3" ? "US 501(c)(3)" : "PH SEC"}
                         </span>
                       </div>
@@ -107,10 +105,9 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-6 gap-1 text-[11px]"
                             onClick={() => handleGenerateReceipt(d.id, d.receivingEntity)}
                           >
-                            <FileSignature className="size-3" />
+                            <FileSignature />
                             Generate AR
                           </Button>
                         )}
@@ -118,17 +115,15 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-6 gap-1 text-[11px]"
                             onClick={() => handleGenerateCertificate(d.id)}
                           >
-                            <Award className="size-3" />
+                            <Award />
                             Request Cert
                           </Button>
                         )}
                         <span className="font-medium tabular-nums">{formatCurrency(d.totalValue, d.currency)}</span>
                       </div>
-                    </CardContent>
-                  </Card>
+                  </div>
                 );
               })}
             </div>

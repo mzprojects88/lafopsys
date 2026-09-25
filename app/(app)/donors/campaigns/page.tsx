@@ -5,7 +5,7 @@ import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,19 +87,14 @@ export default function CampaignsPage() {
           {campaigns.map((c) => {
             const pct = c.targetAmount > 0 ? Math.min(100, Math.round((c.raisedAmount / c.targetAmount) * 100)) : 0;
             return (
-              <Card key={c.id}>
-                <CardHeader>
-                  <CardTitle className="text-base">{c.name}</CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-2">
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-xl font-semibold">{formatCurrency(c.raisedAmount)}</span>
-                    <span className="text-sm text-muted-foreground">of {formatCurrency(c.targetAmount)}</span>
-                  </div>
-                  <Progress value={pct} />
-                  <span className="text-xs text-muted-foreground">{pct}% of target</span>
-                </CardContent>
-              </Card>
+              <SectionCard key={c.id} title={c.name} bodyClassName="flex flex-col gap-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-xl font-semibold tabular-nums text-foreground">{formatCurrency(c.raisedAmount)}</span>
+                  <span className="text-theme-sm tabular-nums text-muted-foreground">of {formatCurrency(c.targetAmount)}</span>
+                </div>
+                <Progress value={pct} />
+                <span className="text-theme-xs text-muted-foreground">{pct}% of target</span>
+              </SectionCard>
             );
           })}
         </div>

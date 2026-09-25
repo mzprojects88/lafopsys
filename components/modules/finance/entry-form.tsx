@@ -79,7 +79,7 @@ export function EntryForm() {
 
   return (
     <Card className="max-w-xl">
-      <CardContent className="pt-6">
+      <CardContent>
         <form onSubmit={handleSubmit(onSubmit)}>
           <FieldGroup>
             <Field>

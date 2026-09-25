@@ -24,25 +24,25 @@ import { StatusBadge } from "@/components/patterns/status-badge";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
 import { useProgramsData } from "@/lib/hooks/use-programs-collection";
 
 const SUB_NAV: ModuleSubNavItem[] = [
-  { href: "/finance/monthly-summary", label: "Monthly Summary", icon: CalendarRange, color: "indigo" },
-  { href: "/finance/bank-import", label: "Bank Import", icon: Upload, color: "teal" },
-  { href: "/finance/accounts", label: "Accounts", icon: Landmark, color: "blue" },
-  { href: "/finance/approvals", label: "Approvals", icon: CheckSquare, color: "amber" },
-  { href: "/finance/allocation", label: "Allocation", icon: PieChart, color: "purple" },
-  { href: "/finance/cost-per-outcome", label: "Cost / Outcome", icon: Target, color: "cyan" },
-  { href: "/finance/budget", label: "Budget", icon: Wallet, color: "green" },
-  { href: "/finance/close", label: "Monthly Close", icon: ClipboardCheck, color: "rose" },
-  { href: "/finance/registers", label: "Registers", icon: BookOpen, color: "slate" },
+  { href: "/finance/monthly-summary", label: "Monthly Summary", icon: CalendarRange },
+  { href: "/finance/bank-import", label: "Bank Import", icon: Upload },
+  { href: "/finance/accounts", label: "Accounts", icon: Landmark },
+  { href: "/finance/approvals", label: "Approvals", icon: CheckSquare },
+  { href: "/finance/allocation", label: "Allocation", icon: PieChart },
+  { href: "/finance/cost-per-outcome", label: "Cost / Outcome", icon: Target },
+  { href: "/finance/budget", label: "Budget", icon: Wallet },
+  { href: "/finance/close", label: "Monthly Close", icon: ClipboardCheck },
+  { href: "/finance/registers", label: "Registers", icon: BookOpen },
 ];
 import type { CashEntry } from "@/lib/types/finance";
 import type { Program } from "@/lib/types/reference";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
+import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 
 function sourceLabel(source: string) {
   return source.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
@@ -55,9 +55,9 @@ function buildColumns(programs: Program[]): ColumnDef<CashEntry>[] {
       id: "direction",
       header: "Direction",
       cell: ({ row }) => (
-        <Badge variant={row.original.direction === "inflow" ? "default" : "secondary"} className="text-[11px] capitalize">
+        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-theme-xs font-medium capitalize ${STATUS_TONE_CLASSES[row.original.direction === "inflow" ? "positive" : "neutral"]}`}>
           {row.original.direction}
-        </Badge>
+        </span>
       ),
     },
     { id: "source", header: "Source", cell: ({ row }) => sourceLabel(row.original.source) },
@@ -102,10 +102,10 @@ export default function FinancePage() {
       />
 
       <KpiGrid>
-        <KpiCard label="Total Inflow" value={formatCurrency(totalInflow)} icon={TrendingUp} color="green" />
-        <KpiCard label="Total Outflow" value={formatCurrency(totalOutflow)} icon={TrendingDown} color="rose" />
-        <KpiCard label="Net" value={formatCurrency(totalInflow - totalOutflow)} icon={Scale} color="blue" />
-        <KpiCard label="Pending Approvals" value={pendingCount} icon={Clock} color="amber" />
+        <KpiCard label="Total Inflow" value={formatCurrency(totalInflow)} icon={TrendingUp} />
+        <KpiCard label="Total Outflow" value={formatCurrency(totalOutflow)} icon={TrendingDown} />
+        <KpiCard label="Net" value={formatCurrency(totalInflow - totalOutflow)} icon={Scale} />
+        <KpiCard label="Pending Approvals" value={pendingCount} icon={Clock} tone={pendingCount > 0 ? "warning" : "default"} />
       </KpiGrid>
 
       <DataTable columns={columns} data={cashEntries} searchPlaceholder="Search cashflow…" pageSize={12} />

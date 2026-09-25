@@ -3,7 +3,7 @@
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { PageHeader } from "@/components/patterns/page-header";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Percent, TrendingDown, HandCoins } from "lucide-react";
 import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
@@ -43,28 +43,23 @@ export default function AllocationPage() {
       />
 
       <KpiGrid>
-        <KpiCard label="% to Programs" value={programPct !== undefined ? `${programPct}%` : "—"} icon={Percent} color="green" />
-        <KpiCard label="Total Outflow" value={formatCurrency(totalOutflow)} icon={TrendingDown} color="rose" />
+        <KpiCard label="% to Programs" value={programPct !== undefined ? `${programPct}%` : "—"} icon={Percent} />
+        <KpiCard label="Total Outflow" value={formatCurrency(totalOutflow)} icon={TrendingDown} />
         <KpiCard
           label="Program Spend"
           value={hasProgramAttribution ? formatCurrency(programSpend) : "—"}
           icon={HandCoins}
-          color="blue"
         />
       </KpiGrid>
 
       {!hasProgramAttribution && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-theme-xs text-muted-foreground">
           No cash entries have a program assigned yet — real historical entries weren&apos;t attributed to a program in the
           source records. New entries can set one.
         </p>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Spend by Program</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <SectionCard title="Spend by Program">
           <ChartContainer config={chartConfig} className="h-72 w-full">
             <BarChart data={chartData} layout="vertical" margin={{ left: 16 }}>
               <CartesianGrid horizontal={false} />
@@ -74,8 +69,7 @@ export default function AllocationPage() {
               <Bar dataKey="amount" fill="var(--color-amount)" radius={4} />
             </BarChart>
           </ChartContainer>
-        </CardContent>
-      </Card>
+      </SectionCard>
     </div>
   );
 }

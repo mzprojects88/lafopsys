@@ -23,7 +23,6 @@ export default function AccountsPage() {
               label={`${a.name} (${a.entity === "US_501C3" ? "US" : "PH"})`}
               value={formatCurrency(a.balance, a.currency)}
               icon={a.type === "bank" ? Landmark : Wallet}
-              color={a.type === "bank" ? "blue" : "green"}
             />
           ))}
         </KpiGrid>

@@ -12,7 +12,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -91,12 +92,14 @@ export function PledgeCard({ donorId }: { donorId: string }) {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <Repeat className="size-4" />
+    <SectionCard
+      title={
+        <span className="flex items-center gap-2">
+          <Repeat className="size-4 text-muted-foreground" strokeWidth={1.75} />
           Recurring Pledge
-        </CardTitle>
+        </span>
+      }
+      actions={
         <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) reset(); }}>
           <DialogTrigger asChild>
             <Button size="sm" variant="outline" className="gap-1.5">
@@ -161,43 +164,42 @@ export function PledgeCard({ donorId }: { donorId: string }) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </CardHeader>
-      <CardContent>
+      }
+    >
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <LoadingState rows={1} />
         ) : !currentPledge ? (
-          <p className="text-sm text-muted-foreground">No recurring pledge on file.</p>
+          <p className="text-theme-sm text-muted-foreground">No recurring pledge on file.</p>
         ) : (
-          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-theme-sm">
             <div className="flex flex-col gap-0.5">
               <span className="font-medium">
                 {currentPledge.kind === "cash"
                   ? `${formatCurrency(currentPledge.amount ?? 0, currentPledge.currency)} · ${FREQUENCY_LABEL[currentPledge.frequency]}`
                   : `${currentPledge.itemDescription} · ${FREQUENCY_LABEL[currentPledge.frequency]}`}
               </span>
-              <span className="text-xs text-muted-foreground">Since {currentPledge.startedAt}</span>
+              <span className="text-theme-xs text-muted-foreground">Since {currentPledge.startedAt}</span>
             </div>
             <div className="flex items-center gap-2">
               <StatusBadge domain="pledge" status={currentPledge.status} />
               {currentPledge.status === "active" && (
-                <Button size="sm" variant="ghost" className="h-6 text-[11px]" onClick={() => handleStatusChange("paused")}>
+                <Button size="sm" variant="ghost" onClick={() => handleStatusChange("paused")}>
                   Pause
                 </Button>
               )}
               {currentPledge.status === "paused" && (
-                <Button size="sm" variant="ghost" className="h-6 text-[11px]" onClick={() => handleStatusChange("active")}>
+                <Button size="sm" variant="ghost" onClick={() => handleStatusChange("active")}>
                   Resume
                 </Button>
               )}
               {currentPledge.status !== "cancelled" && (
-                <Button size="sm" variant="ghost" className="h-6 text-[11px] text-destructive" onClick={() => handleStatusChange("cancelled")}>
+                <Button size="sm" variant="destructive" onClick={() => handleStatusChange("cancelled")}>
                   Cancel
                 </Button>
               )}
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+    </SectionCard>
   );
 }

@@ -53,25 +53,21 @@ export default function CostPerOutcomePage() {
           label="Cost / Bed Night"
           value={bedNights && hasProgramAttribution ? formatCurrency(housingSpend / bedNights) : "—"}
           icon={Bed}
-          color="blue"
         />
         <KpiCard
           label="Cost / Meal"
           value={mealsCount && hasProgramAttribution ? formatCurrency(mealsSpend / mealsCount) : "—"}
           icon={Utensils}
-          color="green"
         />
         <KpiCard
           label="Cost / Trip"
           value={tripsCount && hasProgramAttribution ? formatCurrency(transportSpend / tripsCount) : "—"}
           icon={Car}
-          color="cyan"
         />
         <KpiCard
           label="Cost / Care Cart Meal"
           value={careCartMeals && hasProgramAttribution ? formatCurrency(careCartSpend / careCartMeals) : "—"}
           icon={HandCoins}
-          color="orange"
         />
       </KpiGrid>
     </div>

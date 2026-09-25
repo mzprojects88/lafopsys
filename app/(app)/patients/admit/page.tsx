@@ -291,7 +291,7 @@ function NewReferralForm() {
         }
       />
       <Card>
-        <CardContent className="pt-6">
+        <CardContent>
           <form onSubmit={handleSubmit(onSubmit)}>
             <FieldGroup>
               <span className="text-base font-medium text-foreground">Patient</span>

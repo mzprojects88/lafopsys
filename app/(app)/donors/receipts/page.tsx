@@ -59,11 +59,11 @@ export default function ReceiptsPage() {
 
             return (
               <Card key={ar.id}>
-                <CardContent className="flex flex-col gap-4 p-4">
+                <CardContent className="flex flex-col gap-4 p-5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-col">
-                      <span className="text-sm font-medium">{ar.sequenceNumber} — {donor?.name}</span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-theme-sm font-medium">{ar.sequenceNumber} — {donor?.name}</span>
+                      <span className="text-theme-xs text-muted-foreground">
                         {donation && formatCurrency(donation.totalValue, donation.currency)} ·{" "}
                         {ar.entity === "US_501C3" ? "US 501(c)(3)" : "PH SEC"}
                       </span>
@@ -71,7 +71,7 @@ export default function ReceiptsPage() {
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{STAGE_LABELS[stageIdx]}</Badge>
                       {stageIdx < STAGES.length - 1 && (
-                        <Button size="sm" className="h-7 text-xs" onClick={() => advance(ar)}>
+                        <Button size="sm" onClick={() => advance(ar)}>
                           Mark {STAGE_LABELS[stageIdx + 1]}
                         </Button>
                       )}
@@ -85,29 +85,29 @@ export default function ReceiptsPage() {
 
           {donationsNeedingAR.length > 0 && (
             <>
-              <span className="mt-2 text-sm font-semibold text-muted-foreground">
+              <h2 className="mt-2 text-base font-medium text-foreground">
                 Donations without a receipt yet ({donationsNeedingAR.length})
-              </span>
-              {donationsNeedingAR.slice(0, 20).map((d) => {
-                const donor = donors.find((dn) => dn.id === d.donorId);
-                return (
-                  <Card key={d.id}>
-                    <CardContent className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
+              </h2>
+              <div className="flex flex-col divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
+                {donationsNeedingAR.slice(0, 20).map((d) => {
+                  const donor = donors.find((dn) => dn.id === d.donorId);
+                  return (
+                    <div key={d.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm hover:bg-muted/60">
                       <div className="flex flex-col">
                         <span className="font-medium">{donor?.name ?? "Unknown donor"}</span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-theme-xs text-muted-foreground">
                           {d.kind === "cash" ? "Cash donation" : d.itemDescription} · {formatCurrency(d.totalValue, d.currency)}
                         </span>
                       </div>
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleGenerate(d.id, d.receivingEntity)}>
+                      <Button size="sm" variant="outline" onClick={() => handleGenerate(d.id, d.receivingEntity)}>
                         Generate AR
                       </Button>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                    </div>
+                  );
+                })}
+              </div>
               {donationsNeedingAR.length > 20 && (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-theme-xs text-muted-foreground">
                   +{donationsNeedingAR.length - 20} more — generate receipts from the donor detail page.
                 </p>
               )}

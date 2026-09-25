@@ -3,7 +3,6 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/patterns/page-header";
-import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { useLocalCollection } from "@/lib/store/use-mock-store";
@@ -38,10 +37,9 @@ export default function MonthlyClosePage() {
         <span className="whitespace-nowrap text-sm text-muted-foreground">{doneCount} / {items.length}</span>
       </div>
 
-      <Card>
-        <CardContent className="flex flex-col gap-1 pt-6">
+      <div className="flex flex-col divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
           {items.map((item) => (
-            <label key={item.id} className="flex items-center gap-3 rounded-md px-2 py-2.5 text-sm hover:bg-accent">
+            <label key={item.id} className="flex cursor-pointer items-center gap-3 px-5 py-3 text-theme-sm hover:bg-muted/60">
               <Checkbox
                 checked={item.done}
                 onCheckedChange={(checked) => {
@@ -52,8 +50,7 @@ export default function MonthlyClosePage() {
               <span className={item.done ? "text-muted-foreground line-through" : ""}>{item.label}</span>
             </label>
           ))}
-        </CardContent>
-      </Card>
+      </div>
     </div>
   );
 }

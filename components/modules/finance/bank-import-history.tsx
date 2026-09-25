@@ -11,8 +11,11 @@ import { useRole } from "@/lib/rbac/use-role";
 import { canDeleteFiles, canUploadFiles } from "@/lib/rbac/roles";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { useBankStatementImportsData, type BankStatementImport } from "@/lib/hooks/use-bank-transactions-collection";
 import { formatDate } from "@/lib/utils/date";
+import { STATUS_TONE_TEXT } from "@/lib/utils/status-colors";
+import { cn } from "@/lib/utils";
 
 const peso = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -65,7 +68,7 @@ export function BankImportHistory() {
       accessorFn: (i) => i.continuityWarnings,
       cell: ({ row }) =>
         row.original.continuityWarnings > 0 ? (
-          <span className="flex items-center gap-1 text-amber-700 dark:text-amber-400">
+          <span className={cn("flex items-center gap-1", STATUS_TONE_TEXT.warning)}>
             <AlertTriangle className="size-3.5" />
             {row.original.continuityWarnings} day{row.original.continuityWarnings === 1 ? "" : "s"}
           </span>
@@ -77,7 +80,7 @@ export function BankImportHistory() {
 
   return (
     <>
-      <DataTable columns={columns} data={imports} searchPlaceholder="Search imports…" emptyMessage={loading ? "Loading…" : "No statements imported yet."} pageSize={10} />
+      {loading ? <LoadingState /> : <DataTable columns={columns} data={imports} searchPlaceholder="Search imports…" emptyMessage="No statements imported yet." pageSize={10} />}
       {filesFor ? (
         <Dialog open onOpenChange={(o) => (o ? undefined : setFilesFor(null))}>
           <DialogContent>
