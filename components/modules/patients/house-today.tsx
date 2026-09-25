@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import { BedDouble, Check, DoorOpen, FilePlus2, LogOut, MoonStar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FloorPlanBedPicker } from "@/components/modules/house-ops/floor-plan/floor-plan-bed-picker";
 import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
 import { DischargeDialog } from "@/components/modules/patients/discharge-dialog";
 import { confirmHouseSheetMatch } from "@/app/(app)/patients/house-sheet/actions";
@@ -17,7 +18,7 @@ import { useBedNights } from "@/lib/hooks/use-bed-nights-collection";
 import { usePickups } from "@/lib/hooks/use-pickups-collection";
 import { useAllOrientationChecks } from "@/lib/hooks/use-orientation-topics";
 import { orientationProgress } from "@/lib/utils/admission-tasks";
-import { assignableBeds, isActiveStay, unitForBedPosition } from "@/lib/utils/beds";
+import { assignableBeds, isActiveStay, unitForBedPosition, type AssignableBed } from "@/lib/utils/beds";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { PRIORITIES } from "@/lib/utils/master-sheet";
 import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
@@ -48,6 +49,8 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const [checkIn, setCheckIn] = React.useState<{ patient: Patient; sheetRow: HouseSheetPerson } | null>(null);
   const [discharge, setDischarge] = React.useState<{ stay: Stay; name: string; on: string } | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
+  // "Move for tonight" picks the new bed on the floor plan (user, 2026-09-25).
+  const [moving, setMoving] = React.useState<{ stayId: string; name: string; from: string; options: AssignableBed[] } | null>(null);
 
   const today = todayIso();
   const patientById = new Map(patients.map((p) => [p.id, p]));
@@ -203,18 +206,16 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                       <Button size="sm" className="h-7 gap-1" disabled={busy === s.id} onClick={() => run(s.id, () => confirmNight(s.id), "Same bed tonight.")}>
                         <Check className="size-3.5" /> Same bed
                       </Button>
-                      <Select value="" onValueChange={(unitId) => run(s.id, () => confirmNight(s.id, unitId), "Moved for tonight.")}>
-                        <SelectTrigger size="sm" className="h-7 w-[92px] text-xs" aria-label={`Move ${nameOf(s.patientId)} to another bed`}>
-                          <SelectValue placeholder="Move…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {moves.map((b) => (
-                            <SelectItem key={b.unit.id} value={b.unit.id}>
-                              {b.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 gap-1"
+                        disabled={busy === s.id}
+                        aria-label={`Move ${nameOf(s.patientId)} to another bed`}
+                        onClick={() => setMoving({ stayId: s.id, name: nameOf(s.patientId), from: bedOf(s.bedPositionId), options: moves })}
+                      >
+                        <BedDouble className="size-3.5" /> Move…
+                      </Button>
                     </div>
                   ) : null}
                 </div>
@@ -254,6 +255,20 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
         </Card>
       </div>
 
+      {moving ? (
+        <MoveTonightDialog
+          key={moving.stayId}
+          name={moving.name}
+          from={moving.from}
+          options={moving.options}
+          busy={busy === moving.stayId}
+          onClose={() => setMoving(null)}
+          onMove={async (unitId) => {
+            await run(moving.stayId, () => confirmNight(moving.stayId, unitId), "Moved for tonight.");
+            setMoving(null);
+          }}
+        />
+      ) : null}
       <CheckInDialog key={checkIn?.sheetRow.id} target={checkIn} onOpenChange={(open) => !open && setCheckIn(null)} />
       <DischargeDialog
         stay={discharge?.stay ?? null}
@@ -263,5 +278,43 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
         onDischarged={() => setDischarge(null)}
       />
     </div>
+  );
+}
+
+/** Tonight in a different bed, chosen on the floor plan. */
+function MoveTonightDialog({
+  name,
+  from,
+  options,
+  busy,
+  onClose,
+  onMove,
+}: {
+  name: string;
+  from: string;
+  options: AssignableBed[];
+  busy: boolean;
+  onClose: () => void;
+  onMove: (unitId: string) => Promise<void>;
+}) {
+  const [unitId, setUnitId] = React.useState("");
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Move {name} for tonight</DialogTitle>
+          <DialogDescription>Now in bed {from}. Tap the bed for tonight on the plan.</DialogDescription>
+        </DialogHeader>
+        <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={options} />
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button disabled={!unitId || busy} onClick={() => onMove(unitId)}>
+            {busy ? "Moving…" : "Move for tonight"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
