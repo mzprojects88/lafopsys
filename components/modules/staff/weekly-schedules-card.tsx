@@ -4,7 +4,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { Link2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -41,26 +41,26 @@ export function WeeklySchedulesCard() {
   }).length;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Weekly schedules</CardTitle>
-        <CardDescription>
-          {missing > 0
-            ? `${missing} of ${active.length} people have no schedule yet. Without one, lateness, undertime and absences are not worked out.`
-            : "Everyone has a schedule. Late and undertime are measured against it, after the grace period in Settings."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
+    <SectionCard
+      title="Weekly schedules"
+      description={
+        missing > 0
+          ? `${missing} of ${active.length} people have no schedule yet. Without one, lateness, undertime and absences are not worked out.`
+          : "Everyone has a schedule. Late and undertime are measured against it, after the grace period in Settings."
+      }
+      flush
+      bodyClassName="divide-y divide-border"
+    >
         {active.map((s) => {
           const emp = people.find((p) => p.staffId === s.id);
           const current = emp ? currentFor(emp.employeeId) : null;
           return (
-            <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm">
+            <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
               <div className="flex min-w-0 flex-col">
                 <span className="font-medium">
                   {s.firstName} {s.lastName}
                 </span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-theme-xs text-muted-foreground">
                   {!emp ? "No HR record yet: link or create one to set a schedule." : current ? `${describePattern(current.pattern)} · ${current.hoursPerDay} h/day` : "No schedule yet."}
                 </span>
               </div>
@@ -68,8 +68,7 @@ export function WeeklySchedulesCard() {
             </div>
           );
         })}
-      </CardContent>
-    </Card>
+    </SectionCard>
   );
 }
 

@@ -7,8 +7,9 @@ import { Calculator, ArrowRight, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
-import { KpiCard } from "@/components/patterns/kpi-card";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Button } from "@/components/ui/button";
 import { HrSubNav } from "@/components/modules/hr/hr-subnav";
 import { PayItemsCard } from "@/components/modules/hr/pay-items-card";
@@ -77,22 +78,20 @@ export default function PayrollPage() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Ready to compute" value={periodsLoading ? "…" : readyToCompute.length} icon={Calculator} color="cyan" sublabel="Periods with every timesheet approved" />
-        <KpiCard label="Awaiting approval" value={runsLoading ? "…" : awaitingApproval.length} icon={Wallet} color="amber" sublabel="Computed, needs a second person" />
-        <KpiCard label="Approved, unpaid" value={runsLoading ? "…" : approvedUnpaid.length} icon={Wallet} color="blue" sublabel="Transfer, then mark paid" />
-        <KpiCard label={`Net paid ${year}`} value={runsLoading ? "…" : `₱${formatAmount2(paidNet)}`} icon={Wallet} color="teal" sublabel={`${paidThisYear.length} run(s) paid`} />
-      </div>
+      <KpiGrid>
+        <KpiCard label="Ready to compute" value={periodsLoading ? "…" : readyToCompute.length} icon={Calculator} sublabel="Periods with every timesheet approved" />
+        <KpiCard label="Awaiting approval" value={runsLoading ? "…" : awaitingApproval.length} icon={Wallet} tone="warning" sublabel="Computed, needs a second person" />
+        <KpiCard label="Approved, unpaid" value={runsLoading ? "…" : approvedUnpaid.length} icon={Wallet} sublabel="Transfer, then mark paid" />
+        <KpiCard label={`Net paid ${year}`} value={runsLoading ? "…" : `₱${formatAmount2(paidNet)}`} icon={Wallet} sublabel={`${paidThisYear.length} run(s) paid`} />
+      </KpiGrid>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Periods {year}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
+      <SectionCard title={`Periods ${year}`} flush bodyClassName="flex flex-col divide-y divide-border">
           {periodsLoading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <div className="p-5">
+              <LoadingState />
+            </div>
           ) : thisYear.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="px-5 py-3 text-theme-sm text-muted-foreground">
               No periods for {year}.{" "}
               <Link href="/hr/periods" className="underline">
                 Generate them
@@ -105,10 +104,10 @@ export default function PayrollPage() {
               .map((p) => {
                 const run = runBy.get(p.id);
                 return (
-                  <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm">
+                  <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
                     <div className="flex min-w-0 flex-col">
                       <span className="font-medium">{payPeriodLabel({ year: p.year, seq: p.seq, from: p.startsOn, to: p.endsOn, isSecondCutoff: p.seq % 2 === 0 })}</span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-theme-xs text-muted-foreground">
                         Pay date {formatDate(p.payDate)}
                         {run?.totals.net !== undefined ? ` · net ₱${formatAmount2(toCentavos(run.totals.net as number))} for ${String(run.totals.count ?? "")}` : ""}
                       </span>
@@ -137,27 +136,21 @@ export default function PayrollPage() {
                 );
               })
           )}
-        </CardContent>
-      </Card>
+      </SectionCard>
 
       {runs.some((r) => r.kind !== "regular" || r.status === "cancelled") ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Other runs</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
+        <SectionCard title="Other runs" flush bodyClassName="flex flex-col divide-y divide-border">
             {runs
               .filter((r) => r.kind !== "regular" || r.status === "cancelled")
               .map((r) => (
-                <Link key={r.id} href={`/hr/payroll/${r.id}`} className="flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm hover:bg-accent/40">
+                <Link key={r.id} href={`/hr/payroll/${r.id}`} className="flex items-center justify-between gap-2 px-5 py-3 text-theme-sm hover:bg-muted/60">
                   <span>
                     {PAYROLL_RUN_KINDS[r.kind]} {r.label ?? r.year}
                   </span>
                   <StatusBadge dot domain="payrollRun" status={r.status} />
                 </Link>
               ))}
-          </CardContent>
-        </Card>
+        </SectionCard>
       ) : null}
 
       <YearEndCard employees={employees} periods={periods} runs={runs} year={year} today={today} />

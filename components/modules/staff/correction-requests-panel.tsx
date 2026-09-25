@@ -8,14 +8,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/patterns/empty-state";
+import { LoadingState } from "@/components/patterns/loading-state";
+import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 import { invalidateTables, useCollection } from "@/lib/data/collection-store";
 import { timeEntriesStore } from "@/lib/hooks/use-time-entries-collection";
 import { correctionRequestsStore, useCorrectionRequests, type CorrectionRequest } from "@/lib/hooks/use-correction-requests";
 
 const STATUS: Record<CorrectionRequest["status"], { label: string; className: string }> = {
-  pending: { label: "Waiting", className: "bg-amber-50 text-amber-700 hover:bg-amber-50 dark:bg-amber-500/15 dark:text-amber-400" },
-  approved: { label: "Approved", className: "bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-400" },
-  rejected: { label: "Rejected", className: "bg-rose-50 text-rose-700 hover:bg-rose-50 dark:bg-rose-500/15 dark:text-rose-400" },
+  pending: { label: "Waiting", className: STATUS_TONE_CLASSES.warning },
+  approved: { label: "Approved", className: STATUS_TONE_CLASSES.positive },
+  rejected: { label: "Rejected", className: STATUS_TONE_CLASSES.negative },
 };
 
 const manila = (iso: string) =>
@@ -32,11 +34,12 @@ export function CorrectionRequestsPanel({ canDecide, myId, staffName }: { canDec
   const entryById = React.useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
   const shown = [...requests].sort((a, b) => Number(b.status === "pending") - Number(a.status === "pending") || b.createdAt.localeCompare(a.createdAt)).slice(0, 60);
 
+  if (loading && shown.length === 0) return <LoadingState />;
   if (!loading && shown.length === 0) {
     return <EmptyState title="No correction requests" description="When someone reports a missed clock-out, it appears here for admins and HR to check." />;
   }
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
       {shown.map((r) => (
         <RequestCard key={r.id} request={r} entry={entryById.get(r.timeEntryId)} canDecide={canDecide && r.staffId !== myId} showName={canDecide} staffName={staffName} />
       ))}
@@ -82,7 +85,7 @@ function RequestCard({
 
   const s = STATUS[r.status];
   return (
-    <div className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
+    <div className="flex flex-col gap-2 px-5 py-3 text-theme-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-medium">
           {showName ? `${staffName(r.staffId)} · ` : ""}
@@ -94,7 +97,7 @@ function RequestCard({
         {entry?.clockIn ? `Clocked in ${entry.clockIn} · ` : ""}says they left <b className="text-foreground">{manila(r.requestedAt)}</b> · &ldquo;{r.reason}&rdquo;
       </span>
       {r.status !== "pending" ? (
-        <span className="text-xs text-muted-foreground">
+        <span className="text-theme-xs text-muted-foreground">
           {r.status === "approved" ? "Approved" : "Rejected"} by {r.decidedBy ? staffName(r.decidedBy) : "—"}
           {r.decidedAt ? `, ${manila(r.decidedAt)}` : ""}
           {r.decisionNote ? ` · ${r.decisionNote}` : ""}

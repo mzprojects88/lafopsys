@@ -110,7 +110,7 @@ function CloseTimeEntryForm({
               <Label htmlFor="adjust-date">Day</Label>
               <select
                 id="adjust-date"
-                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs"
+                className="h-11 rounded-lg border border-input bg-card px-3 text-theme-sm shadow-theme-xs"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
               >

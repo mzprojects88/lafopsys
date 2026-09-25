@@ -13,6 +13,7 @@ import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
 import { todayIso } from "@/lib/utils/date";
 import { formatMinutes } from "@/lib/utils/dtr";
 import { EmptyState } from "@/components/patterns/empty-state";
+import { LoadingState } from "@/components/patterns/loading-state";
 
 function nowLabel() {
   return new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
@@ -26,7 +27,7 @@ export function ClockWidget() {
   // Every punch goes through the camera (0060): photo + location.
   const [camera, setCamera] = React.useState<"clock_in" | "clock_out" | null>(null);
 
-  if (loading) return null;
+  if (loading) return <LoadingState rows={3} />;
 
   if (!me) {
     return (
@@ -53,13 +54,13 @@ export function ClockWidget() {
       <CardContent className="flex flex-col gap-5 py-6">
         <div className="flex items-center gap-2.5">
           <PersonAvatar name={`${me.firstName} ${me.lastName}`} size="sm" />
-          <span className="text-sm font-medium">{me.firstName} {me.lastName} · {me.position}</span>
+          <span className="text-theme-sm font-medium">{me.firstName} {me.lastName} · {me.position}</span>
         </div>
 
         <div className="flex flex-col items-center gap-2">
-          <IconCircle icon={Clock} color="blue" size="lg" />
+          <IconCircle icon={Clock} size="lg" />
           <span className="text-4xl font-semibold tabular-nums">{nowLabel()}</span>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-theme-xs text-muted-foreground">
             {statusLabel}
             {sessionsLabel}
           </span>
@@ -86,56 +87,58 @@ export function ClockWidget() {
           </Button>
         )}
 
-        <div className="flex flex-col gap-2 border-t pt-4">
-          <span className="text-xs font-medium text-muted-foreground">Today&apos;s Summary</span>
-          <div className="flex items-center gap-2.5 rounded-lg border px-3 py-2">
-            <IconCircle icon={CalendarCheck} color="green" size="sm" />
+        <div className="flex flex-col border-t border-border pt-4">
+          <span className="pb-1 text-theme-xs font-medium text-muted-foreground">Today&apos;s Summary</span>
+          <div className="flex flex-col divide-y divide-border">
+          <div className="flex items-center gap-2.5 py-2.5">
+            <IconCircle icon={CalendarCheck} size="sm" />
             <div className="flex flex-col">
-              <span className="text-xs text-muted-foreground">Status</span>
-              <span className="text-sm font-medium capitalize">{statusLabel.startsWith("Not") ? "Not clocked in" : clockedIn ? "Clocked in" : "Clocked out"}</span>
+              <span className="text-theme-xs text-muted-foreground">Status</span>
+              <span className="text-theme-sm font-medium capitalize">{statusLabel.startsWith("Not") ? "Not clocked in" : clockedIn ? "Clocked in" : "Clocked out"}</span>
             </div>
           </div>
-          <div className="flex items-center gap-2.5 rounded-lg border px-3 py-2">
-            <IconCircle icon={Clock} color="purple" size="sm" />
+          <div className="flex items-center gap-2.5 py-2.5">
+            <IconCircle icon={Clock} size="sm" />
             <div className="flex flex-col">
-              <span className="text-xs text-muted-foreground">Scheduled Shift</span>
-              <span className="text-sm font-medium">
+              <span className="text-theme-xs text-muted-foreground">Scheduled Shift</span>
+              <span className="text-theme-sm font-medium">
                 {todayShift ? `${todayShift.start}–${todayShift.end}` : mePerson ? "Rest day" : "—"}
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-2.5 rounded-lg border px-3 py-2">
-            <IconCircle icon={CalendarCheck} color="blue" size="sm" />
+          <div className="flex items-center gap-2.5 py-2.5">
+            <IconCircle icon={CalendarCheck} size="sm" />
             <div className="flex flex-col">
-              <span className="text-xs text-muted-foreground">Hours Today</span>
-              <span className="text-sm font-medium tabular-nums">
+              <span className="text-theme-xs text-muted-foreground">Hours Today</span>
+              <span className="text-theme-sm font-medium tabular-nums">
                 {formatMinutes(totals.today)}
-                {clockedIn && <span className="ml-1.5 text-xs font-normal text-muted-foreground">in progress</span>}
+                {clockedIn && <span className="ml-1.5 text-theme-xs font-normal text-muted-foreground">in progress</span>}
               </span>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="flex items-center gap-2.5 rounded-lg border px-3 py-2">
-              <IconCircle icon={CalendarDays} color="indigo" size="sm" />
+          <div className="grid grid-cols-2 gap-2 py-2.5">
+            <div className="flex items-center gap-2.5">
+              <IconCircle icon={CalendarDays} size="sm" />
               <div className="flex flex-col">
-                <span className="text-xs text-muted-foreground">This Week</span>
-                <span className="text-sm font-medium tabular-nums">{formatMinutes(totals.week)}</span>
+                <span className="text-theme-xs text-muted-foreground">This Week</span>
+                <span className="text-theme-sm font-medium tabular-nums">{formatMinutes(totals.week)}</span>
               </div>
             </div>
-            <div className="flex items-center gap-2.5 rounded-lg border px-3 py-2">
-              <IconCircle icon={CalendarRange} color="purple" size="sm" />
+            <div className="flex items-center gap-2.5">
+              <IconCircle icon={CalendarRange} size="sm" />
               <div className="flex flex-col">
-                <span className="text-xs text-muted-foreground">This Month</span>
-                <span className="text-sm font-medium tabular-nums">{formatMinutes(totals.month)}</span>
+                <span className="text-theme-xs text-muted-foreground">This Month</span>
+                <span className="text-theme-sm font-medium tabular-nums">{formatMinutes(totals.month)}</span>
               </div>
             </div>
+          </div>
           </div>
         </div>
 
         {/* Staff are told what a punch records, in plain words and before they tap
             it — location tracking that people only discover afterwards isn't consent.
             Declining the browser's location prompt is explicitly safe. */}
-        <div className="flex items-start gap-2.5 rounded-lg bg-accent/40 px-3 py-2.5 text-xs text-muted-foreground">
+        <div className="flex items-start gap-2.5 rounded-xl bg-accent/40 px-3 py-2.5 text-theme-xs text-muted-foreground">
           <MapPin className="size-4 shrink-0 text-primary" />
           <span>
             Clocking in or out takes a photo and records your location, device and network address to your Daily Time Record. You
@@ -143,7 +146,7 @@ export function ClockWidget() {
           </span>
         </div>
 
-        <div className="flex items-start gap-2.5 rounded-lg bg-accent/40 px-3 py-2.5 text-xs text-muted-foreground">
+        <div className="flex items-start gap-2.5 rounded-xl bg-accent/40 px-3 py-2.5 text-theme-xs text-muted-foreground">
           <ShieldCheck className="size-4 shrink-0 text-primary" />
           <span>Don&apos;t forget to clock out at the end of your shift.</span>
         </div>

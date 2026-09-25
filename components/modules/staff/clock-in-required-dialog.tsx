@@ -40,14 +40,14 @@ export function ClockInRequiredDialog() {
         onInteractOutside={(e) => e.preventDefault()}
       >
         <DialogHeader className="items-center text-center">
-          <IconCircle icon={ShieldAlert} color="amber" size="lg" />
+          <IconCircle icon={ShieldAlert} tone="warning" size="lg" />
           <DialogTitle className="text-base">Clock In Required</DialogTitle>
           <DialogDescription>
             You must clock in before you can access the rest of the LAF Operating System. Clock in
             below to continue.
           </DialogDescription>
         </DialogHeader>
-        <p className="text-center text-xs text-muted-foreground">
+        <p className="text-center text-theme-xs text-muted-foreground">
           Clocking in takes a photo and records your location, device and network address to your Daily
           Time Record. Only admins and HR can see the photo.
         </p>

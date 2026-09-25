@@ -7,7 +7,8 @@ import { toast } from "sonner";
 import { Download, Printer } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -27,6 +28,10 @@ import { monthlyRemittanceDeadlines, yearEndDeadlines } from "@/lib/utils/compli
 import { alphalistCsv, remittanceListCsv } from "./actions";
 import { employeeFullName, type Employee } from "@/lib/types/hr";
 
+/** Inventory table look: header and body cells. */
+const TH = "h-11 px-5 text-theme-xs font-medium text-muted-foreground";
+const TD = "px-5 py-3";
+
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 /**
@@ -37,7 +42,7 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
  */
 export default function ReportsPage() {
   return (
-    <React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading…</p>}>
+    <React.Suspense fallback={<LoadingState />}>
       <ReportsInner />
     </React.Suspense>
   );
@@ -142,16 +147,13 @@ function ReportsInner() {
               ))}
           </SelectContent>
         </Select>
-        <span className="text-xs text-muted-foreground">
-          {loading ? "Loading…" : `${monthSlips.length} settled payslip(s) in ${MONTHS[Number(month.slice(5, 7)) - 1]}`}
-        </span>
+        {loading ? null : <span className="text-theme-xs text-muted-foreground">{`${monthSlips.length} settled payslip(s) in ${MONTHS[Number(month.slice(5, 7)) - 1]}`}</span>}
       </div>
 
-      <Card>
-        <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-          <CardTitle className="text-base">
-            Monthly remittances · {MONTHS[Number(month.slice(5, 7)) - 1]} {year}
-          </CardTitle>
+      <SectionCard
+        flush
+        title={`Monthly remittances · ${MONTHS[Number(month.slice(5, 7)) - 1]} ${year}`}
+        actions={
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" className="gap-1.5" onClick={() => download("sss")} disabled={busy !== null || monthAgg.length === 0}>
               <Download className="size-3.5" />
@@ -166,113 +168,129 @@ function ReportsInner() {
               Pag-IBIG list{due("pagibig_mcrf") ? ` · due ${formatDate(due("pagibig_mcrf")!, "MMM d")}` : ""}
             </Button>
           </div>
-        </CardHeader>
-        <CardContent className="overflow-x-auto p-0">
-          {monthAgg.length === 0 ? (
-            <p className="p-4 text-sm text-muted-foreground">No approved payroll for this month yet.</p>
+        }
+      >
+          {loading ? (
+            <div className="p-5">
+              <LoadingState />
+            </div>
+          ) : monthAgg.length === 0 ? (
+            <p className="px-5 py-4 text-theme-sm text-muted-foreground">No approved payroll for this month yet.</p>
           ) : (
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead className="text-right">SSS EE</TableHead>
-                  <TableHead className="text-right">SSS ER + EC</TableHead>
-                  <TableHead className="text-right">MPF EE / ER</TableHead>
-                  <TableHead className="text-right">PhilHealth EE / ER</TableHead>
-                  <TableHead className="text-right">Pag-IBIG EE / ER</TableHead>
-                  <TableHead className="text-right">Total to remit</TableHead>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className={TH}>Employee</TableHead>
+                  <TableHead className={`${TH} text-right`}>SSS EE</TableHead>
+                  <TableHead className={`${TH} text-right`}>SSS ER + EC</TableHead>
+                  <TableHead className={`${TH} text-right`}>MPF EE / ER</TableHead>
+                  <TableHead className={`${TH} text-right`}>PhilHealth EE / ER</TableHead>
+                  <TableHead className={`${TH} text-right`}>Pag-IBIG EE / ER</TableHead>
+                  <TableHead className={`${TH} text-right`}>Total to remit</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {monthAgg.map((a, i) => (
-                  <TableRow key={a.e?.id ?? i}>
-                    <TableCell>{a.e ? employeeFullName(a.e) : "—"}</TableCell>
-                    <TableCell className="text-right tabular-nums">{peso(a.sssEe)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{peso(a.sssEr + a.ec)}</TableCell>
-                    <TableCell className="text-right tabular-nums">
+                  <TableRow key={a.e?.id ?? i} className="text-theme-sm hover:bg-muted/60">
+                    <TableCell className={TD}>{a.e ? employeeFullName(a.e) : "—"}</TableCell>
+                    <TableCell className={`${TD} text-right tabular-nums`}>{peso(a.sssEe)}</TableCell>
+                    <TableCell className={`${TD} text-right tabular-nums`}>{peso(a.sssEr + a.ec)}</TableCell>
+                    <TableCell className={`${TD} text-right tabular-nums`}>
                       {peso(a.mpfEe)} / {peso(a.mpfEr)}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className={`${TD} text-right tabular-nums`}>
                       {peso(a.phEe)} / {peso(a.phEr)}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className={`${TD} text-right tabular-nums`}>
                       {peso(a.piEe)} / {peso(a.piEr)}
                     </TableCell>
-                    <TableCell className="text-right font-medium tabular-nums">{peso(a.sssEe + a.sssEr + a.ec + a.mpfEe + a.mpfEr + a.phEe + a.phEr + a.piEe + a.piEr)}</TableCell>
+                    <TableCell className={`${TD} text-right font-medium tabular-nums`}>{peso(a.sssEe + a.sssEr + a.ec + a.mpfEe + a.mpfEr + a.phEe + a.phEr + a.piEe + a.piEr)}</TableCell>
                   </TableRow>
                 ))}
-                <TableRow className="font-medium">
-                  <TableCell>Total</TableCell>
-                  <TableCell className="text-right tabular-nums">{formatAmount2(sum(monthAgg, (a) => a.sssEe))}</TableCell>
-                  <TableCell className="text-right tabular-nums">{formatAmount2(sum(monthAgg, (a) => a.sssEr + a.ec))}</TableCell>
-                  <TableCell className="text-right tabular-nums">
+                <TableRow className="text-theme-sm font-medium hover:bg-transparent">
+                  <TableCell className={TD}>Total</TableCell>
+                  <TableCell className={`${TD} text-right tabular-nums`}>{formatAmount2(sum(monthAgg, (a) => a.sssEe))}</TableCell>
+                  <TableCell className={`${TD} text-right tabular-nums`}>{formatAmount2(sum(monthAgg, (a) => a.sssEr + a.ec))}</TableCell>
+                  <TableCell className={`${TD} text-right tabular-nums`}>
                     {formatAmount2(sum(monthAgg, (a) => a.mpfEe))} / {formatAmount2(sum(monthAgg, (a) => a.mpfEr))}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className={`${TD} text-right tabular-nums`}>
                     {formatAmount2(sum(monthAgg, (a) => a.phEe))} / {formatAmount2(sum(monthAgg, (a) => a.phEr))}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className={`${TD} text-right tabular-nums`}>
                     {formatAmount2(sum(monthAgg, (a) => a.piEe))} / {formatAmount2(sum(monthAgg, (a) => a.piEr))}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">{formatAmount2(sum(monthAgg, (a) => a.sssEe + a.sssEr + a.ec + a.mpfEe + a.mpfEr + a.phEe + a.phEr + a.piEe + a.piEr))}</TableCell>
+                  <TableCell className={`${TD} text-right tabular-nums`}>{formatAmount2(sum(monthAgg, (a) => a.sssEe + a.sssEr + a.ec + a.mpfEe + a.mpfEr + a.phEe + a.phEr + a.piEe + a.piEr))}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
+      <SectionCard
+        title={
+          <>
             BIR 1601-C · {MONTHS[Number(month.slice(5, 7)) - 1]} {year}
-            {due("bir_1601c") ? <span className="text-xs font-normal text-muted-foreground"> · due {formatDate(due("bir_1601c")!)}</span> : null}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
+            {due("bir_1601c") ? <span className="text-theme-xs font-normal text-muted-foreground"> · due {formatDate(due("bir_1601c")!)}</span> : null}
+          </>
+        }
+        bodyClassName="grid grid-cols-2 gap-4 text-theme-sm md:grid-cols-5"
+      >
+        {loading ? (
+          <div className="col-span-full">
+            <LoadingState rows={1} />
+          </div>
+        ) : (
+          <>
           <Figure label="Employees paid" value={String(monthAgg.length)} />
           <Figure label="Total compensation" value={formatAmount2(sum(monthAgg, (a) => a.gross))} />
           <Figure label="Non-taxable (de minimis, 13th, contributions)" value={formatAmount2(sum(monthAgg, (a) => a.nonTaxable + a.sssEe + a.mpfEe + a.phEe + a.piEe))} />
           <Figure label="Taxable compensation" value={formatAmount2(sum(monthAgg, (a) => a.taxable - a.sssEe - a.mpfEe - a.phEe - a.piEe))} />
           <Figure label="Tax withheld" value={formatAmount2(sum(monthAgg, (a) => a.tax))} strong />
-        </CardContent>
-      </Card>
+          </>
+        )}
+      </SectionCard>
 
-      <Card>
-        <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-          <CardTitle className="text-base">Year {year} · 1604-C, alphalist, 2316</CardTitle>
+      <SectionCard
+        flush
+        title={`Year ${year} · 1604-C, alphalist, 2316`}
+        actions={
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">{yearEndDeadlines(year, ctx).map((d) => `${d.label} ${formatDate(d.dueOn, "MMM d")}`).slice(2, 4).join(" · ")}</span>
+            <span className="text-theme-xs text-muted-foreground">{yearEndDeadlines(year, ctx).map((d) => `${d.label} ${formatDate(d.dueOn, "MMM d")}`).slice(2, 4).join(" · ")}</span>
             <Button size="sm" variant="outline" className="gap-1.5" onClick={() => download("alphalist")} disabled={busy !== null || (yearAgg.length === 0 && openings.length === 0)}>
               <Download className="size-3.5" />
               Alphalist CSV
             </Button>
           </div>
-        </CardHeader>
-        <CardContent className="overflow-x-auto p-0">
-          {yearAgg.length === 0 ? (
-            <p className="p-4 text-sm text-muted-foreground">No approved payroll in {year} yet. Opening figures entered under Payroll still feed the alphalist and 2316.</p>
+        }
+      >
+          {loading ? (
+            <div className="p-5">
+              <LoadingState />
+            </div>
+          ) : yearAgg.length === 0 ? (
+            <p className="px-5 py-4 text-theme-sm text-muted-foreground">No approved payroll in {year} yet. Opening figures entered under Payroll still feed the alphalist and 2316.</p>
           ) : (
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead className="text-right">Gross</TableHead>
-                  <TableHead className="text-right">Non-taxable</TableHead>
-                  <TableHead className="text-right">EE contributions</TableHead>
-                  <TableHead className="text-right">Tax withheld</TableHead>
-                  <TableHead />
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className={TH}>Employee</TableHead>
+                  <TableHead className={`${TH} text-right`}>Gross</TableHead>
+                  <TableHead className={`${TH} text-right`}>Non-taxable</TableHead>
+                  <TableHead className={`${TH} text-right`}>EE contributions</TableHead>
+                  <TableHead className={`${TH} text-right`}>Tax withheld</TableHead>
+                  <TableHead className={TH} />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {yearAgg.map((a, i) => (
-                  <TableRow key={a.e?.id ?? i}>
-                    <TableCell>{a.e ? employeeFullName(a.e) : "—"}</TableCell>
-                    <TableCell className="text-right tabular-nums">{peso(a.gross)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{peso(a.nonTaxable)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{peso(a.sssEe + a.mpfEe + a.phEe + a.piEe)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{peso(a.tax)}</TableCell>
-                    <TableCell className="text-right">
+                  <TableRow key={a.e?.id ?? i} className="text-theme-sm hover:bg-muted/60">
+                    <TableCell className={TD}>{a.e ? employeeFullName(a.e) : "—"}</TableCell>
+                    <TableCell className={`${TD} text-right tabular-nums`}>{peso(a.gross)}</TableCell>
+                    <TableCell className={`${TD} text-right tabular-nums`}>{peso(a.nonTaxable)}</TableCell>
+                    <TableCell className={`${TD} text-right tabular-nums`}>{peso(a.sssEe + a.mpfEe + a.phEe + a.piEe)}</TableCell>
+                    <TableCell className={`${TD} text-right tabular-nums`}>{peso(a.tax)}</TableCell>
+                    <TableCell className={`${TD} text-right`}>
                       {a.e ? (
                         <Button asChild size="sm" variant="ghost" aria-label="2316">
                           <Link href={`/hr/reports/2316/${a.e.id}/${year}`} target="_blank">
@@ -287,53 +305,51 @@ function ReportsInner() {
               </TableBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            13th month {year} · pay by Dec 24, DOLE report by {formatDate(yearEndDeadlines(year, ctx)[1].dueOn)}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto p-0">
+      <SectionCard flush title={`13th month ${year} · pay by Dec 24, DOLE report by ${formatDate(yearEndDeadlines(year, ctx)[1].dueOn)}`}>
+          {loading ? (
+            <div className="p-5">
+              <LoadingState />
+            </div>
+          ) : (
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Employee</TableHead>
-                <TableHead className="text-right">Basic earned so far</TableHead>
-                <TableHead className="text-right">÷ 12</TableHead>
-                <TableHead className="text-right">Paid</TableHead>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className={TH}>Employee</TableHead>
+                <TableHead className={`${TH} text-right`}>Basic earned so far</TableHead>
+                <TableHead className={`${TH} text-right`}>÷ 12</TableHead>
+                <TableHead className={`${TH} text-right`}>Paid</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {thirteenth.map((t) => (
-                <TableRow key={t.e.id}>
-                  <TableCell>{employeeFullName(t.e)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{peso(t.basic)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{peso(t.projected)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{peso(t.paid)}</TableCell>
+                <TableRow key={t.e.id} className="text-theme-sm hover:bg-muted/60">
+                  <TableCell className={TD}>{employeeFullName(t.e)}</TableCell>
+                  <TableCell className={`${TD} text-right tabular-nums`}>{peso(t.basic)}</TableCell>
+                  <TableCell className={`${TD} text-right tabular-nums`}>{peso(t.projected)}</TableCell>
+                  <TableCell className={`${TD} text-right tabular-nums`}>{peso(t.paid)}</TableCell>
                 </TableRow>
               ))}
-              <TableRow className="font-medium">
-                <TableCell>Total</TableCell>
-                <TableCell className="text-right tabular-nums">{formatAmount2(thirteenth.reduce((s, t) => s + toCentavos(t.basic), 0))}</TableCell>
-                <TableCell className="text-right tabular-nums">{formatAmount2(thirteenth.reduce((s, t) => s + toCentavos(t.projected), 0))}</TableCell>
-                <TableCell className="text-right tabular-nums">{formatAmount2(thirteenth.reduce((s, t) => s + toCentavos(t.paid), 0))}</TableCell>
+              <TableRow className="text-theme-sm font-medium hover:bg-transparent">
+                <TableCell className={TD}>Total</TableCell>
+                <TableCell className={`${TD} text-right tabular-nums`}>{formatAmount2(thirteenth.reduce((s, t) => s + toCentavos(t.basic), 0))}</TableCell>
+                <TableCell className={`${TD} text-right tabular-nums`}>{formatAmount2(thirteenth.reduce((s, t) => s + toCentavos(t.projected), 0))}</TableCell>
+                <TableCell className={`${TD} text-right tabular-nums`}>{formatAmount2(thirteenth.reduce((s, t) => s + toCentavos(t.paid), 0))}</TableCell>
               </TableRow>
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+          )}
+      </SectionCard>
     </div>
   );
 }
 
 function Figure({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div className="flex flex-col gap-0.5 rounded-xl border px-3 py-2.5">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={`tabular-nums ${strong ? "text-lg font-bold" : "font-medium"}`}>{value}</span>
+    <div className="flex flex-col gap-0.5">
+      <span className="text-theme-xs text-muted-foreground">{label}</span>
+      <span className={`tabular-nums ${strong ? "text-lg font-semibold" : "font-medium"}`}>{value}</span>
     </div>
   );
 }

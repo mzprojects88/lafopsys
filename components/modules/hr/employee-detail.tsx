@@ -7,7 +7,8 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Button } from "@/components/ui/button";
 import { useEmployees } from "@/lib/hooks/use-employees-collection";
 import { useNow } from "@/lib/hooks/use-now";
@@ -40,7 +41,7 @@ export function EmployeeDetail({ employeeId, privateRecord }: { employeeId: stri
   const documentTypeOptions = React.useMemo(() => [{ value: "other", label: "Other" }, ...documentTypes.filter((t) => t.active).map((t) => ({ value: t.id, label: t.name }))], [documentTypes]);
 
   if (error) return <EmptyState title="Couldn't load this employee" description={error} />;
-  if (loading && !employee) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (loading && !employee) return <LoadingState />;
   if (!employee) {
     return <EmptyState title="Not found" description="No employee record with that id, or it is not yours to see." action={<BackButton />} />;
   }
@@ -69,7 +70,7 @@ export function EmployeeDetail({ employeeId, privateRecord }: { employeeId: stri
       />
 
       {probation ? (
-        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+        <p className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-theme-sm text-warning-foreground dark:text-warning">
           On probation: evaluate by {formatDate(probation.evaluateBy)}; regular by law from {formatDate(probation.endsOn)} unless separated for failing the standards given at hiring (Art. 296).
         </p>
       ) : null}
@@ -132,12 +133,11 @@ function ProfileTab({ employee, months, manages }: { employee: Employee; months:
   const ec = employee.emergencyContact;
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-base">Personal</CardTitle>
-          {manages ? <EmployeeFormDialog employee={employee} /> : null}
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+      <SectionCard
+        title="Personal"
+        actions={manages ? <EmployeeFormDialog employee={employee} /> : null}
+        bodyClassName="grid grid-cols-2 gap-x-4 gap-y-3 text-theme-sm"
+      >
           <Item label="Full name" value={[employee.firstName, employee.middleName, employee.lastName, employee.suffix].filter(Boolean).join(" ")} />
           <Item label="Employee ID" value={employee.employeeCode} />
           <Item label="Birthdate" value={employee.birthdate ? formatDate(employee.birthdate) : "—"} />
@@ -148,45 +148,38 @@ function ProfileTab({ employee, months, manages }: { employee: Employee; months:
           <Item label="Email" value={employee.email ?? "—"} />
           <Item label="Address" value={employee.address ?? "—"} className="col-span-2" />
           {employee.notes ? <Item label="Notes" value={employee.notes} className="col-span-2" /> : null}
-        </CardContent>
-      </Card>
+      </SectionCard>
 
       <div className="flex flex-col gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Service</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+        <SectionCard
+          title="Service"
+          bodyClassName="grid grid-cols-2 gap-x-4 gap-y-3 text-theme-sm"
+        >
             <Item label="Date hired" value={formatDate(employee.hireDate)} />
             <Item label="Length of service" value={months >= 12 ? `${Math.floor(months / 12)} yr ${months % 12} mo` : `${months} mo`} />
             <Item label="Regularised" value={employee.regularizationDate ? formatDate(employee.regularizationDate) : "—"} />
             <Item label="Separated" value={employee.separationDate ? formatDate(employee.separationDate) : "—"} />
-          </CardContent>
-        </Card>
+        </SectionCard>
 
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">Emergency contact</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+        <SectionCard
+          title="Emergency contact"
+          bodyClassName="grid grid-cols-2 gap-x-4 gap-y-3 text-theme-sm"
+        >
             <Item label="Name" value={ec.name ?? "—"} />
             <Item label="Relationship" value={ec.relationship ?? "—"} />
             <Item label="Contact" value={ec.phone ?? "—"} />
             <Item label="Address" value={ec.address ?? "—"} />
-          </CardContent>
-        </Card>
+        </SectionCard>
 
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">Login</CardTitle>
-            {manages ? <LinkStaffAccountDialog employee={employee} /> : null}
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
+        <SectionCard
+          title="Login"
+          actions={manages ? <LinkStaffAccountDialog employee={employee} /> : null}
+          bodyClassName="text-theme-sm text-muted-foreground"
+        >
             {employee.staffId
               ? "Linked to a staff login. They can see their own record, and later their payslips and leave, under HR."
               : "No login linked. Create the account under Settings → Users, then link it here so they can see their own record."}
-          </CardContent>
-        </Card>
+        </SectionCard>
       </div>
     </div>
   );
@@ -195,7 +188,7 @@ function ProfileTab({ employee, months, manages }: { employee: Employee; months:
 export function Item({ label, value, className }: { label: string; value: React.ReactNode; className?: string }) {
   return (
     <div className={`flex flex-col gap-0.5 ${className ?? ""}`}>
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-theme-xs text-muted-foreground">{label}</span>
       <span className="font-medium">{value}</span>
     </div>
   );

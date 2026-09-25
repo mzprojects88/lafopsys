@@ -106,7 +106,7 @@ function ForgottenDay({
 
   if (asking) {
     return (
-      <div className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
+      <div className="flex flex-col gap-2 rounded-xl border border-border p-3 text-theme-sm">
         <span>
           <b>{label}</b>: you clocked in at {entry.clockIn} and are still clocked in. Are you still on duty?
         </span>
@@ -124,7 +124,7 @@ function ForgottenDay({
 
   return (
     <form
-      className="flex flex-col gap-2 rounded-lg border p-3 text-sm"
+      className="flex flex-col gap-2 rounded-xl border border-border p-3 text-theme-sm"
       onSubmit={async (e) => {
         e.preventDefault();
         if (!time) return;

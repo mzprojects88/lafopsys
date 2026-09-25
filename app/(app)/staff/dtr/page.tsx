@@ -8,9 +8,10 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -29,6 +30,10 @@ import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { todayIso } from "@/lib/utils/date";
 import { dayKey, effectiveStatus, formatMinutes, isLong, sessionMinutes, timeLabel, totalsFor, type DtrSession } from "@/lib/utils/dtr";
 import type { PunchLocationStatus, TimePunch } from "@/lib/types/staff";
+import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
+
+/** Inventory table look: header cell. */
+const TH = "h-11 px-5 text-theme-xs font-medium text-muted-foreground";
 
 /** Why a punch has no address, in words a person can act on. */
 const LOCATION_STATUS_LABELS: Record<PunchLocationStatus, string> = {
@@ -62,11 +67,11 @@ interface SessionRow {
 }
 
 const SESSION_STATUS: Record<SessionDisplayStatus, { label: string; className: string }> = {
-  open: { label: "In progress", className: "bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-400" },
-  closed: { label: "Closed", className: "bg-slate-100 text-slate-700 hover:bg-slate-100 dark:bg-slate-500/15 dark:text-slate-300" },
-  long: { label: "Long", className: "bg-amber-50 text-amber-700 hover:bg-amber-50 dark:bg-amber-500/15 dark:text-amber-400" },
-  missed_out: { label: "Missed clock-out", className: "bg-rose-50 text-rose-700 hover:bg-rose-50 dark:bg-rose-500/15 dark:text-rose-400" },
-  orphan_out: { label: "No clock-in", className: "bg-rose-50 text-rose-700 hover:bg-rose-50 dark:bg-rose-500/15 dark:text-rose-400" },
+  open: { label: "In progress", className: STATUS_TONE_CLASSES.positive },
+  closed: { label: "Closed", className: STATUS_TONE_CLASSES.neutral },
+  long: { label: "Long", className: STATUS_TONE_CLASSES.warning },
+  missed_out: { label: "Missed clock-out", className: STATUS_TONE_CLASSES.negative },
+  orphan_out: { label: "No clock-in", className: STATUS_TONE_CLASSES.negative },
 };
 
 function displayStatus(s: DtrSession, now: Date): SessionDisplayStatus {
@@ -87,14 +92,11 @@ function mapsHref(punch: TimePunch) {
 /** On-site / off-site against the LAF House pin, as judged when punched (0063). */
 function SiteBadge({ punch, isDriver }: { punch: TimePunch; isDriver: boolean }) {
   if (punch.siteStatus === "on_site") {
-    return <Badge className="w-fit bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-400">LAF House</Badge>;
+    return <Badge className={STATUS_TONE_CLASSES.positive}>LAF House</Badge>;
   }
   if (punch.siteStatus !== "off_site") return null;
-  const tone = isDriver
-    ? "bg-slate-100 text-slate-600 hover:bg-slate-100 dark:bg-slate-500/15 dark:text-slate-400"
-    : "bg-amber-50 text-amber-700 hover:bg-amber-50 dark:bg-amber-500/15 dark:text-amber-400";
   return (
-    <Badge className={`w-fit ${tone}`}>
+    <Badge className={STATUS_TONE_CLASSES[isDriver ? "neutral" : "warning"]}>
       Off-site{punch.siteDistanceM !== undefined ? ` · ${formatDistance(punch.siteDistanceM)} away` : ""}
     </Badge>
   );
@@ -113,7 +115,7 @@ function LocationCell({ punch, isDriver = false }: { punch: TimePunch; isDriver?
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="w-fit text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          className="w-fit text-theme-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
         >
           {punch.latitude?.toFixed(5)}, {punch.longitude?.toFixed(5)}
           {punch.accuracyMeters !== undefined && ` · ±${Math.round(punch.accuracyMeters)}m`}
@@ -130,7 +132,7 @@ function LocationCell({ punch, isDriver = false }: { punch: TimePunch; isDriver?
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="w-fit text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          className="w-fit text-theme-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
         >
           {punch.latitude?.toFixed(5)}, {punch.longitude?.toFixed(5)}
         </a>
@@ -142,11 +144,9 @@ function LocationCell({ punch, isDriver = false }: { punch: TimePunch; isDriver?
 
 function PunchTypeBadge({ punchType }: { punchType: TimePunch["punchType"] }) {
   return punchType === "clock_in" ? (
-    <Badge className="bg-blue-50 text-blue-700 hover:bg-blue-50 dark:bg-blue-500/15 dark:text-blue-400">In</Badge>
+    <Badge className={STATUS_TONE_CLASSES.info}>In</Badge>
   ) : (
-    <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-400">
-      Out
-    </Badge>
+    <Badge className={STATUS_TONE_CLASSES.neutral}>Out</Badge>
   );
 }
 
@@ -211,7 +211,7 @@ const punchColumnsFor = (canSeePhotos: boolean): ColumnDef<PunchRow>[] => [
         {row.original.source === "adjustment" ? (
           <Badge
             variant="outline"
-            className="gap-1 border-amber-300 text-amber-700 dark:border-amber-900 dark:text-amber-400"
+            className="gap-1 border-warning/30 text-warning-foreground dark:text-warning"
             title={row.original.adjustmentReason}
           >
             <PencilLine className="size-3" />
@@ -251,7 +251,7 @@ const punchColumnsFor = (canSeePhotos: boolean): ColumnDef<PunchRow>[] => [
     header: "Network address",
     accessorFn: (p) => p.ipAddress ?? "",
     cell: ({ row }) => (
-      <span className="font-mono text-xs">{row.original.ipAddress ?? "—"}</span>
+      <span className="font-mono text-theme-xs">{row.original.ipAddress ?? "—"}</span>
     ),
   },
 ];
@@ -401,11 +401,10 @@ export default function DtrPage() {
           value={loading ? "…" : formatMinutes(totals.today)}
           sublabel={totals.openCount > 0 ? `${totals.openCount} in progress` : `${sessionsToday} session${sessionsToday === 1 ? "" : "s"}`}
           icon={Clock}
-          color="blue"
         />
-        <KpiCard label="This Week" value={loading ? "…" : formatMinutes(totals.week)} sublabel="Monday to Sunday" icon={CalendarDays} color="indigo" />
-        <KpiCard label="This Month" value={loading ? "…" : formatMinutes(totals.month)} sublabel={format(parseISO(today), "MMMM yyyy")} icon={CalendarRange} color="purple" />
-        <KpiCard label="Currently Clocked In" value={loading ? "…" : totals.openCount} icon={LogIn} color="green" />
+        <KpiCard label="This Week" value={loading ? "…" : formatMinutes(totals.week)} sublabel="Monday to Sunday" icon={CalendarDays} />
+        <KpiCard label="This Month" value={loading ? "…" : formatMinutes(totals.month)} sublabel={format(parseISO(today), "MMMM yyyy")} icon={CalendarRange} />
+        <KpiCard label="Currently Clocked In" value={loading ? "…" : totals.openCount} icon={LogIn} />
       </KpiGrid>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -437,7 +436,7 @@ export default function DtrPage() {
 
       {/* Who can see this is enforced by row-level security, not by hiding the page —
           so say plainly what each viewer is looking at. */}
-      <div className="flex items-start gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-xs text-muted-foreground">
+      <div className="flex items-start gap-2.5 rounded-2xl border border-border bg-card px-5 py-3 text-theme-sm text-muted-foreground">
         <ShieldCheck className="size-4 shrink-0 text-primary" />
         <span>
           Staff see their own record here. Admin and Finance see everyone&apos;s — Finance because payroll is
@@ -447,40 +446,35 @@ export default function DtrPage() {
       </div>
 
       {teamRows.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Hours by Staff</CardTitle>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Staff</TableHead>
-                  <TableHead className="text-right">Today</TableHead>
-                  <TableHead className="text-right">This Week</TableHead>
-                  <TableHead className="text-right">This Month</TableHead>
-                  <TableHead>Status</TableHead>
+        <SectionCard title="Hours by Staff" flush>
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className={TH}>Staff</TableHead>
+                <TableHead className={`${TH} text-right`}>Today</TableHead>
+                <TableHead className={`${TH} text-right`}>This Week</TableHead>
+                <TableHead className={`${TH} text-right`}>This Month</TableHead>
+                <TableHead className={TH}>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {teamRows.map((r) => (
+                <TableRow key={r.id} className="text-theme-sm hover:bg-muted/60">
+                  <TableCell className="px-5 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <PersonAvatar name={r.name} size="sm" />
+                      <span className="font-medium">{r.name}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="px-5 py-3 text-right tabular-nums">{formatMinutes(r.totals.today)}</TableCell>
+                  <TableCell className="px-5 py-3 text-right tabular-nums">{formatMinutes(r.totals.week)}</TableCell>
+                  <TableCell className="px-5 py-3 text-right tabular-nums">{formatMinutes(r.totals.month)}</TableCell>
+                  <TableCell className="px-5 py-3">{r.totals.openCount > 0 ? <SessionStatusBadge status="open" /> : <span className="text-theme-xs text-muted-foreground">Out</span>}</TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {teamRows.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2.5">
-                        <PersonAvatar name={r.name} size="sm" />
-                        <span className="font-medium">{r.name}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{formatMinutes(r.totals.today)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatMinutes(r.totals.week)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatMinutes(r.totals.month)}</TableCell>
-                    <TableCell>{r.totals.openCount > 0 ? <SessionStatusBadge status="open" /> : <span className="text-xs text-muted-foreground">Out</span>}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+              ))}
+            </TableBody>
+          </Table>
+        </SectionCard>
       )}
 
       <Tabs value={tab} onValueChange={setTab} className="gap-4">
@@ -497,14 +491,14 @@ export default function DtrPage() {
         </TabsContent>
 
         <TabsContent value="sessions">
-          <DataTable
+          {loading ? <LoadingState /> : <DataTable
             columns={sessionColumns}
             data={sessionRows}
             searchPlaceholder="Search staff…"
             pageSize={15}
-            emptyMessage={loading ? "Loading…" : "No sessions yet. They appear here as staff clock in and out."}
+            emptyMessage="No sessions yet. They appear here as staff clock in and out."
             renderMobileCard={(row) => (
-              <div className="flex flex-col gap-2.5 rounded-xl border bg-card p-3 text-sm">
+              <div className="flex flex-col gap-2.5 rounded-2xl border border-border bg-card p-4 text-theme-sm">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2.5">
                     <PersonAvatar name={row.staffName} size="sm" />
@@ -512,30 +506,30 @@ export default function DtrPage() {
                   </div>
                   <SessionStatusBadge status={row.status} />
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-theme-xs text-muted-foreground">
                   {row.dateLabel} · {row.inLabel} – {row.outLabel}
                 </div>
-                <div className="text-sm font-medium tabular-nums">{formatMinutes(row.minutes)}</div>
+                <div className="font-medium tabular-nums">{formatMinutes(row.minutes)}</div>
               </div>
             )}
-          />
+          />}
         </TabsContent>
 
         <TabsContent value="punches" className="flex flex-col gap-3">
           {missingLocation > 0 && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 text-theme-xs text-muted-foreground">
               <MapPinOff className="size-3.5" />
               {missingLocation} of {punchRows.length} punches without a captured location
             </div>
           )}
-          <DataTable
+          {loading ? <LoadingState /> : <DataTable
             columns={punchColumns}
             data={punchRows}
             searchPlaceholder="Search staff, address, device…"
             pageSize={15}
-            emptyMessage={loading ? "Loading…" : "No punches recorded yet. They appear here as staff clock in and out."}
+            emptyMessage="No punches recorded yet. They appear here as staff clock in and out."
             renderMobileCard={(row) => (
-              <div className="flex flex-col gap-2.5 rounded-xl border bg-card p-3 text-sm">
+              <div className="flex flex-col gap-2.5 rounded-2xl border border-border bg-card p-4 text-theme-sm">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2.5">
                     <PersonAvatar name={row.staffName} size="sm" />
@@ -543,20 +537,20 @@ export default function DtrPage() {
                   </div>
                   <PunchTypeBadge punchType={row.punchType} />
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-theme-xs text-muted-foreground">
                   {row.dateLabel} · {row.timeLabel}
                 </div>
-                <div className="text-xs">
+                <div className="text-theme-xs">
                   <LocationCell punch={row} isDriver={row.isDriver} />
                 </div>
                 {canSeePhotos ? <PunchPhotoCell punch={row} caption={`${row.staffName} · ${row.dateLabel} ${row.timeLabel}`} /> : null}
-                <div className="flex flex-wrap gap-x-3 gap-y-1 border-t pt-2.5 text-[11px] text-muted-foreground">
+                <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-border pt-2.5 text-theme-xs text-muted-foreground">
                   <span>{row.deviceLabel ?? "Unknown device"}</span>
                   {row.ipAddress && <span className="font-mono">{row.ipAddress}</span>}
                 </div>
               </div>
             )}
-          />
+          />}
         </TabsContent>
       </Tabs>
     </div>

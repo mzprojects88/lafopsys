@@ -3,7 +3,8 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { Pencil } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -26,22 +27,24 @@ export function YtdOpeningsCard({ employees, year }: { employees: Employee[]; ye
   const byEmployee = new Map(openings.filter((o) => o.year === year).map((o) => [o.employeeId, o]));
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Opening figures {year}</CardTitle>
-        <p className="text-xs text-muted-foreground">What was paid from January until the system took over: basic earned, taxable income, tax withheld and contributions. Needed for the year-end tax true-up and the 2316.</p>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
+    <SectionCard
+      title={<>Opening figures {year}</>}
+      description="What was paid from January until the system took over: basic earned, taxable income, tax withheld and contributions. Needed for the year-end tax true-up and the 2316."
+      flush
+      bodyClassName="flex flex-col divide-y divide-border"
+    >
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <div className="p-5">
+            <LoadingState />
+          </div>
         ) : (
           active.map((e) => {
             const o = byEmployee.get(e.id);
             return (
-              <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm">
+              <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
                 <div className="flex min-w-0 flex-col">
                   <span className="font-medium">{employeeFullName(e)}</span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-theme-xs text-muted-foreground">
                     {o ? `To ${formatDate(o.asOf)} · basic ₱${formatAmount2(toCentavos(o.basicEarned))} · taxable ₱${formatAmount2(toCentavos(o.taxableIncome))} · tax ₱${formatAmount2(toCentavos(o.taxWithheld))}` : "Not entered: the year starts at zero for this person."}
                   </span>
                 </div>
@@ -53,9 +56,8 @@ export function YtdOpeningsCard({ employees, year }: { employees: Employee[]; ye
             );
           })
         )}
-      </CardContent>
       {editing ? <YtdDialog key={editing.id} employee={editing} year={year} existing={byEmployee.get(editing.id) ?? null} close={() => setEditing(null)} /> : null}
-    </Card>
+    </SectionCard>
   );
 }
 

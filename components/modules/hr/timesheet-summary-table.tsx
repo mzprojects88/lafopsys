@@ -5,6 +5,11 @@ import { StatusBadge } from "@/components/patterns/status-badge";
 import { formatDate } from "@/lib/utils/date";
 import { formatMinutes } from "@/lib/utils/dtr";
 import type { DayAttendance, PeriodAttendance, PremiumClass } from "@/lib/utils/attendance";
+import { STATUS_TONE_TEXT } from "@/lib/utils/status-colors";
+
+/** Inventory table look, full-bleed inside the timesheet card. */
+const TH = "h-11 px-5 text-theme-xs font-medium whitespace-nowrap text-muted-foreground";
+const TD = "px-5 py-3";
 
 export const PREMIUM_LABEL: Record<PremiumClass, string> = {
   ordinary: "Ordinary",
@@ -27,7 +32,8 @@ const FLAG_LABEL: Record<DayAttendance["flag"], string> = {
   unscheduled: "No schedule",
 };
 
-/** One period for one person: the totals payroll will use, then every day. */
+/** One period for one person: the totals payroll will use, then every day.
+ * Drawn flush: the parent card gives it no body padding. */
 export function TimesheetSummaryTable({ summary }: { summary: PeriodAttendance }) {
   const t = summary.totals;
   const premiums = (Object.keys(t.byPremium) as PremiumClass[]).filter((k) => {
@@ -35,8 +41,8 @@ export function TimesheetSummaryTable({ summary }: { summary: PeriodAttendance }
     return b.minutes + b.overtimeMinutes + b.nightMinutes + b.nightOvertimeMinutes > 0;
   });
   return (
-    <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+    <div className="flex flex-col">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 px-5 py-4 text-theme-sm sm:grid-cols-4">
         <Stat label="Scheduled days" value={t.scheduledDays} />
         <Stat label="Days worked" value={t.daysWorked} />
         <Stat label="Absences" value={t.absences} tone={t.absences > 0 ? "negative" : undefined} />
@@ -47,22 +53,22 @@ export function TimesheetSummaryTable({ summary }: { summary: PeriodAttendance }
         <Stat label="Missed punches" value={t.missedPunches} tone={t.missedPunches > 0 ? "negative" : undefined} />
         <Stat label="Regular holidays (unworked, payable)" value={t.regularHolidaysUnworked} />
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead className="text-muted-foreground">
-            <tr>
-              <th className="py-1 text-left font-medium">Class</th>
-              <th className="py-1 text-right font-medium">Days</th>
-              <th className="py-1 text-right font-medium">Regular</th>
-              <th className="py-1 text-right font-medium">Overtime</th>
-              <th className="py-1 text-right font-medium">Night</th>
-              <th className="py-1 text-right font-medium">Night OT</th>
+      <div className="overflow-x-auto border-t border-border">
+        <table className="w-full text-theme-sm">
+          <thead>
+            <tr className="border-b border-border">
+              <th className={`${TH} text-left`}>Class</th>
+              <th className={`${TH} text-right`}>Days</th>
+              <th className={`${TH} text-right`}>Regular</th>
+              <th className={`${TH} text-right`}>Overtime</th>
+              <th className={`${TH} text-right`}>Night</th>
+              <th className={`${TH} text-right`}>Night OT</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-border">
             {premiums.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-1 text-muted-foreground">
+                <td colSpan={6} className={`${TD} text-muted-foreground`}>
                   No hours in this period.
                 </td>
               </tr>
@@ -70,13 +76,13 @@ export function TimesheetSummaryTable({ summary }: { summary: PeriodAttendance }
               premiums.map((k) => {
                 const b = t.byPremium[k];
                 return (
-                  <tr key={k} className="border-t">
-                    <td className="py-1">{PREMIUM_LABEL[k]}</td>
-                    <td className="py-1 text-right tabular-nums">{b.days}</td>
-                    <td className="py-1 text-right tabular-nums">{formatMinutes(b.minutes)}</td>
-                    <td className="py-1 text-right tabular-nums">{formatMinutes(b.overtimeMinutes)}</td>
-                    <td className="py-1 text-right tabular-nums">{formatMinutes(b.nightMinutes)}</td>
-                    <td className="py-1 text-right tabular-nums">{formatMinutes(b.nightOvertimeMinutes)}</td>
+                  <tr key={k} className="hover:bg-muted/60">
+                    <td className={TD}>{PREMIUM_LABEL[k]}</td>
+                    <td className={`${TD} text-right tabular-nums`}>{b.days}</td>
+                    <td className={`${TD} text-right tabular-nums`}>{formatMinutes(b.minutes)}</td>
+                    <td className={`${TD} text-right tabular-nums`}>{formatMinutes(b.overtimeMinutes)}</td>
+                    <td className={`${TD} text-right tabular-nums`}>{formatMinutes(b.nightMinutes)}</td>
+                    <td className={`${TD} text-right tabular-nums`}>{formatMinutes(b.nightOvertimeMinutes)}</td>
                   </tr>
                 );
               })
@@ -84,35 +90,35 @@ export function TimesheetSummaryTable({ summary }: { summary: PeriodAttendance }
           </tbody>
         </table>
       </div>
-      <details>
-        <summary className="cursor-pointer text-xs text-muted-foreground">Every day</summary>
-        <div className="mt-2 overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="text-muted-foreground">
-              <tr>
-                <th className="py-1 text-left font-medium">Day</th>
-                <th className="py-1 text-left font-medium">Scheduled</th>
-                <th className="py-1 text-right font-medium">Worked</th>
-                <th className="py-1 text-right font-medium">Paid</th>
-                <th className="py-1 text-right font-medium">OT</th>
-                <th className="py-1 text-right font-medium">Late</th>
-                <th className="py-1 text-right font-medium">Under</th>
-                <th className="py-1 text-left font-medium">Class</th>
-                <th className="py-1 text-left font-medium">Flag</th>
+      <details className="border-t border-border">
+        <summary className="cursor-pointer px-5 py-3 text-theme-xs text-muted-foreground">Every day</summary>
+        <div className="overflow-x-auto border-t border-border">
+          <table className="w-full text-theme-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className={`${TH} text-left`}>Day</th>
+                <th className={`${TH} text-left`}>Scheduled</th>
+                <th className={`${TH} text-right`}>Worked</th>
+                <th className={`${TH} text-right`}>Paid</th>
+                <th className={`${TH} text-right`}>OT</th>
+                <th className={`${TH} text-right`}>Late</th>
+                <th className={`${TH} text-right`}>Under</th>
+                <th className={`${TH} text-left`}>Class</th>
+                <th className={`${TH} text-left`}>Flag</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-border">
               {summary.days.map((d) => (
-                <tr key={d.day} className="border-t">
-                  <td className="py-1 whitespace-nowrap">{formatDate(d.day, "EEE d")}</td>
-                  <td className="py-1 whitespace-nowrap">{d.scheduled ? `${d.scheduled.start}–${d.scheduled.end}` : d.dayClass === "rest_day" ? "Rest" : "—"}</td>
-                  <td className="py-1 text-right tabular-nums">{d.workedMinutes ? formatMinutes(d.workedMinutes) : ""}</td>
-                  <td className="py-1 text-right tabular-nums">{d.paidMinutes ? formatMinutes(d.paidMinutes) : ""}</td>
-                  <td className="py-1 text-right tabular-nums">{d.overtimeMinutes ? formatMinutes(d.overtimeMinutes) : ""}</td>
-                  <td className="py-1 text-right tabular-nums">{d.lateMinutes || ""}</td>
-                  <td className="py-1 text-right tabular-nums">{d.undertimeMinutes || ""}</td>
-                  <td className="py-1">{d.premium === "ordinary" ? "" : PREMIUM_LABEL[d.premium]}</td>
-                  <td className="py-1">
+                <tr key={d.day} className="hover:bg-muted/60">
+                  <td className={`${TD} whitespace-nowrap`}>{formatDate(d.day, "EEE d")}</td>
+                  <td className={`${TD} whitespace-nowrap`}>{d.scheduled ? `${d.scheduled.start}–${d.scheduled.end}` : d.dayClass === "rest_day" ? "Rest" : "—"}</td>
+                  <td className={`${TD} text-right tabular-nums`}>{d.workedMinutes ? formatMinutes(d.workedMinutes) : ""}</td>
+                  <td className={`${TD} text-right tabular-nums`}>{d.paidMinutes ? formatMinutes(d.paidMinutes) : ""}</td>
+                  <td className={`${TD} text-right tabular-nums`}>{d.overtimeMinutes ? formatMinutes(d.overtimeMinutes) : ""}</td>
+                  <td className={`${TD} text-right tabular-nums`}>{d.lateMinutes || ""}</td>
+                  <td className={`${TD} text-right tabular-nums`}>{d.undertimeMinutes || ""}</td>
+                  <td className={TD}>{d.premium === "ordinary" ? "" : PREMIUM_LABEL[d.premium]}</td>
+                  <td className={TD}>
                     <StatusBadge domain="attendance" status={d.flag} label={FLAG_LABEL[d.flag] + (d.leave ? ` (${d.leave.typeId.toUpperCase()}${d.leave.fraction === 0.5 ? " ½" : ""})` : "")} />
                   </td>
                 </tr>
@@ -128,8 +134,8 @@ export function TimesheetSummaryTable({ summary }: { summary: PeriodAttendance }
 function Stat({ label, value, tone }: { label: string; value: number | string; tone?: "warning" | "negative" }) {
   return (
     <div className="flex flex-col">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={`font-medium tabular-nums ${tone === "negative" ? "text-red-700 dark:text-red-400" : tone === "warning" ? "text-amber-700 dark:text-amber-400" : ""}`}>{value}</span>
+      <span className="text-theme-xs text-muted-foreground">{label}</span>
+      <span className={`font-medium tabular-nums ${tone ? STATUS_TONE_TEXT[tone] : ""}`}>{value}</span>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { RosterCalendar, type CalendarEvent } from "@/components/patterns/roster-calendar";
 import { WeeklySchedulesCard } from "@/components/modules/staff/weekly-schedules-card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -49,7 +50,7 @@ export default function RosterPage() {
         title="Roster"
         description={manages ? "Who is on duty when. Click a day to swap a rest day or set a one-off shift; the weekly pattern lives on each employee's page." : "Who is on duty when, from each person's weekly schedule."}
       />
-      {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
+      {loading ? <LoadingState rows={2} /> : null}
       <RosterCalendar
         eventsFor={eventsFor}
         onDayClick={manages ? (day) => setDialog({ day, person: null }) : undefined}
@@ -174,7 +175,7 @@ function OverrideDialog({
               <Field>
                 <FieldLabel htmlFor="ov-end">End</FieldLabel>
                 <Input id="ov-end" type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
-                <p className="text-xs text-muted-foreground">Earlier than the start = overnight.</p>
+                <p className="text-theme-xs text-muted-foreground">Earlier than the start = overnight.</p>
               </Field>
             </div>
           ) : null}
@@ -185,7 +186,7 @@ function OverrideDialog({
         </div>
         <DialogFooter className="sm:justify-between">
           {existingId ? (
-            <Button variant="ghost" className="gap-1.5 text-rose-700" onClick={handleRemove} disabled={saving}>
+            <Button variant="destructive" className="gap-1.5" onClick={handleRemove} disabled={saving}>
               <Trash2 className="size-3.5" />
               Remove change
             </Button>

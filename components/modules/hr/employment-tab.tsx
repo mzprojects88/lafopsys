@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { useEmploymentEvents, employmentEventsFamily } from "@/lib/hooks/use-employee-detail-collections";
 import { employeesStore } from "@/lib/hooks/use-employees-collection";
@@ -35,26 +36,28 @@ const KEEP = "__keep__";
 export function EmploymentTab({ employee, manages }: { employee: Employee; manages: boolean }) {
   const { events, loading } = useEmploymentEvents(employee.id);
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-base">Employment history</CardTitle>
-        {manages ? <EmploymentEventDialog employee={employee} /> : null}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
+    <SectionCard
+      title="Employment history"
+      actions={manages ? <EmploymentEventDialog employee={employee} /> : null}
+      flush
+      bodyClassName="flex flex-col divide-y divide-border"
+    >
         {loading && events.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <div className="p-5">
+            <LoadingState />
+          </div>
         ) : events.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No events recorded.</p>
+          <p className="px-5 py-3 text-theme-sm text-muted-foreground">No events recorded.</p>
         ) : (
           events.map((ev) => (
-            <div key={ev.id} className="flex flex-wrap items-start justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm">
+            <div key={ev.id} className="flex flex-wrap items-start justify-between gap-2 px-5 py-3 text-theme-sm">
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="font-medium">
                   {KIND_LABEL[ev.kind]}
                   {ev.kind === "separated" && ev.separationCause ? ` · ${CAUSE_LABEL[ev.separationCause]}` : ""}
                   {ev.position ? ` · ${ev.position}` : ""}
                 </span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-theme-xs text-muted-foreground">
                   {formatDate(ev.effectiveOn)}
                   {ev.employmentType ? ` · ${TYPE_LABEL[ev.employmentType]}` : ""}
                   {ev.status ? ` · ${STATUS_LABEL[ev.status]}` : ""}
@@ -65,8 +68,7 @@ export function EmploymentTab({ employee, manages }: { employee: Employee; manag
             </div>
           ))
         )}
-      </CardContent>
-    </Card>
+    </SectionCard>
   );
 }
 
@@ -152,7 +154,7 @@ function EmploymentEventDialog({ employee }: { employee: Employee }) {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">Final pay is due within 30 days and a certificate of employment within 3 (Labor Advisory 06-20).</p>
+              <p className="text-theme-xs text-muted-foreground">Final pay is due within 30 days and a certificate of employment within 3 (Labor Advisory 06-20).</p>
             </Field>
           ) : null}
           {showType ? (

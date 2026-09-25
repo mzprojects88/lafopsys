@@ -9,7 +9,8 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { ReasonDialog } from "@/components/patterns/reason-dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -30,6 +31,10 @@ import { csvLines, downloadCsv } from "@/lib/utils/csv";
 import { payPeriodKey, payPeriodLabel } from "@/lib/utils/pay-period";
 import { approvePayrollRun, cancelPayrollRun, computeAdjustmentRun, computeRegularRun, computeThirteenthMonthRun, markPayrollRunPaid } from "../actions";
 import { employeeFullName, PAYROLL_RUN_KINDS, type Payslip } from "@/lib/types/hr";
+
+/** Inventory table look: header and body cells. */
+const TH = "h-11 px-5 text-theme-xs font-medium text-muted-foreground";
+const TD = "px-5 py-3";
 
 const WARNING_LABEL: Record<string, string> = {
   below_minimum_wage: "Below minimum wage",
@@ -64,7 +69,7 @@ export default function PayrollRunPage() {
 
   if (!manages) return <EmptyState title="HR only" description="Payroll runs are for admins and HR." />;
   const run = runs.find((r) => r.id === runId);
-  if (!run) return runsLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : <EmptyState title="No such run" description="It may have been cancelled." />;
+  if (!run) return runsLoading ? <LoadingState /> : <EmptyState title="No such run" description="It may have been cancelled." />;
 
   const period = run.periodId ? periods.find((p) => p.id === run.periodId) : null;
   const byEmployee = new Map(employees.map((e) => [e.id, e]));
@@ -169,7 +174,7 @@ export default function PayrollRunPage() {
             </Link>
           </Button>
           <StatusBadge dot domain="payrollRun" status={run.status} />
-          <span className="text-xs text-muted-foreground">
+          <span className="text-theme-xs text-muted-foreground">
             {run.computedAt ? `computed ${formatDate(run.computedAt, "MMM d, HH:mm")} by ${staffName(run.computedBy)}` : "not computed"}
             {run.approvedAt ? ` · approved ${formatDate(run.approvedAt, "MMM d, HH:mm")} by ${staffName(run.approvedBy)}${run.segregationWaiver ? " (waiver)" : ""}` : ""}
             {run.paidOn ? ` · paid ${formatDate(run.paidOn)}${run.paidReference ? ` ref ${run.paidReference}` : ""}` : ""}
@@ -187,7 +192,7 @@ export default function PayrollRunPage() {
             </Button>
           ) : null}
           {editable ? (
-            <Button size="sm" variant="ghost" className="gap-1.5 text-rose-700" onClick={() => setCancelling(true)} disabled={busy !== null}>
+            <Button size="sm" variant="destructive" className="gap-1.5" onClick={() => setCancelling(true)} disabled={busy !== null}>
               <XCircle className="size-3.5" />
               Cancel run
             </Button>
@@ -215,41 +220,37 @@ export default function PayrollRunPage() {
       </div>
 
       {skipped.length > 0 ? (
-        <Card>
-          <CardContent className="flex items-start gap-2 pt-6 text-sm">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
+        <div className="flex items-start gap-2 rounded-2xl border border-warning/30 bg-warning/10 px-5 py-3 text-theme-sm">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning-foreground dark:text-warning" />
             <div>
               <span className="font-medium">Not on this run: </span>
               {skipped.map((s) => `${byEmployee.get(s.employeeId) ? employeeFullName(byEmployee.get(s.employeeId)!) : s.employeeCode} (${s.reason.toLowerCase()})`).join("; ")}. Set their compensation on the employee page and recompute.
             </div>
-          </CardContent>
-        </Card>
+        </div>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Register</CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto p-0">
+      <SectionCard title="Register" flush>
           {loading ? (
-            <p className="p-4 text-sm text-muted-foreground">Loading…</p>
+            <div className="p-5">
+              <LoadingState />
+            </div>
           ) : sorted.length === 0 ? (
-            <p className="p-4 text-sm text-muted-foreground">No payslips. Recompute once compensation and timesheets are in place.</p>
+            <p className="px-5 py-4 text-theme-sm text-muted-foreground">No payslips. Recompute once compensation and timesheets are in place.</p>
           ) : (
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead className="text-right">Basic earned</TableHead>
-                  <TableHead className="text-right">Gross</TableHead>
-                  <TableHead className="text-right">SSS</TableHead>
-                  <TableHead className="text-right">PhilHealth</TableHead>
-                  <TableHead className="text-right">Pag-IBIG</TableHead>
-                  <TableHead className="text-right">Tax</TableHead>
-                  <TableHead className="text-right">Other</TableHead>
-                  <TableHead className="text-right">Net</TableHead>
-                  <TableHead className="text-right">Employer</TableHead>
-                  <TableHead />
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className={TH}>Employee</TableHead>
+                  <TableHead className={`${TH} text-right`}>Basic earned</TableHead>
+                  <TableHead className={`${TH} text-right`}>Gross</TableHead>
+                  <TableHead className={`${TH} text-right`}>SSS</TableHead>
+                  <TableHead className={`${TH} text-right`}>PhilHealth</TableHead>
+                  <TableHead className={`${TH} text-right`}>Pag-IBIG</TableHead>
+                  <TableHead className={`${TH} text-right`}>Tax</TableHead>
+                  <TableHead className={`${TH} text-right`}>Other</TableHead>
+                  <TableHead className={`${TH} text-right`}>Net</TableHead>
+                  <TableHead className={`${TH} text-right`}>Employer</TableHead>
+                  <TableHead className={TH} />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -257,11 +258,11 @@ export default function PayrollRunPage() {
                   const e = byEmployee.get(p.employeeId);
                   const other = p.totalDeductions - p.sssEe - p.mpfEe - p.philhealthEe - p.pagibigEe - p.taxWithheld;
                   return (
-                    <TableRow key={p.id}>
-                      <TableCell>
+                    <TableRow key={p.id} className="text-theme-sm hover:bg-muted/60">
+                      <TableCell className={TD}>
                         <div className="flex flex-col">
                           <span className="font-medium">{e ? employeeFullName(e) : p.employeeId}</span>
-                          <span className="text-xs text-muted-foreground">
+                          <span className="text-theme-xs text-muted-foreground">
                             {e?.employeeCode} · {p.payBasis === "daily" ? "daily" : "monthly"}
                             {p.warnings.length ? ` · ${p.warnings.map((w) => WARNING_LABEL[w] ?? w).join("; ")}` : ""}
                           </span>
@@ -276,7 +277,7 @@ export default function PayrollRunPage() {
                       <Money v={other} />
                       <Money v={p.net} strong />
                       <Money v={p.employerTotal} muted />
-                      <TableCell className="text-right">
+                      <TableCell className={`${TD} text-right`}>
                         <Button asChild size="sm" variant="ghost" aria-label="Payslip">
                           <Link href={`/hr/payslips/${p.id}/print`} target="_blank">
                             <Printer className="size-3.5" />
@@ -286,8 +287,8 @@ export default function PayrollRunPage() {
                     </TableRow>
                   );
                 })}
-                <TableRow className="font-medium">
-                  <TableCell>Total</TableCell>
+                <TableRow className="text-theme-sm font-medium hover:bg-transparent">
+                  <TableCell className={TD}>Total</TableCell>
                   <Money v={sum((p) => p.basicEarned) / 100} />
                   <Money v={sum((p) => p.gross) / 100} />
                   <Money v={sum((p) => p.sssEe + p.mpfEe) / 100} />
@@ -297,16 +298,15 @@ export default function PayrollRunPage() {
                   <Money v={sum((p) => p.totalDeductions - p.sssEe - p.mpfEe - p.philhealthEe - p.pagibigEe - p.taxWithheld) / 100} />
                   <Money v={sum((p) => p.net) / 100} strong />
                   <Money v={sum((p) => p.employerTotal) / 100} muted />
-                  <TableCell />
+                  <TableCell className={TD} />
                 </TableRow>
               </TableBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
+      </SectionCard>
 
       {run.rateSnapshot.length > 0 ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-theme-xs text-muted-foreground">
           Tables used: {run.rateSnapshot.map((s) => `${s.kind} from ${formatDate(s.effectiveFrom)}`).join(" · ")}
           {t.employerTotal !== undefined ? ` · employer shares ₱${formatAmount2(toCentavos(t.employerTotal))}` : ""}
         </p>
@@ -333,15 +333,15 @@ export default function PayrollRunPage() {
 
 function Stat({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div className="flex flex-col gap-0.5 rounded-xl border px-3 py-2.5">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={`tabular-nums ${strong ? "text-lg font-bold" : "font-medium"}`}>{value}</span>
+    <div className="flex flex-col gap-0.5 rounded-2xl border border-border bg-card px-5 py-4">
+      <span className="text-theme-xs text-muted-foreground">{label}</span>
+      <span className={`tabular-nums ${strong ? "text-lg font-semibold" : "font-medium"}`}>{value}</span>
     </div>
   );
 }
 
 function Money({ v, strong, muted }: { v: number; strong?: boolean; muted?: boolean }) {
-  return <TableCell className={`text-right tabular-nums ${strong ? "font-semibold" : ""} ${muted ? "text-muted-foreground" : ""}`}>{formatAmount2(toCentavos(v))}</TableCell>;
+  return <TableCell className={`${TD} text-right tabular-nums ${strong ? "font-semibold" : ""} ${muted ? "text-muted-foreground" : ""}`}>{formatAmount2(toCentavos(v))}</TableCell>;
 }
 
 function MarkPaidDialog({ runId, today, defaultDate, close, onDone }: { runId: string; today: string; defaultDate: string; close: () => void; onDone: () => Promise<void> }) {

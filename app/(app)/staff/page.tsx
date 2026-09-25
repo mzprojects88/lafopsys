@@ -8,10 +8,10 @@ import { ClockInRequiredDialog } from "@/components/modules/staff/clock-in-requi
 import { TodayBoard } from "@/components/modules/staff/today-board";
 
 const SUB_NAV: ModuleSubNavItem[] = [
-  { href: "/staff/dtr", label: "Daily Time Record", icon: Fingerprint, color: "cyan" },
-  { href: "/staff/roster", label: "Roster", icon: CalendarDays, color: "blue" },
-  { href: "/staff/timesheets", label: "Timesheets", icon: FileText, color: "purple" },
-  { href: "/staff/volunteers", label: "Volunteers", icon: Users2, color: "green" },
+  { href: "/staff/dtr", label: "Daily Time Record", icon: Fingerprint },
+  { href: "/staff/roster", label: "Roster", icon: CalendarDays },
+  { href: "/staff/timesheets", label: "Timesheets", icon: FileText },
+  { href: "/staff/volunteers", label: "Volunteers", icon: Users2 },
 ];
 
 export default function StaffPage() {

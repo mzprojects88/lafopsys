@@ -4,10 +4,11 @@ import * as React from "react";
 import Link from "next/link";
 import { Users, UserCheck, FileWarning, KeyRound, CalendarClock, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
-import { KpiCard } from "@/components/patterns/kpi-card";
+import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Button } from "@/components/ui/button";
 import { HrSubNav } from "@/components/modules/hr/hr-subnav";
 import { useEmployees } from "@/lib/hooks/use-employees-collection";
@@ -54,7 +55,7 @@ export default function HrPage() {
 function MyRecord({ employees, loading, today }: { employees: Employee[]; loading: boolean; today: string }) {
   // RLS returns only the caller's own row to a non-HR person.
   const me = employees[0];
-  if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (loading) return <LoadingState />;
   if (!me) {
     return (
       <EmptyState
@@ -66,11 +67,7 @@ function MyRecord({ employees, loading, today }: { employees: Employee[]; loadin
   const months = serviceMonths(me.hireDate, today);
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">My record</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+      <SectionCard title="My record" bodyClassName="grid grid-cols-2 gap-x-4 gap-y-3 text-theme-sm">
           <Item label="Employee ID" value={me.employeeCode} />
           <Item label="Position" value={me.position} />
           <Item label="Employment" value={TYPE_LABEL[me.employmentType] ?? me.employmentType} />
@@ -78,13 +75,8 @@ function MyRecord({ employees, loading, today }: { employees: Employee[]; loadin
           <Item label="Date hired" value={formatDate(me.hireDate)} />
           <Item label="Length of service" value={months >= 12 ? `${Math.floor(months / 12)} yr ${months % 12} mo` : `${months} mo`} />
           {me.regularizationDate ? <Item label="Regularised" value={formatDate(me.regularizationDate)} /> : null}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Coming next</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
+      </SectionCard>
+      <SectionCard title="Coming next" bodyClassName="flex flex-col gap-2 text-theme-sm text-muted-foreground">
           <p>
             Your leave balances and requests are under{" "}
             <Link href="/hr/leave" className="underline">
@@ -92,8 +84,7 @@ function MyRecord({ employees, loading, today }: { employees: Employee[]; loadin
             </Link>
             . Payslips arrive with the payroll release. Ask HR if anything above is wrong.
           </p>
-        </CardContent>
-      </Card>
+      </SectionCard>
     </div>
   );
 }
@@ -115,23 +106,19 @@ function HrOverview({ employees, loading, today }: { employees: Employee[]; load
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Active employees" value={loading ? "…" : headcount} icon={Users} color="blue" sublabel={headcount >= 10 ? "Service Incentive Leave applies (Art. 95)" : "Below 10: SIL exemption; VL of 5 days keeps it covered"} />
-        <KpiCard label="On probation" value={loading ? "…" : probation.length} icon={UserCheck} color="amber" sublabel="Regular by law after six months (Art. 296)" />
-        <KpiCard label="Without a login" value={loading ? "…" : unlinked.length} icon={KeyRound} color="slate" sublabel="Cannot see their own payslips or leave yet" />
-        <KpiCard label="Separated this year" value={loading ? "…" : employees.filter((e) => e.separationDate && e.separationDate.startsWith(today.slice(0, 4))).length} icon={FileWarning} color="rose" sublabel="Final pay within 30 days (LA 06-20)" />
-      </div>
+      <KpiGrid>
+        <KpiCard label="Active employees" value={loading ? "…" : headcount} icon={Users} sublabel={headcount >= 10 ? "Service Incentive Leave applies (Art. 95)" : "Below 10: SIL exemption; VL of 5 days keeps it covered"} />
+        <KpiCard label="On probation" value={loading ? "…" : probation.length} icon={UserCheck} tone="warning" sublabel="Regular by law after six months (Art. 296)" />
+        <KpiCard label="Without a login" value={loading ? "…" : unlinked.length} icon={KeyRound} tone="warning" sublabel="Cannot see their own payslips or leave yet" />
+        <KpiCard label="Separated this year" value={loading ? "…" : employees.filter((e) => e.separationDate && e.separationDate.startsWith(today.slice(0, 4))).length} icon={FileWarning} sublabel="Final pay within 30 days (LA 06-20)" />
+      </KpiGrid>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">This pay period</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2 text-sm">
+        <SectionCard title="This pay period" bodyClassName="flex flex-col gap-2 text-theme-sm">
             {current ? (
               <>
                 <span className="font-medium">{payPeriodLabel({ year: current.year, seq: current.seq, from: current.startsOn, to: current.endsOn, isSecondCutoff: current.seq % 2 === 0 })}</span>
-                <span className="text-xs text-muted-foreground">Pay date {formatDate(current.payDate)} · {current.status.replace(/_/g, " ")}</span>
+                <span className="text-theme-xs text-muted-foreground">Pay date {formatDate(current.payDate)} · {current.status.replace(/_/g, " ")}</span>
                 <Button asChild size="sm" variant="outline" className="w-fit">
                   <Link href={`/hr/timesheets?period=${current.id}`}>Timesheets</Link>
                 </Button>
@@ -144,24 +131,14 @@ function HrOverview({ employees, loading, today }: { employees: Employee[]; load
                 </Button>
               </>
             )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">Leave to decide</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2 text-sm">
-            <span className="text-2xl font-bold tabular-nums">{pendingLeave.length}</span>
+        </SectionCard>
+        <SectionCard title="Leave to decide" bodyClassName="flex flex-col gap-2 text-theme-sm">
+            <span className="text-lg font-semibold tabular-nums">{pendingLeave.length}</span>
             <Button asChild size="sm" variant="outline" className="w-fit">
               <Link href="/hr/leave">Open leave</Link>
             </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">Missing a schedule</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-1 text-sm">
+        </SectionCard>
+        <SectionCard title="Missing a schedule" bodyClassName="flex flex-col gap-1 text-theme-sm">
             {noSchedule.length === 0 ? (
               <span className="text-muted-foreground">Everyone has a weekly schedule.</span>
             ) : (
@@ -171,28 +148,22 @@ function HrOverview({ employees, loading, today }: { employees: Employee[]; load
                 </Link>
               ))
             )}
-            <span className="text-xs text-muted-foreground">Without one, lateness, undertime and absences cannot be judged.</span>
-          </CardContent>
-        </Card>
+            <span className="text-theme-xs text-muted-foreground">Without one, lateness, undertime and absences cannot be judged.</span>
+        </SectionCard>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">Probation decisions</CardTitle>
-            <CalendarClock className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
+        <SectionCard title="Probation decisions" actions={<CalendarClock className="size-4 text-muted-foreground" />} flush bodyClassName="flex flex-col divide-y divide-border">
             {probation.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nobody is on probation.</p>
+              <p className="px-5 py-3 text-theme-sm text-muted-foreground">Nobody is on probation.</p>
             ) : (
               probation.map(({ e, evaluateBy, endsOn }) => {
                 const left = daysBetween(today, endsOn);
                 return (
-                  <Link key={e.id} href={`/hr/employees/${e.id}`} className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm hover:bg-accent/40">
+                  <Link key={e.id} href={`/hr/employees/${e.id}`} className="flex items-center justify-between gap-3 px-5 py-3 text-theme-sm hover:bg-muted/60">
                     <div className="flex min-w-0 flex-col">
                       <span className="truncate font-medium">{employeeFullName(e)}</span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-theme-xs text-muted-foreground">
                         {e.position} · evaluate by {formatDate(evaluateBy, "MMM d")} · ends {formatDate(endsOn)}
                       </span>
                     </div>
@@ -201,30 +172,33 @@ function HrOverview({ employees, loading, today }: { employees: Employee[]; load
                 );
               })
             )}
-          </CardContent>
-        </Card>
+        </SectionCard>
 
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">Employees</CardTitle>
+        <SectionCard
+          title="Employees"
+          actions={
             <Button asChild size="sm" variant="outline">
               <Link href="/hr/employees">
                 All employees
                 <ArrowRight />
               </Link>
             </Button>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
+          }
+          flush
+          bodyClassName="flex flex-col divide-y divide-border"
+        >
             {loading ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
+              <div className="p-5">
+                <LoadingState />
+              </div>
             ) : active.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No employees on file yet — add one, or run the 201 import.</p>
+              <p className="px-5 py-3 text-theme-sm text-muted-foreground">No employees on file yet — add one, or run the 201 import.</p>
             ) : (
               active.slice(0, 8).map((e) => (
-                <Link key={e.id} href={`/hr/employees/${e.id}`} className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm hover:bg-accent/40">
+                <Link key={e.id} href={`/hr/employees/${e.id}`} className="flex items-center justify-between gap-3 px-5 py-3 text-theme-sm hover:bg-muted/60">
                   <div className="flex min-w-0 flex-col">
                     <span className="truncate font-medium">{employeeFullName(e)}</span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-theme-xs text-muted-foreground">
                       {e.position} · {TYPE_LABEL[e.employmentType]}
                     </span>
                   </div>
@@ -232,8 +206,7 @@ function HrOverview({ employees, loading, today }: { employees: Employee[]; load
                 </Link>
               ))
             )}
-          </CardContent>
-        </Card>
+        </SectionCard>
       </div>
     </>
   );
@@ -242,7 +215,7 @@ function HrOverview({ employees, loading, today }: { employees: Employee[]; load
 function Item({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-theme-xs text-muted-foreground">{label}</span>
       <span className="font-medium">{value}</span>
     </div>
   );

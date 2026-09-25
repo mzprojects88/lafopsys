@@ -8,7 +8,8 @@ import { EmptyState } from "@/components/patterns/empty-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { DataTable } from "@/components/patterns/data-table";
 import { ApprovalQueue } from "@/components/patterns/approval-queue";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HrSubNav } from "@/components/modules/hr/hr-subnav";
@@ -110,7 +111,7 @@ export default function LeavePage() {
           <span>
             {formatDate(r.startsOn, "MMM d")}
             {r.endsOn !== r.startsOn ? ` – ${formatDate(r.endsOn, "MMM d")}` : ""}
-            {r.startHalf || r.endHalf ? <span className="text-xs text-muted-foreground"> · half day</span> : null}
+            {r.startHalf || r.endHalf ? <span className="text-theme-xs text-muted-foreground"> · half day</span> : null}
           </span>
         );
       },
@@ -127,7 +128,7 @@ export default function LeavePage() {
       header: "Reason / decision",
       accessorFn: (r) => r.reason ?? "",
       cell: ({ row }) => (
-        <span className="block max-w-[32ch] truncate text-xs text-muted-foreground" title={[row.original.reason, row.original.decisionNote].filter(Boolean).join(" — ")}>
+        <span className="block max-w-[32ch] truncate text-theme-xs text-muted-foreground" title={[row.original.reason, row.original.decisionNote].filter(Boolean).join(" — ")}>
           {row.original.reason ?? ""}
           {row.original.decisionNote ? ` — ${row.original.decisionNote}` : ""}
         </span>
@@ -154,18 +155,15 @@ export default function LeavePage() {
       {error ? <EmptyState title="Couldn't load leave" description={error} /> : null}
 
       {manages && pending.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">To decide ({pending.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <section className="flex flex-col gap-3">
+          <h2 className="text-base font-medium">To decide ({pending.length})</h2>
             <ApprovalQueue
               items={pending.map((r) => ({
                 id: r.id,
                 title: `${employeeFullName(byId.get(r.employeeId) ?? { firstName: "?", lastName: "", suffix: null })} · ${typeById.get(r.leaveTypeId)?.name ?? r.leaveTypeId}`,
                 subtitle: `${formatDate(r.startsOn)}${r.endsOn !== r.startsOn ? ` – ${formatDate(r.endsOn)}` : ""} · ${r.days} day(s)${r.reason ? ` — ${r.reason}` : ""}`,
                 meta: r.documentUrl ? (
-                  <a href={r.documentUrl} target="_blank" rel="noreferrer" className="text-xs underline">
+                  <a href={r.documentUrl} target="_blank" rel="noreferrer" className="text-theme-xs underline">
                     Document
                   </a>
                 ) : undefined,
@@ -175,8 +173,7 @@ export default function LeavePage() {
               approveLabel="Approve"
               rejectLabel="Reject"
             />
-          </CardContent>
-        </Card>
+        </section>
       ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -207,29 +204,24 @@ export default function LeavePage() {
       </div>
 
       {focus ? (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <KpiGrid>
           {balances.map((b) => (
-            <Card key={b.typeId} className="py-4">
-              <CardContent className="flex flex-col gap-0.5 px-4">
-                <span className="text-sm font-medium text-muted-foreground">{typeById.get(b.typeId)?.name}</span>
-                <span className="text-2xl font-bold tabular-nums">{b.available.toFixed(2)}</span>
-                <span className="text-xs text-muted-foreground">
-                  {b.accrued} accrued of {b.entitled} · {b.used} used{b.pending ? ` · ${b.pending} pending` : ""}
-                  {b.carriedIn ? ` · ${b.carriedIn} carried in` : ""}
-                  {b.converted ? ` · ${b.converted} converted` : ""}
-                </span>
-              </CardContent>
-            </Card>
+            <KpiCard
+              key={b.typeId}
+              label={typeById.get(b.typeId)?.name ?? ""}
+              value={b.available.toFixed(2)}
+              sublabel={`${b.accrued} accrued of ${b.entitled} · ${b.used} used${b.pending ? ` · ${b.pending} pending` : ""}${b.carriedIn ? ` · ${b.carriedIn} carried in` : ""}${b.converted ? ` · ${b.converted} converted` : ""}`}
+            />
           ))}
-          {balances.length === 0 ? <p className="col-span-full text-sm text-muted-foreground">No accruing leave types are switched on.</p> : null}
-        </div>
+          {balances.length === 0 ? <p className="col-span-full text-theme-sm text-muted-foreground">No accruing leave types are switched on.</p> : null}
+        </KpiGrid>
       ) : !manages && !loading ? (
         <EmptyState title="No employee record linked to your login" description="Ask HR to link it; your balances and requests will appear here." />
       ) : manages ? (
-        <p className="text-xs text-muted-foreground">Pick a person to see their balances.</p>
+        <p className="text-theme-xs text-muted-foreground">Pick a person to see their balances.</p>
       ) : null}
 
-      <DataTable columns={columns} data={shown} emptyMessage={loading ? "Loading…" : "No leave requests."} pageSize={20} searchPlaceholder="Search…" />
+      {loading ? <LoadingState /> : <DataTable columns={columns} data={shown} emptyMessage="No leave requests." pageSize={20} searchPlaceholder="Search…" />}
     </div>
   );
 }

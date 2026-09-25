@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { EmptyState } from "@/components/patterns/empty-state";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HrSubNav } from "@/components/modules/hr/hr-subnav";
@@ -102,13 +103,15 @@ export default function EmployeesPage() {
       </div>
       {error ? (
         <EmptyState title="Couldn't load employees" description={error} />
+      ) : loading ? (
+        <LoadingState />
       ) : (
         <DataTable
           columns={columns}
           data={rows}
           toolbar={toolbar}
           onRowClick={(e) => router.push(`/hr/employees/${e.id}`)}
-          emptyMessage={loading ? "Loading…" : "No employees match."}
+          emptyMessage="No employees match."
           pageSize={25}
         />
       )}

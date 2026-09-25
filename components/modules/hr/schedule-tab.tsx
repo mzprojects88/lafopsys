@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { useWorkScheduleHistory, workSchedulesFamily } from "@/lib/hooks/use-employee-detail-collections";
 import { allSchedulesStore } from "@/lib/hooks/use-roster";
@@ -61,22 +62,24 @@ export function describePattern(p: SchedulePattern): string {
 export function ScheduleTab({ employee, manages }: { employee: Employee; manages: boolean }) {
   const { history, current, loading } = useWorkScheduleHistory(employee.id);
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-base">Work schedule</CardTitle>
-        {manages ? <ScheduleDialog employee={employee} current={current} /> : null}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
+    <SectionCard
+      title="Work schedule"
+      actions={manages ? <ScheduleDialog employee={employee} current={current} /> : null}
+      flush
+      bodyClassName="flex flex-col divide-y divide-border"
+    >
         {loading && history.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <div className="p-5">
+            <LoadingState />
+          </div>
         ) : history.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No schedule on file. Without one, lateness, undertime and absences cannot be worked out from the DTR.</p>
+          <p className="px-5 py-3 text-theme-sm text-muted-foreground">No schedule on file. Without one, lateness, undertime and absences cannot be worked out from the DTR.</p>
         ) : (
           history.map((s) => (
-            <div key={s.id} className="flex flex-wrap items-start justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm">
+            <div key={s.id} className="flex flex-wrap items-start justify-between gap-2 px-5 py-3 text-theme-sm">
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="font-medium">{describePattern(s.pattern)}</span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-theme-xs text-muted-foreground">
                   From {formatDate(s.effectiveFrom)}
                   {s.effectiveTo ? ` to ${formatDate(s.effectiveTo)}` : " (current)"} · {s.hoursPerDay} h/day · {s.breakMinutes} min unpaid break
                   {s.reason ? ` — ${s.reason}` : ""}
@@ -86,8 +89,7 @@ export function ScheduleTab({ employee, manages }: { employee: Employee; manages
             </div>
           ))
         )}
-      </CardContent>
-    </Card>
+    </SectionCard>
   );
 }
 
@@ -160,7 +162,7 @@ export function ScheduleDialog({ employee, current }: { employee: Pick<Employee,
               const shift = form.pattern[d];
               return (
                 <div key={d} className="grid grid-cols-[3rem_auto_1fr_1fr] items-center gap-2">
-                  <span className="text-sm font-medium">{DAY_LABEL[d]}</span>
+                  <span className="text-theme-sm font-medium">{DAY_LABEL[d]}</span>
                   <Switch checked={shift !== null} onCheckedChange={(on) => setDay(d, on ? { start: "08:00", end: "17:00" } : null)} aria-label={`${DAY_LABEL[d]} is a working day`} />
                   {shift ? (
                     <>
@@ -168,7 +170,7 @@ export function ScheduleDialog({ employee, current }: { employee: Pick<Employee,
                       <Input type="time" value={shift.end} onChange={(e) => setDay(d, { ...shift, end: e.target.value })} aria-label={`${DAY_LABEL[d]} end`} />
                     </>
                   ) : (
-                    <span className="col-span-2 text-xs text-muted-foreground">Rest day</span>
+                    <span className="col-span-2 text-theme-xs text-muted-foreground">Rest day</span>
                   )}
                 </div>
               );

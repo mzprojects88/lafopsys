@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Gift, LogOut, SlidersHorizontal } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -32,31 +32,29 @@ export function YearEndCard({ employees, periods, runs, year, today }: { employe
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Year-end and one-off runs</CardTitle>
-      </CardHeader>
-      <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-3">
+    <SectionCard
+      title="Year-end and one-off runs"
+      bodyClassName="grid grid-cols-1 gap-3 md:grid-cols-3"
+    >
         <Action icon={Gift} title={`13th month ${year}`} hint={thirteenth ? `Run exists (${thirteenth.status}).` : "Basic salary earned this year ÷ 12, by December 24 (PD 851). Approve it before December's second cutoff."} label={thirteenth ? "Open" : "Compute"} onClick={() => (thirteenth ? router.push(`/hr/payroll/${thirteenth.id}`) : setWhich("thirteenth"))} />
         <Action icon={LogOut} title="Final pay" hint={separated.length ? `${separated.length} separated person(s) on file. Within 30 days of separation (LA 06-20).` : "Nobody separated on file. Record the separation on the Employment tab first."} label="Compute" disabled={separated.length === 0} onClick={() => setWhich("final")} />
         <Action icon={SlidersHorizontal} title="Adjustment" hint={adjustable.length ? "Recompute an approved period with today's rates and pay only the difference (a wage order, a corrected rate)." : "Needs an approved period."} label="Compute" disabled={adjustable.length === 0} onClick={() => setWhich("adjustment")} />
-      </CardContent>
       {which === "thirteenth" ? <ThirteenthDialog year={year} today={today} close={() => setWhich(null)} done={done} /> : null}
       {which === "final" ? <FinalPayDialog separated={separated} today={today} close={() => setWhich(null)} done={done} /> : null}
       {which === "adjustment" ? <AdjustmentDialog periods={adjustable} close={() => setWhich(null)} done={done} /> : null}
-    </Card>
+    </SectionCard>
   );
 }
 
 function Action({ icon: Icon, title, hint, label, disabled, onClick }: { icon: React.ComponentType<{ className?: string }>; title: string; hint: string; label: string; disabled?: boolean; onClick: () => void }) {
   return (
-    <div className="flex flex-col justify-between gap-2 rounded-xl border p-3">
+    <div className="flex flex-col justify-between gap-2 rounded-xl bg-muted/60 p-4">
       <div className="flex flex-col gap-1">
-        <span className="flex items-center gap-1.5 text-sm font-medium">
+        <span className="flex items-center gap-1.5 text-theme-sm font-medium">
           <Icon className="size-4 text-muted-foreground" />
           {title}
         </span>
-        <span className="text-xs text-muted-foreground">{hint}</span>
+        <span className="text-theme-xs text-muted-foreground">{hint}</span>
       </div>
       <Button size="sm" variant="outline" className="w-fit" onClick={onClick} disabled={disabled}>
         {label}

@@ -9,8 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
+import { STATUS_TONE_TEXT } from "@/lib/utils/status-colors";
 import { useRateTables, rateTablesStore } from "@/lib/hooks/use-hr-reference-collections";
 import { formatDate } from "@/lib/utils/date";
 import { parseRateTable } from "@/lib/utils/statutory";
@@ -42,27 +44,31 @@ export function RateTablesEditor() {
 
   return (
     <div className="flex flex-col gap-4">
-      {loading && rateTables.length === 0 ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
+      {loading && rateTables.length === 0 ? <LoadingState /> : null}
       {RATE_TABLE_KINDS.map((k) => {
         const versions = rateTables.filter((t) => t.kind === k.value);
         return (
-          <Card key={k.value}>
-            <CardHeader className="flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-base">{k.label}</CardTitle>
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEditing({ table: null, kind: k.value })}>
-                <Plus className="size-3.5" />
-                New version
-              </Button>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-1.5">
+          <SectionCard key={k.value}
+            title={<>{k.label}</>}
+            actions={
+              <>
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEditing({ table: null, kind: k.value })}>
+                  <Plus className="size-3.5" />
+                  New version
+                </Button>
+              </>
+            }
+            flush
+            bodyClassName="flex flex-col divide-y divide-border"
+          >
               {versions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No version on file — payroll cannot compute without one.</p>
+                <p className="px-5 py-3 text-theme-sm text-muted-foreground">No version on file — payroll cannot compute without one.</p>
               ) : (
                 versions.map((t) => (
-                  <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm">
+                  <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
                     <div className="flex min-w-0 flex-col">
                       <span className="font-medium">{t.source}</span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-theme-xs text-muted-foreground">
                         From {formatDate(t.effectiveFrom)}
                         {t.effectiveTo ? ` to ${formatDate(t.effectiveTo)}` : ""}
                         {t.notes ? ` — ${t.notes}` : ""}
@@ -77,8 +83,7 @@ export function RateTablesEditor() {
                   </div>
                 ))
               )}
-            </CardContent>
-          </Card>
+          </SectionCard>
         );
       })}
       {editing ? <RateTableDialog key={editing.table?.id ?? `new-${editing.kind}`} table={editing.table} kind={editing.kind} latest={rateTables.find((t) => t.kind === editing.kind) ?? null} close={() => setEditing(null)} /> : null}
@@ -171,7 +176,7 @@ function RateTableDialog({ table, kind, latest, close }: { table: RateTable | nu
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">Only &quot;In force&quot; versions price a payslip.</p>
+            <p className="text-theme-xs text-muted-foreground">Only &quot;In force&quot; versions price a payslip.</p>
           </Field>
           <Field>
             <FieldLabel htmlFor="rt-source">Source</FieldLabel>
@@ -179,18 +184,18 @@ function RateTableDialog({ table, kind, latest, close }: { table: RateTable | nu
           </Field>
           <Field className="sm:col-span-2">
             <FieldLabel htmlFor="rt-params">Parameters (JSON)</FieldLabel>
-            <Textarea id="rt-params" rows={3} className="font-mono text-xs" value={form.params} onChange={(e) => setForm({ ...form, params: e.target.value })} />
+            <Textarea id="rt-params" rows={3} className="font-mono text-theme-xs" value={form.params} onChange={(e) => setForm({ ...form, params: e.target.value })} />
           </Field>
           <Field className="sm:col-span-2">
             <FieldLabel htmlFor="rt-rows">Brackets / rows (JSON)</FieldLabel>
-            <Textarea id="rt-rows" rows={kind === "sss" ? 6 : 8} className="font-mono text-xs" value={form.rows} onChange={(e) => setForm({ ...form, rows: e.target.value })} />
-            <p className="text-xs text-muted-foreground">{SHAPE_HINT[kind]}</p>
+            <Textarea id="rt-rows" rows={kind === "sss" ? 6 : 8} className="font-mono text-theme-xs" value={form.rows} onChange={(e) => setForm({ ...form, rows: e.target.value })} />
+            <p className="text-theme-xs text-muted-foreground">{SHAPE_HINT[kind]}</p>
           </Field>
           <Field className="sm:col-span-2">
             <FieldLabel htmlFor="rt-notes">Notes</FieldLabel>
             <Input id="rt-notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           </Field>
-          <p className={`text-xs sm:col-span-2 ${parsed.ok ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>{parsed.ok ? "Table shape is valid." : parsed.error}</p>
+          <p className={`text-theme-xs sm:col-span-2 ${parsed.ok ? STATUS_TONE_TEXT.positive : STATUS_TONE_TEXT.negative}`}>{parsed.ok ? "Table shape is valid." : parsed.error}</p>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={close} disabled={saving}>

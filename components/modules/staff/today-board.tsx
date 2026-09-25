@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { useRoster } from "@/lib/hooks/use-roster";
@@ -17,12 +18,13 @@ import { dayKey } from "@/lib/utils/dtr";
 import { formatDate } from "@/lib/utils/date";
 import { formatDistance } from "@/lib/utils/site";
 import { boardStatus, type BoardStatus } from "@/lib/utils/today-board";
+import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 
 const TONE = {
-  good: "bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-400",
-  warn: "bg-amber-50 text-amber-700 hover:bg-amber-50 dark:bg-amber-500/15 dark:text-amber-400",
-  bad: "bg-rose-50 text-rose-700 hover:bg-rose-50 dark:bg-rose-500/15 dark:text-rose-400",
-  quiet: "bg-slate-100 text-slate-600 hover:bg-slate-100 dark:bg-slate-500/15 dark:text-slate-400",
+  good: STATUS_TONE_CLASSES.positive,
+  warn: STATUS_TONE_CLASSES.warning,
+  bad: STATUS_TONE_CLASSES.negative,
+  quiet: STATUS_TONE_CLASSES.neutral,
 };
 
 /**
@@ -50,24 +52,20 @@ export function TodayBoard() {
   const extra = manages ? entries.filter((t) => t.date === today && t.clockIn && !rostered.has(t.staffId)) : [];
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Today&apos;s Roster — {formatDate(today, "EEE, MMM d")}</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
-        {roster.length === 0 && extra.length === 0 ? <p className="text-sm text-muted-foreground">{loading ? "Loading…" : "Nobody is scheduled today."}</p> : null}
+    <SectionCard title={<>Today&apos;s Roster — {formatDate(today, "EEE, MMM d")}</>} flush bodyClassName="divide-y divide-border">
+        {roster.length === 0 && extra.length === 0 ? (loading ? <div className="p-5"><LoadingState rows={3} /></div> : <p className="px-5 py-3 text-theme-sm text-muted-foreground">Nobody is scheduled today.</p>) : null}
         {roster.map((e) => {
           const entry = entryOf(e.person.staffId);
           const name = `${e.person.firstName} ${e.person.lastName}`;
           const board = boardStatus({ day: today, shift: e.shift!, clockIn: entry?.clockIn ?? null, clockOut: entry?.clockOut ?? null, graceMinutes: tardinessGraceMinutes, now });
           const punch = manages && e.person.staffId ? siteOf(e.person.staffId) : undefined;
           return (
-            <div key={e.person.employeeId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm">
+            <div key={e.person.employeeId} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-theme-sm">
               <div className="flex min-w-0 items-center gap-3">
                 <PersonAvatar name={name} size="sm" />
                 <div className="flex min-w-0 flex-col">
                   <span className="font-medium">{name}</span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-theme-xs text-muted-foreground">
                     {e.person.position} · {e.shift!.start}–{e.shift!.end}
                     {e.overridden ? " · changed for today" : ""}
                   </span>
@@ -91,8 +89,8 @@ export function TodayBoard() {
           );
         })}
         {extra.length > 0 ? (
-          <div className="flex flex-col gap-1 rounded-xl border border-dashed px-3 py-2.5 text-sm">
-            <span className="text-xs font-medium text-muted-foreground">Clocked in, not on today&apos;s roster</span>
+          <div className="flex flex-col gap-1 px-5 py-3 text-theme-sm">
+            <span className="text-theme-xs font-medium text-muted-foreground">Clocked in, not on today&apos;s roster</span>
             {extra.map((t) => {
               const s = staff.find((x) => x.id === t.staffId);
               return (
@@ -103,8 +101,7 @@ export function TodayBoard() {
             })}
           </div>
         ) : null}
-      </CardContent>
-    </Card>
+    </SectionCard>
   );
 }
 

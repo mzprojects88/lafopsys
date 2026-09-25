@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import { ArrowLeft, Link2, Unlink } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HrSubNav } from "@/components/modules/hr/hr-subnav";
@@ -98,18 +99,18 @@ export default function ReconcilePage() {
             ))}
           </SelectContent>
         </Select>
-        <span className="text-xs text-muted-foreground">
-          {loading || bankLoading ? "Loading…" : `${linked}/${settled.length} linked · statement has ${debits.length} debits`}
-        </span>
+        {loading || bankLoading ? null : (
+          <span className="text-theme-xs text-muted-foreground">{`${linked}/${settled.length} linked · statement has ${debits.length} debits`}</span>
+        )}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Payslips {year}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          {settled.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No settled payslips in {year}.</p>
+      <SectionCard title={`Payslips ${year}`} flush bodyClassName="flex flex-col divide-y divide-border">
+          {loading || bankLoading ? (
+            <div className="p-5">
+              <LoadingState />
+            </div>
+          ) : settled.length === 0 ? (
+            <p className="px-5 py-3 text-theme-sm text-muted-foreground">No settled payslips in {year}.</p>
           ) : (
             settled.map((p) => {
               const e = byEmployee.get(p.employeeId);
@@ -118,12 +119,12 @@ export default function ReconcilePage() {
               const exact = options.find((t) => toCentavos(t.debit) === toCentavos(p.net));
               const chosen = choice[p.id] ?? exact?.id ?? "";
               return (
-                <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm">
+                <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
                   <div className="flex min-w-0 flex-col">
                     <span className="font-medium">
                       {e ? employeeFullName(e) : p.employeeId} · ₱{formatAmount2(toCentavos(p.net))}
                     </span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-theme-xs text-muted-foreground">
                       Pay date {formatDate(p.payDate)}
                       {tx ? ` · ${formatDate(tx.postingDate)} ₱${formatAmount2(toCentavos(tx.debit))} ${tx.memo ? `"${tx.memo}"` : tx.description.slice(0, 40)}` : ""}
                     </span>
@@ -134,11 +135,11 @@ export default function ReconcilePage() {
                       Unlink
                     </Button>
                   ) : options.length === 0 ? (
-                    <span className="text-xs text-muted-foreground">No statement debit within {WINDOW_DAYS} days. Import the statement first.</span>
+                    <span className="text-theme-xs text-muted-foreground">No statement debit within {WINDOW_DAYS} days. Import the statement first.</span>
                   ) : (
-                    <div className="flex items-center gap-2">
+                    <div className="flex w-full items-center gap-2 sm:w-auto">
                       <Select value={chosen} onValueChange={(v) => setChoice((c) => ({ ...c, [p.id]: v }))}>
-                        <SelectTrigger className="w-80" aria-label="Bank line">
+                        <SelectTrigger className="w-full min-w-0 sm:w-80" aria-label="Bank line">
                           <SelectValue placeholder="Choose the statement line" />
                         </SelectTrigger>
                         <SelectContent>
@@ -160,8 +161,7 @@ export default function ReconcilePage() {
               );
             })
           )}
-        </CardContent>
-      </Card>
+      </SectionCard>
     </div>
   );
 }

@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { useCompensationHistory, compensationFamily } from "@/lib/hooks/use-employee-detail-collections";
 import { useRateTables } from "@/lib/hooks/use-hr-reference-collections";
@@ -52,46 +53,48 @@ export function CompensationTab({ employee, manages, today }: { employee: Employ
   return (
     <div className="flex flex-col gap-4">
       {belowMinimum && wage && rates ? (
-        <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+        <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-theme-sm text-destructive dark:bg-destructive/15">
           The current rate works out to {peso(rates.daily)} a day, below the {peso(wage.rate)} minimum wage under {wage.wageOrder}. A full-time employee cannot be paid less; a part-time schedule must
           be recorded on the Schedule tab if that is what this is.
         </p>
       ) : null}
       {wage?.pending ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-theme-xs text-muted-foreground">
           {wage.pending.wageOrder} ({peso(wage.pending.rate)}/day from {formatDate(wage.pending.effectiveFrom)}) is {wage.pending.status === "enjoined" ? "under a court injunction" : "not yet in force"}. If
           it takes effect, a wage differential may be due retroactively.
         </p>
       ) : null}
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-base">Pay</CardTitle>
-          {manages ? <CompensationDialog employee={employee} current={current} /> : null}
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
+      <SectionCard
+        title="Pay"
+        actions={manages ? <CompensationDialog employee={employee} current={current} /> : null}
+        flush
+        bodyClassName="flex flex-col divide-y divide-border"
+      >
           {loading && history.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <div className="p-5">
+              <LoadingState />
+            </div>
           ) : history.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No pay on file. Payroll cannot run for this person until a rate is set.</p>
+            <p className="px-5 py-3 text-theme-sm text-muted-foreground">No pay on file. Payroll cannot run for this person until a rate is set.</p>
           ) : (
             history.map((c) => {
               const r = equivalentRates(c);
               return (
-                <div key={c.id} className="flex flex-wrap items-start justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm">
+                <div key={c.id} className="flex flex-wrap items-start justify-between gap-2 px-5 py-3 text-theme-sm">
                   <div className="flex min-w-0 flex-col gap-0.5">
                     <span className="font-medium">
                       {c.payBasis === "monthly" ? `${peso(c.basicMonthly ?? 0)} / month` : `${peso(c.dailyRate ?? 0)} / day`}
                       <span className="text-muted-foreground"> · {peso(r.daily)}/day · {peso(r.hourly)}/hr</span>
                     </span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-theme-xs text-muted-foreground">
                       From {formatDate(c.effectiveFrom)}
                       {c.effectiveTo ? ` to ${formatDate(c.effectiveTo)}` : " (current)"} · factor {c.daysFactor} · {c.hoursPerDay} h/day
                       {c.isMinimumWageEarner ? " · minimum wage earner (tax-exempt)" : ""}
                       {c.reason ? ` — ${c.reason}` : ""}
                     </span>
                     {c.allowances.length ? (
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-theme-xs text-muted-foreground">
                         Allowances: {c.allowances.map((a) => `${a.label} ${peso(a.amountMonthly)}/mo (${a.tax === "de_minimis" ? "de minimis" : "taxable"})`).join(", ")}
                       </span>
                     ) : null}
@@ -101,8 +104,7 @@ export function CompensationTab({ employee, manages, today }: { employee: Employ
               );
             })
           )}
-        </CardContent>
-      </Card>
+      </SectionCard>
     </div>
   );
 }
@@ -207,21 +209,21 @@ function CompensationDialog({ employee, current }: { employee: Employee; current
                   <SelectItem value="261">261 — five days a week, holidays paid</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">Daily rate = monthly × 12 ÷ factor (DOLE Handbook on Workers&apos; Statutory Monetary Benefits). It decides whether a holiday or rest day is already in the monthly pay.</p>
+              <p className="text-theme-xs text-muted-foreground">Daily rate = monthly × 12 ÷ factor (DOLE Handbook on Workers&apos; Statutory Monetary Benefits). It decides whether a holiday or rest day is already in the monthly pay.</p>
             </Field>
           ) : null}
 
           <div className="flex items-center justify-between gap-3 sm:col-span-2">
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-medium">Minimum wage earner</span>
-              <span className="text-xs text-muted-foreground">Paid exactly the statutory minimum: exempt from income tax and withholding (NIRC s.24(A)(2)).</span>
+              <span className="text-theme-sm font-medium">Minimum wage earner</span>
+              <span className="text-theme-xs text-muted-foreground">Paid exactly the statutory minimum: exempt from income tax and withholding (NIRC s.24(A)(2)).</span>
             </div>
             <Switch checked={form.isMinimumWageEarner} onCheckedChange={(v) => setForm({ ...form, isMinimumWageEarner: v })} />
           </div>
 
           <div className="flex flex-col gap-2 sm:col-span-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Allowances</span>
+              <span className="text-theme-sm font-medium">Allowances</span>
               <Button
                 type="button"
                 variant="ghost"
@@ -259,7 +261,7 @@ function CompensationDialog({ employee, current }: { employee: Employee; current
                 </Button>
               </div>
             ))}
-            <p className="text-xs text-muted-foreground">De minimis benefits are tax-free within RR 11-2018&apos;s limits; the excess, and any other allowance, is taxable compensation.</p>
+            <p className="text-theme-xs text-muted-foreground">De minimis benefits are tax-free within RR 11-2018&apos;s limits; the excess, and any other allowance, is taxable compensation.</p>
           </div>
 
           <Field className="sm:col-span-2">

@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { useEmployeeDocuments, employeeDocumentsFamily } from "@/lib/hooks/use-employee-detail-collections";
 import { useDocumentTypes } from "@/lib/hooks/use-document-types-collection";
@@ -36,14 +37,16 @@ export function DocumentChecklist({ employee, manages, today }: { employee: Empl
   const missingRequired = types.filter((t) => t.required && (byType.get(t.id)?.status ?? "missing") === "missing").length;
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-base">201 documents</CardTitle>
-        <span className="text-xs text-muted-foreground">{missingRequired === 0 ? "All required documents on file" : `${missingRequired} required missing`}</span>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-1.5">
+    <SectionCard
+      title="201 documents"
+      actions={<span className="text-theme-xs text-muted-foreground">{missingRequired === 0 ? "All required documents on file" : `${missingRequired} required missing`}</span>}
+      flush
+      bodyClassName="flex flex-col divide-y divide-border"
+    >
         {loading && types.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <div className="p-5">
+            <LoadingState />
+          </div>
         ) : (
           types.map((t) => {
             const doc = byType.get(t.id) ?? null;
@@ -51,13 +54,13 @@ export function DocumentChecklist({ employee, manages, today }: { employee: Empl
             const validity = doc ? documentValidity(doc, t.validityMonths, today) : null;
             const shown = status === "complete" && validity && validity.state !== "valid" && validity.state !== "unknown" ? validity.state : status;
             return (
-              <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm">
+              <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
                 <div className="flex min-w-0 flex-col">
                   <span className="font-medium">
                     {t.name}
-                    {!t.required ? <span className="text-xs text-muted-foreground"> · optional</span> : null}
+                    {!t.required ? <span className="text-theme-xs text-muted-foreground"> · optional</span> : null}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-theme-xs text-muted-foreground">
                     {validity?.expiresOn ? `Valid until ${formatDate(validity.expiresOn)}` : doc?.issuedOn ? `Issued ${formatDate(doc.issuedOn)}` : (t.notes ?? "")}
                     {doc?.notes ? ` — ${doc.notes}` : ""}
                   </span>
@@ -79,9 +82,8 @@ export function DocumentChecklist({ employee, manages, today }: { employee: Empl
             );
           })
         )}
-      </CardContent>
       {editing ? <DocumentDialog key={editing.type.id} employee={employee} type={editing.type} doc={editing.doc} close={() => setEditing(null)} /> : null}
-    </Card>
+    </SectionCard>
   );
 }
 
@@ -145,7 +147,7 @@ function DocumentDialog({ employee, type, doc, close }: { employee: Employee; ty
           <Field>
             <FieldLabel htmlFor="doc-expires">Expires on</FieldLabel>
             <Input id="doc-expires" type="date" value={form.expiresOn ?? ""} onChange={(e) => setForm({ ...form, expiresOn: e.target.value })} />
-            {type.validityMonths ? <p className="text-xs text-muted-foreground">Left blank, {type.validityMonths} months from issue.</p> : null}
+            {type.validityMonths ? <p className="text-theme-xs text-muted-foreground">Left blank, {type.validityMonths} months from issue.</p> : null}
           </Field>
           <Field className="sm:col-span-2">
             <FieldLabel htmlFor="doc-notes">Notes</FieldLabel>

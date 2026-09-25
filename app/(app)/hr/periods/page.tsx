@@ -7,7 +7,8 @@ import { CalendarPlus, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -58,18 +59,20 @@ export default function PayPeriodsPage() {
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader title="Pay Periods" description="Semi-monthly cutoffs (1st–15th, 16th–end) and their pay dates — at least twice a month, never more than sixteen days apart (Art. 103)." action={<HrSubNav />} />
 
-      <Card>
-        <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-          <CardTitle className="text-base">
-            {current ? (
+      <SectionCard
+        flush
+        bodyClassName="flex flex-col divide-y divide-border"
+        title={
+          current ? (
               <>
                 Current period: {payPeriodLabel({ year: current.year, seq: current.seq, from: current.startsOn, to: current.endsOn, isSecondCutoff: current.seq % 2 === 0 })} · pay date {formatDate(current.payDate)}
               </>
             ) : (
               "No period covers today — generate the year."
-            )}
-          </CardTitle>
-          <div className="flex items-center gap-2">
+            )
+        }
+        actions={
+          <>
             <Select value={year} onValueChange={setYear}>
               <SelectTrigger className="w-28" aria-label="Year">
                 <SelectValue />
@@ -86,26 +89,28 @@ export default function PayPeriodsPage() {
               <CalendarPlus className="size-3.5" />
               {generating ? "Generating…" : rows.length === 24 ? "All 24 exist" : `Generate ${year}`}
             </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-1.5">
+          </>
+        }
+      >
           {error ? (
-            <p className="text-sm text-rose-700">{error}</p>
+            <p className="px-5 py-3 text-theme-sm text-destructive">{error}</p>
           ) : loading && periods.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <div className="p-5">
+              <LoadingState />
+            </div>
           ) : rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No periods for {year}. Generating uses the pay-date rule from Settings; pay dates can be adjusted afterwards.</p>
+            <p className="px-5 py-3 text-theme-sm text-muted-foreground">No periods for {year}. Generating uses the pay-date rule from Settings; pay dates can be adjusted afterwards.</p>
           ) : (
             rows.map((p) => {
               const isCurrent = p.id === current?.id;
               return (
-                <div key={p.id} className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm ${isCurrent ? "border-primary/40 bg-primary/5" : ""}`}>
+                <div key={p.id} className={`flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm ${isCurrent ? "bg-accent/60" : ""}`}>
                   <div className="flex min-w-0 flex-col">
                     <span className="font-medium">
                       {payPeriodLabel({ year: p.year, seq: p.seq, from: p.startsOn, to: p.endsOn, isSecondCutoff: p.seq % 2 === 0 })}
-                      <span className="text-xs text-muted-foreground"> · {payPeriodKey(p)}</span>
+                      <span className="text-theme-xs text-muted-foreground"> · {payPeriodKey(p)}</span>
                     </span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-theme-xs text-muted-foreground">
                       Pay date {formatDate(p.payDate, "EEE, MMM d")}
                       {p.notes ? ` — ${p.notes}` : ""}
                     </span>
@@ -123,8 +128,7 @@ export default function PayPeriodsPage() {
               );
             })
           )}
-        </CardContent>
-      </Card>
+      </SectionCard>
 
       {editing ? <EditPeriodDialog key={editing.id} period={editing} close={() => setEditing(null)} /> : null}
     </div>

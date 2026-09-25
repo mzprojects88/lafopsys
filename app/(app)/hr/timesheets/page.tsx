@@ -8,7 +8,9 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { ReasonDialog } from "@/components/patterns/reason-dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
+import { STATUS_TONE_TEXT } from "@/lib/utils/status-colors";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HrSubNav } from "@/components/modules/hr/hr-subnav";
@@ -34,7 +36,7 @@ import { employeeFullName, type Employee, type PeriodTimesheet } from "@/lib/typ
  */
 export default function TimesheetsPage() {
   return (
-    <React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading…</p>}>
+    <React.Suspense fallback={<LoadingState />}>
       <TimesheetsInner />
     </React.Suspense>
   );
@@ -154,7 +156,7 @@ function TimesheetsInner() {
         {period ? (
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge dot domain="payPeriod" status={period.status} />
-            <span className="text-xs text-muted-foreground">
+            <span className="text-theme-xs text-muted-foreground">
               {approvedCount}/{due.length} approved · pay date {formatDate(period.payDate)}
             </span>
             <Button size="sm" variant="outline" className="gap-1.5" onClick={computeAll} disabled={busy !== null || frozen}>
@@ -183,15 +185,19 @@ function TimesheetsInner() {
             const ts = byEmployee.get(e.id);
             const summary = ts?.summary ?? null;
             return (
-              <Card key={e.id}>
-                <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-                  <CardTitle className="text-base">
+              <SectionCard
+                key={e.id}
+                flush
+                title={
+                  <>
                     {employeeFullName(e)}
-                    <span className="text-xs font-normal text-muted-foreground"> · {e.position}{e.staffId ? "" : " · no login, no DTR"}</span>
-                  </CardTitle>
+                    <span className="text-theme-xs font-normal text-muted-foreground"> · {e.position}{e.staffId ? "" : " · no login, no DTR"}</span>
+                  </>
+                }
+                actions={
                   <div className="flex flex-wrap items-center gap-1.5">
                     {ts ? <StatusBadge dot domain="timesheet2" status={ts.status} /> : <StatusBadge domain="timesheet2" status="draft" label="Not computed" />}
-                    {ts?.approvedAt ? <span className="text-xs text-muted-foreground">approved {formatDate(ts.approvedAt, "MMM d, HH:mm")}</span> : null}
+                    {ts?.approvedAt ? <span className="text-theme-xs text-muted-foreground">approved {formatDate(ts.approvedAt, "MMM d, HH:mm")}</span> : null}
                     {ts?.status === "approved" ? (
                       <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => setReopening(ts)} disabled={frozen || busy !== null}>
                         <RotateCcw className="size-3.5" />
@@ -210,23 +216,24 @@ function TimesheetsInner() {
                       </>
                     )}
                   </div>
-                </CardHeader>
-                <CardContent>
+                }
+              >
                   {loading && !summary ? (
-                    <p className="text-xs text-muted-foreground">Loading…</p>
+                    <div className="p-5">
+                      <LoadingState rows={2} />
+                    </div>
                   ) : summary ? (
                     <TimesheetSummaryTable summary={summary} />
                   ) : (
-                    <p className="text-xs text-muted-foreground">Not computed yet. Compute reads the DTR, the schedule, the holidays and approved leave; Approve freezes the result for payroll.</p>
+                    <p className="px-5 py-4 text-theme-xs text-muted-foreground">Not computed yet. Compute reads the DTR, the schedule, the holidays and approved leave; Approve freezes the result for payroll.</p>
                   )}
-                  {ts?.notes ? <p className="mt-2 whitespace-pre-line text-xs text-muted-foreground">{ts.notes}</p> : null}
+                  {ts?.notes ? <p className="border-t border-border px-5 py-3 whitespace-pre-line text-theme-xs text-muted-foreground">{ts.notes}</p> : null}
                   {summary && summary.totals.missedPunches > 0 ? (
-                    <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                    <p className={`border-t border-border px-5 py-3 text-theme-xs ${STATUS_TONE_TEXT.warning}`}>
                       {summary.totals.missedPunches} missed clock-out(s) — those sessions count for nothing. Close them from Staff &amp; Time → Timesheets, then recompute.
                     </p>
                   ) : null}
-                </CardContent>
-              </Card>
+              </SectionCard>
             );
           })}
         </div>

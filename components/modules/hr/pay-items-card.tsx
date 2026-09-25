@@ -3,7 +3,8 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { Plus, Pencil, Power } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -43,36 +44,42 @@ export function PayItemsCard({ employees, periods }: { employees: Employee[]; pe
   }
 
   return (
-    <Card>
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-        <CardTitle className="text-base">Pay items</CardTitle>
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Switch checked={showInactive} onCheckedChange={setShowInactive} />
-            Show stopped
-          </label>
-          <Button size="sm" className="gap-1.5" onClick={() => setEditing("new")} disabled={employees.length === 0}>
-            <Plus className="size-3.5" />
-            Add item
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
+    <SectionCard
+      title="Pay items"
+      actions={
+        <>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-theme-xs text-muted-foreground">
+              <Switch checked={showInactive} onCheckedChange={setShowInactive} />
+              Show stopped
+            </label>
+            <Button size="sm" className="gap-1.5" onClick={() => setEditing("new")} disabled={employees.length === 0}>
+              <Plus className="size-3.5" />
+              Add item
+            </Button>
+          </div>
+        </>
+      }
+      flush
+      bodyClassName="flex flex-col divide-y divide-border"
+    >
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <div className="p-5">
+            <LoadingState />
+          </div>
         ) : shown.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing yet. Loans, advances, one-off allowances and retro pay go here.</p>
+          <p className="px-5 py-3 text-theme-sm text-muted-foreground">Nothing yet. Loans, advances, one-off allowances and retro pay go here.</p>
         ) : (
           shown.map((i) => {
             const e = byEmployee.get(i.employeeId);
             const p = i.periodId ? periodBy.get(i.periodId) : null;
             return (
-              <div key={i.id} className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm ${i.active ? "" : "opacity-60"}`}>
+              <div key={i.id} className={`flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm ${i.active ? "" : "opacity-60"}`}>
                 <div className="flex min-w-0 flex-col">
                   <span className="font-medium">
                     {e ? employeeFullName(e) : "—"} · {i.label}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-theme-xs text-muted-foreground">
                     {i.kind === "deduction" ? "Deduction" : "Earning"} · ₱{formatAmount2(toCentavos(i.amount))}
                     {i.isRecurring ? " per cutoff" : p ? ` · ${payPeriodLabel({ year: p.year, seq: p.seq, from: p.startsOn, to: p.endsOn, isSecondCutoff: p.seq % 2 === 0 })}` : ""}
                     {i.amountTotal !== null ? ` · of ₱${formatAmount2(toCentavos(i.amountTotal))}` : ""}
@@ -92,9 +99,8 @@ export function PayItemsCard({ employees, periods }: { employees: Employee[]; pe
             );
           })
         )}
-      </CardContent>
       {editing ? <PayItemDialog key={editing === "new" ? "new" : editing.id} item={editing === "new" ? null : editing} employees={employees} periods={periods} close={() => setEditing(null)} /> : null}
-    </Card>
+    </SectionCard>
   );
 }
 
@@ -190,7 +196,7 @@ function PayItemDialog({ item, employees, periods, close }: { item: PayItem | nu
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">{codes.find((c) => c.value === form.code)?.hint}</p>
+              <p className="text-theme-xs text-muted-foreground">{codes.find((c) => c.value === form.code)?.hint}</p>
             </Field>
           </div>
           {form.code === "de_minimis" ? (
@@ -215,7 +221,7 @@ function PayItemDialog({ item, employees, periods, close }: { item: PayItem | nu
             <Input id="pi-label" value={form.label} onChange={(e) => set("label", e.target.value)} placeholder="SSS salary loan, Retro Jul 1-15, …" />
           </Field>
           <div className="flex items-center justify-between gap-3">
-            <span className="text-sm font-medium">Recurring every cutoff</span>
+            <span className="text-theme-sm font-medium">Recurring every cutoff</span>
             <Switch checked={form.isRecurring} onCheckedChange={(v) => set("isRecurring", v)} />
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -227,7 +233,7 @@ function PayItemDialog({ item, employees, periods, close }: { item: PayItem | nu
               <Field>
                 <FieldLabel htmlFor="pi-total">Total to collect (₱, optional)</FieldLabel>
                 <Input id="pi-total" type="number" min={0} step="0.01" value={form.amountTotal ?? ""} onChange={(e) => set("amountTotal", e.target.value === "" ? null : Number(e.target.value))} />
-                <p className="text-xs text-muted-foreground">Stops once approved payslips reach it.</p>
+                <p className="text-theme-xs text-muted-foreground">Stops once approved payslips reach it.</p>
               </Field>
             ) : (
               <Field>

@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { TimePunch } from "@/lib/types/staff";
+import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 
 const MISSING: Record<Exclude<TimePunch["photoStatus"], "captured" | "none">, string> = {
   denied: "Camera blocked",
@@ -25,7 +26,7 @@ export function PunchPhotoCell({ punch, caption }: { punch: TimePunch; caption: 
 
   if (punch.photoStatus === "none") return <span className="text-muted-foreground">—</span>;
   if (punch.photoStatus !== "captured") {
-    return <Badge className="bg-rose-50 text-rose-700 hover:bg-rose-50 dark:bg-rose-500/15 dark:text-rose-400">{MISSING[punch.photoStatus]}</Badge>;
+    return <Badge className={STATUS_TONE_CLASSES.negative}>{MISSING[punch.photoStatus]}</Badge>;
   }
 
   async function open() {

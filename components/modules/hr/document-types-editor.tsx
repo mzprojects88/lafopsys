@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { useDocumentTypes, documentTypesStore } from "@/lib/hooks/use-document-types-collection";
 import { updateDocumentType } from "@/app/(app)/hr/actions";
@@ -20,26 +21,28 @@ export function DocumentTypesEditor() {
   const [editing, setEditing] = React.useState<DocumentType | null>(null);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">201 checklist</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-1.5">
-        <p className="text-xs text-muted-foreground">From the masterlist&apos;s checklist sheet. A validity turns a document amber 30 days before it lapses and red after.</p>
+    <SectionCard
+      title="201 checklist"
+      flush
+      bodyClassName="flex flex-col divide-y divide-border"
+    >
+        <p className="px-5 py-3 text-theme-xs text-muted-foreground">From the masterlist&apos;s checklist sheet. A validity turns a document amber 30 days before it lapses and red after.</p>
         {loading && documentTypes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <div className="p-5">
+            <LoadingState />
+          </div>
         ) : (
           documentTypes.map((t) => (
-            <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm">
+            <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
               <div className="flex min-w-0 flex-col">
                 <span className="font-medium">
                   {t.sort}. {t.name}
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-theme-xs text-muted-foreground">
                     {t.validityMonths ? ` · valid ${t.validityMonths} months` : ""}
                     {t.required ? "" : " · optional"}
                   </span>
                 </span>
-                {t.notes ? <span className="text-xs text-muted-foreground">{t.notes}</span> : null}
+                {t.notes ? <span className="text-theme-xs text-muted-foreground">{t.notes}</span> : null}
               </div>
               <div className="flex items-center gap-1.5">
                 <StatusBadge domain="employee" status={t.active ? "active" : "resigned"} label={t.active ? "On" : "Off"} />
@@ -50,9 +53,8 @@ export function DocumentTypesEditor() {
             </div>
           ))
         )}
-      </CardContent>
       {editing ? <DocumentTypeDialog key={editing.id} type={editing} close={() => setEditing(null)} /> : null}
-    </Card>
+    </SectionCard>
   );
 }
 
@@ -94,11 +96,11 @@ function DocumentTypeDialog({ type, close }: { type: DocumentType; close: () => 
             <Input id="dt-notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           </Field>
           <div className="flex items-center justify-between gap-3">
-            <span className="text-sm font-medium">Required for every employee</span>
+            <span className="text-theme-sm font-medium">Required for every employee</span>
             <Switch checked={form.required} onCheckedChange={(v) => setForm({ ...form, required: v })} />
           </div>
           <div className="flex items-center justify-between gap-3">
-            <span className="text-sm font-medium">On the checklist</span>
+            <span className="text-theme-sm font-medium">On the checklist</span>
             <Switch checked={form.active} onCheckedChange={(v) => setForm({ ...form, active: v })} />
           </div>
         </div>

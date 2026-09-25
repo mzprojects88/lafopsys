@@ -8,7 +8,9 @@ import { AlertTriangle, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { STATUS_TONE_TEXT } from "@/lib/utils/status-colors";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { useTimeEntriesData } from "@/lib/hooks/use-time-entries-collection";
 import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
@@ -72,7 +74,7 @@ const columns: ColumnDef<FlagRow>[] = [
     header: "Overtime",
     cell: ({ row }) =>
       row.original.overtimeMinutes > 0 ? (
-        <span className="tabular-nums text-amber-600 dark:text-amber-400">{formatMinutes(row.original.overtimeMinutes)}</span>
+        <span className={`tabular-nums ${STATUS_TONE_TEXT.warning}`}>{formatMinutes(row.original.overtimeMinutes)}</span>
       ) : (
         <span className="text-muted-foreground">—</span>
       ),
@@ -147,26 +149,29 @@ export default function TimesheetsPage() {
       <PageHeader title="Timesheets" description="Days that need attention: missing clock-outs, lateness, undertime, rest days and holidays worked." />
 
       {openDays.length > 0 ? (
-        <Card className="border-rose-200 dark:border-rose-900/60">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <AlertTriangle className="size-4 text-rose-600 dark:text-rose-400" />
+        <SectionCard
+          className="border-destructive/30"
+          title={
+            <span className="flex items-center gap-2">
+              <AlertTriangle className="size-4 text-destructive" />
               Missing a clock-out
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            <p className="text-sm text-muted-foreground">
+            </span>
+          }
+          flush
+          bodyClassName="divide-y divide-border"
+        >
+            <p className="px-5 py-3 text-theme-sm text-muted-foreground">
               These days were clocked into and never out of, so they count as no hours worked. An admin can
               add the time that was actually worked; the original record is kept as it stands.
             </p>
             {openDays.map((entry) => (
               <div
                 key={entry.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2"
+                className="flex flex-wrap items-center justify-between gap-2 px-5 py-3"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{staffLabel(entry.staffId)}</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="truncate text-theme-sm font-medium">{staffLabel(entry.staffId)}</p>
+                  <p className="text-theme-xs text-muted-foreground">
                     {entry.date} · clocked in {entry.clockIn} · no clock-out
                   </p>
                 </div>
@@ -186,18 +191,17 @@ export default function TimesheetsPage() {
                     Set the clock-out time
                   </Button>
                 ) : (
-                  <span className="text-xs text-muted-foreground">An admin can correct this</span>
+                  <span className="text-theme-xs text-muted-foreground">An admin can correct this</span>
                 )}
               </div>
             ))}
-          </CardContent>
-        </Card>
+        </SectionCard>
       ) : null}
 
       {manages && !isHiddenPath("/hr") ? (
         <Card>
-          <CardContent className="flex flex-wrap items-center justify-between gap-2 pt-6">
-            <p className="text-sm text-muted-foreground">Approval is per pay period: each person&apos;s attendance summary is computed, checked and frozen for payroll under HR.</p>
+          <CardContent className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-theme-sm text-muted-foreground">Approval is per pay period: each person&apos;s attendance summary is computed, checked and frozen for payroll under HR.</p>
             <Button asChild size="sm" variant="outline">
               <Link href="/hr/timesheets">
                 Pay-period timesheets
@@ -208,14 +212,10 @@ export default function TimesheetsPage() {
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">All Flags</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <DataTable columns={columns} data={flaggedRows} searchPlaceholder="Search staff…" />
-        </CardContent>
-      </Card>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-base font-medium">All Flags</h2>
+        <DataTable columns={columns} data={flaggedRows} searchPlaceholder="Search staff…" />
+      </section>
 
       <CloseTimeEntryDialog day={closing} onOpenChange={(open) => (open ? undefined : setClosing(null))} />
     </div>

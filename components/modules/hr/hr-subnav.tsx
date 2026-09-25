@@ -11,18 +11,18 @@ import { canManageHr } from "@/lib/rbac/roles";
  * (canManageHr). Items for later phases are added as they ship.
  */
 const EVERYONE: ModuleSubNavItem[] = [
-  { href: "/hr/leave", label: "My Leave", icon: Palmtree, color: "green" },
-  { href: "/hr/payslips", label: "My Payslips", icon: Receipt, color: "indigo" },
+  { href: "/hr/leave", label: "My Leave", icon: Palmtree },
+  { href: "/hr/payslips", label: "My Payslips", icon: Receipt },
 ];
 
 const HR_ONLY: ModuleSubNavItem[] = [
-  { href: "/hr/employees", label: "Employees", icon: Users, color: "blue" },
-  { href: "/hr/periods", label: "Pay Periods", icon: CalendarRange, color: "cyan" },
-  { href: "/hr/timesheets", label: "Timesheets", icon: ClipboardCheck, color: "teal" },
-  { href: "/hr/payroll", label: "Payroll", icon: Wallet, color: "purple" },
-  { href: "/compliance", label: "Compliances", icon: FileCheck2, color: "amber" },
-  { href: "/hr/reports", label: "Reports", icon: BarChart3, color: "indigo" },
-  { href: "/hr/settings", label: "HR Settings", icon: Settings2, color: "slate" },
+  { href: "/hr/employees", label: "Employees", icon: Users },
+  { href: "/hr/periods", label: "Pay Periods", icon: CalendarRange },
+  { href: "/hr/timesheets", label: "Timesheets", icon: ClipboardCheck },
+  { href: "/hr/payroll", label: "Payroll", icon: Wallet },
+  { href: "/compliance", label: "Compliances", icon: FileCheck2 },
+  { href: "/hr/reports", label: "Reports", icon: BarChart3 },
+  { href: "/hr/settings", label: "HR Settings", icon: Settings2 },
 ];
 
 /** Which of the HR-only pages exist yet; the rest wait for their phase. */

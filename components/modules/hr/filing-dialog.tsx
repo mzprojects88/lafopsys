@@ -116,7 +116,7 @@ export function FilingDialog({ entry, close, canDelete = true, canUploadFiles = 
         </div>
         <DialogFooter className="sm:justify-between">
           {id && canDelete ? (
-            <Button variant="ghost" className="gap-1.5 text-rose-700" onClick={handleDelete} disabled={saving}>
+            <Button variant="destructive" className="gap-1.5" onClick={handleDelete} disabled={saving}>
               <Trash2 className="size-3.5" />
               Remove
             </Button>

@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { useLeaveTypes, leaveTypesStore } from "@/lib/hooks/use-hr-reference-collections";
 import { useAppSettings } from "@/lib/hooks/use-app-settings";
@@ -29,28 +30,30 @@ export function LeaveTypesEditor() {
   const days = (t: LeaveType) => (t.entitlementSource === "settings_vl" ? vlDaysPerYear : t.entitlementSource === "settings_sl" ? slDaysPerYear : t.daysDefault);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Leave types</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-1.5">
-        <p className="text-xs text-muted-foreground">Vacation and sick leave days per year are set under Settings → Pay &amp; Leave Policy. Statutory leaves carry their legal basis; eligibility is checked when a request is made.</p>
+    <SectionCard
+      title="Leave types"
+      flush
+      bodyClassName="flex flex-col divide-y divide-border"
+    >
+        <p className="px-5 py-3 text-theme-xs text-muted-foreground">Vacation and sick leave days per year are set under Settings → Pay &amp; Leave Policy. Statutory leaves carry their legal basis; eligibility is checked when a request is made.</p>
         {loading && leaveTypes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <div className="p-5">
+            <LoadingState />
+          </div>
         ) : (
           leaveTypes.map((t) => (
-            <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm">
+            <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
               <div className="flex min-w-0 flex-col">
                 <span className="font-medium">
                   {t.name}
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-theme-xs text-muted-foreground">
                     {" "}
                     · {days(t) === null ? "no entitlement" : `${days(t)} days${t.eligibility.perEvent ? " per event" : " / year"}`}
                     {t.paid ? "" : " · unpaid"}
                     {t.requiresDocument ? " · document required" : ""}
                   </span>
                 </span>
-                {t.lawRef ? <span className="text-xs text-muted-foreground">{t.lawRef}</span> : null}
+                {t.lawRef ? <span className="text-theme-xs text-muted-foreground">{t.lawRef}</span> : null}
               </div>
               <div className="flex items-center gap-1.5">
                 {t.statutory ? <StatusBadge domain="employee" status="regular" label="Statutory" /> : null}
@@ -62,9 +65,8 @@ export function LeaveTypesEditor() {
             </div>
           ))
         )}
-      </CardContent>
       {editing ? <LeaveTypeDialog key={editing.id} type={editing} close={() => setEditing(null)} /> : null}
-    </Card>
+    </SectionCard>
   );
 }
 
@@ -102,19 +104,19 @@ function LeaveTypeDialog({ type, close }: { type: LeaveType; close: () => void }
             <Field>
               <FieldLabel htmlFor="lt-days">Days{type.eligibility.perEvent ? " per event" : " per year"}</FieldLabel>
               <Input id="lt-days" type="number" min="0" step="0.5" value={form.daysDefault ?? ""} onChange={(e) => setForm({ ...form, daysDefault: e.target.value === "" ? null : Number(e.target.value) })} />
-              {type.statutory ? <p className="text-xs text-muted-foreground">The law sets a minimum; more is allowed, less is not.</p> : null}
+              {type.statutory ? <p className="text-theme-xs text-muted-foreground">The law sets a minimum; more is allowed, less is not.</p> : null}
             </Field>
           ) : (
-            <p className="text-xs text-muted-foreground">Days per year come from Settings → Pay &amp; Leave Policy.</p>
+            <p className="text-theme-xs text-muted-foreground">Days per year come from Settings → Pay &amp; Leave Policy.</p>
           )}
           <div className="flex items-center justify-between gap-3">
-            <span className="text-sm font-medium">Requires a supporting document</span>
+            <span className="text-theme-sm font-medium">Requires a supporting document</span>
             <Switch checked={form.requiresDocument} onCheckedChange={(v) => setForm({ ...form, requiresDocument: v })} />
           </div>
           <div className="flex items-center justify-between gap-3">
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-medium">Available to request</span>
-              {type.id === "sil" ? <span className="text-xs text-muted-foreground">Leave off while vacation leave of 5+ days discharges it (Art. 95(b)) or headcount is below 10.</span> : null}
+              <span className="text-theme-sm font-medium">Available to request</span>
+              {type.id === "sil" ? <span className="text-theme-xs text-muted-foreground">Leave off while vacation leave of 5+ days discharges it (Art. 95(b)) or headcount is below 10.</span> : null}
             </div>
             <Switch checked={form.active} onCheckedChange={(v) => setForm({ ...form, active: v })} />
           </div>

@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
+import { LoadingState } from "@/components/patterns/loading-state";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { useHolidays, holidaysStore } from "@/lib/hooks/use-hr-reference-collections";
 import { useNow } from "@/lib/hooks/use-now";
@@ -40,46 +41,52 @@ export function HolidaysEditor() {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-        <CardTitle className="text-base">Holidays</CardTitle>
-        <div className="flex items-center gap-2">
-          <Select value={year} onValueChange={setYear}>
-            <SelectTrigger className="w-28" aria-label="Year">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {years.map((y) => (
-                <SelectItem key={y} value={y}>
-                  {y}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEditing({ holiday: null })}>
-            <Plus className="size-3.5" />
-            Add holiday
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-1.5">
-        <p className="text-xs text-muted-foreground">
+    <SectionCard
+      title="Holidays"
+      actions={
+        <>
+          <div className="flex items-center gap-2">
+            <Select value={year} onValueChange={setYear}>
+              <SelectTrigger className="w-28" aria-label="Year">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {years.map((y) => (
+                  <SelectItem key={y} value={y}>
+                    {y}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEditing({ holiday: null })}>
+              <Plus className="size-3.5" />
+              Add holiday
+            </Button>
+          </div>
+        </>
+      }
+      flush
+      bodyClassName="flex flex-col divide-y divide-border"
+    >
+        <p className="px-5 py-3 text-theme-xs text-muted-foreground">
           Regular holidays are paid even when unworked and 200% when worked; special non-working days are no-work-no-pay and 130% when worked (Labor Code Art. 94, Proclamation 1006 s.2025). Local
           holidays apply where the person works.
         </p>
         {loading && holidays.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <div className="p-5">
+            <LoadingState />
+          </div>
         ) : rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No holidays listed for {year} yet — add the year&apos;s proclamation.</p>
+          <p className="px-5 py-3 text-theme-sm text-muted-foreground">No holidays listed for {year} yet — add the year&apos;s proclamation.</p>
         ) : (
           rows.map((h) => (
-            <div key={h.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm">
+            <div key={h.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
               <div className="flex min-w-0 flex-col">
                 <span className="font-medium">
                   {h.name}
-                  {h.scopeCity ? <span className="text-xs text-muted-foreground"> · {h.scopeCity} only</span> : null}
+                  {h.scopeCity ? <span className="text-theme-xs text-muted-foreground"> · {h.scopeCity} only</span> : null}
                 </span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-theme-xs text-muted-foreground">
                   {formatDate(h.date, "EEE, MMM d, yyyy")}
                   {h.source ? ` · ${h.source}` : ""}
                 </span>
@@ -96,9 +103,8 @@ export function HolidaysEditor() {
             </div>
           ))
         )}
-      </CardContent>
       {editing ? <HolidayDialog key={editing.holiday?.id ?? "new"} holiday={editing.holiday} defaultYear={year} close={() => setEditing(null)} /> : null}
-    </Card>
+    </SectionCard>
   );
 }
 
@@ -151,7 +157,7 @@ function HolidayDialog({ holiday, defaultYear, close }: { holiday: Holiday | nul
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">{HOLIDAY_KINDS.find((k) => k.value === form.kind)?.hint}</p>
+            <p className="text-theme-xs text-muted-foreground">{HOLIDAY_KINDS.find((k) => k.value === form.kind)?.hint}</p>
           </Field>
           <Field className="sm:col-span-2">
             <FieldLabel htmlFor="hol-name">Name</FieldLabel>

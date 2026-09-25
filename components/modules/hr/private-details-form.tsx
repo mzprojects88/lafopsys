@@ -7,7 +7,7 @@ import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/patterns/section-card";
 import { updateEmployeePrivate, type EmployeePrivateInput } from "@/app/(app)/hr/actions";
 import type { Employee, EmployeePrivate } from "@/lib/types/hr";
 
@@ -52,28 +52,24 @@ export function PrivateDetailsForm({ employee, record, manages }: { employee: Em
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      <Card>
-        <CardHeader className="flex-row items-center gap-2 space-y-0">
-          <ShieldCheck className="size-4 text-muted-foreground" />
-          <CardTitle className="text-base">Government IDs</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4">
+      <SectionCard
+        title={<><span className="flex items-center gap-2"><ShieldCheck className="size-4 text-muted-foreground" />Government IDs</span></>}
+        bodyClassName="grid grid-cols-1 gap-4"
+      >
           {field("pv-sss", "SSS No.", "sssNo", "00-0000000-0")}
           {field("pv-ph", "PhilHealth No.", "philhealthNo", "00-000000000-0")}
           {field("pv-pi", "Pag-IBIG MID No.", "pagibigNo", "0000-0000-0000")}
           {field("pv-tin", "TIN", "tin", "000-000-000-000")}
-          <p className="text-xs text-muted-foreground">Used on the SSS, PhilHealth and Pag-IBIG remittance lists and on BIR 1601-C / 2316. Sensitive personal information: visible to HR and to the person only.</p>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Bank</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4">
+          <p className="text-theme-xs text-muted-foreground">Used on the SSS, PhilHealth and Pag-IBIG remittance lists and on BIR 1601-C / 2316. Sensitive personal information: visible to HR and to the person only.</p>
+      </SectionCard>
+      <SectionCard
+        title="Bank"
+        bodyClassName="grid grid-cols-1 gap-4"
+      >
           {field("pv-bank", "Bank", "bankName", "BDO, GCash…")}
           {field("pv-acct-name", "Account name", "bankAccountName")}
           {field("pv-acct-no", "Account number", "bankAccountNo")}
-          <p className="text-xs text-muted-foreground">Where net pay is transferred. Payslips show the last four digits only.</p>
+          <p className="text-theme-xs text-muted-foreground">Where net pay is transferred. Payslips show the last four digits only.</p>
           {manages ? (
             <div className="flex justify-end">
               <Button size="sm" onClick={handleSave} disabled={saving}>
@@ -81,8 +77,7 @@ export function PrivateDetailsForm({ employee, record, manages }: { employee: Em
               </Button>
             </div>
           ) : null}
-        </CardContent>
-      </Card>
+      </SectionCard>
     </div>
   );
 }
