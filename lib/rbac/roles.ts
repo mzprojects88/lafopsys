@@ -62,7 +62,12 @@ export interface NavItem {
   /** Where the menu link goes, when that is not the module's own page
    * (Patients opens on NCH's house sheet, where the day starts). */
   startsAt?: string;
+  /** The sidebar heading it sits under; the list order is kept within each. */
+  group: NavGroup;
 }
+
+export type NavGroup = "Main" | "Work" | "Manage";
+export const NAV_GROUPS: NavGroup[] = ["Main", "Work", "Manage"];
 
 export const ALL_ROLES: Role[] = [
   "admin",
@@ -90,24 +95,24 @@ export const NAV_ITEMS: NavItem[] = [
   // The order the org asked for (2026-09-23): the figures, then the day's
   // work, then the tools, with Settings last. Hidden modules keep their
   // place in the list and simply do not render.
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, module: "dashboard", viewOnly: true, note: "Figures from the modules the person can open." },
-  { title: "Calendar", href: "/calendar", icon: CalendarDays, module: "calendar" },
-  { title: "Patients & Admissions", href: "/patients", startsAt: "/patients/house-sheet", icon: Users, module: "patients", note: "Includes the house sheet, the floor plan and the rides." },
-  { title: "Transport", href: "/transport", icon: Bus, module: "transport", note: "Pick-ups from NCH: the manifest and the driver's on-board ticks." },
-  { title: "Staff & Time", href: "/staff", icon: Clock, module: "staff", note: "Everyone keeps their own clock; Edit adds volunteers." },
-  { title: "Inventory", href: "/inventory", icon: Boxes, module: "inventory", viewOnly: true, note: "Read-only here: donations and stock are recorded in the LAF Inventory app." },
-  { title: "HR", href: "/hr", icon: UserCog, module: "hr", viewOnly: true, note: "Own leave and payslips. Running HR follows the HR flag in Users." },
-  { title: "House Operations", href: "/house-ops", icon: Home, module: "house_ops", note: "Also reads resident names, for trips and meals." },
-  { title: "Donors & Donations", href: "/donors", icon: HandCoins, module: "donors", note: "Donations are recorded in the LAF Inventory app; this is the donor record and the receipts." },
-  { title: "Financial", href: "/finance", icon: Wallet, module: "finance" },
+  { title: "Dashboard", href: "/dashboard", group: "Main", icon: LayoutDashboard, module: "dashboard", viewOnly: true, note: "Figures from the modules the person can open." },
+  { title: "Calendar", href: "/calendar", group: "Main", icon: CalendarDays, module: "calendar" },
+  { title: "Patients & Admissions", href: "/patients", group: "Work", startsAt: "/patients/house-sheet", icon: Users, module: "patients", note: "Includes the house sheet, the floor plan and the rides." },
+  { title: "Transport", href: "/transport", group: "Work", icon: Bus, module: "transport", note: "Pick-ups from NCH: the manifest and the driver's on-board ticks." },
+  { title: "Staff & Time", href: "/staff", group: "Work", icon: Clock, module: "staff", note: "Everyone keeps their own clock; Edit adds volunteers." },
+  { title: "Inventory", href: "/inventory", group: "Work", icon: Boxes, module: "inventory", viewOnly: true, note: "Read-only here: donations and stock are recorded in the LAF Inventory app." },
+  { title: "HR", href: "/hr", group: "Work", icon: UserCog, module: "hr", viewOnly: true, note: "Own leave and payslips. Running HR follows the HR flag in Users." },
+  { title: "House Operations", href: "/house-ops", group: "Work", icon: Home, module: "house_ops", note: "Also reads resident names, for trips and meals." },
+  { title: "Donors & Donations", href: "/donors", group: "Work", icon: HandCoins, module: "donors", note: "Donations are recorded in the LAF Inventory app; this is the donor record and the receipts." },
+  { title: "Financial", href: "/finance", group: "Work", icon: Wallet, module: "finance" },
   // Every government deadline the foundation carries (0043/0044); HR-flagged
   // people reach the same page through the HR sub-menu.
-  { title: "Compliances", href: "/compliance", icon: ShieldCheck, module: "compliance" },
-  { title: "Analytics", href: "/analytics", icon: BarChart3, module: "analytics", viewOnly: true, note: "Figures from the modules the person can open." },
-  { title: "Reports", href: "/reports", icon: FileText, module: "reports" },
+  { title: "Compliances", href: "/compliance", group: "Work", icon: ShieldCheck, module: "compliance" },
+  { title: "Analytics", href: "/analytics", group: "Manage", icon: BarChart3, module: "analytics", viewOnly: true, note: "Figures from the modules the person can open." },
+  { title: "Reports", href: "/reports", group: "Manage", icon: FileText, module: "reports" },
   // The CEO's landing page (0031 seeds landing_path = /executive).
-  { title: "Executive", href: "/executive", icon: Briefcase, module: "executive", viewOnly: true, note: "Figures from the modules the person can open." },
-  { title: "Settings", href: "/settings", icon: Settings, module: "settings", adminOnly: true, note: "Users, roles and this grid: admins only." },
+  { title: "Executive", href: "/executive", group: "Manage", icon: Briefcase, module: "executive", viewOnly: true, note: "Figures from the modules the person can open." },
+  { title: "Settings", href: "/settings", group: "Manage", icon: Settings, module: "settings", adminOnly: true, note: "Users, roles and this grid: admins only." },
 ];
 
 /** A role's level for a module: admins always edit (0050 refuses anything

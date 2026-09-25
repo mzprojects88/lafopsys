@@ -16,6 +16,8 @@ interface RoleContextValue {
   /** Admin-set (0035): this person runs HR without being an admin. Admins
    * are HR regardless; see canManageHr in lib/rbac/roles.ts. */
   isHr: boolean;
+  /** The person's own start page (0031), when an admin set one; see resolveLandingPath. */
+  landingPath: string | null;
   /** True once the role has been read from shared.staff (or found missing);
    * until then `role` is the placeholder, not a fact to gate pages on. */
   ready: boolean;
@@ -37,6 +39,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
   const [staffId, setStaffId] = React.useState<string | null | undefined>(undefined);
   const [email, setEmail] = React.useState<string | null>(null);
   const [isHr, setIsHr] = React.useState(false);
+  const [landingPath, setLandingPath] = React.useState<string | null>(null);
   const [ready, setReady] = React.useState(false);
   const currentUserRef = React.useRef<string | null | undefined>(undefined);
 
@@ -62,7 +65,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         const { data: staffRow } = await supabase
           .schema("shared")
           .from("staff")
-          .select("role, first_name, last_name, is_hr")
+          .select("role, first_name, last_name, is_hr, landing_path")
           .eq("id", userData.user.id)
           .single();
 
@@ -70,6 +73,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
           setRoleState(staffRow.role as Role);
           setUserState(`${staffRow.first_name} ${staffRow.last_name}`);
           setIsHr(Boolean(staffRow.is_hr));
+          setLandingPath((staffRow.landing_path as string | null) ?? null);
           setReady(true);
           return;
         }
@@ -81,6 +85,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         setRoleState("volunteer");
         setUserState("");
         setIsHr(false);
+        setLandingPath(null);
         setReady(true);
       }
     }
@@ -119,8 +124,8 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = React.useMemo(
-    () => ({ role, user, staffId, email, isHr, ready, login }),
-    [role, user, staffId, email, isHr, ready, login]
+    () => ({ role, user, staffId, email, isHr, landingPath, ready, login }),
+    [role, user, staffId, email, isHr, landingPath, ready, login]
   );
 
   return <RoleContext.Provider value={value}>{children}</RoleContext.Provider>;

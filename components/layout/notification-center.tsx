@@ -8,7 +8,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
 import { notifications } from "@/lib/mock-data";
 import { useLocalCollection } from "@/lib/store/use-mock-store";
 import { formatRelative } from "@/lib/utils/date";
@@ -21,17 +20,17 @@ export function NotificationCenter() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative rounded-full">
-          <Bell className="size-4" />
+        <Button variant="outline" size="icon-lg" className="relative" aria-label="Notifications">
+          <Bell className="size-4.5" />
           {unreadCount > 0 && (
-            <Badge className="absolute -right-1 -top-1 h-4 min-w-4 justify-center rounded-full p-0 text-[10px]">
+            <span className="absolute -top-1 -right-1 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
               {unreadCount}
-            </Badge>
+            </span>
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-0">
-        <div className="border-b px-3 py-2 text-sm font-medium">Notifications</div>
+      <PopoverContent align="end" className="w-80 gap-0 overflow-hidden rounded-2xl p-0">
+        <div className="border-b px-5 py-4 text-base font-medium">Notifications</div>
         <ScrollArea className="h-80">
           <div className="flex flex-col">
             {items.map((n) => (
@@ -39,8 +38,8 @@ export function NotificationCenter() {
                 key={n.id}
                 onClick={() => updateItem(n.id, { read: true })}
                 className={cn(
-                  "flex flex-col gap-0.5 border-b px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-accent",
-                  !n.read && "bg-accent/40"
+                  "flex flex-col gap-0.5 border-b px-5 py-3 text-left text-theme-sm last:border-b-0 hover:bg-muted/60",
+                  !n.read && "bg-accent/50"
                 )}
               >
                 <div className="flex items-center justify-between gap-2">

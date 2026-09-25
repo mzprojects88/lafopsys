@@ -32,10 +32,10 @@ export function ClockStatusBadge() {
         type="button"
         onClick={() => setCamera(clockedIn ? "clock_out" : "clock_in")}
         className={cn(
-          "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors sm:px-3",
+          "flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-theme-xs font-medium transition-colors lg:h-11 lg:px-4 lg:text-theme-sm",
           clockedIn
-            ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-400"
-            : "bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-500/15 dark:text-amber-400"
+            ? "bg-success/12 text-success-foreground hover:bg-success/20 dark:bg-success/15 dark:text-success"
+            : "bg-warning/12 text-warning-foreground hover:bg-warning/20 dark:bg-warning/15 dark:text-warning"
         )}
         title={clockedIn ? `Clocked in at ${openEntry?.clockIn}. Tap to clock out.` : "Tap to clock in."}
       >
