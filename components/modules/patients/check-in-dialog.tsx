@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FloorPlanBedPicker } from "@/components/modules/house-ops/floor-plan/floor-plan-bed-picker";
 import { createClient } from "@/lib/supabase/client";
 import { patientsStore, usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { referralsStore } from "@/lib/hooks/use-referrals-collection";
@@ -108,7 +109,6 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
   ];
   const carer = carerChoice || sheetCarerOnFile?.id || (sheetRow?.carerName && !sheetCarerOnFile ? SHEET_CARER : carerOptions[0].value);
   const beds = assignableBeds(units, bedPositions, stays, rooms);
-  const unplaced = beds.filter((b) => b.unit.x === null).length;
   const name = patient ? `${patient.firstName} ${patient.lastName}` : referral?.patientName ?? "";
   const today = todayIso();
 
@@ -176,7 +176,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
 
   return (
     <Dialog open={!!target} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Check in {name}</DialogTitle>
           <DialogDescription>
@@ -206,24 +206,8 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
           )}
 
           <Field>
-            <FieldLabel htmlFor="bed">Bed</FieldLabel>
-            <Select value={unitId} onValueChange={setUnitId}>
-              <SelectTrigger id="bed" className="w-full">
-                <SelectValue placeholder={beds.length ? "Select an available bed" : "No beds available"} />
-              </SelectTrigger>
-              <SelectContent>
-                {beds.map((b) => (
-                  <SelectItem key={b.unit.id} value={b.unit.id}>
-                    {b.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {unplaced > 0 && (
-              <FieldDescription>
-                {unplaced} {unplaced === 1 ? "bed is" : "beds are"} not yet placed on the floor plan.
-              </FieldDescription>
-            )}
+            <FieldLabel>Bed</FieldLabel>
+            <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={beds} />
           </Field>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

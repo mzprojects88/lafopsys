@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel, FieldSeparator } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FloorPlanBedPicker } from "@/components/modules/house-ops/floor-plan/floor-plan-bed-picker";
 import { diagnoses, treatmentPhases, provinces, hospitals } from "@/lib/mock-data";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
@@ -486,19 +487,8 @@ function NewReferralForm() {
                   <FieldSeparator />
                   <span className="text-sm font-semibold text-muted-foreground">Admission</span>
                   <Field>
-                    <FieldLabel htmlFor="bed">Tonight&apos;s bed</FieldLabel>
-                    <Select value={unitId} onValueChange={setUnitId}>
-                      <SelectTrigger id="bed" className="w-full">
-                        <SelectValue placeholder={beds.length ? "Select an available bed" : "No beds available"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {beds.map((b) => (
-                          <SelectItem key={b.unit.id} value={b.unit.id}>
-                            {b.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FieldLabel>Tonight&apos;s bed</FieldLabel>
+                    <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={beds} />
                   </Field>
                   <ArrivalFields value={arrival} onChange={setArrival} arrivalDate={arrivedOn} />
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

@@ -27,11 +27,24 @@ export function DetailPanelShell({ open, title, kicker, placeholder, onClose, ch
   if (isMobile) {
     return (
       <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-        <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto">
+        {/* Its own header row (as on desktop) so the close button never sits on the bed's status badge;
+            side padding; and a height that leaves room for the phone browser's toolbar. */}
+        <SheetContent
+          side="bottom"
+          showCloseButton={false}
+          className="max-h-[80dvh] gap-3 overflow-y-auto rounded-t-2xl px-4 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
+        >
           <SheetHeader className="sr-only">
             <SheetTitle>{title}</SheetTitle>
             <SheetDescription>Details and actions</SheetDescription>
           </SheetHeader>
+          <div className="mx-auto h-1 w-10 shrink-0 rounded-full bg-muted-foreground/30" aria-hidden />
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{kicker}</span>
+            <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close">
+              <X className="size-4" />
+            </Button>
+          </div>
           {open && children}
         </SheetContent>
       </Sheet>

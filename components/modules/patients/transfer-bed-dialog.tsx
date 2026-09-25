@@ -11,8 +11,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { FloorPlanBedPicker } from "@/components/modules/house-ops/floor-plan/floor-plan-bed-picker";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { assignableBeds, unitForBedPosition } from "@/lib/utils/beds";
@@ -35,7 +35,6 @@ export function TransferBedDialog({ stay, patientName, onOpenChange, onTransferr
   // patient is already in.
   const currentUnit = stay ? unitForBedPosition(stay.bedPositionId, units, bedPositions) : undefined;
   const beds = assignableBeds(units, bedPositions, stays, rooms, { excludeUnitId: currentUnit?.id });
-  const unplaced = beds.filter((b) => b.unit.x === null).length;
 
   async function handleConfirm() {
     const target = beds.find((b) => b.unit.id === unitId);
@@ -55,31 +54,15 @@ export function TransferBedDialog({ stay, patientName, onOpenChange, onTransferr
 
   return (
     <Dialog open={!!stay} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Transfer {patientName} to a New Bed</DialogTitle>
           <DialogDescription>Moves this active stay to a different available bed.</DialogDescription>
         </DialogHeader>
 
         <Field>
-          <FieldLabel htmlFor="newBed">New bed</FieldLabel>
-          <Select value={unitId} onValueChange={setUnitId}>
-            <SelectTrigger id="newBed" className="w-full">
-              <SelectValue placeholder={beds.length ? "Select an available bed" : "No beds available"} />
-            </SelectTrigger>
-            <SelectContent>
-              {beds.map((b) => (
-                <SelectItem key={b.unit.id} value={b.unit.id}>
-                  {b.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {unplaced > 0 && (
-            <FieldDescription>
-              {unplaced} {unplaced === 1 ? "bed is" : "beds are"} not yet placed on the floor plan.
-            </FieldDescription>
-          )}
+          <FieldLabel>New bed</FieldLabel>
+          <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={beds} />
         </Field>
 
         <DialogFooter>
