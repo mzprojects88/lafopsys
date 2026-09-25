@@ -5,11 +5,33 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* The scan viewfinder's sweep: top to bottom and back, the one moving
+     thing on the Scan page while the camera is looking. */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-outfit);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
+  /* TailAdmin's named sizes with their paired line-heights. */
+  --text-theme-xs: 12px;
+  --text-theme-xs--line-height: 18px;
+  --text-theme-sm: 14px;
+  --text-theme-sm--line-height: 20px;
+  --text-title-sm: 30px;
+  --text-title-sm--line-height: 38px;
+  --text-title-md: 36px;
+  --text-title-md--line-height: 44px;
+  /* TailAdmin's shadow scale: offset + soft blur, tinted from gray-900. */
+  --shadow-theme-xs: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
+  --shadow-theme-sm: 0px 1px 3px 0px rgba(16, 24, 40, 0.1), 0px 1px 2px 0px rgba(16, 24, 40, 0.06);
+  --shadow-theme-md: 0px 4px 8px -2px rgba(16, 24, 40, 0.1), 0px 2px 4px -2px rgba(16, 24, 40, 0.06);
+  --shadow-theme-lg: 0px 12px 16px -4px rgba(16, 24, 40, 0.08), 0px 4px 6px -2px rgba(16, 24, 40, 0.03);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -49,76 +71,89 @@
 }
 
 :root {
-  /* Little Ark Foundation — "friendly SaaS ops" theme, matched to the
-     OPS FE reference mocks: vivid blue primary, light slate page background,
-     white rounded-2xl cards, and per-category tint colors (see
-     lib/utils/category-colors.ts) for icon circles, badges and avatars. */
-  --background: hsl(210 40% 98%);
-  --foreground: hsl(222 47% 12%);
-  --card: hsl(0 0% 100%);
-  --card-foreground: hsl(222 47% 12%);
-  --popover: hsl(0 0% 100%);
-  --popover-foreground: hsl(222 47% 12%);
-  --primary: hsl(221 83% 53%);
-  --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(210 40% 96%);
-  --secondary-foreground: hsl(222 47% 12%);
-  --muted: hsl(210 40% 96%);
-  --muted-foreground: hsl(215 16% 47%);
-  --accent: hsl(214 95% 96%);
-  --accent-foreground: hsl(221 83% 40%);
-  --destructive: hsl(0 72% 51%);
-  --border: hsl(214 32% 91%);
-  --input: hsl(214 32% 91%);
-  --ring: hsl(221 83% 53%);
+  /* Little Ark Foundation. The accent is LAF blue, shared with lafopsys so
+     the two apps read as one product; the surfaces, grays and shadows are
+     TailAdmin Pro's (Untitled-UI gray scale), so this app reads like the
+     purchased admin components it is built from. */
+  --background: #f9fafb;              /* gray-50 */
+  --foreground: #1d2939;              /* gray-800 */
+  --card: #ffffff;
+  --card-foreground: #1d2939;
+  --popover: #ffffff;
+  --popover-foreground: #1d2939;
+  --primary: #2563eb;                 /* LAF blue */
+  --primary-foreground: #ffffff;
+  --secondary: #f2f4f7;               /* gray-100 */
+  --secondary-foreground: #344054;    /* gray-700 */
+  --muted: #f2f4f7;
+  --muted-foreground: #667085;        /* gray-500 */
+  --accent: #eff6ff;                  /* blue-50 */
+  --accent-foreground: #1d4ed8;       /* blue-700 */
+  --destructive: #f04438;             /* error-500 */
+  --success: #12b76a;
+  --success-foreground: #027a48;
+  --warning: #f79009;
+  --warning-foreground: #b54708;
+  --info: #0ba5ec;
+  --info-foreground: #026aa2;
+  --border: #e4e7ec;                  /* gray-200 */
+  --input: #d0d5dd;                   /* gray-300 */
+  --ring: #2563eb;
   --chart-1: hsl(221 83% 53%);
   --chart-2: hsl(160 84% 39%);
   --chart-3: hsl(38 92% 50%);
   --chart-4: hsl(262 83% 58%);
   --chart-5: hsl(346 87% 60%);
   --radius: 0.75rem;
-  --sidebar: hsl(0 0% 100%);
-  --sidebar-foreground: hsl(222 47% 12%);
-  --sidebar-primary: hsl(221 83% 53%);
-  --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(214 95% 96%);
-  --sidebar-accent-foreground: hsl(221 83% 40%);
-  --sidebar-border: hsl(214 32% 91%);
-  --sidebar-ring: hsl(221 83% 53%);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #344054;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eff6ff;
+  --sidebar-accent-foreground: #2563eb;
+  --sidebar-border: #e4e7ec;
+  --sidebar-ring: #2563eb;
 }
 
 .dark {
-  --background: hsl(222 47% 8%);
-  --foreground: hsl(210 40% 96%);
-  --card: hsl(222 40% 11%);
-  --card-foreground: hsl(210 40% 96%);
-  --popover: hsl(222 40% 11%);
-  --popover-foreground: hsl(210 40% 96%);
-  --primary: hsl(221 83% 65%);
-  --primary-foreground: hsl(222 47% 8%);
-  --secondary: hsl(222 30% 16%);
-  --secondary-foreground: hsl(210 40% 96%);
-  --muted: hsl(222 30% 16%);
-  --muted-foreground: hsl(215 20% 65%);
-  --accent: hsl(221 40% 18%);
-  --accent-foreground: hsl(217 91% 80%);
-  --destructive: hsl(0 70% 58%);
-  --border: hsl(210 20% 100% / 12%);
-  --input: hsl(210 20% 100% / 15%);
-  --ring: hsl(221 83% 65%);
+  /* TailAdmin dark: gray-900 ground, cards as a 3% white wash, hairline borders. */
+  --background: #101828;              /* gray-900 */
+  --foreground: rgb(255 255 255 / 0.9);
+  --card: #171f2e;                    /* gray-900 + white/3% */
+  --card-foreground: rgb(255 255 255 / 0.9);
+  --popover: #1d2939;                 /* gray-800 */
+  --popover-foreground: rgb(255 255 255 / 0.9);
+  --primary: #3b82f6;                 /* blue-500: lifted for contrast on dark */
+  --primary-foreground: #ffffff;
+  --secondary: #1d2939;
+  --secondary-foreground: #d0d5dd;
+  --muted: #1d2939;
+  --muted-foreground: #98a2b3;        /* gray-400 */
+  --accent: rgb(37 99 235 / 0.12);
+  --accent-foreground: #93c5fd;       /* blue-300 */
+  --destructive: #f97066;
+  --success: #32d583;
+  --success-foreground: #6ce9a6;
+  --warning: #fdb022;
+  --warning-foreground: #fec84b;
+  --info: #36bffa;
+  --info-foreground: #7cd4fd;
+  --border: rgb(255 255 255 / 0.08);
+  --input: rgb(255 255 255 / 0.12);
+  --ring: #3b82f6;
   --chart-1: hsl(221 83% 65%);
   --chart-2: hsl(160 70% 48%);
   --chart-3: hsl(38 92% 58%);
   --chart-4: hsl(262 83% 68%);
   --chart-5: hsl(346 87% 68%);
-  --sidebar: hsl(222 40% 10%);
-  --sidebar-foreground: hsl(210 40% 96%);
-  --sidebar-primary: hsl(221 83% 65%);
-  --sidebar-primary-foreground: hsl(222 47% 8%);
-  --sidebar-accent: hsl(221 40% 18%);
-  --sidebar-accent-foreground: hsl(217 91% 80%);
-  --sidebar-border: hsl(210 20% 100% / 12%);
-  --sidebar-ring: hsl(221 83% 65%);
+  --sidebar: #101828;
+  --sidebar-foreground: #d0d5dd;
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgb(37 99 235 / 0.12);
+  --sidebar-accent-foreground: #93c5fd;
+  --sidebar-border: rgb(255 255 255 / 0.08);
+  --sidebar-ring: #3b82f6;
 }
 
 /* Horizontally scrollable strips (mobile tab bars, module sub-nav) still need to
@@ -139,8 +174,47 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Figures line up in tables and stat cards; the whole app is data. */
+    font-variant-numeric: tabular-nums;
+    caret-color: var(--primary);
   }
   html {
     @apply font-sans;
+  }
+
+  /* Browser surfaces we didn't draw still carry the design — theme them
+     from the palette instead of leaving OS/browser defaults. */
+  ::selection {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: var(--radius-lg);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted-foreground);
+  }
+}
+
+@layer utilities {
+  /* Safe-area padding for the phone top bar and bottom tabs. */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
   }
 }
