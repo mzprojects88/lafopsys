@@ -18,6 +18,8 @@ interface BedGlyphProps {
   onPointerUp: (e: React.PointerEvent<SVGGElement>) => void;
   onKeyDown: (e: React.KeyboardEvent<SVGGElement>) => void;
   onClick: () => void;
+  /** Show the hover preview. Off inside the bed picker and on touch screens, where a tap would pop it off-screen. */
+  preview?: boolean;
 }
 
 /**
@@ -28,7 +30,7 @@ interface BedGlyphProps {
  * popover, and the selected bed shows a corner handle for resizing.
  */
 export const BedGlyph = React.forwardRef<SVGGElement, BedGlyphProps>(function BedGlyph(
-  { bed, selected, editing, dragging, canSeeClinical, onPointerDown, onPointerMove, onPointerUp, onKeyDown, onClick },
+  { bed, selected, editing, dragging, canSeeClinical, onPointerDown, onPointerMove, onPointerUp, onKeyDown, onClick, preview = true },
   ref
 ) {
   if (bed.x === null || bed.y === null) return null;
@@ -113,7 +115,7 @@ export const BedGlyph = React.forwardRef<SVGGElement, BedGlyphProps>(function Be
     </g>
   );
 
-  if (editing) return g;
+  if (editing || !preview) return g;
 
   return (
     <HoverCard openDelay={150} closeDelay={80}>

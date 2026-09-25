@@ -44,6 +44,21 @@ interface FloorPlanCanvasProps {
   onMoveLabel: (label: FloorPlanLabel, centre: Pt) => void;
   onRotateLabel: (label: FloorPlanLabel, deltaDeg: number) => void;
   onDeleteLabel: (label: FloorPlanLabel) => void;
+  /** Hover previews on beds (default on). The bed picker turns them off; touch screens never get them. */
+  previews?: boolean;
+}
+
+/** A mouse or trackpad that can hover. A phone's tap would open a hover card half off the screen. */
+function useCanHover(): boolean {
+  return React.useSyncExternalStore(
+    (notify) => {
+      const mq = window.matchMedia("(hover: hover) and (pointer: fine)");
+      mq.addEventListener("change", notify);
+      return () => mq.removeEventListener("change", notify);
+    },
+    () => window.matchMedia("(hover: hover) and (pointer: fine)").matches,
+    () => true
+  );
 }
 
 function clientToSvg(svg: SVGSVGElement, clientX: number, clientY: number): Pt {
@@ -88,7 +103,9 @@ export function FloorPlanCanvas({
   onMoveLabel,
   onRotateLabel,
   onDeleteLabel,
+  previews = true,
 }: FloorPlanCanvasProps) {
+  const canHover = useCanHover();
   const svgRef = React.useRef<SVGSVGElement>(null);
   const glyphRefs = React.useRef(new Map<string, SVGGElement>());
   const [drag, setDrag] = React.useState<DragState | null>(null);
@@ -332,6 +349,7 @@ export function FloorPlanCanvas({
             onPointerUp={bedPointerUp(bed)}
             onKeyDown={bedKeyDown(bed)}
             onClick={() => onSelect({ kind: "bed", id: bed.id })}
+            preview={previews && canHover}
           />
         ))}
       </svg>

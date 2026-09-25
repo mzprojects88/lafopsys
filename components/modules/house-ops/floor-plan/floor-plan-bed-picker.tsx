@@ -70,6 +70,7 @@ export function FloorPlanBedPicker({ value, onChange, options }: { value: string
           onMoveLabel={noop}
           onRotateLabel={noop}
           onDeleteLabel={noop}
+          previews={false}
         />
       </div>
       <Select value={value} onValueChange={onChange}>
