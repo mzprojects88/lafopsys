@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { todayIso } from "@/lib/utils/date";
 import type { Stay } from "@/lib/types/patient";
+import { plainError } from "@/lib/utils/plain-error";
 
 // Org-confirmed candidate list (2026-08-18) — the plan's proposed categories,
 // signed off as the real ones to use.
@@ -68,7 +69,7 @@ export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged,
       status: "checked_out",
     });
     if (!result.ok) {
-      toast.error(`Couldn't discharge: ${result.error}`);
+      toast.error(`Couldn't check out: ${plainError(result.error)}`);
       setSubmitting(false);
       return;
     }
@@ -102,7 +103,7 @@ export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged,
 
   return (
     <Dialog open={!!stay} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Discharge {patientName}</DialogTitle>
           <DialogDescription>Records the check-out and frees this bed for the next admission.</DialogDescription>

@@ -148,3 +148,26 @@ export function roomBreaches(rooms: Room[], occupants: Occupant[]): Room[] {
     return here.some((a) => here.some((b) => clashes(b, { sex: a.sex, familyId: a.familyId })));
   });
 }
+
+/** The relationships the admission forms offer, in their order. */
+export const CARER_RELATIONSHIPS = ["Mother", "Father", "Grandmother", "Grandfather", "Aunt", "Uncle", "Sibling", "Guardian"];
+
+// How NCH's sheet and families write them ("nanay", "Grand mother", "tito").
+const RELATIONSHIP_WORDS: Record<string, string> = {
+  mother: "Mother", nanay: "Mother", ina: "Mother", mama: "Mother", mommy: "Mother", nay: "Mother",
+  father: "Father", tatay: "Father", ama: "Father", papa: "Father", daddy: "Father", tay: "Father",
+  grandmother: "Grandmother", lola: "Grandmother",
+  grandfather: "Grandfather", lolo: "Grandfather",
+  aunt: "Aunt", auntie: "Aunt", tita: "Aunt", tiya: "Aunt",
+  uncle: "Uncle", tito: "Uncle", tiyo: "Uncle",
+  sibling: "Sibling", sister: "Sibling", brother: "Sibling", ate: "Sibling", kuya: "Sibling",
+  guardian: "Guardian",
+};
+
+/** A relationship typed anywhere as one of the form's choices: known words
+ * (English or Filipino) map to theirs, anything else is "Guardian", nothing is "". */
+export function relationshipFromText(raw: string | null | undefined): string {
+  const key = (raw ?? "").trim().toLowerCase().replace(/[\s-]+/g, "");
+  if (!key) return "";
+  return RELATIONSHIP_WORDS[key] ?? "Guardian";
+}

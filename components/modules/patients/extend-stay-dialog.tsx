@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import type { Stay } from "@/lib/types/patient";
+import { plainError } from "@/lib/utils/plain-error";
 
 interface ExtendStayDialogProps {
   stay: Stay | null;
@@ -34,7 +35,7 @@ export function ExtendStayDialog({ stay, patientName, onOpenChange, onExtended }
     const result = await updateStay(stay.id, { expectedCheckoutAt, status: "in_house" });
     setSubmitting(false);
     if (!result.ok) {
-      toast.error(`Couldn't extend the stay: ${result.error}`);
+      toast.error(`Couldn't extend the stay: ${plainError(result.error)}`);
       return;
     }
     toast.success(`${patientName}'s stay extended`);

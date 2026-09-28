@@ -10,6 +10,7 @@ import { closeReservation, type BedReservation } from "@/lib/hooks/use-bed-reser
 import { recordGroupOrientation, useGroupOrientations } from "@/lib/hooks/use-group-orientations";
 import { useOrientationTopics } from "@/lib/hooks/use-orientation-topics";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
+import { plainError } from "@/lib/utils/plain-error";
 
 /**
  * The shared end of an admission (user, 2026-09-25), used by Check in and by
@@ -176,7 +177,7 @@ export async function finishAdmission(input: {
       needs_transport: a.needsTransport,
       source: "manual",
     });
-    if (error) problems.push(`the appointment (${error.message})`);
+    if (error) problems.push(`the appointment (${plainError(error.message)})`);
   }
   // The rules themselves are ticked on the stay by check_in (0068).
   if (input.group && input.rules.asGroup && !input.groupTalkExists) {
@@ -184,12 +185,12 @@ export async function finishAdmission(input: {
     const rideId = input.arrived?.rideId ?? input.group.rideId;
     const target = input.group.kind === "trip" ? { tripId } : { rideId };
     if (target.tripId || target.rideId) {
-      await recordGroupOrientation(target).catch((e: Error) => problems.push(`the group's house rules (${e.message})`));
+      await recordGroupOrientation(target).catch((e: Error) => problems.push(`the group's house rules (${plainError(e.message)})`));
     }
   }
   if (input.hold) {
     const error = await closeReservation(input.hold, input.stayId, input.unitId);
-    if (error) problems.push(`closing the bed reservation (${error}); release it on the floor plan`);
+    if (error) problems.push(`closing the bed reservation (${plainError(error)}); free it on House Today`);
   }
   return problems;
 }

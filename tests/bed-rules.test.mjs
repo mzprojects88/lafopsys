@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { bedChoices, bedRuleProblem, occupantsOf, roomBreaches, roomSex, sexFromRelationship } from "../lib/utils/bed-rules.ts";
+import { bedChoices, bedRuleProblem, occupantsOf, relationshipFromText, roomBreaches, roomSex, sexFromRelationship } from "../lib/utils/bed-rules.ts";
 
 // Room 1 (B1, B2), Room 2 (B3, B4), Room 3 (B5): the house in miniature.
 const rooms = [
@@ -104,5 +104,15 @@ describe("roomBreaches", () => {
     const family = [stay("s1", "kid-s", "B1", "mom-s"), stay("s2", "kid-d", "B2", "dad-d")];
     assert.deepEqual(roomBreaches(rooms, occupantsOf(units, positions, mixed, carers, patients, [])).map((r) => r.name), ["Room 1"]);
     assert.deepEqual(roomBreaches(rooms, occupantsOf(units, positions, family, carers, patients, [])), []);
+  });
+});
+
+describe("relationshipFromText", () => {
+  it("reads English and Filipino words as the form's choices", () => {
+    assert.equal(relationshipFromText("nanay"), "Mother");
+    assert.equal(relationshipFromText("Grand mother"), "Grandmother");
+    assert.equal(relationshipFromText("TITO"), "Uncle");
+    assert.equal(relationshipFromText("kapitbahay"), "Guardian");
+    assert.equal(relationshipFromText(""), "");
   });
 });

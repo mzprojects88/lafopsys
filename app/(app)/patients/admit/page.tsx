@@ -29,7 +29,8 @@ import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
 import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
 import { BedRuleException, CarerSexField, NO_EXCEPTION, exceptionFor, useBedChoices, type ExceptionDraft } from "@/components/modules/patients/bed-rule-fields";
 import { BedPlanDialog } from "@/components/modules/patients/bed-plan-dialog";
-import { sexFromRelationship, type Sex } from "@/lib/utils/bed-rules";
+import { CARER_RELATIONSHIPS, relationshipFromText, sexFromRelationship, type Sex } from "@/lib/utils/bed-rules";
+import { plainError } from "@/lib/utils/plain-error";
 import { ArrivalFields, arrivalFromPickups, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
 import { usePickups } from "@/lib/hooks/use-pickups-collection";
 import { recordArrival } from "@/lib/hooks/use-arrival-rides-collection";
@@ -71,7 +72,6 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-const RELATIONSHIPS = ["Mother", "Father", "Grandmother", "Aunt", "Guardian"];
 
 function NewReferralForm() {
   const router = useRouter();
@@ -141,11 +141,23 @@ function NewReferralForm() {
   const firstName = useWatch({ control, name: "patientFirstName" });
   // The bed rules (0070) go by the carer's sex; the relationship suggests it.
   const carerRelationship = useWatch({ control, name: "carerRelationship" });
-  const carerSex: Sex | "" = carerSexChoice || sexFromRelationship(carerRelationship) || "";
+  // The sheet's own word ("nanay") says the sex even when the choice is Guardian.
+  const carerSex: Sex | "" = carerSexChoice || sexFromRelationship(carerRelationship) || sexFromRelationship(sheetRow?.relationship) || "";
   const { options: beds, blocked, isException, loading: bedsLoading } = useBedChoices({ who: { sex: carerSex || undefined }, forHoldId: hold?.id }, exception);
   // Only a bed still on offer: one taken or reserved since the page opened drops out.
   const unitId = [unitIdEdited, hold?.unitId].find((id) => id && beds.some((b) => b.unit.id === id)) ?? "";
   const exceptionReason = exceptionFor(isException(unitId), exception);
+  // What still stops "Admit", listed by the button rather than one toast per tap (walkthrough, 2026-09-28).
+  const stillNeeded = fromSheet
+    ? [
+        !carerSex ? "whether the carer is a woman or a man" : null,
+        !unitId ? "tonight's bed" : null,
+        isException(unitId) && !exceptionReason ? "why the bed rules are set aside" : null,
+        !arrivalReady(arrival) ? "how they arrived" : null,
+        manualAppointment && !appointmentReady(appointment) ? "the appointment's clinic" : null,
+        !rulesDraft.discussed ? "the house rules, discussed" : null,
+      ].filter((x): x is string => !!x)
+    : [];
   const lastName = useWatch({ control, name: "patientLastName" });
   // Already on file under this name? Check them in instead of making a second record.
   const { patients } = usePatientsData();
@@ -163,8 +175,8 @@ function NewReferralForm() {
     if (!sheetRow || prefilledFor.current === sheetRow.id) return;
     prefilledFor.current = sheetRow.id;
     const { first, last } = splitName(sheetRow.patientName);
-    const rel = (sheetRow.relationship ?? "").trim().toLowerCase();
-    const relationship = RELATIONSHIPS.find((r) => r.toLowerCase() === rel) ?? (rel ? "Guardian" : "");
+    // "nanay", "Grand mother", "tito": the same choices Check in uses.
+    const relationship = relationshipFromText(sheetRow.relationship);
     reset({
       ...getValues(),
       patientFirstName: first,
@@ -241,7 +253,7 @@ function NewReferralForm() {
         p_exception_reason: exceptionReason,
       });
       if (error) {
-        toast.error(`Couldn't admit: ${error.message}`);
+        toast.error(`Couldn't admit: ${plainError(error.message)}`);
         return;
       }
       const { stay_id: stayId, patient_id: patientId } = data as { stay_id: string; patient_id: string };
@@ -295,7 +307,7 @@ function NewReferralForm() {
 
     const result = await addReferral(referral);
     if (!result.ok) {
-      toast.error(`Couldn't submit the referral: ${result.error}`);
+      toast.error(`Couldn't submit the referral: ${plainError(result.error)}`);
       return;
     }
 
@@ -485,14 +497,16 @@ function NewReferralForm() {
                 <FieldError errors={[errors.rawAddress]} />
               </Field>
 
-              <Field data-invalid={!!errors.nextAppointmentNote}>
-                <FieldLabel htmlFor="nextAppointmentNote">Next Appointment (from hospital sheet)</FieldLabel>
-                <Input
-                  id="nextAppointmentNote"
-                  placeholder="e.g. Chemo cycle 3, Oct 14 2026, Pediatric Onco"
-                  {...register("nextAppointmentNote")}
-                />
-              </Field>
+              {fromSheet ? null : (
+                <Field data-invalid={!!errors.nextAppointmentNote}>
+                  <FieldLabel htmlFor="nextAppointmentNote">Next Appointment (from hospital sheet)</FieldLabel>
+                  <Input
+                    id="nextAppointmentNote"
+                    placeholder="e.g. Chemo cycle 3, Oct 14 2026, Pediatric Onco"
+                    {...register("nextAppointmentNote")}
+                  />
+                </Field>
+              )}
 
               <FieldSeparator />
               <span className="text-base font-medium text-foreground">Referring Hospital</span>
@@ -568,11 +582,11 @@ function NewReferralForm() {
                           <SelectValue placeholder="Select relationship" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Mother">Mother</SelectItem>
-                          <SelectItem value="Father">Father</SelectItem>
-                          <SelectItem value="Grandmother">Grandmother</SelectItem>
-                          <SelectItem value="Aunt">Aunt</SelectItem>
-                          <SelectItem value="Guardian">Guardian</SelectItem>
+                          {CARER_RELATIONSHIPS.map((r) => (
+                            <SelectItem key={r} value={r}>
+                              {r}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     )}
@@ -583,7 +597,7 @@ function NewReferralForm() {
 
               <Field data-invalid={!!errors.carerMobile}>
                 <FieldLabel htmlFor="carerMobile">Mobile Number</FieldLabel>
-                <Input id="carerMobile" placeholder="09XXXXXXXXX" {...register("carerMobile")} />
+                <Input id="carerMobile" inputMode="tel" placeholder="09XXXXXXXXX" {...register("carerMobile")} />
                 <FieldError errors={[errors.carerMobile]} />
               </Field>
 
@@ -629,7 +643,11 @@ function NewReferralForm() {
                       onChange={setAppointment}
                       note="NCH's sheet has no dated appointment. Ask the patient and carer whether the doctor set one."
                     />
-                  ) : null}
+                  ) : (
+                    <p className="rounded-xl bg-muted/60 p-3 text-theme-xs text-muted-foreground">
+                      Next appointment from NCH&apos;s sheet: {formatDate(sheetRow!.nextAppointmentOn!)}. It is added with the ride box ticked, and follows the sheet if NCH changes it.
+                    </p>
+                  )}
                   <FieldSeparator />
                   <span className="text-base font-medium text-foreground">House rules (last step)</span>
                   <HouseRulesStep
@@ -652,11 +670,16 @@ function NewReferralForm() {
                 </>
               )}
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+                {stillNeeded.length ? (
+                  <p className="text-theme-xs text-muted-foreground sm:mr-auto" role="status">
+                    Still needed: {stillNeeded.join(", ")}.
+                  </p>
+                ) : null}
                 <Button type="button" variant="outline" onClick={() => router.back()}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isSubmitting || (!!fromSheet && !rulesDraft.discussed)}>
+                <Button type="submit" disabled={isSubmitting || stillNeeded.length > 0}>
                   {isSubmitting ? "Saving…" : fromSheet ? "Admit" : "Submit Referral"}
                 </Button>
               </div>

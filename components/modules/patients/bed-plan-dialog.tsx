@@ -11,6 +11,7 @@ import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { bedLabel } from "@/lib/utils/beds";
 import type { Sex } from "@/lib/utils/bed-rules";
+import { plainError } from "@/lib/utils/plain-error";
 
 interface PlanMove {
   stayId: string | null;
@@ -109,7 +110,7 @@ export function BedPlanDialog({
       });
     setApplying(false);
     if (error) {
-      toast.error(`Couldn't apply the plan: ${error.message}`);
+      toast.error(`Couldn't apply the plan: ${plainError(error.message)}`);
       return;
     }
     await Promise.all([patientsStore.refetch(), bedNightsStore.refetch()]);

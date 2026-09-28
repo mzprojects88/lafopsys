@@ -22,7 +22,8 @@ import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
 import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
 import { BedRuleException, CarerSexField, NO_EXCEPTION, exceptionFor, useBedChoices, type ExceptionDraft } from "@/components/modules/patients/bed-rule-fields";
 import { BedPlanDialog } from "@/components/modules/patients/bed-plan-dialog";
-import { sexFromRelationship, type Sex } from "@/lib/utils/bed-rules";
+import { CARER_RELATIONSHIPS as RELATIONSHIPS, relationshipFromText, sexFromRelationship, type Sex } from "@/lib/utils/bed-rules";
+import { plainError } from "@/lib/utils/plain-error";
 import { ArrivalFields, arrivalFromPickups, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
 import {
   EMPTY_APPOINTMENT,
@@ -46,7 +47,7 @@ const NEW_RECORD = "new";
 const NEW_CARER = "new";
 const REFERRAL_CARER = "referral";
 const SHEET_CARER = "sheet";
-const RELATIONSHIPS = ["Mother", "Father", "Grandmother", "Grandfather", "Aunt", "Uncle", "Sibling", "Guardian"];
+const NO_CARER = "none";
 
 /** What to check in: a patient on file (optionally as their name on NCH's
  * Occupancy Tracker, 0051), an approved referral, or a referral for someone on file. */
@@ -62,11 +63,8 @@ interface CheckInDialogProps {
 
 const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
-/** The sheet's free-text relationship ("mother", "Grand mother") as one of the form's choices. */
-function relationshipFromSheet(raw: string | null): string {
-  const r = norm(raw).replace(/\s/g, "");
-  return RELATIONSHIPS.find((x) => x.toLowerCase() === r) ?? (r ? "Guardian" : "");
-}
+/** The sheet's free-text relationship ("nanay", "Grand mother") as one of the form's choices. */
+const relationshipFromSheet = (raw: string | null) => relationshipFromText(raw);
 
 /** Patients already on file who could be the referral's child: same last name and first name (first word). */
 // ponytail: exact-name match only; reuse the house sheet matcher (lib/utils/house-sheet) if duplicate records pile up.
@@ -125,12 +123,13 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
       ? [{ value: SHEET_CARER, label: `${sheetRow.carerName}${sheetRow.relationship ? ` (${sheetRow.relationship})` : ""} (from the sheet)` }]
       : []),
     { value: NEW_CARER, label: "Someone else…" },
+    { value: NO_CARER, label: "No carer staying" },
   ];
   const carer = carerChoice || sheetCarerOnFile?.id || (sheetRow?.carerName && !sheetCarerOnFile ? SHEET_CARER : carerOptions[0].value);
   // A bed reserved for this child (0065) is theirs to confirm; nobody else's hold is offered.
   const hold = holdFor(patientId, sheetRow?.id);
   // The bed rules (0070) go by the carer's sex -- the child's own when no carer stays.
-  const noCarer = carer === NEW_CARER && !carerName.trim();
+  const noCarer = carer === NO_CARER || (carer === NEW_CARER && !carerName.trim());
   const onFileCarer = onFile.find((c) => c.id === carer);
   const carerSex: Sex | "" =
     carerSexChoice ||
@@ -139,7 +138,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
       : carer === REFERRAL_CARER
         ? sexFromRelationship(referral?.carerRelationship)
         : carer === SHEET_CARER
-          ? sexFromRelationship(relationshipFromSheet(sheetRow?.relationship ?? null))
+          ? sexFromRelationship(sheetRow?.relationship)
           : sexFromRelationship(carerRelationship)) ||
     "";
   const who = { sex: noCarer ? patient?.sex ?? referral?.patientSex : carerSex || undefined, familyId: patient?.familyId };
@@ -157,14 +156,17 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
   const today = todayIso();
 
   const exceptionReason = exceptionFor(isException(bed), exception);
-  const ready =
-    !!bed &&
-    arrivalReady(arrival) &&
-    !!checkInAt &&
-    (carer !== NEW_CARER || !carerName.trim() || !!carerRelationship) &&
-    (noCarer || !!carerSex) &&
-    (!isException(bed) || !!exceptionReason) &&
-    appointmentReady(appointment);
+  // What still stops "Next", said out loud rather than a grey button (walkthrough, 2026-09-28).
+  const stillNeeded = [
+    !noCarer && !carerSex ? "whether the carer is a woman or a man" : null,
+    carer === NEW_CARER && carerName.trim() && !carerRelationship ? "the carer's relationship" : null,
+    !bed ? "a bed" : null,
+    isException(bed) && !exceptionReason ? "why the bed rules are set aside" : null,
+    !checkInAt ? "the day they arrived" : null,
+    !arrivalReady(arrival) ? "how they arrived" : null,
+    !appointmentReady(appointment) ? "the appointment's clinic" : null,
+  ].filter((x): x is string => !!x);
+  const ready = stillNeeded.length === 0;
 
   async function handleConfirm() {
     if (!target || !ready || !rulesDraft.discussed) return;
@@ -180,8 +182,8 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
             p_check_in_at: checkInAt,
             p_patient_id: patientId,
             p_referral: null,
-            p_carer_id: carer !== NEW_CARER && carer !== SHEET_CARER ? carer : null,
-            p_carer_name: fromSheet ? sheetRow.carerName : newCarer ? carerName.trim() : carer === NEW_CARER ? "" : null,
+            p_carer_id: carer !== NEW_CARER && carer !== SHEET_CARER && carer !== NO_CARER ? carer : null,
+            p_carer_name: fromSheet ? sheetRow.carerName : newCarer ? carerName.trim() : carer === NEW_CARER || carer === NO_CARER ? "" : null,
             p_carer_relationship: fromSheet ? relationshipFromSheet(sheetRow.relationship) || "Guardian" : newCarer ? carerRelationship : null,
             p_carer_mobile: fromSheet ? sheetRow.phone : newCarer ? carerMobile.trim() || null : null,
             p_expected_checkout_at: expectedCheckoutAt || null,
@@ -196,10 +198,10 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
             p_check_in_at: checkInAt,
             p_patient_id: patientId,
             p_referral_id: referral?.id ?? null,
-            p_carer_id: carer !== NEW_CARER && carer !== REFERRAL_CARER ? carer : null,
-            // "" (not null) when "Someone else" is left blank: no carer, rather
-            // than the function falling back to the referral's.
-            p_carer_name: carer === NEW_CARER ? carerName.trim() : null,
+            p_carer_id: carer !== NEW_CARER && carer !== REFERRAL_CARER && carer !== NO_CARER ? carer : null,
+            // "" (not null) for no carer: nobody, rather than the function
+            // falling back to the referral's.
+            p_carer_name: carer === NEW_CARER ? carerName.trim() : carer === NO_CARER ? "" : null,
             p_carer_relationship: newCarer ? carerRelationship : null,
             p_carer_mobile: newCarer ? carerMobile.trim() || null : null,
             p_expected_checkout_at: expectedCheckoutAt || null,
@@ -214,7 +216,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
           });
     if (error) {
       setSubmitting(false);
-      toast.error(`Couldn't check in: ${error.message}`);
+      toast.error(`Couldn't check in: ${plainError(error.message)}`);
       return;
     }
     const stayId = (data as { stay_id: string }).stay_id;
@@ -317,7 +319,6 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
               <Field className="sm:col-span-3">
                 <FieldLabel htmlFor="carerName">Carer&apos;s full name</FieldLabel>
                 <Input id="carerName" value={carerName} onChange={(e) => setCarerName(e.target.value)} />
-                <FieldDescription>Leave blank if no carer is staying.</FieldDescription>
               </Field>
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor="carerRelationship">Relationship</FieldLabel>
@@ -399,6 +400,11 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
+              {stillNeeded.length ? (
+                <p className="text-theme-xs text-muted-foreground sm:mr-auto sm:self-center" role="status">
+                  Still needed: {stillNeeded.join(", ")}.
+                </p>
+              ) : null}
               <Button disabled={!ready} onClick={() => setStep("rules")}>
                 Next: house rules
               </Button>

@@ -13,6 +13,7 @@ import { isActiveStay } from "@/lib/utils/beds";
 import { sexFromRelationship, type Sex } from "@/lib/utils/bed-rules";
 import { todayIso } from "@/lib/utils/date";
 import type { Carer, Patient } from "@/lib/types/patient";
+import { plainError } from "@/lib/utils/plain-error";
 
 interface EditDetailsDialogProps {
   patient: Patient;
@@ -72,7 +73,7 @@ export function EditDetailsDialog({ patient, carer, open, onOpenChange }: EditDe
     setSaving(false);
     const failed = [p, f, c].find((r) => !r.ok);
     if (failed && !failed.ok) {
-      toast.error(`Couldn't save: ${failed.error}`);
+      toast.error(`Couldn't save: ${plainError(failed.error)}`);
       return;
     }
     toast.success("Details saved.");
@@ -81,7 +82,7 @@ export function EditDetailsDialog({ patient, carer, open, onOpenChange }: EditDe
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
             Edit details · {patient.firstName} {patient.lastName}

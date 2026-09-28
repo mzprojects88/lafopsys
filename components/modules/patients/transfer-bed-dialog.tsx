@@ -20,6 +20,7 @@ import { useBedNights } from "@/lib/hooks/use-bed-nights-collection";
 import { sleeperOfStay } from "@/lib/utils/bed-rules";
 import { unitForBedPosition } from "@/lib/utils/beds";
 import type { Stay } from "@/lib/types/patient";
+import { plainError } from "@/lib/utils/plain-error";
 
 interface TransferBedDialogProps {
   stay: Stay | null;
@@ -55,7 +56,7 @@ export function TransferBedDialog({ stay, patientName, onOpenChange, onTransferr
     const result = await confirmNight(stay.id, target.unit.id, reason);
     setSubmitting(false);
     if (!result.ok) {
-      toast.error(`Couldn't transfer the bed: ${result.error}`);
+      toast.error(`Couldn't change the bed: ${plainError(result.error)}`);
       return;
     }
     toast.success(`${patientName} transferred to ${target.unit.code}`);

@@ -218,7 +218,7 @@ export function ArrivalDialog({ stay, patientName, onOpenChange }: { stay: Stay 
 
   return (
     <Dialog open={!!stay} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>How {patientName} arrived</DialogTitle>
           <DialogDescription>Stay from {stay?.checkInAt}.</DialogDescription>

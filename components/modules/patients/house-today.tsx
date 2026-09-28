@@ -42,6 +42,7 @@ import { formatDate, todayIso } from "@/lib/utils/date";
 import { PRIORITIES } from "@/lib/utils/master-sheet";
 import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
 import type { Stay } from "@/lib/types/patient";
+import { plainError } from "@/lib/utils/plain-error";
 
 const dayAfter = (iso: string) => {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -121,7 +122,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
     setBusy(key);
     const r = await fn();
     setBusy(null);
-    if (!r.ok) toast.error(r.error ?? "Something went wrong.");
+    if (!r.ok) toast.error(plainError(r.error));
     else toast.success(done);
   }
 
@@ -375,7 +376,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
           onClose={() => setReserving(null)}
           onReserve={async (unitId, expectedOn, note, carerSex) => {
             const r = await reserve({ unitId, patientId: reserving.patientId, sheetPersonId: reserving.row.id, reservedFor: reserving.row.patientName, expectedOn, note, carerSex });
-            if (!r.ok) return toast.error(r.error);
+            if (!r.ok) return toast.error(plainError(r.error));
             toast.success("Bed reserved. Confirm it at check-in.");
             setReserving(null);
           }}
@@ -389,7 +390,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
           onClose={() => setReplacing(null)}
           onReplace={async (row, carerSex) => {
             const r = await replace(replacing.holdId, { patientId: settledPatientId(row), sheetPersonId: row.id, reservedFor: row.patientName, carerSex });
-            if (!r.ok) return toast.error(r.error);
+            if (!r.ok) return toast.error(plainError(r.error));
             toast.success(`Bed ${replacing.bed} is now held for ${row.patientName}. Confirm it at their check-in.`);
             setReplacing(null);
           }}
@@ -562,7 +563,7 @@ function ReplaceHoldDialog({
   const carerSex = sexChoice || sexFromRelationship(row?.relationship) || "";
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Replace on bed {bed}</DialogTitle>
           <DialogDescription>{from} will not stay on this bed. Who takes it instead? Their check-in confirms it.</DialogDescription>
