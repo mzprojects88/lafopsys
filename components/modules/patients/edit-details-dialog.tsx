@@ -8,6 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
+import { CarerSexField } from "@/components/modules/patients/bed-rule-fields";
+import { isActiveStay } from "@/lib/utils/beds";
+import { sexFromRelationship, type Sex } from "@/lib/utils/bed-rules";
 import { todayIso } from "@/lib/utils/date";
 import type { Carer, Patient } from "@/lib/types/patient";
 
@@ -22,16 +25,24 @@ interface EditDetailsDialogProps {
 /**
  * The social worker completes or corrects the child's details in the app,
  * which is the record (user, 2026-09-24); the original sheet's edits are
- * proposals (0064), never overwrites.
+ * proposals (0064), never overwrites. Also the carer's sex and the child's
+ * family (0070): siblings in the house share a family, so their carers may
+ * share a room whatever their sex.
  */
 export function EditDetailsDialog({ patient, carer, open, onOpenChange }: EditDetailsDialogProps) {
-  const { updatePatient, updateCarer, addCarer } = usePatientsData();
+  const { patients, stays, updatePatient, updateCarer, addCarer } = usePatientsData();
   const [birthDate, setBirthDate] = React.useState(patient.birthDate ?? "");
   const [sex, setSex] = React.useState<Patient["sex"]>(patient.sex);
   const [address, setAddress] = React.useState(patient.rawAddress ?? "");
   const [carerName, setCarerName] = React.useState(carer?.name ?? "");
   const [relationship, setRelationship] = React.useState(carer?.relationship ?? "");
   const [phone, setPhone] = React.useState(carer?.mobileNumber ?? "");
+  const [carerSexChoice, setCarerSexChoice] = React.useState<Sex | "">(carer?.sex ?? "");
+  const carerSex = carerSexChoice || sexFromRelationship(relationship) || "";
+  // Siblings stay together: the family is chosen from the children in the house.
+  const inHouse = patients.filter((x) => x.id !== patient.id && stays.some((st) => st.patientId === x.id && isActiveStay(st)));
+  const sameFamilyAtOpen = patient.familyId ? inHouse.find((x) => x.familyId === patient.familyId)?.id ?? "" : "";
+  const [familyWith, setFamilyWith] = React.useState(sameFamilyAtOpen);
   const [saving, setSaving] = React.useState(false);
 
   async function save() {
@@ -40,21 +51,26 @@ export function EditDetailsDialog({ patient, carer, open, onOpenChange }: EditDe
       return;
     }
     setSaving(true);
-    const p = await updatePatient(patient.id, { birthDate: birthDate || undefined, sex, rawAddress: address.trim() || undefined });
+    // A family is one id shared by siblings: join the other child's, or start one for both.
+    const sibling = patients.find((x) => x.id === familyWith);
+    const familyId = sibling ? sibling.familyId ?? patient.familyId ?? crypto.randomUUID() : familyWith === sameFamilyAtOpen ? patient.familyId : undefined;
+    const p = await updatePatient(patient.id, { birthDate: birthDate || undefined, sex, rawAddress: address.trim() || undefined, familyId });
+    const f = sibling && sibling.familyId !== familyId ? await updatePatient(sibling.id, { familyId }) : ({ ok: true } as const);
     const c = !carerName.trim()
       ? ({ ok: true } as const)
       : carer
-        ? await updateCarer(carer.id, { name: carerName.trim(), relationship: relationship.trim(), mobileNumber: phone.trim() })
+        ? await updateCarer(carer.id, { name: carerName.trim(), relationship: relationship.trim(), mobileNumber: phone.trim(), sex: carerSex || undefined })
         : await addCarer({
             id: crypto.randomUUID(),
             patientId: patient.id,
             name: carerName.trim(),
             relationship: relationship.trim() || undefined,
             mobileNumber: phone.trim() || undefined,
+            sex: carerSex || undefined,
             effectiveFrom: todayIso(),
           });
     setSaving(false);
-    const failed = [p, c].find((r) => !r.ok);
+    const failed = [p, f, c].find((r) => !r.ok);
     if (failed && !failed.ok) {
       toast.error(`Couldn't save: ${failed.error}`);
       return;
@@ -106,6 +122,27 @@ export function EditDetailsDialog({ patient, carer, open, onOpenChange }: EditDe
           <Field>
             <FieldLabel htmlFor="ed-phone">Carer&apos;s phone</FieldLabel>
             <Input id="ed-phone" type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="09XX XXX XXXX" />
+          </Field>
+          {carerName.trim() ? (
+            <div className="sm:col-span-2">
+              <CarerSexField id="ed-carer-sex" value={carerSex} onChange={setCarerSexChoice} />
+            </div>
+          ) : null}
+          <Field className="sm:col-span-2">
+            <FieldLabel htmlFor="ed-family">Same family as</FieldLabel>
+            <Select value={familyWith || "none"} onValueChange={(v) => setFamilyWith(v === "none" ? "" : v)}>
+              <SelectTrigger id="ed-family" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No sibling in the house</SelectItem>
+                {inHouse.map((x) => (
+                  <SelectItem key={x.id} value={x.id}>
+                    {x.firstName} {x.lastName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
         </div>
         <DialogFooter>

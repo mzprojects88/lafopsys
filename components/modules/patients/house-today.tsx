@@ -24,7 +24,9 @@ import { useBedNights } from "@/lib/hooks/use-bed-nights-collection";
 import { usePickups } from "@/lib/hooks/use-pickups-collection";
 import { useAllOrientationChecks } from "@/lib/hooks/use-orientation-topics";
 import { orientationProgress } from "@/lib/utils/admission-tasks";
-import { assignableBeds, isActiveStay, unitForBedPosition, type AssignableBed } from "@/lib/utils/beds";
+import { isActiveStay, unitForBedPosition } from "@/lib/utils/beds";
+import { sexFromRelationship, sleeperOfStay, type Sex } from "@/lib/utils/bed-rules";
+import { BedRuleBreaches, BedRuleException, CarerSexField, NO_EXCEPTION, exceptionFor, useBedChoices, type ExceptionDraft } from "@/components/modules/patients/bed-rule-fields";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { PRIORITIES } from "@/lib/utils/master-sheet";
 import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
@@ -48,7 +50,7 @@ function settledPatientId(p: HouseSheetPerson): string | null {
  */
 export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; canEdit: boolean }) {
   const { patients, stays } = usePatientsData();
-  const { rooms, units, bedPositions } = useHouseLayout();
+  const { units, bedPositions } = useHouseLayout();
   const { nights, confirmNight } = useBedNights();
   const { pickups } = usePickups();
   const { topics, checks } = useAllOrientationChecks();
@@ -57,12 +59,12 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const [discharge, setDischarge] = React.useState<{ stay: Stay; name: string; on: string } | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   // A bed held before the child arrives (user, 2026-09-25; 0065).
-  const { reservations, holdFor, reserve, release, replace } = useBedReservations();
+  const { holdFor, reserve, release, replace } = useBedReservations();
   const [reserving, setReserving] = React.useState<{ row: HouseSheetPerson; patientId: string | null } | null>(null);
   // The reserved child is not taking the bed: a social worker gives it to another (0066).
   const [replacing, setReplacing] = React.useState<{ holdId: string; bed: string; from: string } | null>(null);
   // "Move for tonight" picks the new bed on the floor plan (user, 2026-09-25).
-  const [moving, setMoving] = React.useState<{ stayId: string; name: string; from: string; options: AssignableBed[] } | null>(null);
+  const [moving, setMoving] = React.useState<{ stay: Stay; name: string; from: string; unitId?: string } | null>(null);
 
   const today = todayIso();
   const patientById = new Map(patients.map((p) => [p.id, p]));
@@ -249,10 +251,10 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
           flush
           bodyClassName="flex flex-col divide-y divide-border"
         >
+          <div className="px-5 pt-3 empty:hidden"><BedRuleBreaches /></div>
           {tonight.length === 0 ? <p className="px-5 py-3 text-theme-xs text-muted-foreground">Nobody is checked in.</p> : null}
           {tonight.map((s) => {
             const night = tonightNight(s);
-            const moves = assignableBeds(units, bedPositions, stays, rooms, { excludeUnitId: unitForBedPosition(s.bedPositionId, units, bedPositions)?.id, holds: reservations });
             const tasks = orientationProgress(s, stays, topics, checks);
             return (
               <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
@@ -275,7 +277,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                       variant="outline"
                       disabled={busy === s.id}
                       aria-label={`Move ${nameOf(s.patientId)} to another bed`}
-                      onClick={() => setMoving({ stayId: s.id, name: nameOf(s.patientId), from: bedOf(s.bedPositionId), options: moves })}
+                      onClick={() => setMoving({ stay: s, name: nameOf(s.patientId), from: bedOf(s.bedPositionId), unitId: unitForBedPosition(s.bedPositionId, units, bedPositions)?.id })}
                     >
                       <BedDouble /> Move…
                     </Button>
@@ -321,14 +323,15 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
 
       {moving ? (
         <MoveTonightDialog
-          key={moving.stayId}
+          key={moving.stay.id}
+          stay={moving.stay}
+          currentUnitId={moving.unitId}
           name={moving.name}
           from={moving.from}
-          options={moving.options}
-          busy={busy === moving.stayId}
+          busy={busy === moving.stay.id}
           onClose={() => setMoving(null)}
-          onMove={async (unitId) => {
-            await run(moving.stayId, () => confirmNight(moving.stayId, unitId), "Moved for tonight.");
+          onMove={async (unitId, exceptionReason) => {
+            await run(moving.stay.id, () => confirmNight(moving.stay.id, unitId, exceptionReason), "Moved for tonight.");
             setMoving(null);
           }}
         />
@@ -336,10 +339,11 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
       {reserving ? (
         <ReserveBedDialog
           name={reserving.row.patientName}
-          options={assignableBeds(units, bedPositions, stays, rooms, { holds: reservations })}
+          patientId={reserving.patientId}
+          defaultSex={sexFromRelationship(reserving.row.relationship)}
           onClose={() => setReserving(null)}
-          onReserve={async (unitId, expectedOn, note) => {
-            const r = await reserve({ unitId, patientId: reserving.patientId, sheetPersonId: reserving.row.id, reservedFor: reserving.row.patientName, expectedOn, note });
+          onReserve={async (unitId, expectedOn, note, carerSex) => {
+            const r = await reserve({ unitId, patientId: reserving.patientId, sheetPersonId: reserving.row.id, reservedFor: reserving.row.patientName, expectedOn, note, carerSex });
             if (!r.ok) return toast.error(r.error);
             toast.success("Bed reserved. Confirm it at check-in.");
             setReserving(null);
@@ -352,8 +356,8 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
           from={replacing.from}
           candidates={arrivals.filter((a) => !holdFor(settledPatientId(a), a.id))}
           onClose={() => setReplacing(null)}
-          onReplace={async (row) => {
-            const r = await replace(replacing.holdId, { patientId: settledPatientId(row), sheetPersonId: row.id, reservedFor: row.patientName });
+          onReplace={async (row, carerSex) => {
+            const r = await replace(replacing.holdId, { patientId: settledPatientId(row), sheetPersonId: row.id, reservedFor: row.patientName, carerSex });
             if (!r.ok) return toast.error(r.error);
             toast.success(`Bed ${replacing.bed} is now held for ${row.patientName}. Confirm it at their check-in.`);
             setReplacing(null);
@@ -372,23 +376,32 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   );
 }
 
-/** Tonight in a different bed, chosen on the floor plan. */
+/** Tonight in a different bed, chosen on the floor plan, under the bed rules (0070). */
 function MoveTonightDialog({
+  stay,
+  currentUnitId,
   name,
   from,
-  options,
   busy,
   onClose,
   onMove,
 }: {
+  stay: Stay;
+  currentUnitId?: string;
   name: string;
   from: string;
-  options: AssignableBed[];
   busy: boolean;
   onClose: () => void;
-  onMove: (unitId: string) => Promise<void>;
+  onMove: (unitId: string, exceptionReason: string | null) => Promise<void>;
 }) {
+  const { carers, patients } = usePatientsData();
   const [unitId, setUnitId] = React.useState("");
+  const [exception, setException] = React.useState<ExceptionDraft>(NO_EXCEPTION);
+  const { options, blocked, isException } = useBedChoices(
+    { who: sleeperOfStay(stay, carers, patients), excludeUnitId: currentUnitId, ignoreStayId: stay.id, patientId: stay.patientId },
+    exception
+  );
+  const reason = exceptionFor(isException(unitId), exception);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
@@ -396,12 +409,13 @@ function MoveTonightDialog({
           <DialogTitle>Move {name} for tonight</DialogTitle>
           <DialogDescription>Now in bed {from}. Tap the bed for tonight on the plan.</DialogDescription>
         </DialogHeader>
-        <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={options} />
+        <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={options} blocked={blocked} />
+        <BedRuleException blocked={blocked} value={exception} onChange={setException} />
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button disabled={!unitId || busy} onClick={() => onMove(unitId)}>
+          <Button disabled={!unitId || busy || (isException(unitId) && !reason)} onClick={() => onMove(unitId, reason)}>
             {busy ? "Moving…" : "Move for tonight"}
           </Button>
         </DialogFooter>
@@ -413,15 +427,22 @@ function MoveTonightDialog({
 /** Hold a bed for a child who has not arrived; Check in opens on it. */
 function ReserveBedDialog({
   name,
-  options,
+  patientId,
+  defaultSex,
   onClose,
   onReserve,
 }: {
   name: string;
-  options: AssignableBed[];
+  patientId: string | null;
+  defaultSex?: Sex;
   onClose: () => void;
-  onReserve: (unitId: string, expectedOn: string, note: string) => Promise<unknown>;
+  onReserve: (unitId: string, expectedOn: string, note: string, carerSex: Sex) => Promise<unknown>;
 }) {
+  const { patients } = usePatientsData();
+  const [carerSex, setCarerSex] = React.useState<Sex | "">(defaultSex ?? "");
+  const familyId = patientId ? patients.find((p) => p.id === patientId)?.familyId : undefined;
+  // A hold follows the bed rules (0070); exceptions are for check-in only.
+  const { options, blocked } = useBedChoices({ who: { sex: carerSex || undefined, familyId }, patientId });
   const [unitId, setUnitId] = React.useState("");
   const [expectedOn, setExpectedOn] = React.useState(todayIso());
   const [note, setNote] = React.useState("");
@@ -433,7 +454,8 @@ function ReserveBedDialog({
           <DialogTitle>Reserve a bed for {name}</DialogTitle>
           <DialogDescription>Not checked in yet: the bed is held for them and offered to no one else. Confirm it when they arrive.</DialogDescription>
         </DialogHeader>
-        <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={options} />
+        <CarerSexField id="holdCarerSex" value={carerSex} onChange={(v) => { setCarerSex(v); setUnitId(""); }} />
+        {carerSex ? <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={options} blocked={blocked} /> : null}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field>
             <FieldLabel htmlFor="expectedOn">Expected to arrive</FieldLabel>
@@ -449,10 +471,11 @@ function ReserveBedDialog({
             Cancel
           </Button>
           <Button
-            disabled={!unitId || !expectedOn || busy}
+            disabled={!unitId || !expectedOn || !carerSex || busy}
             onClick={async () => {
+              if (!carerSex) return;
               setBusy(true);
-              await onReserve(unitId, expectedOn, note);
+              await onReserve(unitId, expectedOn, note, carerSex);
               setBusy(false);
             }}
           >
@@ -476,11 +499,13 @@ function ReplaceHoldDialog({
   from: string;
   candidates: HouseSheetPerson[];
   onClose: () => void;
-  onReplace: (row: HouseSheetPerson) => Promise<unknown>;
+  onReplace: (row: HouseSheetPerson, carerSex: Sex) => Promise<unknown>;
 }) {
   const [rowId, setRowId] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [sexChoice, setSexChoice] = React.useState<Sex | "">("");
   const row = candidates.find((c) => c.id === rowId);
+  const carerSex = sexChoice || sexFromRelationship(row?.relationship) || "";
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md">
@@ -488,7 +513,7 @@ function ReplaceHoldDialog({
           <DialogTitle>Replace on bed {bed}</DialogTitle>
           <DialogDescription>{from} will not stay on this bed. Who takes it instead? Their check-in confirms it.</DialogDescription>
         </DialogHeader>
-        <Select value={rowId} onValueChange={setRowId}>
+        <Select value={rowId} onValueChange={(v) => { setRowId(v); setSexChoice(""); }}>
           <SelectTrigger className="w-full" aria-label="Replacement">
             <SelectValue placeholder={candidates.length ? "Choose who takes the bed" : "Nobody else is waiting for a bed"} />
           </SelectTrigger>
@@ -500,15 +525,17 @@ function ReplaceHoldDialog({
             ))}
           </SelectContent>
         </Select>
+        {row ? <CarerSexField id="replaceCarerSex" value={carerSex} onChange={setSexChoice} hint="The bed stays where it is; the rooms' rules still apply, so the database may refuse it." /> : null}
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
           <Button
-            disabled={!row || busy}
+            disabled={!row || !carerSex || busy}
             onClick={async () => {
+              if (!carerSex) return;
               setBusy(true);
-              await onReplace(row!);
+              await onReplace(row!, carerSex);
               setBusy(false);
             }}
           >

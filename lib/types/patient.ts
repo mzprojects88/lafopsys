@@ -35,6 +35,8 @@ export interface Patient {
   remarks?: string;
   /** Hospital that referred this patient — set for both real historical data and portal-admitted referrals. */
   referringHospitalId?: string;
+  /** Siblings share one id: their carers may share a room whatever their sex (0070). */
+  familyId?: string;
 
   // DSWD Caseload Inventory report fields — sourced from Patient Database_NCH.xlsx's
   // "Copy of For DSWD Caseload Inven" sheet, joined onto the patient master by
@@ -82,6 +84,8 @@ export interface Carer {
   relationship?: string;
   /** Missing for 2 of 169 real records -- don't fabricate one. */
   mobileNumber?: string;
+  /** Decides which room they sleep in (0070); asked before a bed is chosen. */
+  sex?: "F" | "M";
   effectiveFrom: string;
   effectiveTo?: string;
 }

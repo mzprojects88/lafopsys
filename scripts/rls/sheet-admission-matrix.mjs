@@ -166,7 +166,7 @@ const newKid = JSON.stringify({
   diagnosis_ids: [],
 });
 const admitB = (json = newKid) =>
-  `select ops.admit_from_sheet(p_rules_discussed => true, p_sheet_row_id => '${ROW_B}', p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_referral => '${json}'::jsonb) as r`;
+  `select ops.admit_from_sheet(p_rules_discussed => true, p_sheet_row_id => '${ROW_B}', p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_referral => '${json}'::jsonb, p_carer_sex => 'M') as r`;
 
 async function main() {
   await client.connect();

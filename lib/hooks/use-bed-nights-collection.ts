@@ -35,9 +35,12 @@ export const bedNightsStore = createCollection<BedNight[]>({
 export function useBedNights() {
   const { data: nights, loading } = useCollection(bedNightsStore);
 
-  /** Tonight's bed: the one the stay is in (unitId null) or a move to another bed. */
-  async function confirmNight(stayId: string, unitId: string | null = null): Promise<MutationResult> {
-    const { error } = await createClient().schema("ops").rpc("confirm_night", { p_stay_id: stayId, p_unit_id: unitId });
+  /** Tonight's bed: the one the stay is in (unitId null) or a move to another bed.
+   * A move outside the bed rules (0070) carries its reason; only an admin or the inventory lead may. */
+  async function confirmNight(stayId: string, unitId: string | null = null, exceptionReason: string | null = null): Promise<MutationResult> {
+    const { error } = await createClient()
+      .schema("ops")
+      .rpc("confirm_night", { p_stay_id: stayId, p_unit_id: unitId, p_exception_reason: exceptionReason });
     if (error) return { ok: false, error: error.message };
     // A move changes the stay's bed too.
     await Promise.all([bedNightsStore.refetch(), unitId ? patientsStore.refetch() : null]);

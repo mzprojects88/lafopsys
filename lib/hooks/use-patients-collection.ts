@@ -49,6 +49,7 @@ interface PatientRow {
   housing_type: string | null;
   consent_authorized_at: string | null;
   intake_links: Patient["intakeLinks"] | null;
+  family_id: string | null;
 }
 
 interface CarerRow {
@@ -57,6 +58,7 @@ interface CarerRow {
   name: string;
   relationship: string | null;
   mobile_number: string | null;
+  sex: "F" | "M" | null;
   effective_from: string;
   effective_to: string | null;
 }
@@ -110,6 +112,7 @@ function toPatient(row: PatientRow, carerIds: string[]): Patient {
     maritalStatus: row.marital_status ?? undefined,
     remarks: row.remarks ?? undefined,
     referringHospitalId: row.referring_hospital_id ?? undefined,
+    familyId: row.family_id ?? undefined,
     religion: row.religion ?? undefined,
     sectorCaseCategory: row.sector_case_category ?? undefined,
     placeOfBirth: row.place_of_birth ?? undefined,
@@ -177,6 +180,7 @@ function patientPatchToRow(patch: Partial<Patient>) {
   if ("birthDate" in patch) row.birth_date = patch.birthDate || null;
   if ("sex" in patch) row.sex = patch.sex ?? null;
   if ("rawAddress" in patch) row.raw_address = patch.rawAddress || null;
+  if ("familyId" in patch) row.family_id = patch.familyId ?? null;
   return row;
 }
 
@@ -187,6 +191,7 @@ function toCarer(row: CarerRow): Carer {
     name: row.name,
     relationship: row.relationship ?? undefined,
     mobileNumber: row.mobile_number ?? undefined,
+    sex: row.sex ?? undefined,
     effectiveFrom: row.effective_from,
     effectiveTo: row.effective_to ?? undefined,
   };
@@ -199,6 +204,7 @@ function fromCarer(c: Carer) {
     name: c.name,
     relationship: c.relationship ?? null,
     mobile_number: c.mobileNumber ?? null,
+    sex: c.sex ?? null,
     effective_from: c.effectiveFrom,
     effective_to: c.effectiveTo ?? null,
   };
@@ -355,12 +361,12 @@ export function usePatientsData() {
     return { ok: true };
   }
 
-  async function updateCarer(id: string, patch: Pick<Carer, "name" | "relationship" | "mobileNumber">): Promise<MutationResult> {
+  async function updateCarer(id: string, patch: Pick<Carer, "name" | "relationship" | "mobileNumber" | "sex">): Promise<MutationResult> {
     const supabase = createClient();
     const { error } = await supabase
       .schema("ops")
       .from("carers")
-      .update({ name: patch.name, relationship: patch.relationship || null, mobile_number: patch.mobileNumber || null })
+      .update({ name: patch.name, relationship: patch.relationship || null, mobile_number: patch.mobileNumber || null, sex: patch.sex ?? null })
       .eq("id", id);
     if (error) return { ok: false, error: error.message };
     await refetch();

@@ -22,12 +22,12 @@ import { splitName } from "@/lib/utils/house-sheet";
 import { createClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/rbac/use-role";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
-import { patientsStore, usePatientsData } from "@/lib/hooks/use-patients-collection";
+import { patientsStore } from "@/lib/hooks/use-patients-collection";
 import { referralsStore } from "@/lib/hooks/use-referrals-collection";
 import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
 import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
-import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
-import { assignableBeds } from "@/lib/utils/beds";
+import { BedRuleException, CarerSexField, NO_EXCEPTION, exceptionFor, useBedChoices, type ExceptionDraft } from "@/components/modules/patients/bed-rule-fields";
+import { sexFromRelationship, type Sex } from "@/lib/utils/bed-rules";
 import { ArrivalFields, arrivalFromPickups, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
 import { usePickups } from "@/lib/hooks/use-pickups-collection";
 import { recordArrival } from "@/lib/hooks/use-arrival-rides-collection";
@@ -86,15 +86,12 @@ function NewReferralForm() {
   const canEdit = canEditModule("patients");
   // From NCH's sheet the child is already at the house: this form admits
   // them in the same save (ops.admit_from_sheet, 0051) -- bed and arrival day.
-  const { stays } = usePatientsData();
-  const { rooms, units, bedPositions } = useHouseLayout();
-  const { holdFor, reservations } = useBedReservations();
+  const { holdFor } = useBedReservations();
   // A bed reserved for this child (0065) opens chosen; nobody else's hold is offered.
   const hold = sheetRow ? holdFor(null, sheetRow.id) : undefined;
-  const beds = assignableBeds(units, bedPositions, stays, rooms, { holds: reservations, forHoldId: hold?.id });
+  const [carerSexChoice, setCarerSexChoice] = React.useState<Sex | "">("");
+  const [exception, setException] = React.useState<ExceptionDraft>(NO_EXCEPTION);
   const [unitIdEdited, setUnitId] = React.useState("");
-  // Only a bed still on offer: one taken or reserved since the page opened drops out.
-  const unitId = [unitIdEdited, hold?.unitId].find((id) => id && beds.some((b) => b.unit.id === id)) ?? "";
   const [appointment, setAppointment] = React.useState<AppointmentDraft>(EMPTY_APPOINTMENT);
   const [rulesDraft, setRulesDraft] = React.useState<RulesDraft>(EMPTY_RULES);
   const [checkInAt, setCheckInAt] = React.useState("");
@@ -140,6 +137,13 @@ function NewReferralForm() {
   });
 
   const firstName = useWatch({ control, name: "patientFirstName" });
+  // The bed rules (0070) go by the carer's sex; the relationship suggests it.
+  const carerRelationship = useWatch({ control, name: "carerRelationship" });
+  const carerSex: Sex | "" = carerSexChoice || sexFromRelationship(carerRelationship) || "";
+  const { options: beds, blocked, isException } = useBedChoices({ who: { sex: carerSex || undefined }, forHoldId: hold?.id }, exception);
+  // Only a bed still on offer: one taken or reserved since the page opened drops out.
+  const unitId = [unitIdEdited, hold?.unitId].find((id) => id && beds.some((b) => b.unit.id === id)) ?? "";
+  const exceptionReason = exceptionFor(isException(unitId), exception);
 
   const prefilledFor = React.useRef<string | null>(null);
   React.useEffect(() => {
@@ -167,8 +171,16 @@ function NewReferralForm() {
   async function onSubmit(values: FormValues) {
     const supabase = createClient();
     if (fromSheet) {
+      if (!carerSex) {
+        toast.error("Say whether the carer is a woman or a man.");
+        return;
+      }
       if (!unitId) {
         toast.error("Pick tonight's bed.");
+        return;
+      }
+      if (isException(unitId) && !exceptionReason) {
+        toast.error("Say why the bed rules are set aside.");
         return;
       }
       if (!arrivalReady(arrival)) {
@@ -212,6 +224,8 @@ function NewReferralForm() {
         p_carer_mobile: null,
         p_expected_checkout_at: expectedCheckoutAt || null,
         p_rules_discussed: rulesDraft.discussed,
+        p_carer_sex: carerSex,
+        p_exception_reason: exceptionReason,
       });
       if (error) {
         toast.error(`Couldn't admit: ${error.message}`);
@@ -534,10 +548,16 @@ function NewReferralForm() {
                 <>
                   <FieldSeparator />
                   <span className="text-base font-medium text-foreground">Admission</span>
+                  <CarerSexField id="carerSex" value={carerSex} onChange={setCarerSexChoice} />
                   <Field>
                     <FieldLabel>Tonight&apos;s bed</FieldLabel>
-                    <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={beds} />
+                    {carerSex ? (
+                      <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={beds} blocked={blocked} />
+                    ) : (
+                      <p className="text-theme-xs text-muted-foreground">Say whether the carer is a woman or a man first: rooms are for women carers or men carers.</p>
+                    )}
                   </Field>
+                  <BedRuleException blocked={blocked} value={exception} onChange={setException} />
                   <ArrivalFields value={arrival} onChange={setArrival} arrivalDate={arrivedOn} />
                   {hold ? (
                     <p className="text-theme-xs text-muted-foreground">

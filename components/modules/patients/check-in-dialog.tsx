@@ -20,8 +20,8 @@ import { patientsStore, usePatientsData } from "@/lib/hooks/use-patients-collect
 import { referralsStore } from "@/lib/hooks/use-referrals-collection";
 import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
 import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
-import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
-import { assignableBeds } from "@/lib/utils/beds";
+import { BedRuleException, CarerSexField, NO_EXCEPTION, exceptionFor, useBedChoices, type ExceptionDraft } from "@/components/modules/patients/bed-rule-fields";
+import { sexFromRelationship, type Sex } from "@/lib/utils/bed-rules";
 import { ArrivalFields, arrivalFromPickups, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
 import {
   EMPTY_APPOINTMENT,
@@ -88,7 +88,6 @@ function possibleMatches(referral: Referral, patients: Patient[]): Patient[] {
  */
 export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDialogProps) {
   const { patients, carers, stays } = usePatientsData();
-  const { rooms, units, bedPositions } = useHouseLayout();
   const referral = target?.referral;
   const sheetRow = target?.sheetRow;
   const matches = referral ? possibleMatches(referral, patients) : [];
@@ -102,13 +101,15 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
   const [carerName, setCarerName] = React.useState("");
   const [carerRelationship, setCarerRelationship] = React.useState("");
   const [carerMobile, setCarerMobile] = React.useState("");
+  const [carerSexChoice, setCarerSexChoice] = React.useState<Sex | "">("");
+  const [exception, setException] = React.useState<ExceptionDraft>(NO_EXCEPTION);
   const [appointment, setAppointment] = React.useState<AppointmentDraft>(EMPTY_APPOINTMENT);
   const { pickups } = usePickups();
   const [arrival, setArrival] = React.useState<ArrivalDraft>(() => arrivalFromPickups(pickups, target?.sheetRow));
   const [submitting, setSubmitting] = React.useState(false);
   const [step, setStep] = React.useState<"details" | "rules">("details");
   const [rulesDraft, setRulesDraft] = React.useState<RulesDraft>(EMPTY_RULES);
-  const { holdFor, reservations } = useBedReservations();
+  const { holdFor } = useBedReservations();
 
   const patientId = recordId === NEW_RECORD ? null : recordId;
   const patient = patientId ? patients.find((p) => p.id === patientId) : undefined;
@@ -126,7 +127,21 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
   const carer = carerChoice || sheetCarerOnFile?.id || (sheetRow?.carerName && !sheetCarerOnFile ? SHEET_CARER : carerOptions[0].value);
   // A bed reserved for this child (0065) is theirs to confirm; nobody else's hold is offered.
   const hold = holdFor(patientId, sheetRow?.id);
-  const beds = assignableBeds(units, bedPositions, stays, rooms, { holds: reservations, forHoldId: hold?.id });
+  // The bed rules (0070) go by the carer's sex -- the child's own when no carer stays.
+  const noCarer = carer === NEW_CARER && !carerName.trim();
+  const onFileCarer = onFile.find((c) => c.id === carer);
+  const carerSex: Sex | "" =
+    carerSexChoice ||
+    (onFileCarer
+      ? onFileCarer.sex ?? sexFromRelationship(onFileCarer.relationship)
+      : carer === REFERRAL_CARER
+        ? sexFromRelationship(referral?.carerRelationship)
+        : carer === SHEET_CARER
+          ? sexFromRelationship(relationshipFromSheet(sheetRow?.relationship ?? null))
+          : sexFromRelationship(carerRelationship)) ||
+    "";
+  const who = { sex: noCarer ? patient?.sex ?? referral?.patientSex : carerSex || undefined, familyId: patient?.familyId };
+  const { options: beds, blocked, isException } = useBedChoices({ who, forHoldId: hold?.id, patientId }, exception);
   // Only a bed still on offer: one taken or reserved since the dialog opened drops out.
   const bed = [unitId, hold?.unitId].find((id) => id && beds.some((b) => b.unit.id === id)) ?? "";
   // Returning families take the shorter list of rules (0054).
@@ -137,11 +152,14 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
   const name = patient ? `${patient.firstName} ${patient.lastName}` : referral?.patientName ?? "";
   const today = todayIso();
 
+  const exceptionReason = exceptionFor(isException(bed), exception);
   const ready =
     !!bed &&
     arrivalReady(arrival) &&
     !!checkInAt &&
     (carer !== NEW_CARER || !carerName.trim() || !!carerRelationship) &&
+    (noCarer || !!carerSex) &&
+    (!isException(bed) || !!exceptionReason) &&
     appointmentReady(appointment);
 
   async function handleConfirm() {
@@ -164,6 +182,8 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
             p_carer_mobile: fromSheet ? sheetRow.phone : newCarer ? carerMobile.trim() || null : null,
             p_expected_checkout_at: expectedCheckoutAt || null,
             p_rules_discussed: rulesDraft.discussed,
+            p_carer_sex: noCarer ? null : carerSex || null,
+            p_exception_reason: exceptionReason,
           })
       : await createClient()
           .schema("ops")
@@ -185,6 +205,8 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
             p_appt_clinic: appointment.date ? appointment.clinic.trim() : null,
             p_appt_purpose: null,
             p_appt_needs_transport: appointment.date ? appointment.needsTransport : false,
+            p_carer_sex: noCarer ? null : carerSex || null,
+            p_exception_reason: exceptionReason,
           });
     if (error) {
       setSubmitting(false);
@@ -252,16 +274,6 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
             </Field>
           )}
 
-          <Field>
-            <FieldLabel>Bed</FieldLabel>
-            <FloorPlanBedPicker value={bed} onChange={setUnitId} options={beds} />
-            {hold ? (
-              <FieldDescription>
-                A bed was reserved for them{hold.unitId === bed ? "" : " (another bed is chosen, so the reserved one is freed)"}. Staying on it confirms it; tap another green bed if not.
-              </FieldDescription>
-            ) : null}
-          </Field>
-
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="checkInAt">Arrived on</FieldLabel>
@@ -283,7 +295,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
 
           <Field>
             <FieldLabel htmlFor="carer">Carer staying with them</FieldLabel>
-            <Select value={carer} onValueChange={setCarerChoice}>
+            <Select value={carer} onValueChange={(v) => { setCarerChoice(v); setCarerSexChoice(""); }}>
               <SelectTrigger id="carer" className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -324,6 +336,30 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
               </Field>
             </div>
           )}
+
+          {!noCarer ? (
+            <CarerSexField
+              id="carerSex"
+              value={carerSex}
+              onChange={setCarerSexChoice}
+              hint={carerSexChoice ? undefined : carerSex ? "Filled in from the relationship; change it if that's wrong." : undefined}
+            />
+          ) : null}
+
+          <Field>
+            <FieldLabel>Bed</FieldLabel>
+            {noCarer || carerSex ? (
+              <FloorPlanBedPicker value={bed} onChange={setUnitId} options={beds} blocked={blocked} />
+            ) : (
+              <FieldDescription>Say whether the carer is a woman or a man first: rooms are for women carers or men carers.</FieldDescription>
+            )}
+            {hold ? (
+              <FieldDescription>
+                A bed was reserved for them{hold.unitId === bed ? "" : " (another bed is chosen, so the reserved one is freed)"}. Staying on it confirms it; tap another green bed if not.
+              </FieldDescription>
+            ) : null}
+          </Field>
+          <BedRuleException blocked={blocked} value={exception} onChange={setException} />
 
           {sheetRow?.nextAppointmentOn ? (
             <p className="rounded-xl bg-muted/60 p-3 text-theme-xs text-muted-foreground">

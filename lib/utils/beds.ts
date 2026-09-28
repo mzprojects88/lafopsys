@@ -18,6 +18,9 @@ export interface BedHold {
   unitId: string;
   reservedFor: string;
   expectedOn: string;
+  /** Who it is held for, when on file, and their carer's sex: a hold counts in the bed rules (0070). */
+  patientId?: string | null;
+  carerSex?: "F" | "M" | null;
 }
 
 /** Holds on this bed, other than the one being used right now. */

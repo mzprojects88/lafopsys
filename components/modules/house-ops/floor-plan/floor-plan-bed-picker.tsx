@@ -9,6 +9,8 @@ import { useRole } from "@/lib/rbac/use-role";
 import { canSeeClinicalDetail } from "@/lib/rbac/roles";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { AssignableBed } from "@/lib/utils/beds";
+import { occupantsOf, roomSex, type BlockedBed } from "@/lib/utils/bed-rules";
+import { cn } from "@/lib/utils";
 import { buildBedViews } from "./bed-view";
 import { FloorPlanCanvas } from "./floor-plan-canvas";
 
@@ -21,8 +23,20 @@ const noDraft = () => undefined;
  * or locked bed says why not. `options` is the caller's list of beds this
  * admission may take (lib/utils/beds.ts assignableBeds), so the rules stay
  * in one place. The list below the plan covers beds not yet drawn on it.
+ * `blocked` are free beds the bed rules keep this person off (0070): tapping
+ * one says why; the rooms line says who each room is for right now.
  */
-export function FloorPlanBedPicker({ value, onChange, options }: { value: string; onChange: (unitId: string) => void; options: AssignableBed[] }) {
+export function FloorPlanBedPicker({
+  value,
+  onChange,
+  options,
+  blocked = [],
+}: {
+  value: string;
+  onChange: (unitId: string) => void;
+  options: AssignableBed[];
+  blocked?: BlockedBed[];
+}) {
   const { rooms, units, bedPositions, labels } = useHouseLayout();
   const { patients, carers, stays } = usePatientsData();
   const { role } = useRole();
@@ -35,6 +49,10 @@ export function FloorPlanBedPicker({ value, onChange, options }: { value: string
   const allowed = React.useMemo(() => new Set(options.map((o) => o.unit.id)), [options]);
   const chosen = options.find((o) => o.unit.id === value);
   const unplaced = options.filter((o) => o.unit.x === null || o.unit.y === null).length;
+  const roomsNow = React.useMemo(() => {
+    const occ = occupantsOf(units, bedPositions, stays, carers, patients, reservations);
+    return [...rooms].sort((a, b) => a.sortOrder - b.sortOrder).map((r) => ({ room: r, sex: roomSex(r.id, occ) }));
+  }, [rooms, units, bedPositions, stays, carers, patients, reservations]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -60,6 +78,8 @@ export function FloorPlanBedPicker({ value, onChange, options }: { value: string
           onSelect={(sel) => {
             if (sel?.kind !== "bed") return;
             if (allowed.has(sel.id)) return onChange(sel.id);
+            const rule = blocked.find((b) => b.unit.id === sel.id);
+            if (rule) return toast.info(`Bed ${rule.unit.code}: ${rule.reason}.`);
             const bed = beds.find((b) => b.id === sel.id);
             if (!bed) return;
             toast.info(`Bed ${bed.code} is not free${bed.bedStatus === "occupied" ? ": someone is in it" : bed.bedStatus === "reserved" ? `: reserved for ${bed.holds.map((h) => h.reservedFor).join(", ")}` : bed.bedStatus === "available" ? "" : `: ${bed.bedStatus}`}.`);
@@ -75,6 +95,19 @@ export function FloorPlanBedPicker({ value, onChange, options }: { value: string
           previews={false}
         />
       </div>
+      <p className="flex flex-wrap gap-1.5 text-theme-xs">
+        {roomsNow.map(({ room, sex }) => (
+          <span
+            key={room.id}
+            className={cn(
+              "rounded-full px-2 py-0.5",
+              sex === "mixed" ? "bg-warning/15 text-warning-foreground dark:text-warning" : "bg-muted text-muted-foreground"
+            )}
+          >
+            {room.name} · {sex === "F" ? "Women's" : sex === "M" ? "Men's" : sex === "mixed" ? "Mixed" : "Open"}
+          </span>
+        ))}
+      </p>
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="w-full" aria-label="Bed">
           <SelectValue placeholder={options.length ? "Or choose from the list" : "No beds available"} />

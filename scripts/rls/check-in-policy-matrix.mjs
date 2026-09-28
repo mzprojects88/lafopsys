@@ -120,6 +120,9 @@ const P2 = "00000000-0000-4000-8000-0000000000c3";
 const C2 = "00000000-0000-4000-8000-0000000000c4";
 const REF = "00000000-0000-4000-8000-0000000000c5";
 const seed = async () => {
+  // 0070: the bed rules look at who is in the house; start from an empty one.
+  await client.query("update ops.stays set status = 'checked_out', check_out_at = (now() at time zone 'Asia/Manila')::date where status in ('in_house', 'overdue')");
+  await client.query("update ops.bed_reservations set status = 'released', closed_at = now() where status = 'active'");
   await client.query("update ops.units set status = 'available', lock_reason = null where id = 'unit-B1'");
   await client.query(
     `insert into ops.patients (id, patient_number, first_name, last_name, sex, status, admitted_at) values
@@ -128,8 +131,8 @@ const seed = async () => {
     [P1, P2]
   );
   await client.query(
-    `insert into ops.carers (id, patient_id, name, relationship, effective_from) values
-     ($1, $2, 'Mama One', 'Mother', '2026-01-10'), ($3, $4, 'Papa Two', 'Father', '2026-01-10')`,
+    `insert into ops.carers (id, patient_id, name, relationship, effective_from, sex) values
+     ($1, $2, 'Mama One', 'Mother', '2026-01-10', 'F'), ($3, $4, 'Papa Two', 'Father', '2026-01-10', 'M')`,
     [C1, P1, C2, P2]
   );
   const dx = await client.query("select id from ops.diagnoses limit 1");
@@ -151,7 +154,7 @@ const TODAY = "(now() at time zone 'Asia/Manila')::date";
 const ciPatient = (patient, extra = "") =>
   `select ops.check_in(p_rules_discussed => true, p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_patient_id => '${patient}'${extra}) as r`;
 const ciReferral = (extra = "") =>
-  `select ops.check_in(p_rules_discussed => true, p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_referral_id => '${REF}'${extra}) as r`;
+  `select ops.check_in(p_rules_discussed => true, p_unit_id => 'unit-B1', p_check_in_at => ${TODAY}, p_referral_id => '${REF}', p_carer_sex => 'F'${extra}) as r`;
 const badInput = (r) => !r.ok && r.code === "22023";
 const notFound = (r) => !r.ok && r.code === "P0002";
 

@@ -119,10 +119,13 @@ const OLD = "00000000-0000-4000-8000-00000000c0a9";
 const TODAY = "(now() at time zone 'Asia/Manila')::date";
 const YEAR = "extract(year from (now() at time zone 'Asia/Manila')::date)::int";
 const seed = async () => {
+  // 0070: the bed rules look at who is in the house; start from an empty one.
+  await client.query("update ops.stays set status = 'checked_out', check_out_at = (now() at time zone 'Asia/Manila')::date where status in ('in_house', 'overdue')");
+  await client.query("update ops.bed_reservations set status = 'released', closed_at = now() where status = 'active'");
   await client.query("update ops.units set status = 'available', lock_reason = null where id in ('unit-B1','unit-B2')");
   await client.query(
     `insert into ops.referrals (id, patient_name, referring_person, department, urgency, status, patient_first_name, patient_last_name, patient_sex)
-     values ($1, 'One Kid', 'Dr. T', 'MSS', 'routine', 'approved', 'One', 'Kid', 'M'), ($2, 'Two Kid', 'Dr. T', 'MSS', 'routine', 'approved', 'Two', 'Kid', 'F')`,
+     values ($1, 'One Kid', 'Dr. T', 'MSS', 'routine', 'approved', 'One', 'Kid', 'M'), ($2, 'Two Kid', 'Dr. T', 'MSS', 'routine', 'approved', 'Two', 'Kid', 'M')`, // both boys: they share Room 1 (0070)
     [R1, R2]
   );
 };

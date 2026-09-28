@@ -24,6 +24,7 @@ interface Row {
   note: string | null;
   created_by: string | null;
   created_at: string;
+  carer_sex: "F" | "M" | null;
 }
 
 /** Beds held right now for children who have not arrived (0065). */
@@ -44,6 +45,7 @@ export const bedReservationsStore = createCollection<BedReservation[]>({
       note: r.note,
       createdBy: r.created_by,
       createdAt: r.created_at,
+      carerSex: r.carer_sex,
     }));
   },
 });
@@ -55,7 +57,7 @@ export function useBedReservations() {
   const holdFor = (patientId?: string | null, sheetPersonId?: string | null) =>
     reservations.find((r) => (patientId && r.patientId === patientId) || (sheetPersonId && r.houseSheetPersonId === sheetPersonId));
 
-  async function reserve(input: { unitId: string; patientId: string | null; sheetPersonId: string | null; reservedFor: string; expectedOn: string; note?: string }): Promise<MutationResult> {
+  async function reserve(input: { unitId: string; patientId: string | null; sheetPersonId: string | null; reservedFor: string; expectedOn: string; carerSex: "F" | "M"; note?: string }): Promise<MutationResult> {
     const { error } = await createClient()
       .schema("ops")
       .from("bed_reservations")
@@ -65,6 +67,7 @@ export function useBedReservations() {
         house_sheet_person_id: input.sheetPersonId,
         reserved_for: input.reservedFor,
         expected_on: input.expectedOn,
+        carer_sex: input.carerSex,
         note: input.note?.trim() || null,
       });
     if (error) return { ok: false, error: /one_per/.test(error.message) ? "A bed is already held for this child; release it first." : error.message };
@@ -81,12 +84,13 @@ export function useBedReservations() {
   }
 
   /** Replacement (0066): the bed goes to another child, held for them to confirm at their check-in. */
-  async function replace(id: string, to: { patientId: string | null; sheetPersonId: string | null; reservedFor: string }): Promise<MutationResult> {
+  async function replace(id: string, to: { patientId: string | null; sheetPersonId: string | null; reservedFor: string; carerSex: "F" | "M" }): Promise<MutationResult> {
     const { error } = await createClient().schema("ops").rpc("replace_bed_reservation", {
       p_id: id,
       p_patient_id: to.patientId,
       p_sheet_person_id: to.sheetPersonId,
       p_reserved_for: to.reservedFor,
+      p_carer_sex: to.carerSex,
     });
     if (error) return { ok: false, error: /one_per/.test(error.message) ? `A bed is already held for ${to.reservedFor}; release it first.` : error.message };
     await bedReservationsStore.refetch();
