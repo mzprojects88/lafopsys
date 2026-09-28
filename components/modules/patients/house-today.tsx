@@ -5,6 +5,16 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { ArrowLeftRight, BedDouble, BookmarkPlus, Check, DoorOpen, FilePlus2, LogOut, MoonStar, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { SectionCard } from "@/components/patterns/section-card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -50,8 +60,8 @@ function settledPatientId(p: HouseSheetPerson): string | null {
  * The sheet is NCH's; everything here is one click on top of it.
  */
 export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; canEdit: boolean }) {
-  const { patients, stays } = usePatientsData();
-  const { units, bedPositions } = useHouseLayout();
+  const { patients, stays, loading: patientsLoading } = usePatientsData();
+  const { units, bedPositions, loading: layoutLoading } = useHouseLayout();
   const { nights, confirmNight } = useBedNights();
   const { pickups } = usePickups();
   const { topics, checks } = useAllOrientationChecks();
@@ -60,13 +70,20 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const [discharge, setDischarge] = React.useState<{ stay: Stay; name: string; on: string } | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   // A bed held before the child arrives (user, 2026-09-25; 0065).
-  const { holdFor, reserve, release, replace } = useBedReservations();
+  const { holdFor, reserve, release, replace, loading: holdsLoading } = useBedReservations();
+  const [releasing, setReleasing] = React.useState<{ holdId: string; bed: string; name: string } | null>(null);
   const [reserving, setReserving] = React.useState<{ row: HouseSheetPerson; patientId: string | null } | null>(null);
   // The reserved child is not taking the bed: a social worker gives it to another (0066).
   const [replacing, setReplacing] = React.useState<{ holdId: string; bed: string; from: string } | null>(null);
   // "Move for tonight" picks the new bed on the floor plan (user, 2026-09-25).
   const [planning, setPlanning] = React.useState(false);
   const [moving, setMoving] = React.useState<{ stay: Stay; name: string; from: string; unitId?: string } | null>(null);
+
+  // Until patients, stays and beds are in, every name would look "not checked
+  // in" and offer "Admit new child" -- a duplicate record on a slow phone.
+  if (patientsLoading || layoutLoading || holdsLoading) {
+    return <p className="rounded-2xl border border-border bg-card px-4 py-6 text-center text-theme-sm text-muted-foreground">Loading the house…</p>;
+  }
 
   const today = todayIso();
   const patientById = new Map(patients.map((p) => [p.id, p]));
@@ -153,25 +170,27 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                   {hold ? (
                     <span className="text-theme-xs text-primary">
                       Bed {units.find((u) => u.id === hold.unitId)?.code ?? "?"} reserved, expected {formatDate(hold.expectedOn, "MMM d")}
-                      {canEdit ? (
-                        <button
-                          type="button"
-                          className="ml-2 text-muted-foreground underline hover:text-foreground"
-                          disabled={busy === hold.id}
-                          onClick={() => run(hold.id, () => release(hold.id), "Reservation released.")}
-                        >
-                          Release
-                        </button>
-                      ) : null}
-                      {canEdit ? (
-                        <button
-                          type="button"
-                          className="ml-2 text-muted-foreground underline hover:text-foreground"
-                          onClick={() => setReplacing({ holdId: hold.id, bed: units.find((u) => u.id === hold.unitId)?.code ?? "?", from: p.patientName })}
-                        >
-                          Replace
-                        </button>
-                      ) : null}
+                    </span>
+                  ) : null}
+                  {hold && canEdit ? (
+                    <span className="mt-1 flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        disabled={busy === hold.id}
+                        onClick={() => setReleasing({ holdId: hold.id, bed: units.find((u) => u.id === hold.unitId)?.code ?? "?", name: p.patientName })}
+                      >
+                        Release
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        onClick={() => setReplacing({ holdId: hold.id, bed: units.find((u) => u.id === hold.unitId)?.code ?? "?", from: p.patientName })}
+                      >
+                        Replace
+                      </Button>
                     </span>
                   ) : null}
                 </div>
@@ -378,12 +397,35 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
       ) : null}
       <CheckInDialog key={checkIn?.sheetRow?.id ?? checkIn?.referral?.id} target={checkIn} onOpenChange={(open) => !open && setCheckIn(null)} />
       <DischargeDialog
+        key={discharge?.stay.id ?? "none"}
         stay={discharge?.stay ?? null}
         patientName={discharge?.name ?? ""}
         defaultCheckOutAt={discharge?.on}
         onOpenChange={(open) => !open && setDischarge(null)}
         onDischarged={() => setDischarge(null)}
       />
+      <AlertDialog open={!!releasing} onOpenChange={(o) => !o && setReleasing(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Free bed {releasing?.bed}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              It is held for {releasing?.name}. Once freed, anyone may take it; hold it again from here if you change your mind.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it held</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const r = releasing;
+                setReleasing(null);
+                if (r) void run(r.holdId, () => release(r.holdId), `Bed ${r.bed} is free again.`);
+              }}
+            >
+              Free the bed
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

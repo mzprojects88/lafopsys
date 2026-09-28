@@ -37,10 +37,11 @@ export function FloorPlanBedPicker({
   options: AssignableBed[];
   blocked?: BlockedBed[];
 }) {
-  const { rooms, units, bedPositions, labels } = useHouseLayout();
-  const { patients, carers, stays } = usePatientsData();
+  const { rooms, units, bedPositions, labels, loading: layoutLoading } = useHouseLayout();
+  const { patients, carers, stays, loading: patientsLoading } = usePatientsData();
   const { role } = useRole();
-  const { reservations } = useBedReservations();
+  const { reservations, loading: holdsLoading } = useBedReservations();
+  const loading = layoutLoading || patientsLoading || holdsLoading;
   const beds = React.useMemo(
     () => buildBedViews({ units, rooms, bedPositions, stays, patients, carers, draftFor: noDraft, holds: reservations }),
     [units, rooms, bedPositions, stays, patients, carers, reservations]
@@ -53,6 +54,8 @@ export function FloorPlanBedPicker({
     const occ = occupantsOf(units, bedPositions, stays, carers, patients, reservations);
     return [...rooms].sort((a, b) => a.sortOrder - b.sortOrder).map((r) => ({ room: r, sex: roomSex(r.id, occ) }));
   }, [rooms, units, bedPositions, stays, carers, patients, reservations]);
+
+  if (loading) return <p className="rounded-lg bg-muted/60 px-3 py-6 text-center text-theme-xs text-muted-foreground">Loading the floor plan…</p>;
 
   return (
     <div className="flex flex-col gap-2">

@@ -143,7 +143,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
           : sexFromRelationship(carerRelationship)) ||
     "";
   const who = { sex: noCarer ? patient?.sex ?? referral?.patientSex : carerSex || undefined, familyId: patient?.familyId };
-  const { options: beds, blocked, isException } = useBedChoices({ who, forHoldId: hold?.id, patientId }, exception);
+  const { options: beds, blocked, isException, loading: bedsLoading } = useBedChoices({ who, forHoldId: hold?.id, patientId }, exception);
   // No bed fits the rules: the planner may make room (bed rules, 0071).
   const newcomer = who.sex ? { sex: who.sex, familyId: who.familyId, name: patient ? `${patient.firstName} ${patient.lastName}` : referral?.patientName ?? "" } : undefined;
   // Only a bed still on offer: one taken or reserved since the dialog opened drops out.
@@ -363,7 +363,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
               </FieldDescription>
             ) : null}
           </Field>
-          {newcomer && !beds.length && !exception.on ? (
+          {newcomer && !bedsLoading && !beds.length && !exception.on ? (
             <Button type="button" variant="outline" className="w-fit" onClick={() => setPlanning(true)}>
               No bed fits the rules: suggest a bed plan
             </Button>

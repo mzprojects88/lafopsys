@@ -22,7 +22,8 @@ import { splitName } from "@/lib/utils/house-sheet";
 import { createClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/rbac/use-role";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
-import { patientsStore } from "@/lib/hooks/use-patients-collection";
+import { patientsStore, usePatientsData } from "@/lib/hooks/use-patients-collection";
+import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
 import { referralsStore } from "@/lib/hooks/use-referrals-collection";
 import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
 import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
@@ -46,13 +47,13 @@ import {
 } from "@/components/modules/patients/admission-steps";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { formatDate, todayIso } from "@/lib/utils/date";
-import type { Referral } from "@/lib/types/patient";
+import type { Patient, Referral } from "@/lib/types/patient";
 
 const schema = z.object({
   patientFirstName: z.string().min(1, "First name is required"),
   patientLastName: z.string().min(1, "Last name is required"),
   patientBirthDate: z.string().min(1, "Birthdate is required"),
-  patientSex: z.enum(["M", "F"]),
+  patientSex: z.enum(["M", "F"], { message: "Select the child's sex" }),
   department: z.string().min(1, "Select a department"),
   diagnosisId: z.string().min(1, "Select a diagnosis"),
   treatmentPhaseId: z.string().min(1, "Select a treatment phase"),
@@ -121,7 +122,6 @@ function NewReferralForm() {
       patientFirstName: "",
       patientLastName: "",
       patientBirthDate: "",
-      patientSex: "M",
       department: "",
       diagnosisId: "",
       treatmentPhaseId: "",
@@ -142,11 +142,19 @@ function NewReferralForm() {
   // The bed rules (0070) go by the carer's sex; the relationship suggests it.
   const carerRelationship = useWatch({ control, name: "carerRelationship" });
   const carerSex: Sex | "" = carerSexChoice || sexFromRelationship(carerRelationship) || "";
-  const { options: beds, blocked, isException } = useBedChoices({ who: { sex: carerSex || undefined }, forHoldId: hold?.id }, exception);
+  const { options: beds, blocked, isException, loading: bedsLoading } = useBedChoices({ who: { sex: carerSex || undefined }, forHoldId: hold?.id }, exception);
   // Only a bed still on offer: one taken or reserved since the page opened drops out.
   const unitId = [unitIdEdited, hold?.unitId].find((id) => id && beds.some((b) => b.unit.id === id)) ?? "";
   const exceptionReason = exceptionFor(isException(unitId), exception);
   const lastName = useWatch({ control, name: "patientLastName" });
+  // Already on file under this name? Check them in instead of making a second record.
+  const { patients } = usePatientsData();
+  const [checkInFor, setCheckInFor] = React.useState<Patient | null>(null);
+  const normName = (s: string | undefined) => (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  const onFile =
+    normName(lastName) && normName(firstName)
+      ? patients.filter((p) => normName(p.lastName) === normName(lastName) && normName(p.firstName).split(" ")[0] === normName(firstName).split(" ")[0])
+      : [];
   // No bed fits the rules: the planner may make room (bed rules, 0071).
   const newcomer = carerSex ? { sex: carerSex, name: `${firstName} ${lastName}`.trim() || "the child" } : undefined;
 
@@ -301,6 +309,12 @@ function NewReferralForm() {
 
   return (
     <div className="flex max-w-2xl flex-1 flex-col gap-6">
+      <CheckInDialog
+        key={checkInFor?.id ?? "none"}
+        target={checkInFor ? { patient: checkInFor, sheetRow } : null}
+        onOpenChange={(open) => !open && setCheckInFor(null)}
+        onCheckedIn={(id) => router.push(`/patients/${id}`)}
+      />
       <PageHeader
         title={fromSheet ? "Admit New Child" : "New Referral"}
         description={
@@ -330,15 +344,15 @@ function NewReferralForm() {
                   <Input id="patientBirthDate" type="date" {...register("patientBirthDate")} />
                   <FieldError errors={[errors.patientBirthDate]} />
                 </Field>
-                <Field>
+                <Field data-invalid={!!errors.patientSex}>
                   <FieldLabel htmlFor="patientSex">Sex</FieldLabel>
                   <Controller
                     name="patientSex"
                     control={control}
                     render={({ field }) => (
-                      <Select value={field.value} onValueChange={field.onChange}>
+                      <Select value={field.value ?? ""} onValueChange={field.onChange}>
                         <SelectTrigger id="patientSex" className="w-full">
-                          <SelectValue />
+                          <SelectValue placeholder="Select" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="M">Male</SelectItem>
@@ -347,8 +361,32 @@ function NewReferralForm() {
                       </Select>
                     )}
                   />
+                  <FieldError errors={[errors.patientSex]} />
                 </Field>
               </div>
+              {onFile.length ? (
+                <div role="status" className="flex flex-col gap-2 rounded-xl border border-warning/30 bg-warning/10 p-3 text-theme-sm">
+                  <span className="font-medium text-foreground">Already on file with this name</span>
+                  {onFile.map((p) => (
+                    <div key={p.id} className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-theme-xs text-muted-foreground">
+                        {p.firstName} {p.lastName} · {p.patientNumber}
+                        {p.birthDate ? ` · born ${formatDate(p.birthDate)}` : ""}
+                      </span>
+                      {fromSheet ? (
+                        <Button type="button" size="sm" variant="outline" onClick={() => setCheckInFor(p)}>
+                          Same child: check in instead
+                        </Button>
+                      ) : (
+                        <Button type="button" size="sm" variant="outline" onClick={() => router.push(`/patients/${p.id}`)}>
+                          Same child: open the record
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  <span className="text-theme-xs text-muted-foreground">A different child with the same name? Carry on below.</span>
+                </div>
+              ) : null}
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field data-invalid={!!errors.diagnosisId}>
@@ -562,7 +600,7 @@ function NewReferralForm() {
                       <p className="text-theme-xs text-muted-foreground">Say whether the carer is a woman or a man first: rooms are for women carers or men carers.</p>
                     )}
                   </Field>
-                  {newcomer && !beds.length && !exception.on ? (
+                  {newcomer && !bedsLoading && !beds.length && !exception.on ? (
                     <Button type="button" variant="outline" className="w-fit" onClick={() => setPlanning(true)}>
                       No bed fits the rules: suggest a bed plan
                     </Button>

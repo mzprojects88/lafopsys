@@ -307,6 +307,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
         onOpenChange={(open) => !open && setCheckingIn(false)}
       />
       <DischargeDialog
+        key={dischargeTarget?.id ?? "none"}
         stay={dischargeTarget}
         patientName={`${patient.firstName} ${patient.lastName}`}
         onOpenChange={(open) => !open && setDischargeTarget(null)}

@@ -46,10 +46,10 @@ export const NO_EXCEPTION: ExceptionDraft = { on: false, reason: "" };
 export function useBedChoices(
   opts: { who: Sleeper; excludeUnitId?: string; forHoldId?: string; ignoreStayId?: string; patientId?: string | null },
   exception: ExceptionDraft = NO_EXCEPTION
-): { options: AssignableBed[]; blocked: BlockedBed[]; isException: (unitId: string) => boolean } {
-  const { rooms, units, bedPositions } = useHouseLayout();
-  const { patients, carers, stays } = usePatientsData();
-  const { reservations } = useBedReservations();
+): { options: AssignableBed[]; blocked: BlockedBed[]; isException: (unitId: string) => boolean; loading: boolean } {
+  const { rooms, units, bedPositions, loading: layoutLoading } = useHouseLayout();
+  const { patients, carers, stays, loading: patientsLoading } = usePatientsData();
+  const { reservations, loading: holdsLoading } = useBedReservations();
   const { sex, familyId } = opts.who;
   const { excludeUnitId, forHoldId, ignoreStayId, patientId } = opts;
   const { allowed, blocked } = React.useMemo(
@@ -69,6 +69,8 @@ export function useBedChoices(
     options: exception.on ? [...allowed, ...blocked] : allowed,
     blocked,
     isException: (unitId) => exception.on && blockedIds.has(unitId),
+    // Until the house is in, "no bed" means "not loaded yet", not "full".
+    loading: layoutLoading || patientsLoading || holdsLoading,
   };
 }
 
