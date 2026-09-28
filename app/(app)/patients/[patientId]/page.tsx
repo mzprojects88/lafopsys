@@ -69,7 +69,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   const patientAppointments = appointments.filter((a) => a.patientId === patient.id);
   // The orientation belongs to the newest stay (0054).
   const latestStay = [...patientStays].sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0] ?? null;
-  const showCheckIn = canEdit && patient.status !== "expired" && !patientStays.some(isActiveStay);
+  const currentStay = patientStays.find(isActiveStay);
+  const currentUnit = currentStay ? unitForBedPosition(currentStay.bedPositionId, units, bedPositions) : undefined;
+  const showCheckIn = canEdit && patient.status !== "expired" && !currentStay;
 
   const diagnosisLabel = patient.diagnosisIds
     .map((id) => diagnoses.find((d) => d.id === id)?.name)
@@ -124,6 +126,29 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
             <PencilLine />
             Edit details
           </Button>
+        </div>
+      ) : null}
+
+      {/* The stay's actions without opening the Stays tab (walkthrough, 2026-09-28). */}
+      {currentStay ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-border bg-card px-4 py-3 text-theme-sm">
+          <BedDouble className="size-4 shrink-0 text-muted-foreground" />
+          <span>
+            In the house · Bed {currentUnit?.code ?? "—"} since {formatDate(currentStay.checkInAt)}
+            {currentStay.expectedCheckoutAt ? ` · expected out ${formatDate(currentStay.expectedCheckoutAt)}` : ""}
+          </span>
+          {canEdit ? (
+            <div className="ml-auto flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setTransferTarget(currentStay)}>
+                <ArrowRightLeft />
+                Change bed
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setDischargeTarget(currentStay)}>
+                <LogOut />
+                Check out
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -222,11 +247,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => setTransferTarget(stay)}>
                             <ArrowRightLeft />
-                            Transfer
+                            Change bed
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => setDischargeTarget(stay)}>
                             <LogOut />
-                            Discharge
+                            Check out
                           </Button>
                         </div>
                       )}

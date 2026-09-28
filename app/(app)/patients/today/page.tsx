@@ -28,8 +28,8 @@ export default function TodayBoardPage() {
   const columns: BoardColumn<Stay>[] = [
     { id: "arrivals", title: "Arrivals Today", icon: PlaneLanding, items: arrivals },
     { id: "departures", title: "Departures Today", icon: PlaneTakeoff, items: departures },
-    { id: "in-house", title: "In-House Now", icon: Home, items: inHouse },
-    { id: "overdue", title: "Overdue Check-outs", icon: Clock, items: overdue },
+    { id: "in-house", title: "In the house, on time", icon: Home, items: inHouse },
+    { id: "overdue", title: "Past expected check-out", icon: Clock, items: overdue },
   ];
 
   return (

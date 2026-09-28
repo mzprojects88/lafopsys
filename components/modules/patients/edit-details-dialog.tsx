@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { CarerSexField } from "@/components/modules/patients/bed-rule-fields";
 import { isActiveStay } from "@/lib/utils/beds";
-import { sexFromRelationship, type Sex } from "@/lib/utils/bed-rules";
+import { CARER_RELATIONSHIPS, familyLink, sexFromRelationship, type Sex } from "@/lib/utils/bed-rules";
+import { SiblingField } from "@/components/modules/patients/stay-bed-fields";
 import { todayIso } from "@/lib/utils/date";
 import type { Carer, Patient } from "@/lib/types/patient";
 import { plainError } from "@/lib/utils/plain-error";
@@ -54,7 +55,7 @@ export function EditDetailsDialog({ patient, carer, open, onOpenChange }: EditDe
     setSaving(true);
     // A family is one id shared by siblings: join the other child's, or start one for both.
     const sibling = patients.find((x) => x.id === familyWith);
-    const familyId = sibling ? sibling.familyId ?? patient.familyId ?? crypto.randomUUID() : familyWith === sameFamilyAtOpen ? patient.familyId : undefined;
+    const familyId = sibling ? familyLink(patient, sibling).familyId : familyWith === sameFamilyAtOpen ? patient.familyId : undefined;
     const p = await updatePatient(patient.id, { birthDate: birthDate || undefined, sex, rawAddress: address.trim() || undefined, familyId });
     const f = sibling && sibling.familyId !== familyId ? await updatePatient(sibling.id, { familyId }) : ({ ok: true } as const);
     const c = !carerName.trim()
@@ -118,7 +119,19 @@ export function EditDetailsDialog({ patient, carer, open, onOpenChange }: EditDe
           </Field>
           <Field>
             <FieldLabel htmlFor="ed-rel">Relationship</FieldLabel>
-            <Input id="ed-rel" value={relationship} onChange={(e) => setRelationship(e.target.value)} placeholder="Mother" />
+            <Select value={relationship} onValueChange={setRelationship}>
+              <SelectTrigger id="ed-rel" className="w-full">
+                <SelectValue placeholder="Select" />
+              </SelectTrigger>
+              <SelectContent>
+                {/* An older free-text word ("Lola") stays choosable until changed. */}
+                {[...CARER_RELATIONSHIPS, ...(relationship && !CARER_RELATIONSHIPS.includes(relationship) ? [relationship] : [])].map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {r}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Field>
             <FieldLabel htmlFor="ed-phone">Carer&apos;s phone</FieldLabel>
@@ -129,22 +142,9 @@ export function EditDetailsDialog({ patient, carer, open, onOpenChange }: EditDe
               <CarerSexField id="ed-carer-sex" value={carerSex} onChange={setCarerSexChoice} />
             </div>
           ) : null}
-          <Field className="sm:col-span-2">
-            <FieldLabel htmlFor="ed-family">Same family as</FieldLabel>
-            <Select value={familyWith || "none"} onValueChange={(v) => setFamilyWith(v === "none" ? "" : v)}>
-              <SelectTrigger id="ed-family" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No sibling in the house</SelectItem>
-                {inHouse.map((x) => (
-                  <SelectItem key={x.id} value={x.id}>
-                    {x.firstName} {x.lastName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
+          <div className="sm:col-span-2">
+            <SiblingField value={familyWith} onChange={setFamilyWith} excludeId={patient.id} />
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { bedChoices, bedRuleProblem, occupantsOf, relationshipFromText, roomBreaches, roomSex, sexFromRelationship } from "../lib/utils/bed-rules.ts";
+import { bedChoices, bedRuleProblem, familyLink, occupantsOf, relationshipFromText, roomBreaches, roomSex, sexFromRelationship } from "../lib/utils/bed-rules.ts";
 
 // Room 1 (B1, B2), Room 2 (B3, B4), Room 3 (B5): the house in miniature.
 const rooms = [
@@ -114,5 +114,16 @@ describe("relationshipFromText", () => {
     assert.equal(relationshipFromText("TITO"), "Uncle");
     assert.equal(relationshipFromText("kapitbahay"), "Guardian");
     assert.equal(relationshipFromText(""), "");
+  });
+});
+
+describe("familyLink", () => {
+  it("joins the sibling's family, or starts one for both", () => {
+    assert.deepEqual(familyLink({ id: "a" }, { id: "b", familyId: "f1" }), { familyId: "f1", updates: [{ id: "a", familyId: "f1" }] });
+    assert.deepEqual(familyLink({ id: "a", familyId: "f0" }, { id: "b" }), { familyId: "f0", updates: [{ id: "b", familyId: "f0" }] });
+    assert.deepEqual(familyLink({ id: "a" }, { id: "b" }, () => "new"), { familyId: "new", updates: [{ id: "a", familyId: "new" }, { id: "b", familyId: "new" }] });
+    // A child not created yet: only the sibling changes now.
+    assert.deepEqual(familyLink(undefined, { id: "b" }, () => "new"), { familyId: "new", updates: [{ id: "b", familyId: "new" }] });
+    assert.deepEqual(familyLink({ id: "a", familyId: "f1" }, { id: "b", familyId: "f1" }).updates, []);
   });
 });

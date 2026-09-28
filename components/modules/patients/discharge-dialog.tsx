@@ -81,11 +81,11 @@ export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged,
         date: followUpDate,
         time: "09:00",
         clinic: "Follow-up (set clinic on the Appointments page)",
-        purpose: "Post-discharge follow-up",
+        purpose: "Follow-up after check-out",
         needsTransport: false,
       });
       if (!apptResult.ok) {
-        toast.error(`Discharged, but couldn't schedule the follow-up: ${apptResult.error}`);
+        toast.error(`Checked out, but couldn't schedule the follow-up: ${plainError(apptResult.error)}`);
         setSubmitting(false);
         reset();
         onDischarged();
@@ -94,7 +94,7 @@ export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged,
       }
     }
 
-    toast.success(`${patientName} discharged`);
+    toast.success(`${patientName} checked out`);
     setSubmitting(false);
     reset();
     onDischarged();
@@ -105,7 +105,7 @@ export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged,
     <Dialog open={!!stay} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Discharge {patientName}</DialogTitle>
+          <DialogTitle>Check out {patientName}</DialogTitle>
           <DialogDescription>Records the check-out and frees this bed for the next admission.</DialogDescription>
         </DialogHeader>
 
@@ -159,7 +159,7 @@ export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged,
             Cancel
           </Button>
           <Button disabled={!reason || !checkOutAt || submitting} onClick={handleConfirm}>
-            {submitting ? "Discharging…" : "Confirm Discharge"}
+            {submitting ? "Checking out…" : "Check out"}
           </Button>
         </DialogFooter>
       </DialogContent>

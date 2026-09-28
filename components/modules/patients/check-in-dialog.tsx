@@ -14,17 +14,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FloorPlanBedPicker } from "@/components/modules/house-ops/floor-plan/floor-plan-bed-picker";
 import { createClient } from "@/lib/supabase/client";
 import { patientsStore, usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { referralsStore } from "@/lib/hooks/use-referrals-collection";
 import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
 import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
-import { BedRuleException, CarerSexField, NO_EXCEPTION, exceptionFor, useBedChoices, type ExceptionDraft } from "@/components/modules/patients/bed-rule-fields";
-import { BedPlanDialog } from "@/components/modules/patients/bed-plan-dialog";
-import { CARER_RELATIONSHIPS as RELATIONSHIPS, relationshipFromText, sexFromRelationship, type Sex } from "@/lib/utils/bed-rules";
+import { NO_EXCEPTION, exceptionFor, useBedChoices, type ExceptionDraft } from "@/components/modules/patients/bed-rule-fields";
+import { SiblingField, StayBedFields, StayDatesFields, linkSibling } from "@/components/modules/patients/stay-bed-fields";
+import { CARER_RELATIONSHIPS as RELATIONSHIPS, familyLink, relationshipFromText, sexFromRelationship, type Sex } from "@/lib/utils/bed-rules";
 import { plainError } from "@/lib/utils/plain-error";
-import { ArrivalFields, arrivalFromPickups, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
+import { arrivalFromPickups, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
 import {
   EMPTY_APPOINTMENT,
   EMPTY_RULES,
@@ -86,7 +85,7 @@ function possibleMatches(referral: Referral, patients: Patient[]): Patient[] {
  * target, so every open starts clean.
  */
 export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDialogProps) {
-  const { patients, carers, stays } = usePatientsData();
+  const { patients, carers, stays, updatePatient } = usePatientsData();
   const referral = target?.referral;
   const sheetRow = target?.sheetRow;
   const matches = referral ? possibleMatches(referral, patients) : [];
@@ -102,7 +101,8 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
   const [carerMobile, setCarerMobile] = React.useState("");
   const [carerSexChoice, setCarerSexChoice] = React.useState<Sex | "">("");
   const [exception, setException] = React.useState<ExceptionDraft>(NO_EXCEPTION);
-  const [planning, setPlanning] = React.useState(false);
+  const [siblingId, setSiblingId] = React.useState("");
+  const [newFamilyId] = React.useState(() => crypto.randomUUID());
   const [appointment, setAppointment] = React.useState<AppointmentDraft>(EMPTY_APPOINTMENT);
   const { pickups } = usePickups();
   const [arrival, setArrival] = React.useState<ArrivalDraft>(() => arrivalFromPickups(pickups, target?.sheetRow));
@@ -141,7 +141,12 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
           ? sexFromRelationship(sheetRow?.relationship)
           : sexFromRelationship(carerRelationship)) ||
     "";
-  const who = { sex: noCarer ? patient?.sex ?? referral?.patientSex : carerSex || undefined, familyId: patient?.familyId };
+  // A sibling in the house: their family, so the carers may share a room (0070).
+  const sibling = patients.find((p) => p.id === siblingId);
+  // ponytail: a new record gets its family only after check-in (the RPCs take no family), so beds
+  // are offered as for any family; add p_family_id to check_in/admit_from_sheet if siblings of the other sex need one room at once.
+  const familyId = sibling && patient ? familyLink(patient, sibling, () => newFamilyId).familyId : patient?.familyId;
+  const who = { sex: noCarer ? patient?.sex ?? referral?.patientSex : carerSex || undefined, familyId };
   const { options: beds, blocked, isException, loading: bedsLoading } = useBedChoices({ who, forHoldId: hold?.id, patientId }, exception);
   // No bed fits the rules: the planner may make room (bed rules, 0071).
   const newcomer = who.sex ? { sex: who.sex, familyId: who.familyId, name: patient ? `${patient.firstName} ${patient.lastName}` : referral?.patientName ?? "" } : undefined;
@@ -153,14 +158,13 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
   // NCH's sheet gives no dated appointment: staff ask the family and type it in.
   const manualAppointment = !sheetRow?.nextAppointmentOn;
   const name = patient ? `${patient.firstName} ${patient.lastName}` : referral?.patientName ?? "";
-  const today = todayIso();
 
   const exceptionReason = exceptionFor(isException(bed), exception);
   // What still stops "Next", said out loud rather than a grey button (walkthrough, 2026-09-28).
   const stillNeeded = [
     !noCarer && !carerSex ? "whether the carer is a woman or a man" : null,
     carer === NEW_CARER && carerName.trim() && !carerRelationship ? "the carer's relationship" : null,
-    !bed ? "a bed" : null,
+    !bed ? "tonight's bed" : null,
     isException(bed) && !exceptionReason ? "why the bed rules are set aside" : null,
     !checkInAt ? "the day they arrived" : null,
     !arrivalReady(arrival) ? "how they arrived" : null,
@@ -171,6 +175,14 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
   async function handleConfirm() {
     if (!target || !ready || !rulesDraft.discussed) return;
     setSubmitting(true);
+    if (sibling && patient) {
+      const linkError = await linkSibling(updatePatient, patient, sibling, newFamilyId);
+      if (linkError) {
+        setSubmitting(false);
+        toast.error(`Couldn't link the sibling: ${plainError(linkError)}`);
+        return;
+      }
+    }
     const newCarer = carer === NEW_CARER && carerName.trim();
     const fromSheet = carer === SHEET_CARER && sheetRow;
     const { data, error } = sheetRow
@@ -224,6 +236,8 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
     // How they came is its own step (0052); the stay stands either way.
     const arrived = await recordArrival(stayId, arrivalInput(arrival));
     const problems = arrived.ok ? [] : [`how they arrived (${arrived.error}); set it on the Stays tab`];
+    const linkError = sibling && !patient ? await linkSibling(updatePatient, { id: newPatientId }, sibling, newFamilyId) : null;
+    if (linkError) problems.push(`the sibling link (${plainError(linkError)}); set it in Edit details`);
     problems.push(
       ...(await finishAdmission({
         stayId,
@@ -280,25 +294,6 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
             </Field>
           )}
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="checkInAt">Arrived on</FieldLabel>
-              <Input id="checkInAt" type="date" max={today} value={checkInAt} onChange={(e) => setCheckInAt(e.target.value)} />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="expectedCheckoutAt">Expected check-out (optional)</FieldLabel>
-              <Input
-                id="expectedCheckoutAt"
-                type="date"
-                min={checkInAt}
-                value={expectedCheckoutAt}
-                onChange={(e) => setExpectedCheckoutAt(e.target.value)}
-              />
-            </Field>
-          </div>
-
-          <ArrivalFields value={arrival} onChange={setArrival} arrivalDate={checkInAt} />
-
           <Field>
             <FieldLabel htmlFor="carer">Carer staying with them</FieldLabel>
             <Select value={carer} onValueChange={(v) => { setCarerChoice(v); setCarerSexChoice(""); }}>
@@ -342,35 +337,31 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
             </div>
           )}
 
-          {!noCarer ? (
-            <CarerSexField
-              id="carerSex"
-              value={carerSex}
-              onChange={setCarerSexChoice}
-              hint={carerSexChoice ? undefined : carerSex ? "Filled in from the relationship; change it if that's wrong." : undefined}
-            />
-          ) : null}
-
-          <Field>
-            <FieldLabel>Bed</FieldLabel>
-            {noCarer || carerSex ? (
-              <FloorPlanBedPicker value={bed} onChange={setUnitId} options={beds} blocked={blocked} />
-            ) : (
-              <FieldDescription>Say whether the carer is a woman or a man first: rooms are for women carers or men carers.</FieldDescription>
-            )}
-            {hold ? (
-              <FieldDescription>
-                A bed was reserved for them{hold.unitId === bed ? "" : " (another bed is chosen, so the reserved one is freed)"}. Staying on it confirms it; tap another green bed if not.
-              </FieldDescription>
-            ) : null}
-          </Field>
-          {newcomer && !bedsLoading && !beds.length && !exception.on ? (
-            <Button type="button" variant="outline" className="w-fit" onClick={() => setPlanning(true)}>
-              No bed fits the rules: suggest a bed plan
-            </Button>
-          ) : null}
-          <BedRuleException blocked={blocked} value={exception} onChange={setException} />
-          {planning && newcomer ? <BedPlanDialog newcomer={newcomer} onClose={() => setPlanning(false)} onApplied={(u) => u && setUnitId(u)} /> : null}
+          <SiblingField value={siblingId} onChange={setSiblingId} excludeId={patientId} />
+          <StayBedFields
+            askSex={!noCarer}
+            carerSex={carerSex}
+            onCarerSex={setCarerSexChoice}
+            sexHint={carerSexChoice ? undefined : carerSex ? "Filled in from the relationship; change it if that's wrong." : undefined}
+            bed={bed}
+            onBed={setUnitId}
+            beds={beds}
+            blocked={blocked}
+            bedsLoading={bedsLoading}
+            hold={hold}
+            newcomer={newcomer}
+            exception={exception}
+            onException={setException}
+            siblingNote={sibling && !patient ? `Joins ${sibling.firstName}'s family once checked in. Beds are offered as for any family until then.` : undefined}
+          />
+          <StayDatesFields
+            checkInAt={checkInAt}
+            onCheckInAt={setCheckInAt}
+            expectedCheckoutAt={expectedCheckoutAt}
+            onExpectedCheckoutAt={setExpectedCheckoutAt}
+            arrival={arrival}
+            onArrival={setArrival}
+          />
 
           {sheetRow?.nextAppointmentOn ? (
             <p className="rounded-xl bg-muted/60 p-3 text-theme-xs text-muted-foreground">

@@ -15,6 +15,7 @@ import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import type { Referral, ReferralStatus } from "@/lib/types/patient";
 import { formatDate } from "@/lib/utils/date";
+import { plainError } from "@/lib/utils/plain-error";
 import type { LucideIcon } from "lucide-react";
 
 const STATUSES: { id: ReferralStatus; title: string; icon: LucideIcon }[] = [
@@ -25,10 +26,18 @@ const STATUSES: { id: ReferralStatus; title: string; icon: LucideIcon }[] = [
   { id: "admitted", title: "Admitted", icon: BedDouble },
 ];
 
+type Decision = "approved" | "waitlisted" | "declined";
+// Each decision asks once (walkthrough, 2026-09-28): approve confirms, waitlist and decline say why.
+const DECISIONS: Record<Decision, { title: string; description: string; confirmLabel: string; requireReason: boolean; destructive?: boolean }> = {
+  approved: { title: "Approve referral", description: "They can be checked in when they arrive.", confirmLabel: "Approve", requireReason: false },
+  waitlisted: { title: "Waitlist referral", description: "Say why (no bed yet, treatment not yet due): it shows on the Waitlist.", confirmLabel: "Waitlist", requireReason: true },
+  declined: { title: "Decline referral", description: "The decline reason is what makes unmet demand reportable to grantmakers.", confirmLabel: "Decline", requireReason: true, destructive: true },
+};
+
 export default function ReferralsPage() {
   const { referrals, updateReferral } = useReferralsData();
   const canEdit = useModuleAccess().canEdit("patients");
-  const [declineTarget, setDeclineTarget] = React.useState<string | null>(null);
+  const [deciding, setDeciding] = React.useState<{ id: string; status: Decision } | null>(null);
   const [arrivalTarget, setArrivalTarget] = React.useState<string | null>(null);
 
   const columns: BoardColumn<Referral>[] = STATUSES.map((s) => ({
@@ -41,10 +50,10 @@ export default function ReferralsPage() {
   async function setStatus(id: string, status: ReferralStatus, reason?: string) {
     const result = await updateReferral(id, { status, reason });
     if (!result.ok) {
-      toast.error(`Couldn't update the referral: ${result.error}`);
+      toast.error(`Couldn't update the referral: ${plainError(result.error)}`);
       return;
     }
-    toast.success(`Referral marked ${status}`);
+    toast.success(status === "submitted" ? "Referral reopened" : `Referral ${status}`);
   }
 
   const arrivalReferral = referrals.find((r) => r.id === arrivalTarget) ?? null;
@@ -59,7 +68,7 @@ export default function ReferralsPage() {
             <Button asChild>
               <Link href="/patients/admit">
                 <Plus />
-                New Referral
+                New referral
               </Link>
             </Button>
           )
@@ -95,26 +104,31 @@ export default function ReferralsPage() {
                   </span>
                 )}
                 {r.reason && <span className="text-theme-xs italic text-muted-foreground">{r.reason}</span>}
-                {canEdit && r.status === "submitted" && (
-                  <div className="flex gap-1.5 pt-1">
-                    <Button size="xs" className="flex-1" onClick={() => setStatus(r.id, "approved")}>
+                {canEdit && (r.status === "submitted" || r.status === "waitlisted") && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <Button size="sm" className="flex-1" onClick={() => setDeciding({ id: r.id, status: "approved" })}>
                       Approve
                     </Button>
-                    <Button size="xs" variant="outline" className="flex-1" onClick={() => setStatus(r.id, "waitlisted")}>
-                      Waitlist
-                    </Button>
-                    <Button size="xs" variant="destructive" className="flex-1" onClick={() => setDeclineTarget(r.id)}>
+                    {r.status === "submitted" && (
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => setDeciding({ id: r.id, status: "waitlisted" })}>
+                        Waitlist
+                      </Button>
+                    )}
+                    <Button size="sm" variant="destructive" className="flex-1" onClick={() => setDeciding({ id: r.id, status: "declined" })}>
                       Decline
                     </Button>
                   </div>
                 )}
+                {canEdit && r.status === "declined" && (
+                  <Button size="sm" variant="outline" className="w-full" onClick={() => setStatus(r.id, "submitted")}>
+                    Reopen
+                  </Button>
+                )}
                 {canEdit && r.status === "approved" && (
-                  <div className="flex gap-1.5 pt-1">
-                    <Button size="xs" className="flex-1" onClick={() => setArrivalTarget(r.id)}>
-                      <BedDouble />
-                      Check in
-                    </Button>
-                  </div>
+                  <Button size="sm" className="w-full" onClick={() => setArrivalTarget(r.id)}>
+                    <BedDouble />
+                    Check in
+                  </Button>
                 )}
               </CardContent>
             </Card>
@@ -123,13 +137,11 @@ export default function ReferralsPage() {
       />
 
       <ReasonDialog
-        open={!!declineTarget}
-        onOpenChange={(open) => !open && setDeclineTarget(null)}
-        title="Decline referral"
-        description="The decline reason is what makes unmet demand reportable to grantmakers."
-        confirmLabel="Decline"
-        destructive
-        onConfirm={(reason) => declineTarget && setStatus(declineTarget, "declined", reason)}
+        key={deciding ? `${deciding.id}-${deciding.status}` : "none"}
+        open={!!deciding}
+        onOpenChange={(open) => !open && setDeciding(null)}
+        {...DECISIONS[deciding?.status ?? "declined"]}
+        onConfirm={(reason) => deciding && setStatus(deciding.id, deciding.status, reason.trim() || undefined)}
       />
 
       <CheckInDialog

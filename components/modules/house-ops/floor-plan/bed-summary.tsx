@@ -61,7 +61,7 @@ export function BedSummary({ bed, canSeeClinical, linkPatients = false }: BedSum
             </span>
           )}
           {bed.occupants.length > 0 && (
-            <span className={bed.status === "blocked" ? "text-destructive" : "text-warning-foreground dark:text-warning"}>Still checked in; transfer or discharge to free the bed.</span>
+            <span className={bed.status === "blocked" ? "text-destructive" : "text-warning-foreground dark:text-warning"}>Still checked in; change their bed or check them out to free it.</span>
           )}
         </div>
       )}

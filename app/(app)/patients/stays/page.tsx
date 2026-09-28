@@ -12,7 +12,7 @@ import { PersonAvatar } from "@/components/patterns/person-avatar";
 import type { Patient, Stay } from "@/lib/types/patient";
 import type { BedPosition, Unit } from "@/lib/types/house-ops";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
-import { unitForBedPosition } from "@/lib/utils/beds";
+import { isActiveStay, unitForBedPosition } from "@/lib/utils/beds";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 
@@ -86,7 +86,8 @@ export default function StayHistoryPage() {
   const { units, bedPositions } = useHouseLayout();
   const columns = buildColumns(patients, units, bedPositions);
 
-  const inHouseCount = stays.filter((s) => s.status === "in_house").length;
+  // In the house = checked in, not checked out (overdue included): one count everywhere.
+  const inHouseCount = stays.filter(isActiveStay).length;
   const discharged = stays.filter((s) => s.status === "checked_out").length;
   const avgLengthDays = Math.round(
     stays.reduce((sum, s) => {
@@ -102,8 +103,8 @@ export default function StayHistoryPage() {
 
       <KpiGrid>
         <KpiCard label="Total Stays" value={stays.length} icon={BedDouble} />
-        <KpiCard label="Currently In-House" value={inHouseCount} icon={DoorOpen} />
-        <KpiCard label="Discharged" value={discharged} icon={LogOut} />
+        <KpiCard label="In the house now" value={inHouseCount} icon={DoorOpen} />
+        <KpiCard label="Checked out" value={discharged} icon={LogOut} />
         <KpiCard label="Avg. Length of Stay" value={`${avgLengthDays}d`} icon={Timer} />
       </KpiGrid>
 

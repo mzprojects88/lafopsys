@@ -14,7 +14,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel, FieldSeparator } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FloorPlanBedPicker } from "@/components/modules/house-ops/floor-plan/floor-plan-bed-picker";
 import { diagnoses, treatmentPhases, provinces, hospitals } from "@/lib/mock-data";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
@@ -27,11 +26,11 @@ import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
 import { referralsStore } from "@/lib/hooks/use-referrals-collection";
 import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
 import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
-import { BedRuleException, CarerSexField, NO_EXCEPTION, exceptionFor, useBedChoices, type ExceptionDraft } from "@/components/modules/patients/bed-rule-fields";
-import { BedPlanDialog } from "@/components/modules/patients/bed-plan-dialog";
+import { NO_EXCEPTION, exceptionFor, useBedChoices, type ExceptionDraft } from "@/components/modules/patients/bed-rule-fields";
+import { SiblingField, StayBedFields, StayDatesFields, linkSibling } from "@/components/modules/patients/stay-bed-fields";
 import { CARER_RELATIONSHIPS, relationshipFromText, sexFromRelationship, type Sex } from "@/lib/utils/bed-rules";
 import { plainError } from "@/lib/utils/plain-error";
-import { ArrivalFields, arrivalFromPickups, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
+import { arrivalFromPickups, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
 import { usePickups } from "@/lib/hooks/use-pickups-collection";
 import { recordArrival } from "@/lib/hooks/use-arrival-rides-collection";
 import { useBedReservations } from "@/lib/hooks/use-bed-reservations";
@@ -53,7 +52,7 @@ import type { Patient, Referral } from "@/lib/types/patient";
 const schema = z.object({
   patientFirstName: z.string().min(1, "First name is required"),
   patientLastName: z.string().min(1, "Last name is required"),
-  patientBirthDate: z.string().min(1, "Birthdate is required"),
+  patientBirthDate: z.string().min(1, "Birthday is required"),
   patientSex: z.enum(["M", "F"], { message: "Select the child's sex" }),
   department: z.string().min(1, "Select a department"),
   diagnosisId: z.string().min(1, "Select a diagnosis"),
@@ -93,7 +92,8 @@ function NewReferralForm() {
   const hold = sheetRow ? holdFor(null, sheetRow.id) : undefined;
   const [carerSexChoice, setCarerSexChoice] = React.useState<Sex | "">("");
   const [exception, setException] = React.useState<ExceptionDraft>(NO_EXCEPTION);
-  const [planning, setPlanning] = React.useState(false);
+  const [siblingId, setSiblingId] = React.useState("");
+  const [newFamilyId] = React.useState(() => crypto.randomUUID());
   const [unitIdEdited, setUnitId] = React.useState("");
   const [appointment, setAppointment] = React.useState<AppointmentDraft>(EMPTY_APPOINTMENT);
   const [rulesDraft, setRulesDraft] = React.useState<RulesDraft>(EMPTY_RULES);
@@ -160,7 +160,8 @@ function NewReferralForm() {
     : [];
   const lastName = useWatch({ control, name: "patientLastName" });
   // Already on file under this name? Check them in instead of making a second record.
-  const { patients } = usePatientsData();
+  const { patients, updatePatient } = usePatientsData();
+  const sibling = patients.find((p) => p.id === siblingId);
   const [checkInFor, setCheckInFor] = React.useState<Patient | null>(null);
   const normName = (s: string | undefined) => (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
   const onFile =
@@ -259,6 +260,9 @@ function NewReferralForm() {
       const { stay_id: stayId, patient_id: patientId } = data as { stay_id: string; patient_id: string };
       const arrived = await recordArrival(stayId, arrivalInput(arrival));
       const problems = arrived.ok ? [] : [`how they arrived (${arrived.error}); set it on the Stays tab`];
+      // ponytail: linked after the save (admit_from_sheet takes no family); see check-in-dialog.
+      const linkError = sibling ? await linkSibling(updatePatient, { id: patientId }, sibling, newFamilyId) : null;
+      if (linkError) problems.push(`the sibling link (${plainError(linkError)}); set it in Edit details`);
       problems.push(
         ...(await finishAdmission({
           stayId,
@@ -328,7 +332,7 @@ function NewReferralForm() {
         onCheckedIn={(id) => router.push(`/patients/${id}`)}
       />
       <PageHeader
-        title={fromSheet ? "Admit New Child" : "New Referral"}
+        title={fromSheet ? "Admit new child" : "New referral"}
         description={
           fromSheet
             ? `From NCH's Occupancy Tracker${sheetRow ? ` (on the sheet since ${formatDate(sheetRow.runStartedOn)})` : ""}. Complete what the sheet does not carry, pick tonight's bed, and save once.`
@@ -352,7 +356,7 @@ function NewReferralForm() {
                   <FieldError errors={[errors.patientLastName]} />
                 </Field>
                 <Field data-invalid={!!errors.patientBirthDate}>
-                  <FieldLabel htmlFor="patientBirthDate">Birthdate</FieldLabel>
+                  <FieldLabel htmlFor="patientBirthDate">Birthday</FieldLabel>
                   <Input id="patientBirthDate" type="date" {...register("patientBirthDate")} />
                   <FieldError errors={[errors.patientBirthDate]} />
                 </Field>
@@ -605,38 +609,30 @@ function NewReferralForm() {
                 <>
                   <FieldSeparator />
                   <span className="text-base font-medium text-foreground">Admission</span>
-                  <CarerSexField id="carerSex" value={carerSex} onChange={setCarerSexChoice} />
-                  <Field>
-                    <FieldLabel>Tonight&apos;s bed</FieldLabel>
-                    {carerSex ? (
-                      <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={beds} blocked={blocked} />
-                    ) : (
-                      <p className="text-theme-xs text-muted-foreground">Say whether the carer is a woman or a man first: rooms are for women carers or men carers.</p>
-                    )}
-                  </Field>
-                  {newcomer && !bedsLoading && !beds.length && !exception.on ? (
-                    <Button type="button" variant="outline" className="w-fit" onClick={() => setPlanning(true)}>
-                      No bed fits the rules: suggest a bed plan
-                    </Button>
-                  ) : null}
-                  <BedRuleException blocked={blocked} value={exception} onChange={setException} />
-                  {planning && newcomer ? <BedPlanDialog newcomer={newcomer} onClose={() => setPlanning(false)} onApplied={(u) => u && setUnitId(u)} /> : null}
-                  <ArrivalFields value={arrival} onChange={setArrival} arrivalDate={arrivedOn} />
-                  {hold ? (
-                    <p className="text-theme-xs text-muted-foreground">
-                      A bed was reserved for them{hold.unitId === unitId ? "" : " (another bed is chosen, so the reserved one is freed)"}. Staying on it confirms it; tap another green bed if not.
-                    </p>
-                  ) : null}
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <Field>
-                      <FieldLabel htmlFor="checkInAt">Arrived on</FieldLabel>
-                      <Input id="checkInAt" type="date" max={todayIso()} value={arrivedOn} onChange={(e) => setCheckInAt(e.target.value)} />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="expectedCheckoutAt">Expected check-out (optional)</FieldLabel>
-                      <Input id="expectedCheckoutAt" type="date" min={arrivedOn} value={expectedCheckoutAt} onChange={(e) => setExpectedCheckoutAt(e.target.value)} />
-                    </Field>
-                  </div>
+                  <SiblingField value={siblingId} onChange={setSiblingId} />
+                  <StayBedFields
+                    askSex
+                    carerSex={carerSex}
+                    onCarerSex={setCarerSexChoice}
+                    bed={unitId}
+                    onBed={setUnitId}
+                    beds={beds}
+                    blocked={blocked}
+                    bedsLoading={bedsLoading}
+                    hold={hold}
+                    newcomer={newcomer}
+                    exception={exception}
+                    onException={setException}
+                    siblingNote={sibling ? `Joins ${sibling.firstName}'s family once admitted. Beds are offered as for any family until then.` : undefined}
+                  />
+                  <StayDatesFields
+                    checkInAt={arrivedOn}
+                    onCheckInAt={setCheckInAt}
+                    expectedCheckoutAt={expectedCheckoutAt}
+                    onExpectedCheckoutAt={setExpectedCheckoutAt}
+                    arrival={arrival}
+                    onArrival={setArrival}
+                  />
                   {manualAppointment ? (
                     <NextAppointmentFields
                       value={appointment}

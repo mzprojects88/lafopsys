@@ -171,3 +171,17 @@ export function relationshipFromText(raw: string | null | undefined): string {
   if (!key) return "";
   return RELATIONSHIP_WORDS[key] ?? "Guardian";
 }
+
+/**
+ * Joining a child to a sibling's family (0070): the sibling's id, else the
+ * child's own, else a new one; and which of the two rows must change.
+ */
+export function familyLink(
+  child: { id: string; familyId?: string } | undefined,
+  sibling: { id: string; familyId?: string },
+  newId: () => string = () => crypto.randomUUID()
+): { familyId: string; updates: { id: string; familyId: string }[] } {
+  const familyId = sibling.familyId ?? child?.familyId ?? newId();
+  const updates = [child, sibling].filter((p): p is { id: string; familyId?: string } => !!p && p.familyId !== familyId).map((p) => ({ id: p.id, familyId }));
+  return { familyId, updates };
+}

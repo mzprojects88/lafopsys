@@ -59,7 +59,7 @@ export function TransferBedDialog({ stay, patientName, onOpenChange, onTransferr
       toast.error(`Couldn't change the bed: ${plainError(result.error)}`);
       return;
     }
-    toast.success(`${patientName} transferred to ${target.unit.code}`);
+    toast.success(`${patientName} is now in bed ${target.unit.code}`);
     setUnitId("");
     setException(NO_EXCEPTION);
     onTransferred();
@@ -70,8 +70,8 @@ export function TransferBedDialog({ stay, patientName, onOpenChange, onTransferr
     <Dialog open={!!stay} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Transfer {patientName} to a New Bed</DialogTitle>
-          <DialogDescription>Moves this active stay to a different available bed, from tonight.</DialogDescription>
+          <DialogTitle>Change {patientName}&apos;s bed</DialogTitle>
+          <DialogDescription>They sleep in the new bed from tonight.</DialogDescription>
         </DialogHeader>
 
         <Field>
@@ -85,7 +85,7 @@ export function TransferBedDialog({ stay, patientName, onOpenChange, onTransferr
             Cancel
           </Button>
           <Button disabled={!unitId || submitting || (isException(unitId) && !reason)} onClick={handleConfirm}>
-            {submitting ? "Transferring…" : "Confirm Transfer"}
+            {submitting ? "Changing…" : "Change bed"}
           </Button>
         </DialogFooter>
       </DialogContent>

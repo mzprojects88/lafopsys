@@ -28,7 +28,7 @@ export function RetireBedDialog({ bed, onOpenChange, onConfirm }: RetireBedDialo
           <AlertDialogTitle>Retire bed {bed?.code}?</AlertDialogTitle>
           <AlertDialogDescription>
             {occupied
-              ? "Someone is checked into this bed. Transfer or discharge them first; the database will refuse otherwise."
+              ? "Someone is checked into this bed. Change their bed or check them out first; the database will refuse otherwise."
               : "It leaves the plan and every admission list. Past stays keep pointing at it, and adding a bed with the same code later brings it back."}
           </AlertDialogDescription>
         </AlertDialogHeader>

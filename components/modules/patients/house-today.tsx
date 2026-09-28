@@ -307,10 +307,10 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                       size="sm"
                       variant="outline"
                       disabled={busy === s.id}
-                      aria-label={`Move ${nameOf(s.patientId)} to another bed`}
+                      aria-label={`Change ${nameOf(s.patientId)}'s bed`}
                       onClick={() => setMoving({ stay: s, name: nameOf(s.patientId), from: bedOf(s.bedPositionId), unitId: unitForBedPosition(s.bedPositionId, units, bedPositions)?.id })}
                     >
-                      <BedDouble /> Move…
+                      <BedDouble /> Change bed
                     </Button>
                   </div>
                 ) : null}
@@ -344,7 +344,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                   variant="outline"
                   onClick={() => setDischarge({ stay, name: nameOf(stay.patientId), on: dayAfter(row.lastSeenOn) <= today ? dayAfter(row.lastSeenOn) : today })}
                 >
-                  <LogOut /> Discharge
+                  <LogOut /> Check out
                 </Button>
               ) : null}
             </div>
@@ -461,7 +461,7 @@ function MoveTonightDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Move {name} for tonight</DialogTitle>
+          <DialogTitle>Change {name}&apos;s bed</DialogTitle>
           <DialogDescription>Now in bed {from}. Tap the bed for tonight on the plan.</DialogDescription>
         </DialogHeader>
         <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={options} blocked={blocked} />
@@ -471,7 +471,7 @@ function MoveTonightDialog({
             Cancel
           </Button>
           <Button disabled={!unitId || busy || (isException(unitId) && !reason)} onClick={() => onMove(unitId, reason)}>
-            {busy ? "Moving…" : "Move for tonight"}
+            {busy ? "Changing…" : "Change bed"}
           </Button>
         </DialogFooter>
       </DialogContent>
