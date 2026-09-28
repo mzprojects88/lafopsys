@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { HouseSheetStatus } from "@/components/modules/patients/house-sheet-status";
 import { PRIORITIES } from "@/lib/utils/master-sheet";
 import { HouseToday } from "@/components/modules/patients/house-today";
@@ -125,18 +125,20 @@ export default function HouseSheetPage() {
         const badge = <StatusBadge domain="houseSheet" status={p.matchStatus} label={HOUSE_SHEET_STATUS_LABELS[p.matchStatus]} />;
         if (!p.aiReason && !p.aiError) return badge;
         return (
-          <HoverCard openDelay={150}>
-            <HoverCardTrigger asChild>
-              <span className="inline-flex cursor-help items-center gap-1">
+          // A popover, not a hover card: phones have no hover (walkthrough, 2026-09-28).
+          <Popover>
+            <PopoverTrigger asChild>
+              <button type="button" className="inline-flex cursor-pointer items-center gap-1">
                 {badge}
-                <Sparkles className="size-3 text-muted-foreground" />
-              </span>
-            </HoverCardTrigger>
-            <HoverCardContent className="w-72 text-theme-xs">
+                <Sparkles className="size-3 text-muted-foreground" aria-hidden />
+                <span className="sr-only">Why this match</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-72 text-theme-xs">
               {p.aiReason ? <p>{p.aiReason}</p> : null}
               {p.aiError ? <p className="text-destructive">Model: {p.aiError}</p> : null}
-            </HoverCardContent>
-          </HoverCard>
+            </PopoverContent>
+          </Popover>
         );
       },
     },

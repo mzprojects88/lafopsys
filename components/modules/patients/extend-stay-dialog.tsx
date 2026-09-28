@@ -16,6 +16,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import type { Stay } from "@/lib/types/patient";
 import { plainError } from "@/lib/utils/plain-error";
+import { todayIso } from "@/lib/utils/date";
 
 interface ExtendStayDialogProps {
   stay: Stay | null;
@@ -47,7 +48,7 @@ export function ExtendStayDialog({ stay, patientName, onOpenChange, onExtended }
     <Dialog open={!!stay} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Extend {patientName}&apos;s Stay</DialogTitle>
+          <DialogTitle>Extend {patientName}&apos;s stay</DialogTitle>
           <DialogDescription>Updates the expected check-out date and clears any overdue flag.</DialogDescription>
         </DialogHeader>
 
@@ -56,6 +57,7 @@ export function ExtendStayDialog({ stay, patientName, onOpenChange, onExtended }
           <Input
             id="expectedCheckoutAt"
             type="date"
+            min={todayIso()}
             value={expectedCheckoutAt}
             onChange={(e) => setExpectedCheckoutAt(e.target.value)}
           />
@@ -65,8 +67,8 @@ export function ExtendStayDialog({ stay, patientName, onOpenChange, onExtended }
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button disabled={!expectedCheckoutAt || submitting} onClick={handleConfirm}>
-            {submitting ? "Saving…" : "Extend Stay"}
+          <Button disabled={!expectedCheckoutAt || expectedCheckoutAt < todayIso() || submitting} onClick={handleConfirm}>
+            {submitting ? "Saving…" : "Extend stay"}
           </Button>
         </DialogFooter>
       </DialogContent>

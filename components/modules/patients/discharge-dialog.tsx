@@ -47,6 +47,7 @@ export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged,
   const checkOutAt = checkOutAtInput || defaultCheckOutAt || todayIso();
   const [scheduleFollowUp, setScheduleFollowUp] = React.useState(false);
   const [followUpDate, setFollowUpDate] = React.useState("");
+  const [followUpClinic, setFollowUpClinic] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
 
   function reset() {
@@ -55,6 +56,7 @@ export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged,
     setCheckOutAtInput("");
     setScheduleFollowUp(false);
     setFollowUpDate("");
+    setFollowUpClinic("");
   }
 
   async function handleConfirm() {
@@ -80,7 +82,7 @@ export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged,
         patientId: stay.patientId,
         date: followUpDate,
         time: "09:00",
-        clinic: "Follow-up (set clinic on the Appointments page)",
+        clinic: followUpClinic.trim() || "Follow-up (set clinic on the Appointments page)",
         purpose: "Follow-up after check-out",
         needsTransport: false,
       });
@@ -148,10 +150,16 @@ export function DischargeDialog({ stay, patientName, onOpenChange, onDischarged,
         </label>
 
         {scheduleFollowUp && (
-          <Field>
-            <FieldLabel htmlFor="followUpDate">Follow-up date</FieldLabel>
-            <Input id="followUpDate" type="date" value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} />
-          </Field>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="followUpDate">Follow-up date</FieldLabel>
+              <Input id="followUpDate" type="date" min={checkOutAt} value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="followUpClinic">Clinic (optional)</FieldLabel>
+              <Input id="followUpClinic" placeholder="e.g. NCH Pediatric Oncology" value={followUpClinic} onChange={(e) => setFollowUpClinic(e.target.value)} />
+            </Field>
+          </div>
         )}
 
         <DialogFooter>

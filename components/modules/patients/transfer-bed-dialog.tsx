@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { FloorPlanBedPicker } from "@/components/modules/house-ops/floor-plan/floor-plan-bed-picker";
+import { BedPlanDialog } from "@/components/modules/patients/bed-plan-dialog";
 import { BedRuleException, NO_EXCEPTION, exceptionFor, useBedChoices, type ExceptionDraft } from "@/components/modules/patients/bed-rule-fields";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
@@ -43,7 +44,8 @@ export function TransferBedDialog({ stay, patientName, onOpenChange, onTransferr
   const [submitting, setSubmitting] = React.useState(false);
 
   const currentUnit = stay ? unitForBedPosition(stay.bedPositionId, units, bedPositions) : undefined;
-  const { options: beds, blocked, isException } = useBedChoices(
+  const [planning, setPlanning] = React.useState(false);
+  const { options: beds, blocked, isException, loading: bedsLoading } = useBedChoices(
     { who: stay ? sleeperOfStay(stay, carers, patients) : {}, excludeUnitId: currentUnit?.id, ignoreStayId: stay?.id, patientId: stay?.patientId },
     exception
   );
@@ -78,7 +80,21 @@ export function TransferBedDialog({ stay, patientName, onOpenChange, onTransferr
           <FieldLabel>New bed</FieldLabel>
           <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={beds} blocked={blocked} />
         </Field>
+        {!bedsLoading && !beds.length && !exception.on ? (
+          <Button type="button" variant="outline" className="w-fit" onClick={() => setPlanning(true)}>
+            No other bed fits the rules: suggest a bed plan
+          </Button>
+        ) : null}
         <BedRuleException blocked={blocked} value={exception} onChange={setException} />
+        {planning ? (
+          <BedPlanDialog
+            onClose={() => setPlanning(false)}
+            onApplied={() => {
+              onTransferred();
+              onOpenChange(false);
+            }}
+          />
+        ) : null}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

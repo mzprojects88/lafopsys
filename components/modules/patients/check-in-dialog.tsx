@@ -253,15 +253,21 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
       }))
     );
     setSubmitting(false);
-    if (problems.length) toast.warning(`Checked in, but not saved: ${problems.join("; ")}.`);
     await Promise.all([patientsStore.refetch(), referralsStore.refetch(), houseSheetPeopleStore.refetch(), bedNightsStore.refetch()]);
-    toast.success(`${name} checked in`);
+    if (problems.length) toast.warning(`${name} checked in, but not saved: ${problems.join("; ")}.`);
+    else toast.success(`${name} checked in`);
     onCheckedIn?.((data as { patient_id: string }).patient_id);
     onOpenChange(false);
   }
 
+  // Closing with details filled in asks first (walkthrough, 2026-09-28).
+  const typed = !!unitId || !!carerChoice || !!carerName.trim() || !!siblingId || step === "rules";
+  const close = () => {
+    if (!typed || window.confirm("Close without checking in? What you entered is lost.")) onOpenChange(false);
+  };
+
   return (
-    <Dialog open={!!target} onOpenChange={onOpenChange}>
+    <Dialog open={!!target} onOpenChange={(open) => (open ? onOpenChange(true) : close())}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{step === "details" ? `Check in ${name}` : `House rules · ${name}`}</DialogTitle>
@@ -388,7 +394,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
         <DialogFooter>
           {step === "details" ? (
             <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
+              <Button variant="outline" onClick={close}>
                 Cancel
               </Button>
               {stillNeeded.length ? (

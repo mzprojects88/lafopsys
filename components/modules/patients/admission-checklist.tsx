@@ -187,12 +187,14 @@ export function AdmissionChecklist({ patientId, canEdit, stay, firstStay }: { pa
         {canEdit && (
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <Input
+              aria-label="New house rule"
               placeholder="Add a rule, as the house says it…"
               value={newTopic}
               onChange={(e) => setNewTopic(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleAddTopic()}
             />
             <Input
+              aria-label="The rule in English"
               placeholder="In English (optional)"
               value={newTopicEn}
               onChange={(e) => setNewTopicEn(e.target.value)}

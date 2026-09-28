@@ -7,6 +7,7 @@ import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useBedReservations } from "@/lib/hooks/use-bed-reservations";
 import { useRole } from "@/lib/rbac/use-role";
 import { canSeeClinicalDetail } from "@/lib/rbac/roles";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { AssignableBed } from "@/lib/utils/beds";
 import { occupantsOf, roomSex, type BlockedBed } from "@/lib/utils/bed-rules";
@@ -25,6 +26,8 @@ const noDraft = () => undefined;
  * in one place. The list below the plan covers beds not yet drawn on it.
  * `blocked` are free beds the bed rules keep this person off (0070): tapping
  * one says why; the rooms line says who each room is for right now.
+ * On a phone the list comes first and the plan opens on a tap: the plan's
+ * beds are too small to hit there (walkthrough, 2026-09-28).
  */
 export function FloorPlanBedPicker({
   value,
@@ -42,6 +45,7 @@ export function FloorPlanBedPicker({
   const { role } = useRole();
   const { reservations, loading: holdsLoading } = useBedReservations();
   const loading = layoutLoading || patientsLoading || holdsLoading;
+  const [showPlan, setShowPlan] = React.useState(false);
   const beds = React.useMemo(
     () => buildBedViews({ units, rooms, bedPositions, stays, patients, carers, draftFor: noDraft, holds: reservations }),
     [units, rooms, bedPositions, stays, patients, carers, reservations]
@@ -60,7 +64,7 @@ export function FloorPlanBedPicker({
   return (
     <div className="flex flex-col gap-2">
       <p className="text-theme-xs text-muted-foreground">
-        {options.length ? "Tap a green bed on the plan." : "No bed is free."}
+        {options.length ? <span className="hidden sm:inline">Tap a green bed on the plan, or choose from the list.</span> : "No bed is free."}
         {chosen ? (
           <>
             {" "}
@@ -68,8 +72,11 @@ export function FloorPlanBedPicker({
           </>
         ) : null}
       </p>
-      {/* The plan is tall (portrait); inside a dialog it scrolls rather than stretching the dialog. */}
-      <div className="max-h-[55vh] overflow-y-auto rounded-lg">
+      <Button type="button" variant="outline" size="sm" className="w-fit sm:hidden" onClick={() => setShowPlan((v) => !v)}>
+        {showPlan ? "Hide the floor plan" : "Show the floor plan"}
+      </Button>
+      {/* Inside a dialog the plan scrolls rather than stretching the dialog. */}
+      <div className={cn("max-h-[55vh] overflow-y-auto rounded-lg", showPlan ? "block" : "hidden sm:block")}>
         <FloorPlanCanvas
           rooms={rooms}
           beds={placed}
@@ -112,8 +119,8 @@ export function FloorPlanBedPicker({
         ))}
       </p>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="w-full" aria-label="Bed">
-          <SelectValue placeholder={options.length ? "Or choose from the list" : "No beds available"} />
+        <SelectTrigger className="order-first w-full sm:order-none" aria-label="Bed">
+          <SelectValue placeholder={options.length ? "Choose a bed from the list" : "No beds available"} />
         </SelectTrigger>
         <SelectContent>
           {options.map((b) => (

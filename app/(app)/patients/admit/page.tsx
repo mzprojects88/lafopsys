@@ -115,7 +115,7 @@ function NewReferralForm() {
     control,
     reset,
     getValues,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isDirty },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -191,7 +191,8 @@ function NewReferralForm() {
       referringPerson: "NCH Occupancy Tracker",
       department: "Medical Social Service",
       transcriptionNote: `Encoded from the house Occupancy Tracker (on the sheet since ${sheetRow.firstSeenOn}) on ${todayIso()} by ${user}.`,
-    });
+      // The sheet can load after someone started typing: what they typed stays.
+    }, { keepDirtyValues: true });
   }, [sheetRow, reset, getValues, user]);
 
   async function onSubmit(values: FormValues) {
@@ -276,9 +277,10 @@ function NewReferralForm() {
           unitId,
         }))
       );
-      if (problems.length) toast.warning(`Admitted, but not saved: ${problems.join("; ")}.`);
       await Promise.all([patientsStore.refetch(), referralsStore.refetch(), houseSheetPeopleStore.refetch(), bedNightsStore.refetch()]);
-      toast.success(`${values.patientFirstName} ${values.patientLastName} admitted`);
+      const admitted = `${values.patientFirstName} ${values.patientLastName} admitted`;
+      if (problems.length) toast.warning(`${admitted}, but not saved: ${problems.join("; ")}.`);
+      else toast.success(admitted);
       router.push(`/patients/${patientId}`);
       return;
     }
@@ -672,7 +674,15 @@ function NewReferralForm() {
                     Still needed: {stillNeeded.join(", ")}.
                   </p>
                 ) : null}
-                <Button type="button" variant="outline" onClick={() => router.back()}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    // ponytail: the browser's own confirm; an AlertDialog if it looks out of place.
+                    const typed = isDirty || !!unitIdEdited || !!carerSexChoice || !!siblingId || rulesDraft.discussed;
+                    if (!typed || window.confirm("Leave without saving? What you typed is lost.")) router.back();
+                  }}
+                >
                   Cancel
                 </Button>
                 <Button type="submit" disabled={isSubmitting || stillNeeded.length > 0}>
