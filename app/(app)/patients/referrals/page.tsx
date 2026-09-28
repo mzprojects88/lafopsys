@@ -47,8 +47,9 @@ export default function ReferralsPage() {
     items: referrals.filter((r) => r.status === s.id),
   }));
 
+  // Reopening keeps the decline reason (grantmaker reporting); a decision replaces it.
   async function setStatus(id: string, status: ReferralStatus, reason?: string) {
-    const result = await updateReferral(id, { status, reason });
+    const result = await updateReferral(id, status === "submitted" ? { status } : { status, reason });
     if (!result.ok) {
       toast.error(`Couldn't update the referral: ${plainError(result.error)}`);
       return;
