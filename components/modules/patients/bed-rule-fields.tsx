@@ -41,7 +41,7 @@ export const NO_EXCEPTION: ExceptionDraft = { on: false, reason: "" };
 /**
  * Beds this person may take and the free beds the rules keep them off, from
  * the live house (lib/utils/bed-rules.ts), plus -- for an admin or the
- * inventory lead who ticks the exception -- those blocked beds too.
+ * social worker, admin or inventory lead who ticks the exception -- those blocked beds too.
  */
 export function useBedChoices(
   opts: { who: Sleeper; excludeUnitId?: string; forHoldId?: string; ignoreStayId?: string; patientId?: string | null },
@@ -76,7 +76,7 @@ export function useBedChoices(
 
 /**
  * When no allowed bed fits (a full house, a family of the other sex): an
- * admin or the inventory lead may place them outside the rules, saying why.
+ * social worker, an admin or the inventory lead may place them outside the rules (0072), saying why.
  * The database logs it and it shows as a breach until the family moves.
  */
 export function BedRuleException({ blocked, value, onChange }: { blocked: BlockedBed[]; value: ExceptionDraft; onChange: (next: ExceptionDraft) => void }) {

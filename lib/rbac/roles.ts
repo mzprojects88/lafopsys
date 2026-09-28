@@ -205,10 +205,11 @@ export function canEditFloorPlan(role: Role) {
   return role === "admin";
 }
 
-/** Who may place a family outside the bed rules, with a reason (0070); mirrors
+/** Who may place a family outside the bed rules, with a reason (0072): social
+ * workers, admins (CEO, Super Admin) and the inventory lead (Des); mirrors
  * ops.can_allow_bed_exception(). They still need Patients edit to check anyone in. */
 export function canAllowBedException(role: Role) {
-  return role === "admin" || role === "inventory_lead";
+  return role === "admin" || role === "social_worker" || role === "inventory_lead";
 }
 
 /** Finance and Board never see clinical detail — enforced at the component level using this flag. */

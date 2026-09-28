@@ -1,5 +1,5 @@
 // Proves 0070 (rooms filled in order, single-sex rooms by carer, family
-// exception, logged exceptions by admin / inventory lead, every bed door
+// exception, logged exceptions by social workers / admins / inventory lead (0072), every bed door
 // guarded) against the live database, one scenario per transaction, every
 // transaction rolled back. Same harness as bed-reservation-matrix.mjs.
 // Each scenario first empties the house inside its own rolled-back
@@ -171,7 +171,9 @@ async function main() {
 
   // ---- exceptions ----
   const exception = (reason) => `, p_exception_reason => '${reason}'`;
-  await scenario(ids, "a social worker cannot allow an exception", "social_worker", placed(KID_A, "B1", MOM_A), q(checkIn(KID_D, "B2", DAD_D, exception("house full"))), denied);
+  await scenario(ids, "a social worker allows one with a reason, and it is logged", "social_worker", placed(KID_A, "B1", MOM_A),
+    steps(checkIn(KID_D, "B2", DAD_D, exception("house full")), `select count(*)::int as n from ops.bed_rule_exceptions where stay_id = ${stayOf(KID_D)}`),
+    (r) => r.ok && r.data[0].n === 1);
   await scenario(ids, "an admin allows one with a reason, and it is logged", "admin", placed(KID_A, "B1", MOM_A),
     steps(checkIn(KID_D, "B2", DAD_D, exception("house full, moving him tomorrow")),
       `select count(*)::int as n, min(reason) as reason, bool_and(allowed_by = auth.uid()) as mine from ops.bed_rule_exceptions where stay_id = ${stayOf(KID_D)}`),
@@ -214,7 +216,8 @@ async function main() {
   await scenario(ids, "the rule helpers are not callable from the app", "social_worker", null,
     q(`select ops.bed_rule_problem('unit-B1', 'F', null, null, null)`), denied);
   await scenario(ids, "admins can allow exceptions (checked by the app)", "admin", null, q("select ops.can_allow_bed_exception() as yes"), (r) => r.ok && r.data[0].yes === true);
-  await scenario(ids, "social workers cannot", "social_worker", null, q("select ops.can_allow_bed_exception() as yes"), (r) => r.ok && r.data[0].yes === false);
+  await scenario(ids, "social workers can too (0072)", "social_worker", null, q("select ops.can_allow_bed_exception() as yes"), (r) => r.ok && r.data[0].yes === true);
+  await scenario(ids, "house staff cannot", "house_staff", null, q("select ops.can_allow_bed_exception() as yes"), (r) => r.ok && r.data[0].yes === false);
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
