@@ -5,6 +5,7 @@ import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { Users, Home, Share2, Percent, Car, Utensils, HeartPulse, Sparkles } from "lucide-react";
 import { useCensusData } from "@/lib/hooks/use-census-collection";
+import { useBedOccupancy } from "@/lib/hooks/use-bed-occupancy";
 import { useTripsData } from "@/lib/hooks/use-trips-collection";
 import { useMealServicesData } from "@/lib/hooks/use-meal-services-collection";
 import { todayIso } from "@/lib/utils/date";
@@ -18,13 +19,12 @@ const SUB_NAV: ModuleSubNavItem[] = [
 
 export default function HouseOpsPage() {
   const { history, loading } = useCensusData();
+  const beds = useBedOccupancy();
   const { trips } = useTripsData();
   const { meals } = useMealServicesData();
 
   const today = history.find((c) => c.date === todayIso()) ?? history[history.length - 1];
   const yesterday = today ? history[history.findIndex((c) => c.date === today.date) - 1] : undefined;
-  const utilization =
-    today?.unitsOccupied !== undefined && today ? Math.round((today.unitsOccupied / today.totalUnits) * 100) : undefined;
   const todaysTrips = trips.filter((t) => t.date === todayIso()).length;
   const todaysMeals = meals.filter((m) => m.date === todayIso()).length;
 
@@ -48,13 +48,9 @@ export default function HouseOpsPage() {
           }
           deltaLabel="vs previous day on record"
         />
-        <KpiCard
-          label="Units Occupied"
-          value={today?.unitsOccupied !== undefined ? `${today.unitsOccupied} / ${today.totalUnits}` : "—"}
-          icon={Home}
-        />
-        <KpiCard label="Units Shared" value={today?.unitsShared ?? "—"} icon={Share2} />
-        <KpiCard label="Utilization" value={utilization !== undefined ? `${utilization}%` : "—"} icon={Percent} />
+        <KpiCard label="Beds Occupied" value={beds.total ? `${beds.occupied} / ${beds.total}` : beds.loading ? "…" : "—"} icon={Home} />
+        <KpiCard label="Beds Shared" value={beds.total ? beds.shared : beds.loading ? "…" : "—"} icon={Share2} />
+        <KpiCard label="Utilization" value={beds.utilization !== undefined ? `${beds.utilization}%` : beds.loading ? "…" : "—"} icon={Percent} />
         <KpiCard label="Trips Today" value={todaysTrips} icon={Car} />
         <KpiCard label="Meal Services Today" value={todaysMeals} icon={Utensils} />
       </KpiGrid>

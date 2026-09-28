@@ -14,6 +14,7 @@ import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useDiagnosesReferenceData } from "@/lib/hooks/use-diagnoses-reference-collection";
 import { useReferenceTableData } from "@/lib/hooks/use-reference-table-collection";
 import { useCensusData } from "@/lib/hooks/use-census-collection";
+import { useBedOccupancy } from "@/lib/hooks/use-bed-occupancy";
 import { useMetricSnapshotsData } from "@/lib/hooks/use-metric-snapshots-collection";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
@@ -35,6 +36,7 @@ export default function AnalyticsPage() {
   const { rows: diagnoses } = useDiagnosesReferenceData();
   const { rows: provinces } = useReferenceTableData("provinces", "prov", "region");
   const { history: censusHistory } = useCensusData();
+  const beds = useBedOccupancy();
   const { snapshots: metricSnapshots } = useMetricSnapshotsData();
   const { donations, donors } = useDonorsData();
   const { entries: cashEntries } = useCashEntriesData();
@@ -218,17 +220,9 @@ export default function AnalyticsPage() {
         <h2 className="text-base font-medium text-foreground">Live House Census</h2>
         <KpiGrid>
           <KpiCard label="In-House Now" value={today?.inHouse ?? 0} icon={Users} />
-          <KpiCard
-            label="Units Occupied"
-            value={today?.unitsOccupied !== undefined ? `${today.unitsOccupied} / ${today.totalUnits}` : "—"}
-            icon={Home}
-          />
-          <KpiCard label="Units Shared" value={today?.unitsShared ?? "—"} icon={Share2} />
-          <KpiCard
-            label="Utilization"
-            value={today?.unitsOccupied !== undefined ? `${Math.round((today.unitsOccupied / today.totalUnits) * 100)}%` : "—"}
-            icon={Percent}
-          />
+          <KpiCard label="Beds Occupied" value={beds.total ? `${beds.occupied} / ${beds.total}` : "—"} icon={Home} />
+          <KpiCard label="Beds Shared" value={beds.total ? beds.shared : "—"} icon={Share2} />
+          <KpiCard label="Utilization" value={beds.utilization !== undefined ? `${beds.utilization}%` : "—"} icon={Percent} />
         </KpiGrid>
       </section>
 
