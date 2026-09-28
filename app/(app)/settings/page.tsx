@@ -10,6 +10,7 @@ import { OvertimeThresholdField } from "@/components/modules/settings/overtime-t
 import { LafHouseLocationField } from "@/components/modules/settings/laf-house-location-field";
 import { CalendarSheetSyncToggle } from "@/components/modules/settings/calendar-sheet-sync-toggle";
 import { HouseSheetSyncToggle } from "@/components/modules/settings/house-sheet-sync-toggle";
+import { BedMoveHours } from "@/components/modules/settings/bed-move-hours";
 import { HrSettingsCard } from "@/components/modules/settings/hr-settings-card";
 
 const REFERENCE_TABLES = [
@@ -55,6 +56,10 @@ export default function SettingsPage() {
 
         <SectionCard title="House Occupancy Tracker">
           <HouseSheetSyncToggle />
+        </SectionCard>
+
+        <SectionCard title="Bed moves">
+          <BedMoveHours />
         </SectionCard>
 
         <SectionCard className="md:col-span-2" title={<CardTitleWithIcon icon={UserCog}>Pay & Leave Policy</CardTitleWithIcon>}>

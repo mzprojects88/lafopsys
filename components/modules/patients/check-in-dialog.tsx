@@ -21,6 +21,7 @@ import { referralsStore } from "@/lib/hooks/use-referrals-collection";
 import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
 import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
 import { BedRuleException, CarerSexField, NO_EXCEPTION, exceptionFor, useBedChoices, type ExceptionDraft } from "@/components/modules/patients/bed-rule-fields";
+import { BedPlanDialog } from "@/components/modules/patients/bed-plan-dialog";
 import { sexFromRelationship, type Sex } from "@/lib/utils/bed-rules";
 import { ArrivalFields, arrivalFromPickups, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
 import {
@@ -103,6 +104,7 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
   const [carerMobile, setCarerMobile] = React.useState("");
   const [carerSexChoice, setCarerSexChoice] = React.useState<Sex | "">("");
   const [exception, setException] = React.useState<ExceptionDraft>(NO_EXCEPTION);
+  const [planning, setPlanning] = React.useState(false);
   const [appointment, setAppointment] = React.useState<AppointmentDraft>(EMPTY_APPOINTMENT);
   const { pickups } = usePickups();
   const [arrival, setArrival] = React.useState<ArrivalDraft>(() => arrivalFromPickups(pickups, target?.sheetRow));
@@ -142,6 +144,8 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
     "";
   const who = { sex: noCarer ? patient?.sex ?? referral?.patientSex : carerSex || undefined, familyId: patient?.familyId };
   const { options: beds, blocked, isException } = useBedChoices({ who, forHoldId: hold?.id, patientId }, exception);
+  // No bed fits the rules: the planner may make room (bed rules, 0071).
+  const newcomer = who.sex ? { sex: who.sex, familyId: who.familyId, name: patient ? `${patient.firstName} ${patient.lastName}` : referral?.patientName ?? "" } : undefined;
   // Only a bed still on offer: one taken or reserved since the dialog opened drops out.
   const bed = [unitId, hold?.unitId].find((id) => id && beds.some((b) => b.unit.id === id)) ?? "";
   // Returning families take the shorter list of rules (0054).
@@ -359,7 +363,13 @@ export function CheckInDialog({ target, onOpenChange, onCheckedIn }: CheckInDial
               </FieldDescription>
             ) : null}
           </Field>
+          {newcomer && !beds.length && !exception.on ? (
+            <Button type="button" variant="outline" className="w-fit" onClick={() => setPlanning(true)}>
+              No bed fits the rules: suggest a bed plan
+            </Button>
+          ) : null}
           <BedRuleException blocked={blocked} value={exception} onChange={setException} />
+          {planning && newcomer ? <BedPlanDialog newcomer={newcomer} onClose={() => setPlanning(false)} onApplied={(u) => u && setUnitId(u)} /> : null}
 
           {sheetRow?.nextAppointmentOn ? (
             <p className="rounded-xl bg-muted/60 p-3 text-theme-xs text-muted-foreground">

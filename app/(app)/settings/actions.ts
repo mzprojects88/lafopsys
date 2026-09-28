@@ -272,3 +272,28 @@ export async function updateLafHouseLocation(input: { lat: number | null; lng: n
   revalidatePath("/settings");
   return { ok: true };
 }
+
+/**
+ * When families may be moved between beds (bed plans, 0071): hospitals do
+ * not move patients at night. Admins only; the column CHECK keeps from < until.
+ */
+export async function updateBedMoveHours(input: { from: string; until: string }): Promise<UpdateClockInRequirementResult> {
+  const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
+  if (!hhmm.test(input.from) || !hhmm.test(input.until)) return { ok: false, error: "Give both times as HH:MM." };
+  if (input.from >= input.until) return { ok: false, error: "The start must be before the end." };
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+  if (!caller) return { ok: false, error: "Not signed in." };
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") return { ok: false, error: "Only admins can change this setting." };
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({ bed_moves_from: input.from, bed_moves_until: input.until, updated_at: new Date().toISOString(), updated_by: caller.id })
+    .eq("id", true);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/settings");
+  return { ok: true };
+}

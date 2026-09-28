@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeftRight, BedDouble, BookmarkPlus, Check, DoorOpen, FilePlus2, LogOut, MoonStar } from "lucide-react";
+import { ArrowLeftRight, BedDouble, BookmarkPlus, Check, DoorOpen, FilePlus2, LogOut, MoonStar, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/patterns/section-card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -16,6 +16,7 @@ import { CheckInDialog, type CheckInTarget } from "@/components/modules/patients
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { isHiddenPath } from "@/lib/rbac/hidden";
 import { DischargeDialog } from "@/components/modules/patients/discharge-dialog";
+import { BedPlanDialog } from "@/components/modules/patients/bed-plan-dialog";
 import { confirmHouseSheetMatch } from "@/app/(app)/patients/house-sheet/actions";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
@@ -64,6 +65,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   // The reserved child is not taking the bed: a social worker gives it to another (0066).
   const [replacing, setReplacing] = React.useState<{ holdId: string; bed: string; from: string } | null>(null);
   // "Move for tonight" picks the new bed on the floor plan (user, 2026-09-25).
+  const [planning, setPlanning] = React.useState(false);
   const [moving, setMoving] = React.useState<{ stay: Stay; name: string; from: string; unitId?: string } | null>(null);
 
   const today = todayIso();
@@ -242,10 +244,19 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
             </span>
           }
           actions={
-            canEdit && unconfirmed.length > 1 ? (
-              <Button size="sm" variant="outline" disabled={busy === "all"} onClick={confirmAllSame}>
-                All same beds
-              </Button>
+            canEdit ? (
+              <span className="flex flex-wrap gap-1.5">
+                {tonight.length ? (
+                  <Button size="sm" variant="outline" onClick={() => setPlanning(true)}>
+                    <Sparkles /> Suggest bed plan
+                  </Button>
+                ) : null}
+                {unconfirmed.length > 1 ? (
+                  <Button size="sm" variant="outline" disabled={busy === "all"} onClick={confirmAllSame}>
+                    All same beds
+                  </Button>
+                ) : null}
+              </span>
             ) : undefined
           }
           flush
@@ -321,6 +332,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
         </SectionCard>
       </div>
 
+      {planning ? <BedPlanDialog onClose={() => setPlanning(false)} /> : null}
       {moving ? (
         <MoveTonightDialog
           key={moving.stay.id}

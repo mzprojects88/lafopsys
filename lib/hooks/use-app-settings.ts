@@ -40,6 +40,8 @@ export interface AppSettings extends HrSettings {
   houseSheetSyncEnabled: boolean;
   /** LAF House's pin and the on-site radius for DTR punches (0063); null until an admin sets it. */
   lafHouse: { lat: number | null; lng: number | null; radiusM: number };
+  /** When families may be moved between beds, Manila time "HH:MM" (0071): never at night. */
+  bedMoves: { from: string; until: string };
 }
 
 interface AppSettingsRow {
@@ -61,6 +63,8 @@ interface AppSettingsRow {
   laf_house_latitude: number | string | null;
   laf_house_longitude: number | string | null;
   laf_house_radius_m: number;
+  bed_moves_from: string;
+  bed_moves_until: string;
 }
 
 export const HR_SETTINGS_DEFAULTS: HrSettings = {
@@ -83,6 +87,7 @@ const DEFAULTS: AppSettings = {
   calendarSheetSyncEnabled: true,
   houseSheetSyncEnabled: true,
   lafHouse: { lat: null, lng: null, radiusM: 20 },
+  bedMoves: { from: "07:00", until: "20:00" },
   ...HR_SETTINGS_DEFAULTS,
 };
 
@@ -91,7 +96,7 @@ const SELECT =
   "payroll_pay_date_rule, payroll_contribution_cutoff, tardiness_grace_minutes, " +
   "leave_vl_days_per_year, leave_sl_days_per_year, leave_vl_convertible, minimum_wage_region, " +
   "compliance_pen_last_digit, compliance_employer_initial, compliance_tracking_from, compliance_lead_days, " +
-  "laf_house_latitude, laf_house_longitude, laf_house_radius_m";
+  "laf_house_latitude, laf_house_longitude, laf_house_radius_m, bed_moves_from, bed_moves_until";
 
 export const appSettingsStore = createCollection<AppSettings>({
   key: "shared.app_settings",
@@ -123,6 +128,7 @@ export const appSettingsStore = createCollection<AppSettings>({
         lng: row.laf_house_longitude == null ? null : Number(row.laf_house_longitude),
         radiusM: row.laf_house_radius_m ?? 20,
       },
+      bedMoves: { from: (row.bed_moves_from ?? "07:00").slice(0, 5), until: (row.bed_moves_until ?? "20:00").slice(0, 5) },
     };
   },
 });

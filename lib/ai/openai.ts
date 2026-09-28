@@ -174,3 +174,92 @@ export async function explainSheetChanges(items: SheetChangeItem[]): Promise<She
     clearTimeout(timer);
   }
 }
+
+const PLAN_TIMEOUT_MS = 30_000;
+
+export interface BedPlanPerson {
+  /** Server-side handle (a stay id, or "new" for the family arriving); the model sees a letter. */
+  id: string;
+  sex: "F" | "M" | null;
+  familyTag: string | null;
+  nightsHere: number | null;
+  leavesInDays: number | null;
+  /** "B6 (Room 2)", or null for the family arriving. */
+  now: string | null;
+}
+
+export interface BedPlanOption {
+  moves: { personId: string; to: string }[];
+}
+
+export interface BedPlanChoice {
+  /** Index into the options given. */
+  index: number;
+  /** Refers to families as "Family A"...; `letters` says who each is, so the app can put names back. */
+  explanation: string;
+  /** Per person id, why they move. */
+  reasons: Record<string, string>;
+  /** Letter -> person id. */
+  letters: Record<string, string>;
+}
+
+const planSchema = z.object({
+  choice: z.number().int().min(1),
+  explanation: z.string().max(500),
+  reasons: z.array(z.object({ person: z.string(), reason: z.string().max(160) })),
+});
+
+/**
+ * Which of these rule-valid bed plans a house social worker would choose,
+ * and why, in plain words (bed rules, 0070/0071). Every plan already keeps
+ * the rules -- the app found them and checks the chosen one again -- so the
+ * model only weighs the families: letters, woman or man carer, a family tag,
+ * nights in the house and days to check-out. No names, no health data.
+ */
+export async function chooseBedPlan(people: BedPlanPerson[], options: BedPlanOption[]): Promise<BedPlanChoice> {
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const letterOf = new Map(people.map((p, i) => [p.id, letters[i] ?? `P${i}`]));
+  const idOf = new Map([...letterOf].map(([id, l]) => [l, id]));
+  const who = people.map((p) => {
+    const bits = [p.sex === "F" ? "woman carer" : p.sex === "M" ? "man carer" : "carer's sex unknown"];
+    if (p.familyTag) bits.push(`family ${p.familyTag}`);
+    if (p.id === "new") bits.push("ARRIVING now, needs a bed");
+    else {
+      if (p.nightsHere !== null) bits.push(`${p.nightsHere} night(s) in the house`);
+      if (p.leavesInDays !== null) bits.push(p.leavesInDays <= 0 ? "leaving today" : `leaving in ${p.leavesInDays} day(s)`);
+      if (p.now) bits.push(`now in ${p.now}`);
+    }
+    return `${letterOf.get(p.id)}: ${bits.join(", ")}`;
+  });
+  const plans = options.map(
+    (o, i) => `Plan ${i + 1}: ${o.moves.map((m) => `${letterOf.get(m.personId)} -> ${m.to}`).join("; ") || "(no moves)"}`
+  );
+  const prompt = ["Families:", ...who, "", "Plans (every one keeps the house rules):", ...plans, "", "Choose one plan."].join("\n");
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PLAN_TIMEOUT_MS);
+  try {
+    const { object } = await generateObject({
+      model: model(),
+      schema: planSchema,
+      system:
+        "You help the social worker of a Philippine house for children in cancer treatment and their carers decide bed moves. " +
+        "Rooms are for women carers or men carers (one family may share); Room 1 fills first. Every plan given already follows these rules. " +
+        "Choose the kindest plan, the way a hospital bed manager would: fewest moves; move recent arrivals rather than families settled for many nights; " +
+        "avoid moving a family leaving today or tomorrow; keep a family together. " +
+        "Explain the choice in two or three short plain sentences for the social worker, always calling a family \"Family A\", \"Family B\" and so on, and give one short reason per family that moves (without its letter).",
+      prompt,
+      abortSignal: controller.signal,
+      providerOptions: { openai: { reasoningEffort: "low" } },
+    });
+    const index = object.choice - 1 >= 0 && object.choice - 1 < options.length ? object.choice - 1 : 0;
+    const reasons: Record<string, string> = {};
+    for (const r of object.reasons) {
+      const id = idOf.get(r.person.trim().toUpperCase().charAt(0));
+      if (id) reasons[id] = r.reason;
+    }
+    return { index, explanation: object.explanation, reasons, letters: Object.fromEntries(idOf) };
+  } finally {
+    clearTimeout(timer);
+  }
+}

@@ -27,6 +27,7 @@ import { referralsStore } from "@/lib/hooks/use-referrals-collection";
 import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
 import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
 import { BedRuleException, CarerSexField, NO_EXCEPTION, exceptionFor, useBedChoices, type ExceptionDraft } from "@/components/modules/patients/bed-rule-fields";
+import { BedPlanDialog } from "@/components/modules/patients/bed-plan-dialog";
 import { sexFromRelationship, type Sex } from "@/lib/utils/bed-rules";
 import { ArrivalFields, arrivalFromPickups, arrivalInput, arrivalReady, type ArrivalDraft } from "@/components/modules/patients/arrival-fields";
 import { usePickups } from "@/lib/hooks/use-pickups-collection";
@@ -91,6 +92,7 @@ function NewReferralForm() {
   const hold = sheetRow ? holdFor(null, sheetRow.id) : undefined;
   const [carerSexChoice, setCarerSexChoice] = React.useState<Sex | "">("");
   const [exception, setException] = React.useState<ExceptionDraft>(NO_EXCEPTION);
+  const [planning, setPlanning] = React.useState(false);
   const [unitIdEdited, setUnitId] = React.useState("");
   const [appointment, setAppointment] = React.useState<AppointmentDraft>(EMPTY_APPOINTMENT);
   const [rulesDraft, setRulesDraft] = React.useState<RulesDraft>(EMPTY_RULES);
@@ -144,6 +146,9 @@ function NewReferralForm() {
   // Only a bed still on offer: one taken or reserved since the page opened drops out.
   const unitId = [unitIdEdited, hold?.unitId].find((id) => id && beds.some((b) => b.unit.id === id)) ?? "";
   const exceptionReason = exceptionFor(isException(unitId), exception);
+  const lastName = useWatch({ control, name: "patientLastName" });
+  // No bed fits the rules: the planner may make room (bed rules, 0071).
+  const newcomer = carerSex ? { sex: carerSex, name: `${firstName} ${lastName}`.trim() || "the child" } : undefined;
 
   const prefilledFor = React.useRef<string | null>(null);
   React.useEffect(() => {
@@ -557,7 +562,13 @@ function NewReferralForm() {
                       <p className="text-theme-xs text-muted-foreground">Say whether the carer is a woman or a man first: rooms are for women carers or men carers.</p>
                     )}
                   </Field>
+                  {newcomer && !beds.length && !exception.on ? (
+                    <Button type="button" variant="outline" className="w-fit" onClick={() => setPlanning(true)}>
+                      No bed fits the rules: suggest a bed plan
+                    </Button>
+                  ) : null}
                   <BedRuleException blocked={blocked} value={exception} onChange={setException} />
+                  {planning && newcomer ? <BedPlanDialog newcomer={newcomer} onClose={() => setPlanning(false)} onApplied={(u) => u && setUnitId(u)} /> : null}
                   <ArrivalFields value={arrival} onChange={setArrival} arrivalDate={arrivedOn} />
                   {hold ? (
                     <p className="text-theme-xs text-muted-foreground">
