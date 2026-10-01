@@ -5,9 +5,9 @@ import { cn } from "@/lib/utils";
  * TailAdmin's ComponentCard: a titled card with a hairline between the
  * header and the body. Dashboard widgets and detail-page sections.
  */
-export function SectionCard({ title, description, actions, children, className, bodyClassName, flush }: { title?: ReactNode; description?: string; actions?: ReactNode; children: ReactNode; className?: string; bodyClassName?: string; /** No body padding: for tables and lists that draw their own rows. */ flush?: boolean }) {
+export function SectionCard({ id, title, description, actions, children, className, bodyClassName, flush }: { /** An anchor other pages can link to (/page#id). */ id?: string; title?: ReactNode; description?: string; actions?: ReactNode; children: ReactNode; className?: string; bodyClassName?: string; /** No body padding: for tables and lists that draw their own rows. */ flush?: boolean }) {
   return (
-    <section className={cn("rounded-2xl border border-border bg-card", className)}>
+    <section id={id} className={cn("rounded-2xl border border-border bg-card", className)}>
       {title || actions ? (
         <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-4">
           <div className="flex min-w-0 flex-col">

@@ -44,7 +44,7 @@ export default function SettingsPage() {
           <Link href="/settings/notifications" className="text-theme-sm text-primary hover:underline">Notification preferences</Link>
         </SectionCard>
 
-        <SectionCard title={<CardTitleWithIcon icon={ClipboardCheck}>Attendance Policy</CardTitleWithIcon>} bodyClassName="flex flex-col gap-4">
+        <SectionCard id="attendance-policy" className="scroll-mt-24" title={<CardTitleWithIcon icon={ClipboardCheck}>Attendance Policy</CardTitleWithIcon>} bodyClassName="flex flex-col gap-4">
           <ClockInRequirementToggle />
           <OvertimeThresholdField />
           <LafHouseLocationField />
