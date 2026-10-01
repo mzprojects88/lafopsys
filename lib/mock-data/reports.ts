@@ -1,4 +1,4 @@
-import type { AppNotification, MetricSnapshot, ReportDefinition } from "@/lib/types/reports";
+import type { MetricSnapshot, ReportDefinition } from "@/lib/types/reports";
 import { makeRng } from "@/lib/utils/seeded-random";
 import realMetricSnapshots from "@/lib/mock-data/real/metric-snapshots.json";
 
@@ -15,15 +15,6 @@ export const reportDefinitions: ReportDefinition[] = [
   { id: "rpt-board-pack", name: "Monthly Board Pack", category: "Board", description: "Auto-assembled board reporting pack", schedule: "monthly", lastGeneratedAt: "2026-07-28" },
   { id: "rpt-grant-1", name: "Grant Report — Compassion Fund", category: "Grant", description: "Configurable period/metric grant report", schedule: "quarterly" },
   { id: "rpt-impact", name: "Impact Report (Deck)", category: "Impact", description: "Generated version of the impact presentation deck", schedule: "quarterly", lastGeneratedAt: "2026-06-30" },
-];
-
-export const notifications: AppNotification[] = [
-  { id: "notif-1", title: "3 lots expiring within 14 days", body: "Egg (30/Tray) and Chicken lots are approaching expiry.", createdAt: rng.daysFromNow(0), read: false, kind: "expiry" },
-  { id: "notif-2", title: "4 timesheets pending approval", body: "Late/early-out flags awaiting review.", createdAt: rng.daysFromNow(0), read: false, kind: "approval" },
-  { id: "notif-3", title: "2 overdue check-outs", body: "Expected checkout date has passed for 2 stays.", createdAt: rng.daysFromNow(-1), read: false, kind: "overdue" },
-  { id: "notif-4", title: "AR outstanding queue growing", body: "6 acknowledgment receipts still in draft.", createdAt: rng.daysFromNow(-1), read: true, kind: "approval" },
-  { id: "notif-5", title: "Donee Cert pending release", body: "3 certificates approved and awaiting release.", createdAt: rng.daysFromNow(-2), read: true, kind: "approval" },
-  { id: "notif-6", title: "Monthly close checklist due", body: "July close checklist has unchecked items.", createdAt: rng.daysFromNow(-3), read: true, kind: "system" },
 ];
 
 const mockMetricSnapshots: MetricSnapshot[] = Array.from({ length: 12 }).map((_, m) => ({

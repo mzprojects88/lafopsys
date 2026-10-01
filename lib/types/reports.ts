@@ -17,11 +17,3 @@ export interface MetricSnapshot {
   donationsYtd: number;
 }
 
-export interface AppNotification {
-  id: string;
-  title: string;
-  body: string;
-  createdAt: string;
-  read: boolean;
-  kind: "expiry" | "approval" | "overdue" | "system";
-}

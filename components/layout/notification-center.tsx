@@ -11,10 +11,6 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useRole } from "@/context/role-provider";
 import { useAppSettings } from "@/lib/hooks/use-app-settings";
-import { notifications } from "@/lib/mock-data";
-import { useLocalCollection } from "@/lib/store/use-mock-store";
-import { formatRelative } from "@/lib/utils/date";
-import { cn } from "@/lib/utils";
 
 /** Something an admin still has to set up. Worked out from the settings, so it
  * can't be dismissed: it goes away once the thing is done. */
@@ -25,8 +21,9 @@ interface Reminder {
   href: string;
 }
 
+/** The bell: real reminders only (the demo entries it used to show were removed
+ * 2026-10-01). New alerts belong here as Reminders worked out from live data. */
 export function NotificationCenter() {
-  const { items, updateItem } = useLocalCollection("notifications", notifications);
   const { role } = useRole();
   const settings = useAppSettings();
   const reminders: Reminder[] = [];
@@ -39,57 +36,43 @@ export function NotificationCenter() {
       href: "/settings#attendance-policy",
     });
   }
-  const unreadCount = reminders.length + items.filter((n) => !n.read).length;
 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="icon-lg" className="relative" aria-label="Notifications">
+        <Button variant="outline" size="icon-lg" className="relative" aria-label={reminders.length ? `Notifications: ${reminders.length} need action` : "Notifications"}>
           <Bell className="size-4.5" />
-          {unreadCount > 0 && (
+          {reminders.length > 0 && (
             <span className="absolute -top-1 -right-1 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
-              {unreadCount}
+              {reminders.length}
             </span>
           )}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 gap-0 overflow-hidden rounded-2xl p-0">
         <div className="border-b px-5 py-4 text-base font-medium">Notifications</div>
-        <ScrollArea className="h-80">
-          <div className="flex flex-col">
-            {reminders.map((r) => (
-              <Link
-                key={r.id}
-                href={r.href}
-                className="flex gap-3 border-b bg-warning/10 px-5 py-3 text-left text-theme-sm last:border-b-0 hover:bg-warning/15"
-              >
-                <MapPin className="mt-0.5 size-4 shrink-0 text-warning" />
-                <span className="flex min-w-0 flex-col gap-0.5">
-                  <span className="font-medium">{r.title}</span>
-                  <span className="text-xs text-muted-foreground">{r.body}</span>
-                  <span className="text-[11px] font-medium text-warning-foreground dark:text-warning">Action needed</span>
-                </span>
-              </Link>
-            ))}
-            {items.map((n) => (
-              <button
-                key={n.id}
-                onClick={() => updateItem(n.id, { read: true })}
-                className={cn(
-                  "flex flex-col gap-0.5 border-b px-5 py-3 text-left text-theme-sm last:border-b-0 hover:bg-muted/60",
-                  !n.read && "bg-accent/50"
-                )}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium">{n.title}</span>
-                  {!n.read && <span className="size-1.5 shrink-0 rounded-full bg-primary" />}
-                </div>
-                <span className="text-xs text-muted-foreground">{n.body}</span>
-                <span className="text-[11px] text-muted-foreground">{formatRelative(n.createdAt)}</span>
-              </button>
-            ))}
-          </div>
-        </ScrollArea>
+        {reminders.length === 0 ? (
+          <p className="px-5 py-8 text-center text-theme-sm text-muted-foreground">You&apos;re all caught up.</p>
+        ) : (
+          <ScrollArea className="max-h-80">
+            <div className="flex flex-col">
+              {reminders.map((r) => (
+                <Link
+                  key={r.id}
+                  href={r.href}
+                  className="flex gap-3 border-b bg-warning/10 px-5 py-3 text-left text-theme-sm last:border-b-0 hover:bg-warning/15"
+                >
+                  <MapPin className="mt-0.5 size-4 shrink-0 text-warning" />
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="font-medium">{r.title}</span>
+                    <span className="text-xs text-muted-foreground">{r.body}</span>
+                    <span className="text-[11px] font-medium text-warning-foreground dark:text-warning">Action needed</span>
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
       </PopoverContent>
     </Popover>
   );
