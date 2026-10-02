@@ -11,6 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { OdometerDrums } from "@/components/modules/transport/odometer-drums";
 import { useVehicles, type Vehicle } from "@/lib/hooks/use-vehicles-collection";
+import { fleetStore, saveServiceRules } from "@/lib/hooks/use-fleet-collection";
+import { expenseKindsStore } from "@/lib/hooks/use-vehicle-expenses-collection";
+import { useCollection } from "@/lib/data/collection-store";
 import { formatKm } from "@/lib/utils/odometer";
 
 const NEW: Omit<Vehicle, "id" | "lastReading" | "photoToday"> = {
@@ -22,8 +25,11 @@ const NEW: Omit<Vehicle, "id" | "lastReading" | "photoToday"> = {
   defaultKmPerLitre: null,
   startOdometer: null,
   active: true,
+  efficiencyAlertPct: 20,
 };
 const num = (s: string) => (s.trim() === "" ? null : Number(s));
+// The expense types that come round on a schedule (0079); the others are one-offs.
+const SERVICE_KINDS = ["change_oil", "tires", "maintenance", "registration", "insurance"];
 
 /** Settings: LAF's vehicles (0076). The starting odometer is what turns tracking on. */
 export function VehiclesCard() {
@@ -59,7 +65,19 @@ export function VehiclesCard() {
 
 function VehicleDialog({ vehicle, onClose }: { vehicle: Vehicle | null; onClose: () => void }) {
   const { saveVehicle } = useVehicles();
+  const { data: fleet } = useCollection(fleetStore);
+  const { data: kinds } = useCollection(expenseKindsStore);
   const start = vehicle ?? NEW;
+  const serviceKinds = kinds.filter((k) => SERVICE_KINDS.includes(k.id));
+  const [intervals, setIntervals] = React.useState<Record<string, { km: string; months: string }>>(() =>
+    Object.fromEntries(
+      SERVICE_KINDS.map((k) => {
+        const rule = fleet.rules.find((r) => r.vehicleId === vehicle?.id && r.kind === k);
+        return [k, { km: rule?.everyKm?.toString() ?? "", months: rule?.everyMonths?.toString() ?? "" }];
+      })
+    )
+  );
+  const [alertPct, setAlertPct] = React.useState(start.efficiencyAlertPct.toString());
   const [name, setName] = React.useState(start.name);
   const [plate, setPlate] = React.useState(start.plateNo ?? "");
   const [fuelType, setFuelType] = React.useState(start.fuelType);
@@ -71,7 +89,12 @@ function VehicleDialog({ vehicle, onClose }: { vehicle: Vehicle | null; onClose:
   const [saving, setSaving] = React.useState(false);
   // Trips already read past the start: the database keeps the starting reading from moving (0076).
   const hasReadings = vehicle != null && vehicle.startOdometer != null && vehicle.lastReading != null && vehicle.lastReading !== vehicle.startOdometer;
-  const badNumber = [tank, kmPerLitre].some((s) => s.trim() !== "" && !(Number(s) > 0));
+  const badNumber =
+    [tank, kmPerLitre].some((s) => s.trim() !== "" && !(Number(s) > 0)) ||
+    !(Number(alertPct) >= 5 && Number(alertPct) <= 90) ||
+    Object.values(intervals).some(
+      (i) => (i.km.trim() !== "" && !(Number.isInteger(Number(i.km)) && Number(i.km) > 0)) || (i.months.trim() !== "" && !(Number.isInteger(Number(i.months)) && Number(i.months) >= 1 && Number(i.months) <= 60))
+    );
 
   async function save() {
     setSaving(true);
@@ -85,7 +108,19 @@ function VehicleDialog({ vehicle, onClose }: { vehicle: Vehicle | null; onClose:
       defaultKmPerLitre: num(kmPerLitre),
       startOdometer: odometer,
       active,
+      efficiencyAlertPct: Number(alertPct),
     });
+    if (r.ok && vehicle) {
+      const rules = await saveServiceRules(
+        vehicle.id,
+        serviceKinds.map((k) => ({ kind: k.id, everyKm: num(intervals[k.id].km), everyMonths: num(intervals[k.id].months) }))
+      );
+      if (!rules.ok) {
+        setSaving(false);
+        toast.error(`Saved, but the service intervals weren't: ${rules.error}`);
+        return;
+      }
+    }
     setSaving(false);
     if (!r.ok) {
       toast.error(r.error);
@@ -145,6 +180,45 @@ function VehicleDialog({ vehicle, onClose }: { vehicle: Vehicle | null; onClose:
           </Field>
         </div>
         <FieldDescription>Km per litre is a starting figure; Fuel Monitoring measures the real one from full-tank fills.</FieldDescription>
+        <Field>
+          <FieldLabel htmlFor="vehAlert">Flag km per litre falling by (%)</FieldLabel>
+          <Input id="vehAlert" type="number" inputMode="numeric" min="5" max="90" value={alertPct} onChange={(e) => setAlertPct(e.target.value)} className="w-28" />
+          <FieldDescription>Against the average of the full tanks before. 20% to start.</FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel>Service intervals</FieldLabel>
+          {vehicle ? (
+            <div className="flex flex-col gap-2">
+              {serviceKinds.map((k) => (
+                <div key={k.id} className="grid grid-cols-[1fr_5.5rem_5.5rem] items-center gap-2">
+                  <span className="text-theme-sm">{k.name}</span>
+                  <Input
+                    aria-label={`${k.name}: every so many km`}
+                    type="number"
+                    inputMode="numeric"
+                    min="1"
+                    placeholder="km"
+                    value={intervals[k.id].km}
+                    onChange={(e) => setIntervals((p) => ({ ...p, [k.id]: { ...p[k.id], km: e.target.value } }))}
+                  />
+                  <Input
+                    aria-label={`${k.name}: every so many months`}
+                    type="number"
+                    inputMode="numeric"
+                    min="1"
+                    max="60"
+                    placeholder="months"
+                    value={intervals[k.id].months}
+                    onChange={(e) => setIntervals((p) => ({ ...p, [k.id]: { ...p[k.id], months: e.target.value } }))}
+                  />
+                </div>
+              ))}
+              <FieldDescription>Every so many km or months, whichever comes first. Leave both empty for no reminder.</FieldDescription>
+            </div>
+          ) : (
+            <FieldDescription>Save the vehicle first, then set when its oil, tires and services are due.</FieldDescription>
+          )}
+        </Field>
         <Field className="items-center">
           <FieldLabel>Starting odometer</FieldLabel>
           {hasReadings ? (

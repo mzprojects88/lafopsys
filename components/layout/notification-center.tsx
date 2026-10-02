@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, MapPin } from "lucide-react";
+import { Bell, Fuel, MapPin, Wrench, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -11,6 +11,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useRole } from "@/context/role-provider";
 import { useAppSettings } from "@/lib/hooks/use-app-settings";
+import { useFleetStatus } from "@/lib/hooks/use-fleet-collection";
+import { formatKm } from "@/lib/utils/odometer";
 
 /** Something an admin still has to set up. Worked out from the settings, so it
  * can't be dismissed: it goes away once the thing is done. */
@@ -19,12 +21,13 @@ interface Reminder {
   title: string;
   body: string;
   href: string;
+  icon?: LucideIcon;
 }
 
 /** The bell: real reminders only (the demo entries it used to show were removed
  * 2026-10-01). New alerts belong here as Reminders worked out from live data. */
 export function NotificationCenter() {
-  const { role } = useRole();
+  const { role, roles } = useRole();
   const settings = useAppSettings();
   const reminders: Reminder[] = [];
   // DTR (0063): without the pin, clock-ins can't be checked against the 20 m radius.
@@ -37,6 +40,43 @@ export function NotificationCenter() {
     });
   }
 
+  // Fuel Monitoring (0079): refuel soon and services due, for the Super Admin and the drivers.
+  // Only they load the fleet's data; everyone else's bell is unchanged.
+  if (roles.includes("admin") || roles.includes("driver")) {
+    return <FleetReminders>{(fleet) => <BellPopover reminders={[...reminders, ...fleet]} />}</FleetReminders>;
+  }
+  return <BellPopover reminders={reminders} />;
+}
+
+function FleetReminders({ children }: { children: (reminders: Reminder[]) => React.ReactNode }) {
+  const { statuses } = useFleetStatus();
+  const reminders: Reminder[] = [];
+  for (const s of statuses) {
+    if (s.level != null && s.level < 0.25) {
+      reminders.push({
+        id: `refuel-${s.vehicle.id}`,
+        title: `Refuel ${s.vehicle.name} soon`,
+        body: `About ${Math.round(s.level * 100)}% left in the tank.`,
+        href: "/transport/fuel",
+        icon: Fuel,
+      });
+    }
+    for (const sv of s.services) {
+      if (sv.due.status !== "soon" && sv.due.status !== "overdue") continue;
+      const left = [sv.due.kmLeft != null ? formatKm(Math.abs(sv.due.kmLeft)) : null, sv.due.daysLeft != null ? `${Math.abs(sv.due.daysLeft)} days` : null].filter(Boolean).join(" / ");
+      reminders.push({
+        id: `service-${s.vehicle.id}-${sv.kind}`,
+        title: `${sv.kindName} ${sv.due.status === "overdue" ? "overdue" : "due soon"}: ${s.vehicle.name}`,
+        body: sv.due.status === "overdue" ? `Past due by ${left}. Log it as an expense once it's done.` : `Due in ${left}.`,
+        href: "/transport/fuel",
+        icon: Wrench,
+      });
+    }
+  }
+  return <>{children(reminders)}</>;
+}
+
+function BellPopover({ reminders }: { reminders: Reminder[] }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -62,7 +102,10 @@ export function NotificationCenter() {
                   href={r.href}
                   className="flex gap-3 border-b bg-warning/10 px-5 py-3 text-left text-theme-sm last:border-b-0 hover:bg-warning/15"
                 >
-                  <MapPin className="mt-0.5 size-4 shrink-0 text-warning" />
+                  {(() => {
+                    const Icon = r.icon ?? MapPin;
+                    return <Icon className="mt-0.5 size-4 shrink-0 text-warning" />;
+                  })()}
                   <span className="flex min-w-0 flex-col gap-0.5">
                     <span className="font-medium">{r.title}</span>
                     <span className="text-xs text-muted-foreground">{r.body}</span>

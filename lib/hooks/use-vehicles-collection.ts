@@ -19,6 +19,8 @@ export interface Vehicle {
   /** null = not tracked yet: trips run without readings (0076). */
   startOdometer: number | null;
   active: boolean;
+  /** How far km per litre may fall below the recent average before Fuel Monitoring flags it (0079). */
+  efficiencyAlertPct: number;
   /** The highest reading on record -- where the drums start. */
   lastReading: number | null;
   /** Today's odometer photo is in: later departures today don't need one (0078). */
@@ -59,6 +61,7 @@ interface VehicleRow {
   default_km_per_litre: number | null;
   start_odometer: number | null;
   active: boolean;
+  efficiency_alert_pct: number | null;
 }
 
 export const vehiclesStore = createCollection<Vehicle[]>({
@@ -88,6 +91,7 @@ export const vehiclesStore = createCollection<Vehicle[]>({
       defaultKmPerLitre: v.default_km_per_litre == null ? null : Number(v.default_km_per_litre),
       startOdometer: v.start_odometer,
       active: v.active,
+      efficiencyAlertPct: v.efficiency_alert_pct ?? 20,
       lastReading: last.get(v.id) ?? null,
       photoToday: photographed.has(v.id),
     }));
@@ -236,6 +240,7 @@ export function useVehicles() {
         default_km_per_litre: v.defaultKmPerLitre,
         start_odometer: v.startOdometer,
         active: v.active,
+        efficiency_alert_pct: v.efficiencyAlertPct,
       };
       const ops = createClient().schema("ops");
       const { error } = v.id ? await ops.from("vehicles").update(row).eq("id", v.id).select("id").single() : await ops.from("vehicles").insert(row);

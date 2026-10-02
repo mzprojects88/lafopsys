@@ -28,6 +28,8 @@ import { OdometerDrums } from "@/components/modules/transport/odometer-drums";
 import { TripControls, TripReadings } from "@/components/modules/transport/trip-controls";
 import { ErrandCard, StartTripDialog, errandTitle } from "@/components/modules/transport/errands";
 import { ExpenseDialog, ExpensesList } from "@/components/modules/transport/expenses";
+import { TRANSPORT_SUB_NAV } from "@/components/modules/transport/transport-nav";
+import { ModuleSubNav } from "@/components/patterns/module-subnav";
 import { formatKm } from "@/lib/utils/odometer";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
@@ -80,20 +82,19 @@ export default function TransportPage() {
         title="Transport"
         description="Pick-ups from NCH. The manifest comes from NCH's list; the driver ticks each family on board."
         action={
-          canEdit || canBuild ? (
-            <div className="flex flex-wrap gap-2">
-              {canEdit && activeVehicles.length > 0 && (
-                <Button variant={canBuild ? "outline" : "default"} onClick={() => setStarting(true)}>
-                  <Car /> Start a trip
-                </Button>
-              )}
-              {canBuild && (
-                <Button onClick={() => setCreating(true)}>
-                  <Plus /> New pick-up
-                </Button>
-              )}
-            </div>
-          ) : undefined
+          <div className="flex flex-wrap gap-2">
+            <ModuleSubNav items={TRANSPORT_SUB_NAV} />
+            {canEdit && activeVehicles.length > 0 && (
+              <Button variant={canBuild ? "outline" : "default"} onClick={() => setStarting(true)}>
+                <Car /> Start a trip
+              </Button>
+            )}
+            {canBuild && (
+              <Button onClick={() => setCreating(true)}>
+                <Plus /> New pick-up
+              </Button>
+            )}
+          </div>
         }
       />
 

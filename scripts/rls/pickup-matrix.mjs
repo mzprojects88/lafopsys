@@ -6,7 +6,7 @@
 //
 // Usage: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs
 // 0076 (vehicles, the odometer guard) pre-flight:
-//   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0076_fuel_vehicles.sql supabase/migrations/0077_vehicle_expenses.sql supabase/migrations/0078_odometer_photos.sql
+//   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0076_fuel_vehicles.sql supabase/migrations/0077_vehicle_expenses.sql supabase/migrations/0078_odometer_photos.sql supabase/migrations/0079_fuel_monitoring.sql
 // Pre-flight (before 0049-0053 are applied, one rolled-back transaction):
 //   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0049_check_in.sql supabase/migrations/0050_module_access.sql supabase/migrations/0051_sheet_admission.sql supabase/migrations/0052_arrival_rides.sql supabase/migrations/0053_laf_hope_pickups.sql
 import { Client } from "pg";
@@ -453,6 +453,28 @@ async function main() {
     } },
     q(`select trips, median_km from ops.v_route_km where route_key = 'errand:test errand'`),
     (r) => r.ok && r.rows === 1 && r.data[0].trips === 3 && Number(r.data[0].median_km) === 24);
+
+
+  // --- 0079: service intervals and the driver's gauge ------------------------------------
+  const rule = (kind = "change_oil", km = "5000", months = "6") =>
+    q(`insert into ops.vehicle_service_rules (vehicle_id, kind, every_km, every_months) values ('${VEH}', '${kind}', ${km}, ${months})`);
+  const gauge = (level = "0.5", extra = "") =>
+    q(`insert into ops.fuel_level_checks (vehicle_id, level, odometer${extra ? ", checked_by" : ""}) values ('${VEH}', ${level}, 1020${extra ? `, '${extra}'` : ""}) returning checked_by`);
+  await scenario(ids, "the Super Admin sets an oil-change interval", "admin", { setup: () => vehicle() }, rule(), rows(1));
+  await scenario(ids, "the driver can't set a service interval", "driver", { setup: () => vehicle() }, rule(), denied);
+  await scenario(ids, "an interval needs km or months", "admin", { setup: () => vehicle() }, rule("tires", "null", "null"), constraintFailed);
+  await scenario(ids, "fuel has no service interval", "admin", { setup: () => vehicle() }, rule("fuel"), constraintFailed);
+  await scenario(ids, "the driver reads the gauge in, stamped as theirs", "driver", { setup: () => vehicle() }, gauge("0.5", ids.admin), value("checked_by", ids.driver));
+  await scenario(ids, "a gauge reading is a quarter mark", "driver", { setup: () => vehicle() }, gauge("0.3"), constraintFailed);
+  await scenario(ids, "house staff don't read the gauge in", "house_staff", { setup: () => vehicle() }, gauge(), denied);
+  await scenario(ids, "a gauge reading stays as it was", "driver",
+    { setup: async () => { await vehicle(); await client.query(`insert into ops.fuel_level_checks (vehicle_id, level) values ($1, 0.5)`, [VEH]); } },
+    q(`delete from ops.fuel_level_checks where vehicle_id = '${VEH}'`), denied);
+  await scenario(ids, "a volunteer reads no gauge readings", "volunteer",
+    { setup: async () => { await vehicle(); await client.query(`insert into ops.fuel_level_checks (vehicle_id, level) values ($1, 0.5)`, [VEH]); } },
+    q(`select id from ops.fuel_level_checks where vehicle_id = '${VEH}'`), rows(0));
+  await scenario(ids, "the km-per-litre alert stays between 5% and 90%", "admin", { setup: () => vehicle() },
+    q(`update ops.vehicles set efficiency_alert_pct = 95 where id = '${VEH}'`), constraintFailed);
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
