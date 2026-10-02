@@ -372,6 +372,10 @@ async function main() {
     value("ok", true));
   await scenario(ids, "the driver voids their own entry the same day", "driver", logged(), voidIt("logged twice"), value("voided_by", ids.driver));
   await scenario(ids, "a void needs a reason", "driver", logged(), voidIt(" "), badInput);
+  await scenario(ids, "a void is kept in the change history", "driver", logged(),
+    last({ sql: `update ops.vehicle_expenses set voided_at = now(), void_reason = 'logged twice' where id = '${EXP}'` },
+      { sql: `select exists (select 1 from ops.vehicle_expense_changes where expense_id = $1 and reason = 'Voided: logged twice') as ok`, params: [EXP] }),
+    value("ok", true));
   await scenario(ids, "a voided entry stays as it is", "admin",
     { setup: async () => { await logged().setup(); await client.query(`update ops.vehicle_expenses set voided_at = now(), void_reason = 'logged twice' where id = $1`, [EXP]); } },
     change("undo"), denied);

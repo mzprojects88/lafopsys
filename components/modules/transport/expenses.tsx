@@ -20,7 +20,7 @@ import { useVehicleExpenses, type ExpenseInput, type VehicleExpense } from "@/li
 import type { Vehicle } from "@/lib/hooks/use-vehicles-collection";
 import { canDeleteFiles, canUploadFiles } from "@/lib/rbac/roles";
 import { formatDate, todayIso } from "@/lib/utils/date";
-import { formatKm, readingProblem } from "@/lib/utils/odometer";
+import { formatKm } from "@/lib/utils/odometer";
 import { changeRule, formatPesoCents, pricePerLitre } from "@/lib/utils/vehicle-expenses";
 import { OdometerDrums } from "./odometer-drums";
 
@@ -64,7 +64,12 @@ export function ExpenseDialog({
   const [saving, setSaving] = React.useState(false);
 
   const askOdometer = tracked && (fuel || SERVICE_KINDS.has(kind));
-  const odometerProblem = askOdometer && fuel ? readingProblem(odometer, vehicle.startOdometer) : null;
+  // The guard only knows the starting reading here: a fill-up can happen mid-trip.
+  const odometerProblem =
+    !askOdometer || !fuel ? null
+    : odometer == null ? "Enter the odometer reading at the pump."
+    : vehicle.startOdometer != null && odometer < vehicle.startOdometer ? `It can't be below ${formatKm(vehicle.startOdometer)}, where ${vehicle.name} started.`
+    : null;
   const perLitre = fuel ? pricePerLitre(Number(amount) || 0, num(litres)) : null;
   const problem =
     !kind ? "Choose what it was for." :

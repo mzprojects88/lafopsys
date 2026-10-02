@@ -137,6 +137,8 @@ begin
       new.voided_at := now();
       new.voided_by := auth.uid();
       new.void_reason := v_reason;
+      insert into ops.vehicle_expense_changes (expense_id, old_row, new_row, reason, changed_by)
+        values (old.id, to_jsonb(old) - 'change_reason', to_jsonb(new) - 'change_reason', 'Voided: ' || v_reason, auth.uid());
       return new;
     end if;
 
