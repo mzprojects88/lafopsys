@@ -17,6 +17,7 @@ import {
   BookOpen,
   CalendarRange,
   Upload,
+  Fuel,
 } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
@@ -37,6 +38,7 @@ const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/finance/budget", label: "Budget", icon: Wallet },
   { href: "/finance/close", label: "Monthly Close", icon: ClipboardCheck },
   { href: "/finance/registers", label: "Registers", icon: BookOpen },
+  { href: "/finance/vehicle-costs", label: "Vehicle Costs", icon: Fuel },
 ];
 import type { CashEntry } from "@/lib/types/finance";
 import type { Program } from "@/lib/types/reference";

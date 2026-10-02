@@ -323,7 +323,13 @@ export function ExpensesList({ vehicles }: { vehicles: Vehicle[] }) {
                   {kindName(e.kind)} · {formatPesoCents(e.amount)}
                 </span>
                 <span className="flex items-center gap-1">
-                  {e.paidBy === "driver" && !e.voidedAt && <Badge variant="outline">Owed to {name(e.paidByStaffId)}</Badge>}
+                  {e.paidBy === "driver" && !e.voidedAt && !e.posting && <Badge variant="outline">Owed to {name(e.paidByStaffId)}</Badge>}
+                  {e.posting?.reimbursedOn && (
+                    <Badge variant="outline">
+                      Paid back {formatPesoCents(e.posting.reimbursedAmount ?? e.amount)} · {formatDate(e.posting.reimbursedOn, "MMM d")}
+                    </Badge>
+                  )}
+                  {e.posting && <Badge variant="secondary">Posted to Finance</Badge>}
                   {e.voidedAt && <Badge variant="secondary">Voided</Badge>}
                 </span>
               </div>

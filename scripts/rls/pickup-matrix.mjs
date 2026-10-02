@@ -6,7 +6,7 @@
 //
 // Usage: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs
 // 0076 (vehicles, the odometer guard) pre-flight:
-//   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0076_fuel_vehicles.sql supabase/migrations/0077_vehicle_expenses.sql supabase/migrations/0078_odometer_photos.sql supabase/migrations/0079_fuel_monitoring.sql
+//   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0076_fuel_vehicles.sql supabase/migrations/0077_vehicle_expenses.sql supabase/migrations/0078_odometer_photos.sql supabase/migrations/0079_fuel_monitoring.sql supabase/migrations/0080_vehicle_expense_posting.sql
 // Pre-flight (before 0049-0053 are applied, one rolled-back transaction):
 //   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0049_check_in.sql supabase/migrations/0050_module_access.sql supabase/migrations/0051_sheet_admission.sql supabase/migrations/0052_arrival_rides.sql supabase/migrations/0053_laf_hope_pickups.sql
 import { Client } from "pg";
@@ -475,6 +475,53 @@ async function main() {
     q(`select id from ops.fuel_level_checks where vehicle_id = '${VEH}'`), rows(0));
   await scenario(ids, "the km-per-litre alert stays between 5% and 90%", "admin", { setup: () => vehicle() },
     q(`update ops.vehicles set efficiency_alert_pct = 95 where id = '${VEH}'`), constraintFailed);
+
+
+  // --- 0080: Finance posts vehicle costs ---------------------------------------------------
+  const driverPaid = {
+    setup: async () => {
+      await vehicle();
+      await client.query(
+        `insert into ops.vehicle_expenses (id, vehicle_id, kind, amount, paid_by, paid_by_staff_id, logged_by, expense_date)
+         values ($1, $2, 'parking_toll', 180, 'driver', $3, $3, current_date - 2)`,
+        [EXP, VEH, ids.driver]
+      );
+    },
+  };
+  const postIt = (on = null, amount = null) => q(`select ops.post_vehicle_expense('${EXP}', $1::date, $2::numeric) as id`, [on, amount]);
+  await scenario(ids, "finance posts a LAF-paid cost as a pending cash entry", "finance", logged(),
+    last({ sql: `select ops.post_vehicle_expense('${EXP}')` },
+      { sql: `select c.direction = 'outflow' and c.source = 'vehicle_fuel' and c.approval_status = 'pending' and c.amount = 2500
+                 and c.date = e.expense_date and c.program_id = 'prog-transport' and p.reimbursed_on is null as ok
+               from ops.vehicle_expense_postings p join ops.cash_entries c on c.id = p.cash_entry_id join ops.vehicle_expenses e on e.id = p.expense_id
+               where p.expense_id = $1`, params: [EXP] }),
+    value("ok", true));
+  await scenario(ids, "the driver can't post to Finance", "driver", logged(), postIt(), denied);
+  await scenario(ids, "an entry posts once", "finance",
+    { setup: async () => { await logged().setup(); await client.query(`select ops.post_vehicle_expense($1)`, [EXP]); } }, postIt(), badInput);
+  await scenario(ids, "a voided entry isn't posted", "finance",
+    { setup: async () => { await logged().setup(); await client.query(`update ops.vehicle_expenses set voided_at = now(), void_reason = 'logged twice' where id = $1`, [EXP]); } },
+    postIt(), badInput);
+  await scenario(ids, "a driver-paid cost needs the pay-back day", "finance", driverPaid, postIt(), badInput);
+  await scenario(ids, "the pay-back can't be before the expense", "finance", driverPaid,
+    q(`select ops.post_vehicle_expense('${EXP}', current_date - 5, null)`), badInput);
+  await scenario(ids, "paying a driver back posts the cost that day, for what was paid back", "finance", driverPaid,
+    last({ sql: `select ops.post_vehicle_expense('${EXP}', current_date, 175)` },
+      { sql: `select c.date = current_date and c.amount = 175 and c.donor_name is not null and p.reimbursed_on = current_date and p.reimbursed_amount = 175 as ok
+               from ops.vehicle_expense_postings p join ops.cash_entries c on c.id = p.cash_entry_id where p.expense_id = $1`, params: [EXP] }),
+    value("ok", true));
+  await scenario(ids, "a LAF-paid cost has no one to pay back", "finance", logged(), q(`select ops.post_vehicle_expense('${EXP}', current_date, 100)`), badInput);
+  await scenario(ids, "a posted entry stays as it is, even for the Super Admin", "admin",
+    { setup: async () => { await logged().setup(); await client.query(`select ops.post_vehicle_expense($1)`, [EXP]); } },
+    change("fixing the amount"), denied);
+  await scenario(ids, "a posted entry can't be voided", "driver",
+    { setup: async () => { await logged().setup(); await client.query(`select ops.post_vehicle_expense($1)`, [EXP]); } },
+    voidIt("logged twice"), denied);
+  await scenario(ids, "nobody writes a posting by hand", "finance", logged(),
+    q(`insert into ops.vehicle_expense_postings (expense_id, cash_entry_id) select '${EXP}', id from ops.cash_entries limit 1`), denied);
+  await scenario(ids, "the driver sees that an entry was posted", "driver",
+    { setup: async () => { await logged().setup(); await client.query(`select ops.post_vehicle_expense($1)`, [EXP]); } },
+    q(`select expense_id from ops.vehicle_expense_postings where expense_id = '${EXP}'`), rows(1));
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();

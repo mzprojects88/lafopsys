@@ -29,6 +29,9 @@ describe("changeRule", () => {
   it("after that the Super Admin, with a reason", () => {
     assert.equal(changeRule(yesterday, "admin-1", true, now), "reason");
   });
+  it("a posted entry stays as it is too", () => {
+    assert.equal(changeRule({ ...today, posting: { cashEntryId: "c" } }, "jeff", true, now), "no");
+  });
   it("a voided entry stays as it is, for everyone", () => {
     assert.equal(changeRule({ ...today, voidedAt: "2026-10-02T01:00:00Z" }, "jeff", true, now), "no");
   });

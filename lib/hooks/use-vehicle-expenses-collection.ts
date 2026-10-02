@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
 import { todayIso } from "@/lib/utils/date";
+import { cashEntriesStore } from "@/lib/hooks/use-cash-entries-collection";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
 
@@ -29,9 +30,11 @@ export interface VehicleExpense {
   loggedAt: string;
   voidedAt: string | null;
   voidReason: string | null;
+  /** Posted to Finance (0080): the cash entry, and for a driver-paid entry the pay-back. */
+  posting: { cashEntryId: string; postedAt: string; reimbursedOn: string | null; reimbursedAmount: number | null } | null;
 }
 
-export type ExpenseInput = Omit<VehicleExpense, "id" | "loggedBy" | "loggedAt" | "voidedAt" | "voidReason">;
+export type ExpenseInput = Omit<VehicleExpense, "id" | "loggedBy" | "loggedAt" | "voidedAt" | "voidReason" | "posting">;
 
 interface Row {
   id: string;
@@ -50,6 +53,42 @@ interface Row {
   logged_at: string;
   voided_at: string | null;
   void_reason: string | null;
+  posting: PostingRow | PostingRow[] | null;
+}
+
+interface PostingRow {
+  cash_entry_id: string;
+  posted_at: string;
+  reimbursed_on: string | null;
+  reimbursed_amount: number | null;
+}
+
+const SELECT =
+  "id, vehicle_id, expense_date, kind, amount, litres, full_tank, odometer, vendor, notes, paid_by, paid_by_staff_id, logged_by, logged_at, voided_at, void_reason, posting:vehicle_expense_postings(cash_entry_id, posted_at, reimbursed_on, reimbursed_amount)";
+
+function toExpense(r: Row): VehicleExpense {
+  const p = Array.isArray(r.posting) ? r.posting[0] : r.posting;
+  return {
+    id: r.id,
+    vehicleId: r.vehicle_id,
+    date: r.expense_date,
+    kind: r.kind,
+    amount: Number(r.amount),
+    litres: r.litres == null ? null : Number(r.litres),
+    fullTank: r.full_tank,
+    odometer: r.odometer,
+    vendor: r.vendor,
+    notes: r.notes,
+    paidBy: r.paid_by,
+    paidByStaffId: r.paid_by_staff_id,
+    loggedBy: r.logged_by,
+    loggedAt: r.logged_at,
+    voidedAt: r.voided_at,
+    voidReason: r.void_reason,
+    posting: p
+      ? { cashEntryId: p.cash_entry_id, postedAt: p.posted_at, reimbursedOn: p.reimbursed_on, reimbursedAmount: p.reimbursed_amount == null ? null : Number(p.reimbursed_amount) }
+      : null,
+  };
 }
 
 export const expenseKindsStore = createCollection<ExpenseKind[]>({
@@ -67,38 +106,48 @@ export const expenseKindsStore = createCollection<ExpenseKind[]>({
 export const vehicleExpensesStore = createCollection<VehicleExpense[]>({
   key: "ops.vehicle_expenses",
   empty: [],
-  tables: [{ schema: "ops", table: "vehicle_expenses" }],
+  tables: [{ schema: "ops", table: "vehicle_expenses" }, { schema: "ops", table: "vehicle_expense_postings" }],
   fetch: async () => {
     const since = new Date(`${todayIso()}T00:00:00Z`);
     since.setUTCDate(since.getUTCDate() - 92);
     const { data, error } = await createClient()
       .schema("ops")
       .from("vehicle_expenses")
-      .select("id, vehicle_id, expense_date, kind, amount, litres, full_tank, odometer, vendor, notes, paid_by, paid_by_staff_id, logged_by, logged_at, voided_at, void_reason")
+      .select(SELECT)
       .gte("expense_date", since.toISOString().slice(0, 10))
       .order("expense_date", { ascending: false })
       .order("logged_at", { ascending: false });
     if (error) throw new Error(error.message);
-    return ((data ?? []) as Row[]).map((r) => ({
-      id: r.id,
-      vehicleId: r.vehicle_id,
-      date: r.expense_date,
-      kind: r.kind,
-      amount: Number(r.amount),
-      litres: r.litres == null ? null : Number(r.litres),
-      fullTank: r.full_tank,
-      odometer: r.odometer,
-      vendor: r.vendor,
-      notes: r.notes,
-      paidBy: r.paid_by,
-      paidByStaffId: r.paid_by_staff_id,
-      loggedBy: r.logged_by,
-      loggedAt: r.logged_at,
-      voidedAt: r.voided_at,
-      voidReason: r.void_reason,
-    }));
+    return ((data ?? []) as Row[]).map(toExpense);
   },
 });
+
+/** Finance's view (0080): every unvoided entry, any age -- what's left to post, and what was. */
+export const financeVehicleCostsStore = createCollection<VehicleExpense[]>({
+  key: "ops.vehicle_expenses.finance",
+  empty: [],
+  tables: [{ schema: "ops", table: "vehicle_expenses" }, { schema: "ops", table: "vehicle_expense_postings" }],
+  fetch: async () => {
+    const { data, error } = await createClient()
+      .schema("ops")
+      .from("vehicle_expenses")
+      .select(SELECT)
+      .is("voided_at", null)
+      .order("expense_date", { ascending: false });
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as Row[]).map(toExpense);
+  },
+});
+
+/** Finance posts an entry (ops.post_vehicle_expense): a driver-paid one with the day and amount paid back. */
+export async function postVehicleExpense(id: string, reimbursed?: { on: string; amount: number }): Promise<MutationResult> {
+  const { error } = await createClient()
+    .schema("ops")
+    .rpc("post_vehicle_expense", { p_expense_id: id, p_reimbursed_on: reimbursed?.on ?? null, p_reimbursed_amount: reimbursed?.amount ?? null });
+  if (error) return { ok: false, error: error.message };
+  await Promise.all([financeVehicleCostsStore.refetch(), vehicleExpensesStore.refetch(), cashEntriesStore.refetch()]);
+  return { ok: true };
+}
 
 function toRow(e: ExpenseInput) {
   const fuel = e.kind === "fuel";
