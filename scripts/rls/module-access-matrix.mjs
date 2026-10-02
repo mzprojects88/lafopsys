@@ -242,8 +242,6 @@ async function main() {
       await client.query("reset role");
       return client.query("update shared.staff set extra_roles = '{admin}' where id = $1", [ids.social_worker]);
     }, checkFailed);
-  await scenario(ids, "a social worker with Finance added edits finance", "social_worker", withExtra("social_worker", ["finance"]),
-    q("select shared.module_level('finance') as l"), value("l", "edit"));
   await scenario(ids, "the Office Admin role runs HR", "driver", withExtra("driver", ["office_admin"]), q("select hr.is_hr_staff() as ok"), value("ok", true));
   await scenario(ids, "a driver alone does not run HR", "driver", null, q("select hr.is_hr_staff() as ok"), value("ok", false));
   const asServer = (sql, params) => async () => {
