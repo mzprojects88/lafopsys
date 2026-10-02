@@ -20,6 +20,8 @@ const SIMPLE_TABLES: Record<string, { label: string; table: string; idPrefix: st
   provinces: { label: "Provinces & Cities", table: "provinces", idPrefix: "prov", metaColumn: "region", metaLabel: "Region" },
   "treatment-phases": { label: "Treatment Phases", table: "treatment_phases", idPrefix: "phase" },
   programs: { label: "Programs", table: "programs", idPrefix: "prog", metaColumn: "description", metaLabel: "Description" },
+  // Fuel Monitoring (0077): Fuel itself is fixed; the database refuses removing it or a type in use.
+  "vehicle-expense-types": { label: "Vehicle Expense Types", table: "vehicle_expense_kinds", idPrefix: "vexp" },
 };
 
 const DIAGNOSIS_CATEGORIES: DiagnosisCategory[] = ["cancer", "thalassemia", "other"];

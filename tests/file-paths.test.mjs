@@ -29,6 +29,7 @@ describe("folders by main menu", () => {
     assert.equal(folderFor({ kind: "patient", patientNumber: "PT-0012", firstName: "Ana", lastName: "Santos" }), "Patients/Santos, Ana (PT-0012)");
     assert.equal(folderFor({ kind: "donor", name: "Manny Chan" }), "Donors/Manny Chan");
     assert.equal(folderFor({ kind: "ride", rideDate: "2026-09-22" }), "Patients/Arrival Rides/2026/09 September");
+    assert.equal(folderFor({ kind: "vehicle_expense", vehicleName: "LAF HOPE Transport", expenseDate: "2026-10-02" }), "Transport/LAF HOPE Transport/2026/10 October");
     assert.equal(folderFor({ kind: "bank_statement_import", coversTo: "2026-08-31", createdAt: "2026-09-02T01:00:00Z" }), "Financial/Bank Statements/2026/08 August");
     assert.equal(folderFor({ kind: "bank_statement_import", coversTo: null, createdAt: "2026-09-02T01:00:00Z" }), "Financial/Bank Statements/2026/09 September");
     assert.equal(folderFor({ kind: "general", category: "Board packs" }), "Reports/Board packs");

@@ -195,13 +195,18 @@ export function canUploadFiles(module: FileModule, who: Who, isHr: boolean) {
       return canManageHr(who, isHr) || doesFinance(who);
     case "patients":
       return hasAnyRole(who, "admin", "social_worker", "office_admin");
+    case "transport":
+      // Transport's editors by default (0053); the grid can change it, the database is the gate.
+      return hasAnyRole(who, "admin", "social_worker", "driver");
     default:
       return doesFinance(who);
   }
 }
 
-/** Who may remove files: the same people, except compliance stays with admins and HR (shared.file_delete_allowed). */
+/** Who may remove files: the same people, except compliance stays with admins and HR, and a
+ * fuel or expense receipt -- the proof of a cost -- only the Super Admin (shared.file_delete_allowed). */
 export function canDeleteFiles(module: FileModule, who: Who, isHr: boolean) {
+  if (module === "transport") return hasAnyRole(who, "admin");
   return module === "compliance" ? canManageHr(who, isHr) : canUploadFiles(module, who, isHr);
 }
 

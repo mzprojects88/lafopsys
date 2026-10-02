@@ -8,6 +8,7 @@
  *   Compliances/BIR/2026/Q3/<file>                 (quarterly)
  *   Patients/Santos, Ana (PT-0012)/<file>
  *   Patients/Arrival Rides/2026/09 September/<file>   (ride receipts, 0052)
+ *   Transport/LAF HOPE Transport/2026/10 October/<file>   (fuel and expense receipts, 0077)
  *   Donors/Manny Chan/<file>
  *   Financial/Bank Statements/2026/08 August/<file>
  *   Reports/<category>/<file>
@@ -22,8 +23,8 @@
  * it runs under `node --test`.
  */
 
-export type FileModule = "hr" | "compliance" | "patients" | "donors" | "finance" | "reports";
-export type FileRecordType = "employee" | "compliance_item" | "patient" | "donor" | "bank_statement_import" | "general" | "ride";
+export type FileModule = "hr" | "compliance" | "patients" | "donors" | "finance" | "reports" | "transport";
+export type FileRecordType = "employee" | "compliance_item" | "patient" | "donor" | "bank_statement_import" | "general" | "ride" | "vehicle_expense";
 
 export const MODULE_OF_RECORD: Readonly<Record<FileRecordType, FileModule>> = {
   employee: "hr",
@@ -33,6 +34,7 @@ export const MODULE_OF_RECORD: Readonly<Record<FileRecordType, FileModule>> = {
   bank_statement_import: "finance",
   general: "reports",
   ride: "patients",
+  vehicle_expense: "transport",
 };
 
 export type FolderContext =
@@ -42,7 +44,8 @@ export type FolderContext =
   | { kind: "donor"; name: string }
   | { kind: "bank_statement_import"; coversTo: string | null; createdAt: string }
   | { kind: "general"; category: string }
-  | { kind: "ride"; rideDate: string };
+  | { kind: "ride"; rideDate: string }
+  | { kind: "vehicle_expense"; vehicleName: string; expenseDate: string };
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const MAX_SEGMENT = 80;
@@ -98,6 +101,8 @@ export function folderFor(ctx: FolderContext): string {
       return `Reports/${sanitiseSegment(ctx.category)}`;
     case "ride":
       return `Patients/Arrival Rides/${periodFolder(ctx.rideDate.slice(0, 7))}`;
+    case "vehicle_expense":
+      return `Transport/${sanitiseSegment(ctx.vehicleName)}/${periodFolder(ctx.expenseDate.slice(0, 7))}`;
   }
 }
 

@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Bus, Car, CheckCircle2, Circle, Plus, Truck, X } from "lucide-react";
+import { Bus, Car, CheckCircle2, Circle, Fuel, Plus, Truck, Wrench, X } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { LoadingState } from "@/components/patterns/loading-state";
@@ -27,6 +27,7 @@ import { useErrands, useVehicles, type Vehicle } from "@/lib/hooks/use-vehicles-
 import { OdometerDrums } from "@/components/modules/transport/odometer-drums";
 import { TripControls, TripReadings } from "@/components/modules/transport/trip-controls";
 import { ErrandCard, StartTripDialog, errandTitle } from "@/components/modules/transport/errands";
+import { ExpenseDialog, ExpensesList } from "@/components/modules/transport/expenses";
 import { formatKm } from "@/lib/utils/odometer";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
@@ -57,6 +58,7 @@ export default function TransportPage() {
   const { roles } = useRole();
   const [creating, setCreating] = React.useState(false);
   const [starting, setStarting] = React.useState(false);
+  const [logging, setLogging] = React.useState<{ vehicle: Vehicle; mode: "fuel" | "expense" } | null>(null);
   const activeVehicles = vehicles.filter((v) => v.active);
   const vehicleOf = (id: string | null) => vehicles.find((v) => v.id === id);
 
@@ -98,7 +100,7 @@ export default function TransportPage() {
       {activeVehicles.length > 0 && (
         <section className="grid grid-cols-1 gap-3 md:grid-cols-2" aria-label="Vehicles">
           {activeVehicles.map((v) => (
-            <VehicleOdometer key={v.id} vehicle={v} isSuperAdmin={roles.includes("admin")} />
+            <VehicleOdometer key={v.id} vehicle={v} isSuperAdmin={roles.includes("admin")} onLog={canEdit ? (mode) => setLogging({ vehicle: v, mode }) : undefined} />
           ))}
         </section>
       )}
@@ -161,30 +163,45 @@ export default function TransportPage() {
         </section>
       )}
 
+      <ExpensesList vehicles={vehicles} />
+
       {creating && <NewPickupDialog onClose={() => setCreating(false)} />}
+      {logging && <ExpenseDialog vehicle={logging.vehicle} mode={logging.mode} onClose={() => setLogging(null)} />}
       {starting && <StartTripDialog vehicles={activeVehicles} onClose={() => setStarting(false)} />}
     </div>
   );
 }
 
-/** Each vehicle's odometer on the drums, or how tracking starts. */
-function VehicleOdometer({ vehicle: v, isSuperAdmin }: { vehicle: Vehicle; isSuperAdmin: boolean }) {
+/** Each vehicle's odometer on the drums (or how tracking starts), and its fuel and expense buttons. */
+function VehicleOdometer({ vehicle: v, isSuperAdmin, onLog }: { vehicle: Vehicle; isSuperAdmin: boolean; onLog?: (mode: "fuel" | "expense") => void }) {
   return (
     <Card>
-      <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
-        <div className="flex min-w-0 flex-col">
-          <span className="truncate font-medium text-foreground">{v.name}</span>
-          <span className="text-theme-xs text-muted-foreground">
-            {v.plateNo ?? "No plate number yet"}
-            {v.startOdometer == null ? " · odometer not tracked yet" : ""}
-          </span>
-          {v.startOdometer == null && isSuperAdmin && (
-            <Link href="/settings#vehicles" className="text-theme-xs text-primary hover:underline">
-              Set the starting odometer to start tracking
-            </Link>
-          )}
+      <CardContent className="flex flex-col gap-3 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate font-medium text-foreground">{v.name}</span>
+            <span className="text-theme-xs text-muted-foreground">
+              {v.plateNo ?? "No plate number yet"}
+              {v.startOdometer == null ? " · odometer not tracked yet" : ""}
+            </span>
+            {v.startOdometer == null && isSuperAdmin && (
+              <Link href="/settings#vehicles" className="text-theme-xs text-primary hover:underline">
+                Set the starting odometer to start tracking
+              </Link>
+            )}
+          </div>
+          {v.startOdometer != null && <OdometerDrums value={v.lastReading} />}
         </div>
-        {v.startOdometer != null && <OdometerDrums value={v.lastReading} />}
+        {onLog && (
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => onLog("fuel")}>
+              <Fuel /> Log fuel
+            </Button>
+            <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => onLog("expense")}>
+              <Wrench /> Log expense
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

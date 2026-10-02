@@ -27,4 +27,5 @@ export const FILE_MODULE_LABELS: Readonly<Record<FileModule, string>> = {
   donors: "Donors",
   finance: "Financial",
   reports: "Reports",
+  transport: "Transport",
 };

@@ -20,6 +20,7 @@ const REFERENCE_TABLES = [
   { slug: "treatment-phases", label: "Treatment Phases" },
   { slug: "programs", label: "Programs" },
   { slug: "units-of-measure", label: "Units of Measure" },
+  { slug: "vehicle-expense-types", label: "Vehicle Expense Types" },
 ];
 
 export default function SettingsPage() {

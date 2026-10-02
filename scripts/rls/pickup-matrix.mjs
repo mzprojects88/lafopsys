@@ -6,7 +6,7 @@
 //
 // Usage: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs
 // 0076 (vehicles, the odometer guard) pre-flight:
-//   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0076_fuel_vehicles.sql
+//   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0076_fuel_vehicles.sql supabase/migrations/0077_vehicle_expenses.sql
 // Pre-flight (before 0049-0053 are applied, one rolled-back transaction):
 //   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0049_check_in.sql supabase/migrations/0050_module_access.sql supabase/migrations/0051_sheet_admission.sql supabase/migrations/0052_arrival_rides.sql supabase/migrations/0053_laf_hope_pickups.sql
 import { Client } from "pg";
@@ -30,7 +30,7 @@ const client = new Client({
   query_timeout: 120000,
 });
 
-const ROLES = ["admin", "social_worker", "house_staff", "driver", "volunteer"];
+const ROLES = ["admin", "social_worker", "house_staff", "driver", "volunteer", "finance"];
 const results = [];
 const record = (name, verdict, detail = "") =>
   results.push({ scenario: name, result: verdict, detail: String(detail).replace(/\s+/g, " ").slice(0, 80) });
@@ -322,6 +322,70 @@ async function main() {
   await scenario(ids, "the driver can't change a vehicle (0 rows)", "driver", tracked(), q(`update ops.vehicles set start_odometer = 5 where id = '${VEH}'`), rows(0));
   await scenario(ids, "the starting odometer stays once trips have readings", "admin", tracked("completed"),
     q(`update ops.vehicles set start_odometer = 900 where id = '${VEH}'`), badInput);
+
+
+  // --- 0077: the fuel and expense log ------------------------------------------------------
+  const EXP = "00000000-0000-4000-8000-0000000000f1";
+  const fill = (odo = "1010", litres = "30", extra = "") =>
+    `insert into ops.vehicle_expenses (vehicle_id, kind, amount, litres, full_tank, odometer${extra ? ", " + extra.split("=")[0] : ""})
+     values ('${VEH}', 'fuel', 1850.50, ${litres}, true, ${odo}${extra ? ", " + extra.split("=")[1] : ""}) returning logged_by`;
+  // An entry the driver logged, today or yesterday (the guard is off for the back-dating; rolled back with the scenario).
+  const logged = (daysAgo = 0) => ({
+    setup: async () => {
+      await vehicle();
+      await client.query(`insert into ops.vehicle_expenses (id, vehicle_id, kind, amount, odometer, logged_by) values ($1, $2, 'change_oil', 2500, 1005, $3)`, [EXP, VEH, ids.driver]);
+      if (daysAgo) {
+        await client.query("alter table ops.vehicle_expenses disable trigger guard_vehicle_expense");
+        await client.query(`update ops.vehicle_expenses set logged_at = now() - make_interval(days => $2) where id = $1`, [EXP, daysAgo]);
+        await client.query("alter table ops.vehicle_expenses enable trigger guard_vehicle_expense");
+      }
+    },
+  });
+  const change = (reason = null) => q(`update ops.vehicle_expenses set amount = 2600, change_reason = $1 where id = '${EXP}'`, [reason]);
+  const voidIt = (reason) => q(`update ops.vehicle_expenses set voided_at = now(), void_reason = $1 where id = '${EXP}' returning voided_by`, [reason]);
+  const constraintFailed = (r) => !r.ok && r.code === "23514";
+
+  await scenario(ids, "the driver logs a fill-up, stamped as theirs", "driver", { setup: () => vehicle() }, q(fill()), value("logged_by", ids.driver));
+  await scenario(ids, "who logged it can't be written by hand", "driver", { setup: () => vehicle() }, q(fill("1010", "30", `logged_by='${ids.admin}'`)), value("logged_by", ids.driver));
+  await scenario(ids, "fuel needs its litres", "driver", { setup: () => vehicle() }, q(fill("1010", "null")), constraintFailed);
+  await scenario(ids, "fuel on a tracked vehicle needs the odometer", "driver", { setup: () => vehicle() }, q(fill("null")), badInput);
+  await scenario(ids, "the pump reading can't be below the start", "driver", { setup: () => vehicle() }, q(fill("999")), badInput);
+  await scenario(ids, "an expense can't be dated in the future", "driver", { setup: () => vehicle() },
+    q(`insert into ops.vehicle_expenses (vehicle_id, kind, amount, expense_date) values ('${VEH}', 'car_wash', 150, current_date + 3)`), badInput);
+  await scenario(ids, "paid by a driver names the driver", "driver", { setup: () => vehicle() },
+    q(`insert into ops.vehicle_expenses (vehicle_id, kind, amount, paid_by) values ('${VEH}', 'parking_toll', 60, 'driver')`), constraintFailed);
+  await scenario(ids, "house staff can't log an expense", "house_staff", { setup: () => vehicle() },
+    q(`insert into ops.vehicle_expenses (vehicle_id, kind, amount) values ('${VEH}', 'car_wash', 150)`), denied);
+  await scenario(ids, "finance reads the log", "finance", logged(), q(`select id from ops.vehicle_expenses where id = '${EXP}'`), rows(1));
+  await scenario(ids, "a volunteer reads no expenses", "volunteer", logged(), q(`select id from ops.vehicle_expenses where id = '${EXP}'`), rows(0));
+  await scenario(ids, "the driver changes their own entry the same day, on the record", "driver", logged(),
+    last({ sql: `update ops.vehicle_expenses set amount = 2600 where id = '${EXP}'` },
+      { sql: `select exists (select 1 from ops.vehicle_expense_changes where expense_id = $1 and (old_row->>'amount')::numeric = 2500 and (new_row->>'amount')::numeric = 2600) as ok`, params: [EXP] }),
+    value("ok", true));
+  await scenario(ids, "someone else can't change the driver's entry", "social_worker", logged(), change(), denied);
+  await scenario(ids, "the driver can't change yesterday's entry", "driver", logged(1), change("forgot the tip"), denied);
+  await scenario(ids, "the Super Admin needs a reason for yesterday's entry", "admin", logged(1), change(), badInput);
+  await scenario(ids, "the Super Admin changes yesterday's entry with a reason, on the record", "admin", logged(1),
+    last({ sql: `update ops.vehicle_expenses set amount = 2600, change_reason = 'receipt says 2,600' where id = '${EXP}'` },
+      { sql: `select (select change_reason is null from ops.vehicle_expenses where id = $1)
+                 and exists (select 1 from ops.vehicle_expense_changes where expense_id = $1 and reason = 'receipt says 2,600' and changed_by = $2) as ok`, params: [EXP, ids.admin] }),
+    value("ok", true));
+  await scenario(ids, "the driver voids their own entry the same day", "driver", logged(), voidIt("logged twice"), value("voided_by", ids.driver));
+  await scenario(ids, "a void needs a reason", "driver", logged(), voidIt(" "), badInput);
+  await scenario(ids, "a voided entry stays as it is", "admin",
+    { setup: async () => { await logged().setup(); await client.query(`update ops.vehicle_expenses set voided_at = now(), void_reason = 'logged twice' where id = $1`, [EXP]); } },
+    change("undo"), denied);
+  await scenario(ids, "nobody deletes an entry", "admin", logged(), q(`delete from ops.vehicle_expenses where id = '${EXP}'`), denied);
+  await scenario(ids, "nobody writes the change history by hand", "admin", logged(),
+    q(`insert into ops.vehicle_expense_changes (expense_id, old_row, new_row) values ('${EXP}', '{}', '{}')`), denied);
+  await scenario(ids, "the Super Admin adds an expense type", "admin", null, q(`insert into ops.vehicle_expense_kinds (id, name) values ('vexp-rlstest', 'RLSTEST Type')`), rows(1));
+  await scenario(ids, "a social worker can't add an expense type", "social_worker", null, q(`insert into ops.vehicle_expense_kinds (id, name) values ('vexp-rlstest', 'RLSTEST Type')`), denied);
+  await scenario(ids, "Fuel can't be removed (0 rows)", "admin", null, q(`delete from ops.vehicle_expense_kinds where id = 'fuel'`), rows(0));
+  await scenario(ids, "drivers add receipts to Transport", "driver", null, q(`select shared.file_write_allowed('transport') as ok`), value("ok", true));
+  await scenario(ids, "house staff don't add receipts", "house_staff", null, q(`select shared.file_write_allowed('transport') as ok`), value("ok", false));
+  await scenario(ids, "only the Super Admin removes a receipt", "driver", null, q(`select shared.file_delete_allowed('transport') as ok`), value("ok", false));
+  await scenario(ids, "the Super Admin removes a receipt", "admin", null, q(`select shared.file_delete_allowed('transport') as ok`), value("ok", true));
+  await scenario(ids, "finance reads the receipts", "finance", null, q(`select shared.file_read_allowed('transport', 'vehicle_expense', null) as ok`), value("ok", true));
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();

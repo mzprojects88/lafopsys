@@ -72,6 +72,12 @@ async function folderContext(supabase: Supabase, recordType: FileRecordType, rec
       const { data } = await supabase.schema("ops").from("arrival_rides").select("ride_date").eq("id", recordId).maybeSingle();
       return data ? { ok: true, ctx: { kind: "ride", rideDate: data.ride_date } } : { ok: false, error: "No such ride." };
     }
+    case "vehicle_expense": {
+      const { data } = await supabase.schema("ops").from("vehicle_expenses").select("expense_date, vehicles(name)").eq("id", recordId).maybeSingle();
+      const vehicle = data?.vehicles as { name: string } | { name: string }[] | null | undefined;
+      const vehicleName = Array.isArray(vehicle) ? vehicle[0]?.name : vehicle?.name;
+      return data && vehicleName ? { ok: true, ctx: { kind: "vehicle_expense", vehicleName, expenseDate: data.expense_date } } : { ok: false, error: "No such expense." };
+    }
   }
 }
 
