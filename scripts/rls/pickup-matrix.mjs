@@ -425,6 +425,16 @@ async function main() {
       await client.query(`update ops.trips set status = 'in_progress', odometer_start = 1000, start_photo_id = $2 where id = $1`, [T2, PHOTO]);
     } },
     q(`update ops.trips set status = 'scheduled' where id = '${T2}' returning start_photo_id is null as ok`), value("ok", true));
+  // One photo a day per vehicle: after "Not left yet" the driver departs again without another.
+  await scenario(ids, "after 'Not left yet' the trip departs again on the day's photo", "driver",
+    { setup: async () => {
+      await vehicle(1000, false);
+      await client.query(odoPhoto(VEH, PHOTO));
+      await vtrip(T2);
+      await client.query(`update ops.trips set status = 'in_progress', odometer_start = 1000, start_photo_id = $2 where id = $1`, [T2, PHOTO]);
+      await client.query(`update ops.trips set status = 'scheduled' where id = $1`, [T2]);
+    } },
+    depart(1000), value("odometer_start", 1000));
   await scenario(ids, "nobody files an odometer photo by hand", "driver", { setup: () => vehicle() }, q(odoPhoto(VEH)), denied);
   await scenario(ids, "the driver reads the vehicle's photos", "driver", { setup: () => vehicle() },
     q(`select id from ops.odometer_photos where vehicle_id = '${VEH}'`), rows(1));
