@@ -81,7 +81,7 @@ export const ALL_ROLES: Role[] = [
   "volunteer",
 ];
 
-export { doesFinance, hasAnyRole, rolesIn, rolesOfRow, runsHr, titleRole, type StaffRolesRow, type Who } from "@/lib/rbac/who";
+export { ASSIGNABLE_ROLES, doesFinance, extraRoleChoices, hasAnyRole, mainRoleChoices, rolesIn, rolesOfRow, rolesProblem, runsHr, titleRole, type StaffRolesRow, type Who } from "@/lib/rbac/who";
 import { doesFinance, hasAnyRole, rolesIn, type Who } from "@/lib/rbac/who";
 
 /** laf-inventory-only roles. Real accounts, created from lafopsys like any

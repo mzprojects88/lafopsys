@@ -3,7 +3,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { doesFinance, hasAnyRole, rolesOfRow, runsHr, titleRole } from "../lib/rbac/who.ts";
+import { doesFinance, extraRoleChoices, hasAnyRole, mainRoleChoices, rolesOfRow, rolesProblem, runsHr, titleRole } from "../lib/rbac/who.ts";
 import { isAllowedLandingPath, resolveLandingPath } from "../lib/rbac/landing.ts";
 
 process.env.NEXT_PUBLIC_HIDDEN_ROUTES = "/hr";
@@ -59,5 +59,31 @@ describe("home page and hidden modules with two roles", () => {
   it("opens admin-only modules to a person whose roles include the Super Admin", () => {
     assert.equal(isHiddenPath("/hr", ["admin", "ceo"]), false);
     assert.equal(isHiddenPath("/hr", ["inventory_lead", "office_admin"]), true);
+  });
+});
+
+describe("what Settings > Users offers and accepts", () => {
+  it("offers the roles LAF assigns as main roles -- never CEO -- plus the one held now", () => {
+    const offered = mainRoleChoices("driver");
+    assert.equal(offered.includes("ceo"), false);
+    assert.equal(offered.includes("board"), false);
+    assert.equal(mainRoleChoices("board").includes("board"), true); // someone still holding it can be saved
+  });
+  it("offers CEO only beside Super Admin, and Super Admin never as an additional role", () => {
+    assert.equal(extraRoleChoices("admin").includes("ceo"), true);
+    assert.equal(extraRoleChoices("inventory_lead").includes("ceo"), false);
+    assert.equal(extraRoleChoices("inventory_lead").includes("admin"), false);
+    assert.equal(extraRoleChoices("inventory_lead").includes("inventory_lead"), false);
+    assert.equal(extraRoleChoices("inventory_lead").includes("office_admin"), true);
+  });
+  it("refuses the combinations that would half-work", () => {
+    assert.equal(rolesProblem("admin", ["ceo"]), null); // Butch
+    assert.equal(rolesProblem("inventory_lead", ["office_admin"]), null); // Desiree
+    assert.equal(rolesProblem("inventory_staff", ["driver"]), null); // Jeff
+    assert.match(rolesProblem("ceo", []), /additional role/);
+    assert.match(rolesProblem("finance", ["admin"]), /main role/);
+    assert.match(rolesProblem("finance", ["ceo"]), /beside Super Admin/);
+    assert.match(rolesProblem("driver", ["driver"]), /repeat/);
+    assert.match(rolesProblem("driver", ["chef", "finance", "social_worker", "office_admin"]), /three/);
   });
 });

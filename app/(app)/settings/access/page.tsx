@@ -8,12 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { useRole } from "@/context/role-provider";
 import { isAdminOnlyPath } from "@/lib/rbac/hidden";
-import { NAV_ITEMS, ORG_ROLES, levelFor, type AccessLevel, type NavItem } from "@/lib/rbac/roles";
+import { ASSIGNABLE_ROLES, NAV_ITEMS, levelFor, type AccessLevel, type NavItem } from "@/lib/rbac/roles";
 import { ROLES, type Role } from "@/lib/types/common";
 
 const ROLE_LABEL: Record<Role, string> = Object.fromEntries(ROLES.map((r) => [r.value, r.label])) as Record<Role, string>;
 const LEVEL_LABEL: Record<AccessLevel, string> = { none: "None", view: "View only", edit: "Edit" };
-const CONFIGURABLE = ORG_ROLES.filter((r) => r !== "admin");
+// The roles LAF assigns, without Super Admin (always everything) or CEO, which only ever
+// sits beside Super Admin -- a CEO column would change nothing for anyone.
+const CONFIGURABLE = ASSIGNABLE_ROLES.filter((r) => r !== "admin");
 
 /**
  * Settings -> Roles & Access (0050): for each main menu and role, whether the

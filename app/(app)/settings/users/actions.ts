@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ORG_ROLES, isAllowedLandingPath, type ModuleAccessRow } from "@/lib/rbac/roles";
+import { ASSIGNABLE_ROLES, ORG_ROLES, isAllowedLandingPath, rolesProblem, type ModuleAccessRow } from "@/lib/rbac/roles";
 import type { Role } from "@/lib/types/common";
 
 export interface CreateStaffInput {
@@ -53,7 +53,7 @@ export async function createStaffAccount(input: CreateStaffInput): Promise<Creat
   if (!firstName || !lastName || !position || !staffCode) {
     return { ok: false, error: "First name, last name, position, and staff code are all required." };
   }
-  if (!ORG_ROLES.includes(input.role)) {
+  if (!ASSIGNABLE_ROLES.includes(input.role)) {
     return { ok: false, error: "Invalid role." };
   }
   if (!/^\d{6}$/.test(input.temporaryPin)) {
@@ -157,14 +157,14 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
   // Roles (0073). The Super Admin is only ever a main role: every server check reads the
   // main role, so an "additional admin" would be an admin to the database and not to them.
   const extraRoles = [...new Set(input.extraRoles)];
-  if (!ORG_ROLES.includes(input.role) || !extraRoles.every((r) => ORG_ROLES.includes(r))) {
+  // A role no longer offered (house staff, board, ...) is accepted only as the one already held.
+  const known = (r: Role) => ASSIGNABLE_ROLES.includes(r) || r === "ceo" || r === target.role;
+  if (!ORG_ROLES.includes(input.role) || !known(input.role) || !extraRoles.every((r) => ORG_ROLES.includes(r))) {
     return { ok: false, error: "Invalid role." };
   }
-  if (extraRoles.includes("admin")) {
-    return { ok: false, error: "Super Admin can only be a main role." };
-  }
-  if (extraRoles.includes(input.role) || extraRoles.length > 3) {
-    return { ok: false, error: "Additional roles can't repeat the main role, and there can be at most three." };
+  const problem = rolesProblem(input.role, extraRoles);
+  if (problem) {
+    return { ok: false, error: problem };
   }
   if (target.role === "admin" && input.role !== "admin") {
     if (input.staffId === caller.id) {

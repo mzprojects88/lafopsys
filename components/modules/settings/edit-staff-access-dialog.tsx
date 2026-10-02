@@ -18,7 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ORG_ROLES, landingChoicesFor } from "@/lib/rbac/roles";
+import { extraRoleChoices, landingChoicesFor, mainRoleChoices } from "@/lib/rbac/roles";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { ROLES, type Role } from "@/lib/types/common";
 import { updateStaffAccess } from "@/app/(app)/settings/users/actions";
@@ -64,8 +64,8 @@ export function EditStaffAccessDialog({
   const choices = landingChoicesFor([mainRole, ...extras], accessRows);
   const sameRoles = mainRole === role && extras.length === extraRoles.length && extras.every((r) => extraRoles.includes(r));
   const changed = exempt !== clockInExempt || (landing === ROLE_DEFAULT ? null : landing) !== landingPath || hr !== isHr || !sameRoles;
-  // Super Admin is only ever a main role (the server refuses it as an additional one).
-  const extraChoices = ORG_ROLES.filter((r) => r !== "admin" && r !== mainRole);
+  // Super Admin is only ever a main role; CEO only beside it (the server refuses otherwise).
+  const extraChoices = extraRoleChoices(mainRole, extraRoles);
 
   function reset() {
     setExempt(clockInExempt);
@@ -122,7 +122,8 @@ export function EditStaffAccessDialog({
               value={mainRole}
               onValueChange={(v) => {
                 setMainRole(v as Role);
-                setExtras((prev) => prev.filter((r) => r !== v));
+                // CEO goes only beside Super Admin.
+                setExtras((prev) => prev.filter((r) => r !== v && (r !== "ceo" || v === "admin")));
               }}
               disabled={saving}
             >
@@ -130,7 +131,7 @@ export function EditStaffAccessDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {ORG_ROLES.map((r) => (
+                {mainRoleChoices(role).map((r) => (
                   <SelectItem key={r} value={r}>
                     {ROLES.find((x) => x.value === r)?.label ?? r}
                   </SelectItem>

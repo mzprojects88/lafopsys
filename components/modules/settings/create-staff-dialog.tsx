@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ROLES } from "@/lib/types/common";
+import { ASSIGNABLE_ROLES } from "@/lib/rbac/roles";
 import { createStaffAccount } from "@/app/(app)/settings/users/actions";
 
 // Org-wide default for every newly-created account (matches
@@ -123,7 +124,7 @@ export function CreateStaffDialog() {
               <SelectValue placeholder="Select a role" />
             </SelectTrigger>
             <SelectContent>
-              {ROLES.map((r) => (
+              {ROLES.filter((r) => ASSIGNABLE_ROLES.includes(r.value)).map((r) => (
                 <SelectItem key={r.value} value={r.value}>
                   {r.label}
                 </SelectItem>

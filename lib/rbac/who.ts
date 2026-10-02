@@ -36,6 +36,35 @@ export function doesFinance(who: Who): boolean {
  * whatever their main role (the CEO's main role stays Super Admin, the Office
  * Admin's stays Inventory Lead, so every server check keeps working). Display
  * only -- nothing may gate on it. */
+/** The roles LAF assigns (2026-10-02): Super Admin, Office Admin, Finance Staff, Inventory
+ * Lead, Inventory Staff, Social Worker, Driver, Chef & Kitchen Staff -- plus CEO, which is only
+ * ever an additional role beside Super Admin (the CEO sees and edits everything). House staff,
+ * board, volunteer and nutritionist still exist and keep working for anyone holding them, but
+ * are no longer offered. */
+export const ASSIGNABLE_ROLES: readonly Role[] = ["admin", "office_admin", "finance", "inventory_lead", "inventory_staff", "social_worker", "driver", "chef"];
+
+/** Main roles a picker offers: the assignable ones (never CEO), plus the one held now. */
+export function mainRoleChoices(current: Role): Role[] {
+  return ASSIGNABLE_ROLES.includes(current) ? [...ASSIGNABLE_ROLES] : [...ASSIGNABLE_ROLES, current];
+}
+
+/** Additional roles a picker offers for a main role: never Super Admin (0074), never the main
+ * role, CEO only beside Super Admin; plus any held now, so saving never drops one silently. */
+export function extraRoleChoices(main: Role, held: readonly Role[] = []): Role[] {
+  const offered = [...ASSIGNABLE_ROLES, "ceo" as Role].filter((r) => r !== "admin" && r !== main && (r !== "ceo" || main === "admin"));
+  return [...offered, ...held.filter((r) => !offered.includes(r) && r !== main && r !== "admin")];
+}
+
+/** Why a main role + additional roles can't be saved, or null. The server action applies it. */
+export function rolesProblem(main: Role, extras: readonly Role[]): string | null {
+  if (main === "ceo") return "CEO is an additional role beside Super Admin, not a main role.";
+  if (extras.includes("admin")) return "Super Admin can only be a main role.";
+  if (extras.includes(main)) return "An additional role can't repeat the main role.";
+  if (extras.length > 3) return "At most three additional roles.";
+  if (extras.includes("ceo") && main !== "admin") return "CEO goes only beside Super Admin.";
+  return null;
+}
+
 export function titleRole(who: Who): Role {
   const roles = rolesIn(who);
   return roles.includes("ceo") ? "ceo" : roles.includes("office_admin") ? "office_admin" : roles[0]!;
