@@ -4,8 +4,8 @@
 --     Admin keeps the list in Settings: plate, fuel, tank, fuel-door side, a
 --     starting km/L until one is measured, and the STARTING ODOMETER.
 --   * Tracking starts per vehicle when the Super Admin types its starting
---     odometer. Until then trips behave exactly as before, so this migration
---     changes nothing on the road by itself.
+--     odometer. Until then trips need no readings. One rule applies to every
+--     vehicle from day one: it is on one trip at a time.
 --   * Once a vehicle is tracked: Depart needs the odometer, Arrive needs it
 --     too; a reading may not go back below the vehicle's last one; one trip
 --     per vehicle on the road at a time; an arrived trip's reading is frozen,
@@ -113,6 +113,13 @@ begin
   if new.vehicle_id is not null then
     select * into v from ops.vehicles where id = new.vehicle_id;
     new.vehicle := v.name;
+  end if;
+
+  -- A vehicle is on one trip at a time (also the unique index; this says it in words).
+  if new.status = 'in_progress' and v.id is not null
+     and (tg_op = 'INSERT' or old.status is distinct from 'in_progress' or new.vehicle_id is distinct from old.vehicle_id)
+     and exists (select 1 from ops.trips o where o.vehicle_id = v.id and o.status = 'in_progress' and o.id <> new.id) then
+    raise exception '% is still on another trip; mark that one arrived first', v.name using errcode = '23505';
   end if;
 
   -- "Not left yet": the reading goes back with the departure.

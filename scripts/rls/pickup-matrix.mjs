@@ -144,10 +144,12 @@ const withSeed = (extra) => ({
     if (extra) await extra();
   },
 });
-// A scheduled LAF HOPE trip for both, made directly.
+// A scheduled pick-up for both, made directly -- on a test vehicle that is never
+// tracked (0076), so these scenarios hold whether or not LAF HOPE is tracked.
 const trip = async (status = "scheduled") => {
+  await client.query(`insert into ops.vehicles (name) values ('RLSTEST Hope') on conflict (name) do nothing`);
   await client.query(
-    `insert into ops.trips (id, date, direction, vehicle, departure_time, status) values ($1, ${TODAY}, 'from_hospital', 'LAF HOPE Transport', '07:30', 'scheduled')`,
+    `insert into ops.trips (id, date, direction, vehicle, departure_time, status) values ($1, ${TODAY}, 'from_hospital', 'RLSTEST Hope', '07:30', 'scheduled')`,
     [TRIP]
   );
   await client.query(
@@ -267,11 +269,17 @@ async function main() {
 
   await scenario(ids, "a trip takes its vehicle's name and link", "driver", tracked(),
     q(`select vehicle = 'RLSTEST Van' and vehicle_id = '${VEH}' as ok from ops.trips where id = '${T2}'`), value("ok", true));
-  await scenario(ids, "a pick-up made by name is linked to LAF HOPE", "admin", withSeed(() => trip()),
-    q(`select vehicle_id is not null as ok from ops.trips where id = '${TRIP}'`), value("ok", true));
-  await scenario(ids, "an untracked vehicle's trip leaves without a reading", "driver",
-    withSeed(async () => { await trip(); await client.query(`update ops.vehicles set start_odometer = null where name = 'LAF HOPE Transport'`); }),
+  await scenario(ids, "a pick-up made by name is linked to LAF HOPE", "admin", null,
+    q(`insert into ops.trips (date, direction, vehicle, departure_time) values (${TODAY}, 'from_hospital', 'LAF HOPE Transport', '07:30')
+       returning vehicle_id = (select id from ops.vehicles where name = 'LAF HOPE Transport') as ok`), value("ok", true));
+  await scenario(ids, "an untracked vehicle's trip leaves without a reading", "driver", withSeed(() => trip()),
     q(`update ops.trips set status = 'in_progress' where id = '${TRIP}'`), rows(1));
+  await scenario(ids, "an untracked vehicle is on one trip at a time too", "driver",
+    withSeed(async () => {
+      await trip("in_progress");
+      await client.query(`insert into ops.trips (id, date, direction, vehicle, departure_time) values ($1, ${TODAY}, 'errand', 'RLSTEST Hope', '08:00')`, [T3]);
+    }),
+    q(`update ops.trips set status = 'in_progress' where id = '${T3}'`), (r) => duplicate(r) && /still on another trip/.test(r.msg));
   await scenario(ids, "the driver departs with the odometer", "driver", tracked(), depart(1000), value("odometer_start", 1000));
   await scenario(ids, "a tracked vehicle can't leave without a reading", "driver", tracked(),
     q(`update ops.trips set status = 'in_progress' where id = '${T2}'`), badInput);
