@@ -290,7 +290,7 @@ function PickupCard({ pickup: p, vehicle, mine, driverName, canEdit, canBuild }:
         )}
 
         <TripReadings trip={p} />
-        <TripControls trip={p} vehicle={vehicle} canEdit={canEdit} canDepart={boarded > 0} departLabel={`Depart with ${boarded}`} arriveLabel="Arrived at LAF House" />
+        <TripControls trip={p} vehicle={vehicle} canEdit={canEdit} canDepart={boarded > 0} departLabel={`Depart with ${boarded}`} arriveLabel="Arrived at LAF House" route="pickup" />
         {p.status === "completed" && (
           <p className="text-theme-xs text-muted-foreground">
             Check the families in on the{" "}

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Ban, Fuel, Paperclip, Pencil, Wrench } from "lucide-react";
+import { Ban, Fuel, Loader2, Paperclip, Pencil, Sparkles, Wrench } from "lucide-react";
 import { FileLibrary } from "@/components/patterns/file-library";
 import { ReasonDialog } from "@/components/patterns/reason-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -17,12 +17,13 @@ import { useRole } from "@/context/role-provider";
 import { uploadFileToRecord } from "@/lib/files/upload-client";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { useVehicleExpenses, type ExpenseInput, type VehicleExpense } from "@/lib/hooks/use-vehicle-expenses-collection";
-import type { Vehicle } from "@/lib/hooks/use-vehicles-collection";
+import type { OdometerPhotoRead, Vehicle } from "@/lib/hooks/use-vehicles-collection";
 import { canDeleteFiles, canUploadFiles } from "@/lib/rbac/roles";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { formatKm } from "@/lib/utils/odometer";
 import { changeRule, formatPesoCents, pricePerLitre } from "@/lib/utils/vehicle-expenses";
-import { OdometerDrums } from "./odometer-drums";
+import { shrinkImage } from "@/lib/utils/shrink-image";
+import { OdometerDrums, OdometerPhotoButton, PhotoReadNote } from "./odometer-drums";
 
 // The kinds whose odometer matters later (maintenance due, phase D).
 const SERVICE_KINDS = new Set(["change_oil", "tires", "maintenance", "repair"]);
@@ -60,6 +61,38 @@ export function ExpenseDialog({
   const [notes, setNotes] = React.useState(existing?.notes ?? "");
   const [payer, setPayer] = React.useState(existing?.paidBy === "driver" ? (existing.paidByStaffId ?? "laf") : "laf");
   const [receipt, setReceipt] = React.useState<File | null>(null);
+  const [reading, setReading] = React.useState(false);
+  const [aiFilled, setAiFilled] = React.useState<string | null>(null);
+  const [pumpRead, setPumpRead] = React.useState<OdometerPhotoRead | null>(null);
+
+  /** The AI reads the receipt photo and fills what it can (0078); the driver checks every field. */
+  async function readReceipt(file: File) {
+    setReading(true);
+    setAiFilled(null);
+    try {
+      const res = await fetch("/api/transport/read-receipt", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ image: await shrinkImage(file, 1600, 0.85) }),
+      });
+      const r = await res.json();
+      if (!res.ok || !r.ok) {
+        toast.error(r.error ?? "The AI couldn't read this receipt; fill it in by hand.");
+        return;
+      }
+      const filled: string[] = [];
+      if (r.amount) { setAmount(String(r.amount)); filled.push("amount"); }
+      if (fuel && r.litres) { setLitres(String(r.litres)); filled.push("litres"); }
+      if (r.date && r.date <= todayIso()) { setDate(r.date); filled.push("date"); }
+      if (r.vendor) { setVendor(r.vendor); filled.push(fuel ? "station" : "shop"); }
+      if (!fuel && r.kind && r.kind !== "fuel") { setKind(r.kind); filled.push("type"); }
+      setAiFilled(filled.length ? `AI filled the ${filled.join(", ")}. Check each against the receipt.` : "The AI couldn't make out this receipt; fill it in by hand.");
+    } catch {
+      toast.error("The receipt couldn't be read; fill it in by hand.");
+    } finally {
+      setReading(false);
+    }
+  }
   const [reason, setReason] = React.useState("");
   const [saving, setSaving] = React.useState(false);
 
@@ -120,6 +153,33 @@ export function ExpenseDialog({
           <DialogTitle>{existing ? "Change the entry" : fuel ? "Log fuel" : "Log an expense"}</DialogTitle>
           <DialogDescription>{vehicle.name}</DialogDescription>
         </DialogHeader>
+        <Field>
+          <FieldLabel htmlFor="expReceipt">Receipt</FieldLabel>
+          <Input
+            id="expReceipt"
+            type="file"
+            accept="image/*,application/pdf"
+            capture="environment"
+            onChange={(e) => {
+              const file = e.target.files?.[0] ?? null;
+              setReceipt(file);
+              if (file && file.type.startsWith("image/") && !existing) void readReceipt(file);
+            }}
+          />
+          <FieldDescription className="flex items-center gap-1.5">
+            {reading ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" /> Reading the receipt…
+              </>
+            ) : aiFilled ? (
+              <>
+                <Sparkles className="size-3.5 shrink-0" /> {aiFilled}
+              </>
+            ) : (
+              "Take a photo first: the AI fills in what it can read. More can be added later from the entry."
+            )}
+          </FieldDescription>
+        </Field>
         {!fuel && (
           <Field>
             <FieldLabel htmlFor="expKind">What for</FieldLabel>
@@ -170,7 +230,18 @@ export function ExpenseDialog({
         {askOdometer && (
           <Field className="items-center">
             <FieldLabel>Odometer {fuel ? "at the pump" : "at the shop"}</FieldLabel>
+            {fuel && (
+              <OdometerPhotoButton
+                vehicleId={vehicle.id}
+                stage="pump"
+                onRead={(r) => {
+                  setPumpRead(r);
+                  if (r.reading != null) setOdometer(r.reading);
+                }}
+              />
+            )}
             <OdometerDrums value={odometer} onChange={setOdometer} />
+            <PhotoReadNote read={pumpRead} />
             <FieldDescription className="text-center">
               {odometerProblem ?? (vehicle.lastReading != null ? `Last trip reading ${formatKm(vehicle.lastReading)}.` : "Check the dashboard.")}
             </FieldDescription>
@@ -196,11 +267,6 @@ export function ExpenseDialog({
         <Field>
           <FieldLabel htmlFor="expNotes">Notes</FieldLabel>
           <Input id="expNotes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="expReceipt">Receipt</FieldLabel>
-          <Input id="expReceipt" type="file" accept="image/*,application/pdf" capture="environment" onChange={(e) => setReceipt(e.target.files?.[0] ?? null)} />
-          <FieldDescription>A photo of the receipt. More can be added later from the entry.</FieldDescription>
         </Field>
         {needsReason && (
           <Field>

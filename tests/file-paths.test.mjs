@@ -1,7 +1,7 @@
 // Bucket layout: folders mirror the main menu; keys are safe for B2 and never collide.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { contentTypeFor, folderFor, formatBytes, objectKeyFor, opensInline, periodFolder, sanitiseSegment } from "../lib/utils/file-paths.ts";
+import { contentTypeFor, folderFor, formatBytes, objectKeyFor, odometerPhotoKey, opensInline, periodFolder, sanitiseSegment } from "../lib/utils/file-paths.ts";
 
 describe("sanitiseSegment", () => {
   it("keeps Filipino names, folds slashes, strips the characters B2 and Windows choke on", () => {
@@ -30,6 +30,7 @@ describe("folders by main menu", () => {
     assert.equal(folderFor({ kind: "donor", name: "Manny Chan" }), "Donors/Manny Chan");
     assert.equal(folderFor({ kind: "ride", rideDate: "2026-09-22" }), "Patients/Arrival Rides/2026/09 September");
     assert.equal(folderFor({ kind: "vehicle_expense", vehicleName: "LAF HOPE Transport", expenseDate: "2026-10-02" }), "Transport/LAF HOPE Transport/2026/10 October");
+    assert.equal(odometerPhotoKey("LAF HOPE Transport", "2026-10-03", "abcdef12-3456-4000-8000-000000000000"), "Transport/LAF HOPE Transport/Odometer/2026/10 October/2026-10-03-abcdef12.jpg");
     assert.equal(folderFor({ kind: "bank_statement_import", coversTo: "2026-08-31", createdAt: "2026-09-02T01:00:00Z" }), "Financial/Bank Statements/2026/08 August");
     assert.equal(folderFor({ kind: "bank_statement_import", coversTo: null, createdAt: "2026-09-02T01:00:00Z" }), "Financial/Bank Statements/2026/09 September");
     assert.equal(folderFor({ kind: "general", category: "Board packs" }), "Reports/Board packs");

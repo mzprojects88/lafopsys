@@ -150,3 +150,8 @@ export function formatBytes(n: number): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/** An odometer photo (0078), filed by the server beside the vehicle's receipts: Transport/<vehicle>/Odometer/<year>/<month>/<day>-<id>.jpg */
+export function odometerPhotoKey(vehicleName: string, day: string, photoId: string): string {
+  return `Transport/${sanitiseSegment(vehicleName)}/Odometer/${periodFolder(day.slice(0, 7))}/${day}-${photoId.slice(0, 8)}.jpg`;
+}

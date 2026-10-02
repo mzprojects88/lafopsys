@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Bus, Flag, Gauge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRole } from "@/context/role-provider";
-import { correctOdometer, moveTrip, type Vehicle } from "@/lib/hooks/use-vehicles-collection";
+import { correctOdometer, moveTrip, useRouteKm, type Vehicle } from "@/lib/hooks/use-vehicles-collection";
 import { formatKm } from "@/lib/utils/odometer";
 import type { TripStatus } from "@/lib/types/house-ops";
 import { CorrectOdometerDialog, OdometerDialog } from "./odometer-drums";
@@ -40,15 +40,19 @@ export function TripControls({
   canDepart = true,
   departLabel,
   arriveLabel,
+  route,
 }: {
   trip: MovableTrip;
   vehicle: Vehicle | undefined;
+  /** routeKey() of the trip, for the usual km on arrival (0078). */
+  route: string;
   canEdit: boolean;
   canDepart?: boolean;
   departLabel: React.ReactNode;
   arriveLabel: string;
 }) {
   const { roles } = useRole();
+  const routes = useRouteKm();
   const [asking, setAsking] = React.useState<"depart" | "arrive" | "correct" | null>(null);
   const [busy, setBusy] = React.useState(false);
   const tracked = vehicle?.startOdometer != null;
@@ -93,11 +97,14 @@ export function TripControls({
         <OdometerDialog
           title={`${vehicle.name} odometer`}
           description="Check the dashboard. Confirm if the drums match it, or tap them to change."
+          vehicleId={vehicle.id}
+          stage="depart"
+          photoRequired={!vehicle.photoToday}
           initial={vehicle.lastReading}
           lowest={vehicle.lastReading}
           confirmLabel="Confirm and depart"
-          onConfirm={async (km) => {
-            const r = await moveTrip(trip.id, "in_progress", { start: km });
+          onConfirm={async (km, photoId) => {
+            const r = await moveTrip(trip.id, "in_progress", { start: km, startPhotoId: photoId });
             if (r.ok) toast.success("On the road");
             return r;
           }}
@@ -108,12 +115,15 @@ export function TripControls({
         <OdometerDialog
           title={`${vehicle.name} odometer`}
           description="The reading on the dashboard now."
+          vehicleId={vehicle.id}
+          stage="arrive"
           initial={trip.odometerStart}
           lowest={trip.odometerStart}
           tripStart={trip.odometerStart}
+          usual={routes.get(route) ?? null}
           confirmLabel="Confirm and arrive"
-          onConfirm={async (km) => {
-            const r = await moveTrip(trip.id, "completed", { end: km });
+          onConfirm={async (km, photoId) => {
+            const r = await moveTrip(trip.id, "completed", { end: km, endPhotoId: photoId });
             if (r.ok) toast.success(arriveLabel);
             return r;
           }}

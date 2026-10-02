@@ -13,11 +13,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useRole } from "@/context/role-provider";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
-import { startErrand, useErrands, type Errand, type Vehicle } from "@/lib/hooks/use-vehicles-collection";
+import { startErrand, useErrands, type Errand, type OdometerPhotoRead, type Vehicle } from "@/lib/hooks/use-vehicles-collection";
 import { formatDate } from "@/lib/utils/date";
-import { readingProblem } from "@/lib/utils/odometer";
+import { readingProblem, routeKey } from "@/lib/utils/odometer";
 import type { TripDirection } from "@/lib/types/house-ops";
-import { OdometerDrums } from "./odometer-drums";
+import { OdometerDrums, OdometerPhotoButton, PhotoReadNote } from "./odometer-drums";
 import { TripControls, TripReadings } from "./trip-controls";
 
 export const PURPOSE_LABEL: Record<Exclude<TripDirection, "from_hospital">, string> = {
@@ -53,7 +53,7 @@ export function ErrandCard({ errand: e, vehicle, mine, driverName, canEdit }: { 
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
         <TripReadings trip={e} />
-        <TripControls trip={e} vehicle={vehicle} canEdit={canEdit} departLabel="Depart" arriveLabel="Trip done" />
+        <TripControls trip={e} vehicle={vehicle} canEdit={canEdit} departLabel="Depart" arriveLabel="Trip done" route={routeKey(e.direction, e.destination)} />
       </CardContent>
     </Card>
   );
@@ -73,14 +73,17 @@ export function StartTripDialog({ vehicles, onClose }: { vehicles: Vehicle[]; on
   const vehicle = vehicles.find((v) => v.id === vehicleId);
   const tracked = vehicle?.startOdometer != null;
   const [km, setKm] = React.useState<number | null>(vehicle?.lastReading ?? null);
+  const [read, setRead] = React.useState<OdometerPhotoRead | null>(null);
   const [saving, setSaving] = React.useState(false);
+  // The day's first departure needs a photo of the odometer (0078).
+  const needsPhoto = tracked && !vehicle?.photoToday && !read;
   const places = [...new Set(errands.map((e) => e.destination).filter((d): d is string => !!d))].sort();
   const odometerProblem = tracked ? readingProblem(km, vehicle?.lastReading ?? null) : null;
 
   async function save() {
-    if (!vehicle || !destination.trim() || odometerProblem) return;
+    if (!vehicle || !destination.trim() || odometerProblem || needsPhoto) return;
     setSaving(true);
-    const r = await startErrand({ vehicleId: vehicle.id, direction: purpose, destination, driverId: driverId || null, odometerStart: tracked ? km : null });
+    const r = await startErrand({ vehicleId: vehicle.id, direction: purpose, destination, driverId: driverId || null, odometerStart: tracked ? km : null, photoId: read?.photoId ?? null });
     setSaving(false);
     if (!r.ok) {
       toast.error(`Couldn't start the trip: ${r.error}`);
@@ -100,7 +103,7 @@ export function StartTripDialog({ vehicles, onClose }: { vehicles: Vehicle[]; on
         {vehicles.length > 1 && (
           <Field>
             <FieldLabel htmlFor="tripVehicle">Vehicle</FieldLabel>
-            <Select value={vehicleId} onValueChange={(id) => { setVehicleId(id); setKm(vehicles.find((v) => v.id === id)?.lastReading ?? null); }}>
+            <Select value={vehicleId} onValueChange={(id) => { setVehicleId(id); setRead(null); setKm(vehicles.find((v) => v.id === id)?.lastReading ?? null); }}>
               <SelectTrigger id="tripVehicle" className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -158,7 +161,19 @@ export function StartTripDialog({ vehicles, onClose }: { vehicles: Vehicle[]; on
         {tracked && (
           <Field className="items-center">
             <FieldLabel>Odometer now</FieldLabel>
+            {needsPhoto && <p className="text-center text-theme-sm font-medium text-foreground">First trip of the day: take a photo of the odometer.</p>}
+            {vehicle && (
+              <OdometerPhotoButton
+                vehicleId={vehicle.id}
+                stage="depart"
+                onRead={(r) => {
+                  setRead(r);
+                  if (r.reading != null) setKm(r.reading);
+                }}
+              />
+            )}
             <OdometerDrums value={km} onChange={setKm} />
+            <PhotoReadNote read={read} />
             <FieldDescription className="text-center">{odometerProblem ?? "Check the dashboard. Tap the drums to change them."}</FieldDescription>
           </Field>
         )}
@@ -166,7 +181,7 @@ export function StartTripDialog({ vehicles, onClose }: { vehicles: Vehicle[]; on
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={!vehicle || !destination.trim() || !!odometerProblem || saving} onClick={save}>
+          <Button disabled={!vehicle || !destination.trim() || !!odometerProblem || needsPhoto || saving} onClick={save}>
             {saving ? "Saving…" : "Depart now"}
           </Button>
         </DialogFooter>

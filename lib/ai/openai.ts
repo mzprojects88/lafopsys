@@ -263,3 +263,110 @@ export async function chooseBedPlan(people: BedPlanPerson[], options: BedPlanOpt
     clearTimeout(timer);
   }
 }
+
+const PHOTO_TIMEOUT_MS = 25_000;
+
+export interface OdometerRead {
+  /** Whole km, or null when the model can't read it. */
+  reading: number | null;
+  confidence: number;
+  note: string;
+}
+
+const odometerSchema = z.object({
+  reading: z.number().int().min(0).nullable().describe("The total distance in whole km, or null if unreadable"),
+  confidence: z.number().min(0).max(1),
+  note: z.string().max(160),
+});
+
+/**
+ * The odometer in a photo of a vehicle's dashboard (Fuel Monitoring, 0078).
+ * Only the image goes out -- not the vehicle, the driver or the last
+ * reading, so the model reads what it sees instead of agreeing with us; the
+ * app compares afterwards and the driver confirms.
+ */
+export async function readOdometerPhoto(jpeg: Uint8Array): Promise<OdometerRead> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PHOTO_TIMEOUT_MS);
+  try {
+    const { object } = await generateObject({
+      model: model(),
+      schema: odometerSchema,
+      instructions:
+        "You read vehicle odometers from photos taken by a driver in the Philippines. " +
+        "Report the TOTAL distance (ODO) in whole kilometres: ignore the trip meters (TRIP A/B), the clock, the fuel and temperature gauges, " +
+        "and a final tenths digit (often a differently coloured last drum or after a decimal point). " +
+        "If the odometer is not in the photo, or a digit cannot be read with certainty, give null and say why in the note. Never guess digits.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "What does the odometer read?" },
+            { type: "file", data: jpeg, mediaType: "image/jpeg" },
+          ],
+        },
+      ],
+      abortSignal: controller.signal,
+      providerOptions: { openai: { reasoningEffort: "low" } },
+    });
+    return { reading: object.reading, confidence: object.confidence, note: object.note };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export interface ReceiptRead {
+  /** One of the kind ids offered, or null. */
+  kind: string | null;
+  amount: number | null;
+  litres: number | null;
+  /** yyyy-MM-dd, or null. */
+  date: string | null;
+  vendor: string | null;
+  confidence: number;
+}
+
+const receiptSchema = z.object({
+  kind: z.string().nullable().describe("The id of the matching type from the list, or null"),
+  amount: z.number().positive().nullable().describe("The total paid, in pesos"),
+  litres: z.number().positive().nullable().describe("Litres of fuel, for a fuel receipt"),
+  date: z.string().nullable().describe("The receipt's date as yyyy-MM-dd"),
+  vendor: z.string().max(80).nullable().describe("The station or shop name and branch"),
+  confidence: z.number().min(0).max(1),
+});
+
+/**
+ * A fuel or vehicle-expense receipt, read to prefill the form (0078): the
+ * driver checks every field before saving. The model gets the image and the
+ * list of expense types; it is told to leave out card numbers and names.
+ */
+export async function readReceiptPhoto(jpeg: Uint8Array, kinds: { id: string; name: string }[]): Promise<ReceiptRead> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PHOTO_TIMEOUT_MS);
+  try {
+    const { object } = await generateObject({
+      model: model(),
+      schema: receiptSchema,
+      instructions:
+        "You read Philippine receipts for a children's charity's vehicle: fuel (Petron, Shell, Caltex, Seaoil, Phoenix, Cleanfuel...), oil changes, tires, repairs, parking, tolls, car washes, LTO registration. " +
+        "Give the TOTAL amount paid in pesos (not VAT lines or change), the litres for fuel, the date as yyyy-MM-dd, and the station or shop name with its branch. " +
+        "Choose the expense type id from the list given, or null. Use null for anything you cannot read with certainty. Never return card numbers or personal names.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: `Expense types (id: name):\n${kinds.map((k) => `${k.id}: ${k.name}`).join("\n")}\n\nRead this receipt.` },
+            { type: "file", data: jpeg, mediaType: "image/jpeg" },
+          ],
+        },
+      ],
+      abortSignal: controller.signal,
+      providerOptions: { openai: { reasoningEffort: "low" } },
+    });
+    const kind = object.kind && kinds.some((k) => k.id === object.kind) ? object.kind : null;
+    const date = object.date && /^\d{4}-\d{2}-\d{2}$/.test(object.date) ? object.date : null;
+    return { kind, amount: object.amount, litres: object.litres, date, vendor: object.vendor, confidence: object.confidence };
+  } finally {
+    clearTimeout(timer);
+  }
+}

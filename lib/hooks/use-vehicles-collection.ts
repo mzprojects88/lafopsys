@@ -21,6 +21,16 @@ export interface Vehicle {
   active: boolean;
   /** The highest reading on record -- where the drums start. */
   lastReading: number | null;
+  /** Today's odometer photo is in: later departures today don't need one (0078). */
+  photoToday: boolean;
+}
+
+/** What the AI read from an odometer photo the server filed (0078). */
+export interface OdometerPhotoRead {
+  photoId: string;
+  reading: number | null;
+  confidence: number;
+  note: string;
 }
 
 /** Trips that aren't NCH pick-ups: errands, hospital runs (0076). */
@@ -54,17 +64,20 @@ interface VehicleRow {
 export const vehiclesStore = createCollection<Vehicle[]>({
   key: "ops.vehicles",
   empty: [],
-  // Every arrival moves a vehicle's last reading.
-  tables: [{ schema: "ops", table: "vehicles" }, { schema: "ops", table: "trips" }],
+  // Every arrival moves a vehicle's last reading; a photo opens the day's departures.
+  tables: [{ schema: "ops", table: "vehicles" }, { schema: "ops", table: "trips" }, { schema: "ops", table: "odometer_photos" }],
   fetch: async () => {
     const ops = createClient().schema("ops");
-    const [vehicles, readings] = await Promise.all([
+    const [vehicles, readings, photos] = await Promise.all([
       ops.from("vehicles").select("*").order("name"),
       ops.from("v_vehicle_odometer").select("vehicle_id, last_reading"),
+      ops.from("odometer_photos").select("vehicle_id").eq("taken_on", todayIso()),
     ]);
     if (vehicles.error) throw new Error(vehicles.error.message);
     if (readings.error) throw new Error(readings.error.message);
+    if (photos.error) throw new Error(photos.error.message);
     const last = new Map((readings.data ?? []).map((r) => [r.vehicle_id as string, r.last_reading as number | null]));
+    const photographed = new Set((photos.data ?? []).map((p) => p.vehicle_id as string));
     return ((vehicles.data ?? []) as VehicleRow[]).map((v) => ({
       id: v.id,
       name: v.name,
@@ -76,6 +89,7 @@ export const vehiclesStore = createCollection<Vehicle[]>({
       startOdometer: v.start_odometer,
       active: v.active,
       lastReading: last.get(v.id) ?? null,
+      photoToday: photographed.has(v.id),
     }));
   },
 });
@@ -116,15 +130,54 @@ export const errandsStore = createCollection<Errand[]>({
 
 async function refreshAll(error: { message: string } | null): Promise<MutationResult> {
   if (error) return { ok: false, error: error.message };
-  await Promise.all([vehiclesStore.refetch(), errandsStore.refetch(), pickupsStore.refetch()]);
+  await Promise.all([vehiclesStore.refetch(), errandsStore.refetch(), pickupsStore.refetch(), routeKmStore.refetch()]);
   return { ok: true };
 }
 
-/** Depart / arrive / "not left yet", with the reading in the same update so the guard sees both. */
-export async function moveTrip(tripId: string, status: TripStatus, reading?: { start?: number; end?: number }): Promise<MutationResult> {
+/** The usual km per route (ops.v_route_km, 0078), keyed by routeKey(). */
+export const routeKmStore = createCollection<Map<string, { medianKm: number; trips: number }>>({
+  key: "ops.v_route_km",
+  empty: new Map(),
+  tables: [{ schema: "ops", table: "trips" }],
+  fetch: async () => {
+    const { data, error } = await createClient().schema("ops").from("v_route_km").select("route_key, trips, median_km");
+    if (error) throw new Error(error.message);
+    return new Map((data ?? []).map((r) => [r.route_key as string, { medianKm: Number(r.median_km), trips: r.trips as number }]));
+  },
+});
+
+export function useRouteKm() {
+  return useCollection(routeKmStore).data;
+}
+
+/** Sends a phone photo of the odometer (already shrunk) to be filed and read by the AI. */
+export async function sendOdometerPhoto(vehicleId: string, stage: "depart" | "arrive" | "pump" | "other", image: string): Promise<{ ok: true; read: OdometerPhotoRead } | { ok: false; error: string }> {
+  try {
+    const res = await fetch("/api/transport/odometer-photo", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ vehicleId, stage, image }),
+    });
+    const body = await res.json();
+    if (!res.ok || !body.ok) return { ok: false, error: body.error ?? "The photo couldn't be sent." };
+    await vehiclesStore.refetch();
+    return { ok: true, read: { photoId: body.photoId, reading: body.reading, confidence: body.confidence, note: body.note } };
+  } catch {
+    return { ok: false, error: "The photo couldn't be sent; check the connection." };
+  }
+}
+
+/** Depart / arrive / "not left yet", with the reading (and the photo behind it) in the same update so the guard sees both. */
+export async function moveTrip(
+  tripId: string,
+  status: TripStatus,
+  reading?: { start?: number; end?: number; startPhotoId?: string | null; endPhotoId?: string | null }
+): Promise<MutationResult> {
   const row: Record<string, unknown> = { status };
   if (reading?.start !== undefined) row.odometer_start = reading.start;
   if (reading?.end !== undefined) row.odometer_end = reading.end;
+  if (reading?.startPhotoId) row.start_photo_id = reading.startPhotoId;
+  if (reading?.endPhotoId) row.end_photo_id = reading.endPhotoId;
   return refreshAll((await createClient().schema("ops").from("trips").update(row).eq("id", tripId)).error);
 }
 
@@ -142,6 +195,7 @@ export async function startErrand(input: {
   destination: string;
   driverId: string | null;
   odometerStart: number | null;
+  photoId?: string | null;
 }): Promise<MutationResult> {
   const ops = createClient().schema("ops");
   const now = new Date();
@@ -161,7 +215,7 @@ export async function startErrand(input: {
     .select("id")
     .single();
   if (error) return { ok: false, error: error.message };
-  const moved = await moveTrip(data.id, "in_progress", input.odometerStart == null ? undefined : { start: input.odometerStart });
+  const moved = await moveTrip(data.id, "in_progress", input.odometerStart == null ? undefined : { start: input.odometerStart, startPhotoId: input.photoId });
   if (!moved.ok) await ops.from("trips").delete().eq("id", data.id);
   return moved;
 }
@@ -172,7 +226,7 @@ export function useVehicles() {
     vehicles,
     loading,
     /** Settings, Super Admin only (RLS). Adds when there's no id. */
-    saveVehicle: async (v: Omit<Vehicle, "id" | "lastReading"> & { id?: string }): Promise<MutationResult> => {
+    saveVehicle: async (v: Omit<Vehicle, "id" | "lastReading" | "photoToday"> & { id?: string }): Promise<MutationResult> => {
       const row = {
         name: v.name.trim(),
         plate_no: v.plateNo?.trim() || null,

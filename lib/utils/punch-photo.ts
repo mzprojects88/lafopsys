@@ -16,12 +16,12 @@ export type PhotoStatus = "captured" | "denied" | "unavailable" | "upload_failed
  * The bytes of a `data:image/jpeg;base64,...` URL, or null when it is not a
  * JPEG of a sensible size. The magic bytes are checked, not just the label.
  */
-export function decodeJpegDataUrl(value: unknown): Uint8Array | null {
+export function decodeJpegDataUrl(value: unknown, maxBytes = PHOTO_MAX_BYTES): Uint8Array | null {
   if (typeof value !== "string") return null;
   const m = /^data:image\/jpe?g;base64,([A-Za-z0-9+/=]+)$/.exec(value);
-  if (!m || m[1].length > Math.ceil((PHOTO_MAX_BYTES * 4) / 3) + 4) return null;
+  if (!m || m[1].length > Math.ceil((maxBytes * 4) / 3) + 4) return null;
   const bytes = Uint8Array.from(Buffer.from(m[1], "base64"));
-  if (bytes.length < 100 || bytes.length > PHOTO_MAX_BYTES) return null;
+  if (bytes.length < 100 || bytes.length > maxBytes) return null;
   if (bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) return null;
   return bytes;
 }

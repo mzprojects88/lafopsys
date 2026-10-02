@@ -1,7 +1,7 @@
 // Unit tests for lib/utils/odometer.ts -- the odometer drums (Fuel Monitoring, 0076).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { odometerDigits, parseOdometer, readingProblem } from "../lib/utils/odometer.ts";
+import { isUnusualTrip, odometerDigits, parseOdometer, readingProblem, routeKey } from "../lib/utils/odometer.ts";
 
 describe("odometerDigits", () => {
   it("pads a reading to six drums", () => {
@@ -39,5 +39,35 @@ describe("readingProblem", () => {
     assert.equal(readingProblem(100, 100), null);
     assert.equal(readingProblem(150, 100), null);
     assert.equal(readingProblem(5, null), null);
+  });
+});
+
+describe("routeKey", () => {
+  it("names an NCH pick-up by itself", () => {
+    assert.equal(routeKey("from_hospital", null), "pickup");
+    assert.equal(routeKey("from_hospital", "  "), "pickup");
+  });
+  it("keys an errand by purpose and tidy destination", () => {
+    assert.equal(routeKey("errand", "  Puregold   Cubao "), "errand:puregold cubao");
+    assert.equal(routeKey("to_hospital", "PGH"), "to_hospital:pgh");
+  });
+});
+
+describe("isUnusualTrip", () => {
+  const usual = { medianKm: 24, trips: 9 };
+  it("accepts a trip near the usual", () => {
+    assert.equal(isUnusualTrip(30, usual), false);
+  });
+  it("questions one far from it", () => {
+    assert.equal(isUnusualTrip(240, usual), true);
+    assert.equal(isUnusualTrip(2, usual), true);
+  });
+  it("allows at least 10 km either way on short routes", () => {
+    assert.equal(isUnusualTrip(14, { medianKm: 5, trips: 5 }), false);
+    assert.equal(isUnusualTrip(16, { medianKm: 5, trips: 5 }), true);
+  });
+  it("says nothing until the route has three trips", () => {
+    assert.equal(isUnusualTrip(500, { medianKm: 24, trips: 2 }), false);
+    assert.equal(isUnusualTrip(500, null), false);
   });
 });

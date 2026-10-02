@@ -7,7 +7,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { formatKm, odometerDigits, parseOdometer, readingProblem } from "@/lib/utils/odometer";
+import { Camera, Loader2 } from "lucide-react";
+import { ROUTE_MIN_TRIPS, formatKm, isUnusualTrip, odometerDigits, parseOdometer, readingProblem } from "@/lib/utils/odometer";
+import { shrinkImage } from "@/lib/utils/shrink-image";
+import { sendOdometerPhoto, type OdometerPhotoRead } from "@/lib/hooks/use-vehicles-collection";
 
 /** One drum: a column of 0-9 that rolls to its digit, shaded like a cylinder. */
 function Drum({ digit }: { digit: number }) {
@@ -78,41 +81,109 @@ export function OdometerDrums({
   );
 }
 
-// ponytail: a fixed "that's a long trip" prompt; phase C replaces it with the km learned per route.
+// No usual km for this route yet (under three trips): a fixed "that's a long trip" prompt instead.
 const LONG_TRIP_KM = 300;
+
+/**
+ * "Photo of the odometer": the phone's camera, the picture shrunk and sent to be filed and
+ * read by the AI (0078). The reading comes back to fill the drums; the driver still confirms.
+ */
+export function OdometerPhotoButton({
+  vehicleId,
+  stage,
+  onRead,
+  label = "Photo of the odometer",
+}: {
+  vehicleId: string;
+  stage: "depart" | "arrive" | "pump" | "other";
+  onRead: (read: OdometerPhotoRead) => void;
+  label?: string;
+}) {
+  const input = React.useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = React.useState(false);
+
+  async function send(file: File | undefined) {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const r = await sendOdometerPhoto(vehicleId, stage, await shrinkImage(file, 1280));
+      if (!r.ok) toast.error(r.error);
+      else onRead(r.read);
+    } catch {
+      toast.error("That photo couldn't be opened; take it again.");
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = "";
+    }
+  }
+
+  return (
+    <>
+      <input ref={input} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => send(e.target.files?.[0])} />
+      <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => input.current?.click()}>
+        {busy ? <Loader2 className="animate-spin" /> : <Camera />} {busy ? "Reading the photo…" : label}
+      </Button>
+    </>
+  );
+}
+
+/** What the AI made of the photo, in a line under the drums. */
+export function PhotoReadNote({ read }: { read: OdometerPhotoRead | null }) {
+  if (!read) return null;
+  return read.reading != null ? (
+    <p className="text-center text-theme-xs text-success-foreground dark:text-success">
+      AI read {formatKm(read.reading)}. Check it matches the dashboard.
+    </p>
+  ) : (
+    <p className="text-center text-theme-xs text-warning-foreground">Photo saved; the AI couldn&apos;t read it ({read.note}). Roll the drums to the reading.</p>
+  );
+}
 
 /** Depart / arrive with the odometer: the drums prefilled, Confirm when they match the dashboard. */
 export function OdometerDialog({
   title,
   description,
+  vehicleId,
+  stage,
+  photoRequired = false,
   initial,
   lowest,
   tripStart,
+  usual,
   confirmLabel,
   onConfirm,
   onClose,
 }: {
   title: string;
   description: string;
+  vehicleId: string;
+  stage: "depart" | "arrive";
+  /** The day's first departure needs a photo (0078). */
+  photoRequired?: boolean;
   initial: number | null;
   /** The reading may not be below this (the vehicle's last, or this trip's departure). */
   lowest: number | null;
   /** On arrival: the departure reading, to show this trip's km. */
   tripStart?: number | null;
+  /** On arrival: the route's usual km, learned from past trips. */
+  usual?: { medianKm: number; trips: number } | null;
   confirmLabel: string;
-  onConfirm: (km: number) => Promise<{ ok: boolean; error?: string }>;
+  onConfirm: (km: number, photoId: string | null) => Promise<{ ok: boolean; error?: string }>;
   onClose: () => void;
 }) {
-  const [km, setKm] = React.useState<number | null>(initial);
+  const trusted = usual && usual.trips >= ROUTE_MIN_TRIPS ? usual : null;
+  const [km, setKm] = React.useState<number | null>(trusted && tripStart != null ? tripStart + Math.round(trusted.medianKm) : initial);
+  const [read, setRead] = React.useState<OdometerPhotoRead | null>(null);
   const [saving, setSaving] = React.useState(false);
   const problem = readingProblem(km, lowest);
   const tripKm = tripStart != null && km != null ? km - tripStart : null;
-  const long = tripKm != null && tripKm > LONG_TRIP_KM;
+  const odd = tripKm != null && tripKm >= 0 && (trusted ? isUnusualTrip(tripKm, trusted) : tripKm > LONG_TRIP_KM);
+  const needsPhoto = photoRequired && !read;
 
   async function save() {
-    if (km == null || problem) return;
+    if (km == null || problem || needsPhoto) return;
     setSaving(true);
-    const r = await onConfirm(km);
+    const r = await onConfirm(km, read?.photoId ?? null);
     setSaving(false);
     if (!r.ok) {
       toast.error(r.error ?? "Couldn't save the reading.");
@@ -129,23 +200,38 @@ export function OdometerDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col items-center gap-2">
+          {photoRequired && !read && (
+            <p className="text-center text-theme-sm font-medium text-foreground">First trip of the day: take a photo of the odometer.</p>
+          )}
+          <OdometerPhotoButton
+            vehicleId={vehicleId}
+            stage={stage}
+            onRead={(r) => {
+              setRead(r);
+              if (r.reading != null) setKm(r.reading);
+            }}
+          />
           <OdometerDrums value={km} onChange={setKm} />
+          <PhotoReadNote read={read} />
           <p className="text-center text-theme-xs text-muted-foreground">
             Tap the drums to change them.
             {lowest != null ? ` Last reading ${formatKm(lowest)}.` : ""}
             {tripKm != null && tripKm >= 0 ? ` This trip: ${formatKm(tripKm)}.` : ""}
+            {trusted ? ` Usually about ${formatKm(Math.round(trusted.medianKm))} (${trusted.trips} trips).` : ""}
           </p>
           {km != null && problem && <p className="text-center text-theme-xs text-destructive">{problem}</p>}
-          {long && !problem && (
-            <p className="text-center text-theme-xs text-warning-foreground">That&apos;s {formatKm(tripKm)} for one trip. Check the dashboard before saving.</p>
+          {odd && !problem && (
+            <p className="text-center text-theme-xs text-warning-foreground">
+              {trusted ? `That's far from the usual ${formatKm(Math.round(trusted.medianKm))}.` : `That's ${formatKm(tripKm)} for one trip.`} Check the dashboard before saving.
+            </p>
           )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={km == null || !!problem || saving} onClick={save}>
-            {saving ? "Saving…" : long ? `Yes, ${formatKm(tripKm)}` : confirmLabel}
+          <Button disabled={km == null || !!problem || needsPhoto || saving} onClick={save}>
+            {saving ? "Saving…" : odd ? `Yes, ${formatKm(tripKm)}` : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -13,7 +13,7 @@ import { OdometerDrums } from "@/components/modules/transport/odometer-drums";
 import { useVehicles, type Vehicle } from "@/lib/hooks/use-vehicles-collection";
 import { formatKm } from "@/lib/utils/odometer";
 
-const NEW: Omit<Vehicle, "id" | "lastReading"> = {
+const NEW: Omit<Vehicle, "id" | "lastReading" | "photoToday"> = {
   name: "",
   plateNo: null,
   fuelType: "diesel",

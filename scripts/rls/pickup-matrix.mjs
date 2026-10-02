@@ -6,7 +6,7 @@
 //
 // Usage: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs
 // 0076 (vehicles, the odometer guard) pre-flight:
-//   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0076_fuel_vehicles.sql supabase/migrations/0077_vehicle_expenses.sql
+//   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0076_fuel_vehicles.sql supabase/migrations/0077_vehicle_expenses.sql supabase/migrations/0078_odometer_photos.sql
 // Pre-flight (before 0049-0053 are applied, one rolled-back transaction):
 //   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0049_check_in.sql supabase/migrations/0050_module_access.sql supabase/migrations/0051_sheet_admission.sql supabase/migrations/0052_arrival_rides.sql supabase/migrations/0053_laf_hope_pickups.sql
 import { Client } from "pg";
@@ -254,7 +254,14 @@ async function main() {
   const VEH = "00000000-0000-4000-8000-0000000000e1";
   const T2 = "00000000-0000-4000-8000-0000000000e2";
   const T3 = "00000000-0000-4000-8000-0000000000e3";
-  const vehicle = (start = 1000) => client.query(`insert into ops.vehicles (id, name, start_odometer) values ($1, 'RLSTEST Van', $2)`, [VEH, start]);
+  // A tracked test vehicle, with today's odometer photo in (0078) unless a scenario is about the photo.
+  const vehicle = async (start = 1000, photo = true) => {
+    await client.query(`insert into ops.vehicles (id, name, start_odometer) values ($1, 'RLSTEST Van', $2)`, [VEH, start]);
+    if (photo) await client.query(odoPhoto(VEH));
+  };
+  const odoPhoto = (vehicleId, id = null) =>
+    `insert into ops.odometer_photos (${id ? "id, " : ""}vehicle_id, stage, taken_by, object_key, bytes)
+     values (${id ? `'${id}', ` : ""}'${vehicleId}', 'depart', '${ids.driver}', 'Transport/RLSTEST/' || gen_random_uuid() || '.jpg', 1000)`;
   const vtrip = async (id = T2, stage = "scheduled", start = 1000, end = 1020) => {
     await client.query(`insert into ops.trips (id, date, direction, vehicle_id, vehicle, departure_time, status, destination)
       values ($1, ${TODAY}, 'errand', $2, 'typed name', '09:00', 'scheduled', 'Test errand')`, [id, VEH]);
@@ -390,6 +397,52 @@ async function main() {
   await scenario(ids, "only the Super Admin removes a receipt", "driver", null, q(`select shared.file_delete_allowed('transport') as ok`), value("ok", false));
   await scenario(ids, "the Super Admin removes a receipt", "admin", null, q(`select shared.file_delete_allowed('transport') as ok`), value("ok", true));
   await scenario(ids, "finance reads the receipts", "finance", null, q(`select shared.file_read_allowed('transport', 'vehicle_expense', null) as ok`), value("ok", true));
+
+
+  // --- 0078: odometer photos and the usual km --------------------------------------------
+  const PHOTO = "00000000-0000-4000-8000-0000000000f7";
+  const VEH2 = "00000000-0000-4000-8000-0000000000e7";
+  await scenario(ids, "the day's first departure needs an odometer photo", "driver",
+    { setup: async () => { await vehicle(1000, false); await vtrip(T2); } },
+    depart(1000), (r) => badInput(r) && /photo of the odometer/.test(r.msg));
+  await scenario(ids, "with today's photo in, the next departure goes", "driver", tracked(), depart(1000), value("odometer_start", 1000));
+  await scenario(ids, "a departure is backed by its photo", "driver",
+    { setup: async () => { await vehicle(1000, false); await client.query(odoPhoto(VEH, PHOTO)); await vtrip(T2); } },
+    q(`update ops.trips set status = 'in_progress', odometer_start = 1000, start_photo_id = '${PHOTO}' where id = '${T2}' returning start_photo_id`), value("start_photo_id", PHOTO));
+  await scenario(ids, "a photo of another vehicle can't back a reading", "driver",
+    { setup: async () => {
+      await vehicle();
+      await client.query(`insert into ops.vehicles (id, name) values ($1, 'RLSTEST Other')`, [VEH2]);
+      await client.query(odoPhoto(VEH2, PHOTO));
+      await vtrip(T2);
+    } },
+    q(`update ops.trips set status = 'in_progress', odometer_start = 1000, start_photo_id = '${PHOTO}' where id = '${T2}'`), badInput);
+  await scenario(ids, "'Not left yet' lets go of the photo too", "driver",
+    { setup: async () => {
+      await vehicle(1000, false);
+      await client.query(odoPhoto(VEH, PHOTO));
+      await vtrip(T2);
+      await client.query(`update ops.trips set status = 'in_progress', odometer_start = 1000, start_photo_id = $2 where id = $1`, [T2, PHOTO]);
+    } },
+    q(`update ops.trips set status = 'scheduled' where id = '${T2}' returning start_photo_id is null as ok`), value("ok", true));
+  await scenario(ids, "nobody files an odometer photo by hand", "driver", { setup: () => vehicle() }, q(odoPhoto(VEH)), denied);
+  await scenario(ids, "the driver reads the vehicle's photos", "driver", { setup: () => vehicle() },
+    q(`select id from ops.odometer_photos where vehicle_id = '${VEH}'`), rows(1));
+  await scenario(ids, "a volunteer reads no odometer photos", "volunteer", { setup: () => vehicle() },
+    q(`select id from ops.odometer_photos where vehicle_id = '${VEH}'`), rows(0));
+  await scenario(ids, "an NCH pick-up's route is 'pickup'", "driver", null, q(`select ops.route_key('from_hospital', null) as k`), value("k", "pickup"));
+  await scenario(ids, "the usual km is the middle of the route's trips", "driver",
+    { setup: async () => {
+      await vehicle();
+      let odo = 1000;
+      for (const [i, km] of [20, 24, 30].entries()) {
+        const id = `00000000-0000-4000-8000-0000000000a${i}`;
+        await vtrip(id, "completed", odo, odo + km);
+        odo += km;
+      }
+    } },
+    q(`select trips, median_km from ops.v_route_km where route_key = 'errand:test errand'`),
+    (r) => r.ok && r.rows === 1 && r.data[0].trips === 3 && Number(r.data[0].median_km) === 24);
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
