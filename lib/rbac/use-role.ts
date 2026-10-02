@@ -7,7 +7,7 @@ import { useModuleAccess } from "@/lib/hooks/use-module-access";
 export { useRole };
 
 export function useVisibleNavItems() {
-  const { role } = useRole();
+  const { roles } = useRole();
   const { rows } = useModuleAccess();
-  return NAV_ITEMS.filter((item) => isNavItemVisible(item, role, rows));
+  return NAV_ITEMS.filter((item) => isNavItemVisible(item, roles, rows));
 }

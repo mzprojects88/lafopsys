@@ -31,6 +31,7 @@ import { todayIso } from "@/lib/utils/date";
 import { dayKey, effectiveStatus, formatMinutes, isLong, sessionMinutes, timeLabel, totalsFor, type DtrSession } from "@/lib/utils/dtr";
 import type { PunchLocationStatus, TimePunch } from "@/lib/types/staff";
 import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
+import { doesFinance } from "@/lib/rbac/roles";
 
 /** Inventory table look: header cell. */
 const TH = "h-11 px-5 text-theme-xs font-medium text-muted-foreground";
@@ -289,7 +290,7 @@ export default function DtrPage() {
   const [fromDate, setFromDate] = React.useState("");
   const [toDate, setToDate] = React.useState("");
   const [tab, setTab] = React.useState("sessions");
-  const { role, isHr, staffId: myId } = useRole();
+  const { role, roles, isHr, staffId: myId } = useRole();
   const { requests } = useCorrectionRequests();
   // Admins and HR: requests waiting on them (not their own); everyone else: their own still waiting.
   const pendingRequests = requests.filter((r) => r.status === "pending" && (canManageHr(role, isHr) ? r.staffId !== myId : true)).length;
@@ -345,7 +346,7 @@ export default function DtrPage() {
       rows.push({
         ...p,
         staffName: staffName(p.staffId),
-        isDriver: staff.find((x) => x.id === p.staffId)?.role === "driver",
+        isDriver: ((x) => !!x && (x.role === "driver" || x.extraRoles.includes("driver")))(staff.find((x) => x.id === p.staffId)),
         dayKey: day,
         dateLabel: formatDayKey(day),
         timeLabel: timeLabel(p.punchedAt),
@@ -374,7 +375,7 @@ export default function DtrPage() {
   }
 
   // Whose DTR prints: your own, or for those who read everyone's (0017/0041), whoever the filter picked.
-  const readsEveryone = canManageHr(role, isHr) || role === "finance";
+  const readsEveryone = canManageHr(roles, isHr) || doesFinance(roles);
   const printTarget = readsEveryone ? (staffFilter === "all" ? null : staffFilter) : (myId ?? null);
 
   const exportDisabled = tab === "sessions" ? sessionRows.length === 0 : punchRows.length === 0;

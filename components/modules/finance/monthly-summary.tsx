@@ -18,6 +18,7 @@ import { dayKey } from "@/lib/utils/dtr";
 import { formatDate } from "@/lib/utils/date";
 import { availableYears, cashInBank, donorBreakdown, monthlySummary, monthsWithReceipts, type MonthRow } from "@/lib/utils/finance-summary";
 import { cn } from "@/lib/utils";
+import { doesFinance } from "@/lib/rbac/roles";
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -41,8 +42,8 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
   const { transactions, loading: txnsLoading, error: txnsError } = useBankTransactionsData();
   const { entries } = useCashEntriesData();
   const { notes, upsertNote } = useFinanceMonthNotes();
-  const { role } = useRole();
-  const canWriteNotes = role === "admin" || role === "finance";
+  const { roles } = useRole();
+  const canWriteNotes = doesFinance(roles);
   const today = dayKey(useNow());
   const currentYear = Number(today.slice(0, 4));
 

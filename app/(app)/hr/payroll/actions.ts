@@ -9,6 +9,7 @@ import { serviceYears } from "@/lib/utils/employment";
 import type { PeriodAttendance } from "@/lib/utils/attendance";
 import { allowanceFromJson, type PayItemCode, type PayItemKind, type RateSnapshotEntry } from "@/lib/types/hr";
 import type { ActionResult } from "../actions";
+import { runsHr } from "@/lib/rbac/roles";
 
 /** Same shape as app/(app)/hr/actions.ts hrCaller: RLS is the gate, this is the readable refusal. */
 async function hrCaller() {
@@ -17,8 +18,8 @@ async function hrCaller() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in." as string, supabase: undefined, userId: undefined };
-  const { data: staff } = await supabase.schema("shared").from("staff").select("role, is_hr, active").eq("id", user.id).single();
-  if (!staff?.active || !(staff.role === "admin" || staff.is_hr)) return { error: "Only admins and HR can do this." as string, supabase: undefined, userId: undefined };
+  const { data: staff } = await supabase.schema("shared").from("staff").select("role, extra_roles, is_hr, active").eq("id", user.id).single();
+  if (!staff?.active || !runsHr(staff)) return { error: "Only admins and HR can do this." as string, supabase: undefined, userId: undefined };
   return { error: undefined, supabase, userId: user.id };
 }
 

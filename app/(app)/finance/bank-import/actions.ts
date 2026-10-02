@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { categorize, checkContinuity, naturalKey, summarizeBatch, type BankRow } from "@/lib/utils/bank-statement";
+import { doesFinance, rolesOfRow } from "@/lib/rbac/roles";
 
 export interface ImportBankRowsInput {
   accountId: string;
@@ -35,9 +36,9 @@ export async function importBankRows(input: ImportBankRowsInput): Promise<Import
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
-  const { data: caller } = await supabase.schema("shared").from("staff").select("role").eq("id", user.id).single();
-  if (caller?.role !== "admin" && caller?.role !== "finance") {
-    return { ok: false, error: "Only admins and finance can import a bank statement." };
+  const { data: caller } = await supabase.schema("shared").from("staff").select("role, extra_roles").eq("id", user.id).single();
+  if (!caller || !doesFinance(rolesOfRow(caller))) {
+    return { ok: false, error: "Only admins, the Office Admin and finance can import a bank statement." };
   }
 
   const rows = input.rows.filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.postingDate) && Number.isFinite(r.runningBalance));

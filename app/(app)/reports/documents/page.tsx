@@ -54,7 +54,7 @@ function buildTree(files: StoredFile[]): Node {
  * that is added here is Reports, for board packs and other general papers.
  */
 export default function DocumentsPage() {
-  const { role, isHr } = useRole();
+  const { roles, isHr } = useRole();
   const { files, loading, error } = useAllFiles();
   const [search, setSearch] = React.useState("");
   // The six menu folders start open so the first view reads like the menu.
@@ -97,7 +97,7 @@ export default function DocumentsPage() {
   function renderNode(node: Node, depth: number): React.ReactNode {
     const expanded = node.path === "" || q.length > 0 || open.has(node.path);
     const children = [...node.children.values()].sort((a, b) => a.name.localeCompare(b.name));
-    const canDelete = (f: StoredFile) => canDeleteFiles(f.module, role, isHr);
+    const canDelete = (f: StoredFile) => canDeleteFiles(f.module, roles, isHr);
     return (
       <div key={node.path}>
         {node.path ? (
@@ -162,7 +162,7 @@ export default function DocumentsPage() {
         </SectionCard>
       )}
 
-      <FileLibrary recordType="general" recordId="Board packs" canUpload={canUploadFiles("reports", role, isHr)} canDelete={canDeleteFiles("reports", role, isHr)} title="Reports · Board packs" description="General papers that belong to no single record: board packs, annual reports, policies. Kept under Reports / Board packs." />
+      <FileLibrary recordType="general" recordId="Board packs" canUpload={canUploadFiles("reports", roles, isHr)} canDelete={canDeleteFiles("reports", roles, isHr)} title="Reports · Board packs" description="General papers that belong to no single record: board packs, annual reports, policies. Kept under Reports / Board packs." />
 
       <p className="text-xs text-muted-foreground">
         <Upload className="mr-1 inline size-3" />

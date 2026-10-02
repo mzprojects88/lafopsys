@@ -44,7 +44,7 @@ import { RetireBedDialog } from "./retire-bed-dialog";
  * and save it in one go; house staff lock beds; everyone hovers.
  */
 export function FloorPlanView() {
-  const { role } = useRole();
+  const { roles } = useRole();
   const { rooms, units, bedPositions, labels, loading, saveLayout, setBedStatus, createBed, retireBed } = useHouseLayout();
   const { patients, carers, stays } = usePatientsData();
   const editor = useFloorPlanEditor();
@@ -56,9 +56,9 @@ export function FloorPlanView() {
   const [adding, setAdding] = React.useState(false);
   const [addingLabel, setAddingLabel] = React.useState(false);
 
-  const canEdit = canEditFloorPlan(role);
+  const canEdit = canEditFloorPlan(roles);
   const canLock = useModuleAccess().canEdit("patients");
-  const canSeeClinical = canSeeClinicalDetail(role);
+  const canSeeClinical = canSeeClinicalDetail(roles);
   const editing = canEdit && editor.editing;
 
   const { reservations } = useBedReservations();

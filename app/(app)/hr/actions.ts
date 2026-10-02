@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { parseRateTable } from "@/lib/utils/statutory";
+import { runsHr } from "@/lib/rbac/roles";
 import type {
   Allowance,
   DaysFactor,
@@ -37,8 +38,8 @@ async function hrCaller(): Promise<HrCaller> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in." };
-  const { data: staff } = await supabase.schema("shared").from("staff").select("role, is_hr, active").eq("id", user.id).single();
-  if (!staff?.active || !(staff.role === "admin" || staff.is_hr)) {
+  const { data: staff } = await supabase.schema("shared").from("staff").select("role, extra_roles, is_hr, active").eq("id", user.id).single();
+  if (!staff?.active || !runsHr(staff)) {
     return { error: "Only admins and HR can do this." };
   }
   return { supabase, userId: user.id };

@@ -9,6 +9,7 @@ import { dtrPrintRows, type PrintPunch } from "@/lib/utils/dtr-print";
 import { payPeriodLabel, periodFor, semiMonthlyPeriods } from "@/lib/utils/pay-period";
 import { formatDate } from "@/lib/utils/date";
 import { PrintButton } from "@/app/(print)/hr/payslips/[id]/print/print-button";
+import { hasAnyRole, rolesOfRow } from "@/lib/rbac/roles";
 
 /**
  * The printed DTR for one pay period (DTR plan phase 5): each day's arrival
@@ -40,9 +41,9 @@ export default async function DtrPrintPage({ params, searchParams }: { params: P
   if (staffId !== user.id) {
     const [{ data: isHr }, { data: me }] = await Promise.all([
       supabase.schema("hr").rpc("is_hr_staff"),
-      supabase.schema("shared").from("staff").select("role").eq("id", user.id).maybeSingle(),
+      supabase.schema("shared").from("staff").select("role, extra_roles").eq("id", user.id).maybeSingle(),
     ]);
-    if (isHr !== true && me?.role !== "finance") notFound();
+    if (isHr !== true && !(me && hasAnyRole(rolesOfRow(me), "finance"))) notFound();
     judges = isHr === true;
   }
 

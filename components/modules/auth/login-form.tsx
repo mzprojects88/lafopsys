@@ -56,7 +56,7 @@ export function LoginForm({ roster }: { roster: LoginRosterEntry[] }) {
     const { data: staffRow, error: staffError } = await supabase
       .schema("shared")
       .from("staff")
-      .select("role, first_name, last_name, must_change_pin, landing_path")
+      .select("role, extra_roles, first_name, last_name, must_change_pin, landing_path")
       .eq("id", signInData.user.id)
       .single();
 
@@ -67,14 +67,15 @@ export function LoginForm({ roster }: { roster: LoginRosterEntry[] }) {
     }
 
     const fullName = `${staffRow.first_name} ${staffRow.last_name}`;
-    login(staffRow.role as Role, fullName);
+    const extraRoles = ((staffRow.extra_roles as string[] | null) ?? []) as Role[];
+    login(staffRow.role as Role, fullName, extraRoles);
 
     // A bookmarked deep link (middleware's ?next=) still wins; otherwise the
     // person's own landing page, otherwise their role's default. The PIN-change
     // page carries the same ?next= through so the link is not lost on the way.
     const destination = resolveLandingPath(
       {
-        role: staffRow.role as Role,
+        role: [staffRow.role as Role, ...extraRoles],
         landingPath: staffRow.landing_path as string | null,
         next: searchParams.get("next"),
       },

@@ -29,7 +29,7 @@ const SOURCE_LABEL: Record<BankStatementImport["source"], string> = {
  * the ones that added nothing, so a re-upload explains itself. */
 export function BankImportHistory() {
   const { imports, loading } = useBankStatementImportsData();
-  const { role } = useRole();
+  const { roles } = useRole();
   const { files } = useAllFiles();
   const [filesFor, setFilesFor] = React.useState<BankStatementImport | null>(null);
   const countFor = (id: string) => files.filter((f) => f.recordType === "bank_statement_import" && f.recordId === id).length;
@@ -90,7 +90,7 @@ export function BankImportHistory() {
                 {filesFor.fileName} · imported {formatDate(filesFor.createdAt, "MMM d, yyyy")} · kept under Financial / Bank Statements
               </DialogDescription>
             </DialogHeader>
-            <FileLibrary recordType="bank_statement_import" recordId={filesFor.id} canUpload={canUploadFiles("finance", role, false)} canDelete={canDeleteFiles("finance", role, false)} compact />
+            <FileLibrary recordType="bank_statement_import" recordId={filesFor.id} canUpload={canUploadFiles("finance", roles, false)} canDelete={canDeleteFiles("finance", roles, false)} compact />
           </DialogContent>
         </Dialog>
       ) : null}

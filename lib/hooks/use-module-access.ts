@@ -29,9 +29,10 @@ export async function fetchModuleAccess(): Promise<ModuleAccessRow[]> {
 }
 
 export function useModuleAccess() {
-  const { role } = useRole();
+  // Every role the person holds counts (0073): the highest level wins, as in shared.module_level.
+  const { roles } = useRole();
   const { data: rows, loading } = useCollection(moduleAccessStore);
-  const level = React.useCallback((module: ModuleKey): AccessLevel => levelFor(rows, role, module), [rows, role]);
+  const level = React.useCallback((module: ModuleKey): AccessLevel => levelFor(rows, roles, module), [rows, roles]);
 
   async function setLevel(forRole: Role, module: ModuleKey, next: AccessLevel): Promise<MutationResult> {
     const { error } = await createClient()

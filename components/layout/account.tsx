@@ -8,10 +8,11 @@ import { ROLES } from "@/lib/types/common";
 /** What the header and the phone account sheet both show about "me". */
 export function useAccount() {
   const router = useRouter();
-  const { role, user } = useRole();
+  // The title, not the main role: the CEO (main role Super Admin) shows as CEO (0073).
+  const { title, user } = useRole();
   return {
     user,
-    roleLabel: ROLES.find((r) => r.value === role)?.label ?? role,
+    roleLabel: ROLES.find((r) => r.value === title)?.label ?? title,
     initials:
       user
         .split(" ")

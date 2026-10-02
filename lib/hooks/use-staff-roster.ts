@@ -9,6 +9,8 @@ export interface StaffRosterEntry {
   firstName: string;
   lastName: string;
   role: Role;
+  /** Additional roles beside the main one (0073), e.g. an inventory staff member who also drives. */
+  extraRoles: Role[];
   position: string;
   active: boolean;
   /** Admin-set (0031): this person is never asked to clock in. */
@@ -24,6 +26,7 @@ interface StaffRow {
   first_name: string;
   last_name: string;
   role: Role;
+  extra_roles: Role[] | null;
   position: string;
   active: boolean;
   clock_in_exempt: boolean;
@@ -39,7 +42,7 @@ export const staffRosterStore = createCollection<StaffRosterEntry[]>({
     const { data, error } = await createClient()
       .schema("shared")
       .from("staff")
-      .select("id, first_name, last_name, role, position, active, clock_in_exempt, landing_path, is_hr")
+      .select("id, first_name, last_name, role, extra_roles, position, active, clock_in_exempt, landing_path, is_hr")
       .order("first_name");
     if (error) throw new Error(error.message);
     return ((data ?? []) as StaffRow[]).map((row) => ({
@@ -47,6 +50,7 @@ export const staffRosterStore = createCollection<StaffRosterEntry[]>({
       firstName: row.first_name,
       lastName: row.last_name,
       role: row.role,
+      extraRoles: row.extra_roles ?? [],
       position: row.position,
       active: row.active,
       clockInExempt: row.clock_in_exempt,

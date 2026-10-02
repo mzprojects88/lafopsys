@@ -4,9 +4,16 @@ import * as React from "react";
 import { Role } from "@/lib/types/common";
 import { createClient } from "@/lib/supabase/client";
 import { resetAllCollections } from "@/lib/data/collection-store";
+import { runsHr, titleRole } from "@/lib/rbac/roles";
 
 interface RoleContextValue {
+  /** The main role (shared.staff.role): the default home page and every server check. */
   role: Role;
+  /** Every role the person holds, main role first (0073): pass this where a
+   * second job adds access -- module levels, nav, file rights, driver lists. */
+  roles: readonly Role[];
+  /** What the person is called on screen (titleRole): CEO / Office Admin when held. */
+  title: Role;
   user: string;
   /** Supabase Auth user id of the signed-in staff member. `undefined` while the
    * session is still being resolved, `null` when there is no session. Matches
@@ -25,7 +32,7 @@ interface RoleContextValue {
    * first render after sign-in is already correct rather than briefly showing
    * the default. The next syncFromSession() confirms it from shared.staff --
    * this is a head start, never a source of truth. */
-  login: (role: Role, user: string) => void;
+  login: (role: Role, user: string, extraRoles?: readonly Role[]) => void;
 }
 
 const RoleContext = React.createContext<RoleContextValue | undefined>(undefined);
@@ -35,6 +42,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
   // from shared.staff a moment later; starting at "admin" would flash admin-only
   // navigation at everyone on every page load.
   const [role, setRoleState] = React.useState<Role>("volunteer");
+  const [extraRoles, setExtraRoles] = React.useState<readonly Role[]>([]);
   const [user, setUserState] = React.useState<string>("");
   const [staffId, setStaffId] = React.useState<string | null | undefined>(undefined);
   const [email, setEmail] = React.useState<string | null>(null);
@@ -65,14 +73,16 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         const { data: staffRow } = await supabase
           .schema("shared")
           .from("staff")
-          .select("role, first_name, last_name, is_hr, landing_path")
+          .select("role, extra_roles, first_name, last_name, is_hr, landing_path")
           .eq("id", userData.user.id)
           .single();
 
         if (!cancelled && staffRow) {
           setRoleState(staffRow.role as Role);
+          setExtraRoles(((staffRow.extra_roles as string[] | null) ?? []) as Role[]);
           setUserState(`${staffRow.first_name} ${staffRow.last_name}`);
-          setIsHr(Boolean(staffRow.is_hr));
+          // The Office Admin runs HR as a role (hr.is_hr_staff, 0073), like an is_hr flag.
+          setIsHr(runsHr(staffRow));
           setLandingPath((staffRow.landing_path as string | null) ?? null);
           setReady(true);
           return;
@@ -83,6 +93,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
       // role to show; middleware sends anyone without a session to /login.
       if (!cancelled) {
         setRoleState("volunteer");
+        setExtraRoles([]);
         setUserState("");
         setIsHr(false);
         setLandingPath(null);
@@ -118,14 +129,16 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const login = React.useCallback((nextRole: Role, nextUser: string) => {
+  const login = React.useCallback((nextRole: Role, nextUser: string, nextExtraRoles: readonly Role[] = []) => {
     setRoleState(nextRole);
+    setExtraRoles(nextExtraRoles);
     setUserState(nextUser);
   }, []);
 
+  const roles = React.useMemo<readonly Role[]>(() => [role, ...extraRoles], [role, extraRoles]);
   const value = React.useMemo(
-    () => ({ role, user, staffId, email, isHr, landingPath, ready, login }),
-    [role, user, staffId, email, isHr, landingPath, ready, login]
+    () => ({ role, roles, title: titleRole(roles), user, staffId, email, isHr, landingPath, ready, login }),
+    [role, roles, user, staffId, email, isHr, landingPath, ready, login]
   );
 
   return <RoleContext.Provider value={value}>{children}</RoleContext.Provider>;

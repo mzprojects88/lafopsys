@@ -27,7 +27,7 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
   const { receipts, generateReceipt } = useAcknowledgmentReceiptsData();
   const { certificates, generateCertificate } = useDoneeCertificatesData();
   const donor = donors.find((d) => d.id === donorId);
-  const { role } = useRole();
+  const { roles } = useRole();
 
   if (!donor) {
     if (loading) return null;
@@ -138,8 +138,8 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
           <FileLibrary
             recordType="donor"
             recordId={donor.id}
-            canUpload={canUploadFiles("donors", role, false)}
-            canDelete={canDeleteFiles("donors", role, false)}
+            canUpload={canUploadFiles("donors", roles, false)}
+            canDelete={canDeleteFiles("donors", roles, false)}
             title="Documents"
             description={`Acknowledgment receipts, donee certificates and deeds of donation, kept under Donors / ${donor.name}. Not visible on the donor portal.`}
           />

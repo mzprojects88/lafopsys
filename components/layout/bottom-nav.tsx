@@ -25,12 +25,12 @@ interface Tab {
  */
 export function BottomNav() {
   const pathname = usePathname();
-  const { role, landingPath } = useRole();
+  const { roles, landingPath } = useRole();
   const { rows } = useModuleAccess();
   const items = useVisibleNavItems();
   const [moreOpen, setMoreOpen] = React.useState(false);
 
-  const home = resolveLandingPath({ role, landingPath, next: null }, rows);
+  const home = resolveLandingPath({ role: roles, landingPath, next: null }, rows);
   const find = (module: NavItem["module"]) => items.find((i) => i.module === module);
   const patients = find("patients");
   const staff = find("staff");

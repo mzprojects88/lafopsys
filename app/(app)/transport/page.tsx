@@ -252,7 +252,8 @@ function NewPickupDialog({ onClose }: { onClose: () => void }) {
   const [picked, setPicked] = React.useState<Set<string>>(new Set());
   const [saving, setSaving] = React.useState(false);
   const candidates = useManifestCandidates(date);
-  const drivers = staff.filter((s) => s.active && s.role === "driver");
+  // Main role or an additional one (0073): an inventory staff member may also drive.
+  const drivers = staff.filter((s) => s.active && (s.role === "driver" || s.extraRoles.includes("driver")));
 
   function toggle(id: string, on: boolean) {
     setPicked((prev) => {

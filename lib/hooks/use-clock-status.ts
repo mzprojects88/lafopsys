@@ -109,11 +109,13 @@ export function useClockStatus() {
   // components/modules/settings/clock-in-requirement-toggle.tsx).
   // Per-person exemption (0031) wins over the role rule. An exempt person can
   // still punch from /staff if they want a record; nothing here stops that.
+  // With more than one role (0073), exempt only if EVERY role is: an inventory
+  // staff member who also drives clocks in, as a driver must.
   const clockInRequired = !me
     ? false
     : me.clockInExempt
       ? false
-      : !INVENTORY_ROLES.includes(me.role) || settings.requireClockInForInventoryRoles;
+      : ![me.role, ...me.extraRoles].every((r) => INVENTORY_ROLES.includes(r)) || settings.requireClockInForInventoryRoles;
 
   async function punch(punchType: "clock_in" | "clock_out", capture: PunchCapture = {}): Promise<PunchResult | undefined> {
     if (!me) return undefined;

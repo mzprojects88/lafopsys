@@ -27,6 +27,7 @@ import { formatAmount2, toCentavos } from "@/lib/utils/money";
 import { payPeriodLabel } from "@/lib/utils/pay-period";
 import { computeRegularRun } from "./actions";
 import { PAYROLL_RUN_KINDS, type PayPeriod, type PayrollRun } from "@/lib/types/hr";
+import { doesFinance } from "@/lib/rbac/roles";
 
 /**
  * Payroll: each period's run from timesheets-approved to paid, the pay
@@ -34,7 +35,7 @@ import { PAYROLL_RUN_KINDS, type PayPeriod, type PayrollRun } from "@/lib/types/
  * itself lives at /hr/payroll/[runId].
  */
 export default function PayrollPage() {
-  const { role, isHr } = useRole();
+  const { role, roles, isHr } = useRole();
   const manages = canManageHr(role, isHr);
   const { periods, loading: periodsLoading } = usePayPeriods();
   const { runs, loading: runsLoading } = usePayrollRuns();
@@ -70,7 +71,7 @@ export default function PayrollPage() {
   return (
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader title="Payroll" description="Compute from approved timesheets, have a second person approve, pay by bank transfer, record the reference." action={<HrSubNav />} />
-      {role === "admin" || role === "finance" ? (
+      {doesFinance(roles) ? (
         <div className="flex justify-end">
           <Button asChild size="sm" variant="ghost">
             <Link href="/hr/payroll/reconcile">Bank reconciliation</Link>

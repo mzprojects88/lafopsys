@@ -17,6 +17,7 @@ interface StaffRow {
   first_name: string;
   last_name: string;
   role: Role;
+  extra_roles: Role[] | null;
   position: string;
   active: boolean;
   must_change_pin: boolean;
@@ -33,7 +34,7 @@ export default async function UsersPage() {
   const { data } = await supabase
     .schema("shared")
     .from("staff")
-    .select("id, staff_code, first_name, last_name, role, position, active, must_change_pin, hire_date, clock_in_exempt, landing_path, is_hr")
+    .select("id, staff_code, first_name, last_name, role, extra_roles, position, active, must_change_pin, hire_date, clock_in_exempt, landing_path, is_hr")
     .order("first_name");
 
   const rows = (data ?? []) as StaffRow[];
@@ -68,12 +69,13 @@ export default async function UsersPage() {
                 </span>
               </div>
               <Pill tone="neutral" className="shrink-0">
-                {ROLE_LABEL[s.role]}
+                {[s.role, ...(s.extra_roles ?? [])].map((r) => ROLE_LABEL[r] ?? r).join(" + ")}
               </Pill>
               <EditStaffAccessDialog
                 staffId={s.id}
                 name={`${s.first_name} ${s.last_name}`}
                 role={s.role}
+                extraRoles={s.extra_roles ?? []}
                 clockInExempt={s.clock_in_exempt}
                 landingPath={s.landing_path}
                 isHr={s.is_hr}

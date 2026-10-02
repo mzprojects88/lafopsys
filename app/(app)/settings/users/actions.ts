@@ -95,12 +95,27 @@ export async function createStaffAccount(input: CreateStaffInput): Promise<Creat
     return { ok: false, error: `Account creation failed: ${insertError.message}` };
   }
 
+  // laf-inventory scopes stock to a House (inventory.staff_house, 0014); an account made
+  // without one sees no house stock there. One House today.
+  const { error: houseError } = await admin
+    .schema("inventory")
+    .from("staff_house")
+    .upsert({ staff_id: created.user.id, house_id: "house-laf-main" }, { onConflict: "staff_id" });
+  if (houseError) {
+    revalidatePath("/settings/users");
+    return { ok: false, error: `The account was created, but not given a House in laf-inventory: ${houseError.message}` };
+  }
+
   revalidatePath("/settings/users");
   return { ok: true };
 }
 
 export interface UpdateStaffAccessInput {
   staffId: string;
+  /** The main role: their default home page and every server check (0073). */
+  role: Role;
+  /** Additional roles; access is everything any role allows. Never "admin". */
+  extraRoles: Role[];
   clockInExempt: boolean;
   /** A nav href the person's role can see, or null for the role default. */
   landingPath: string | null;
@@ -134,21 +149,43 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
   }
 
   const admin = createAdminClient();
-  const { data: target } = await admin.schema("shared").from("staff").select("role").eq("id", input.staffId).single();
+  const { data: target } = await admin.schema("shared").from("staff").select("role, active").eq("id", input.staffId).single();
   if (!target) {
     return { ok: false, error: "That staff account no longer exists." };
   }
 
+  // Roles (0073). The Super Admin is only ever a main role: every server check reads the
+  // main role, so an "additional admin" would be an admin to the database and not to them.
+  const extraRoles = [...new Set(input.extraRoles)];
+  if (!ORG_ROLES.includes(input.role) || !extraRoles.every((r) => ORG_ROLES.includes(r))) {
+    return { ok: false, error: "Invalid role." };
+  }
+  if (extraRoles.includes("admin")) {
+    return { ok: false, error: "Super Admin can only be a main role." };
+  }
+  if (extraRoles.includes(input.role) || extraRoles.length > 3) {
+    return { ok: false, error: "Additional roles can't repeat the main role, and there can be at most three." };
+  }
+  if (target.role === "admin" && input.role !== "admin") {
+    if (input.staffId === caller.id) {
+      return { ok: false, error: "You can't remove your own Super Admin role." };
+    }
+    const { count } = await admin.schema("shared").from("staff").select("id", { count: "exact", head: true }).eq("role", "admin").eq("active", true);
+    if (target.active && (count ?? 0) <= 1) {
+      return { ok: false, error: "At least one active Super Admin must remain." };
+    }
+  }
+
   const landingPath = input.landingPath?.trim() || null;
   const { data: accessRows } = await admin.schema("shared").from("module_access").select("role, module, level");
-  if (landingPath && !isAllowedLandingPath(target.role as Role, landingPath, (accessRows ?? []) as ModuleAccessRow[])) {
-    return { ok: false, error: "That page is not one this person's role can open." };
+  if (landingPath && !isAllowedLandingPath([input.role, ...extraRoles], landingPath, (accessRows ?? []) as ModuleAccessRow[])) {
+    return { ok: false, error: "That page is not one this person's roles can open." };
   }
 
   const { error } = await admin
     .schema("shared")
     .from("staff")
-    .update({ clock_in_exempt: input.clockInExempt, landing_path: landingPath, is_hr: input.isHr })
+    .update({ role: input.role, extra_roles: extraRoles, clock_in_exempt: input.clockInExempt, landing_path: landingPath, is_hr: input.isHr })
     .eq("id", input.staffId);
 
   if (error) {

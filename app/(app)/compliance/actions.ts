@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { parseDueRule } from "@/lib/utils/compliance";
 import type { ComplianceApplies, ComplianceCategory, ComplianceFilingStatus, ComplianceFrequency } from "@/lib/types/hr";
 import type { ActionResult } from "@/app/(app)/hr/actions";
+import { doesFinance, rolesOfRow, runsHr } from "@/lib/rbac/roles";
 
 /** Same shape as app/(app)/hr/actions.ts hrCaller: RLS is the gate, this is the readable refusal. */
 async function staffCaller(allowFinance: boolean) {
@@ -13,8 +14,8 @@ async function staffCaller(allowFinance: boolean) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in." as string, supabase: undefined, userId: undefined };
-  const { data: staff } = await supabase.schema("shared").from("staff").select("role, is_hr, active").eq("id", user.id).single();
-  const allowed = !!staff?.active && (staff.role === "admin" || staff.is_hr || (allowFinance && staff.role === "finance"));
+  const { data: staff } = await supabase.schema("shared").from("staff").select("role, extra_roles, is_hr, active").eq("id", user.id).single();
+  const allowed = !!staff?.active && (runsHr(staff) || (allowFinance && doesFinance(rolesOfRow(staff))));
   if (!allowed) return { error: (allowFinance ? "Only admins, finance and HR can do this." : "Only admins and HR can do this.") as string, supabase: undefined, userId: undefined };
   return { error: undefined, supabase, userId: user.id };
 }

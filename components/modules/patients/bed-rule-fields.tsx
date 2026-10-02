@@ -80,8 +80,8 @@ export function useBedChoices(
  * The database logs it and it shows as a breach until the family moves.
  */
 export function BedRuleException({ blocked, value, onChange }: { blocked: BlockedBed[]; value: ExceptionDraft; onChange: (next: ExceptionDraft) => void }) {
-  const { role } = useRole();
-  if (!blocked.length || !canAllowBedException(role)) return null;
+  const { roles } = useRole();
+  if (!blocked.length || !canAllowBedException(roles)) return null;
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-warning/30 bg-warning/10 p-3">
       <label className="flex items-start gap-2 text-theme-sm text-foreground">

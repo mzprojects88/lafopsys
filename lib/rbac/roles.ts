@@ -71,6 +71,8 @@ export const NAV_GROUPS: NavGroup[] = ["Main", "Work", "Manage"];
 
 export const ALL_ROLES: Role[] = [
   "admin",
+  "ceo",
+  "office_admin",
   "social_worker",
   "house_staff",
   "driver",
@@ -78,6 +80,9 @@ export const ALL_ROLES: Role[] = [
   "board",
   "volunteer",
 ];
+
+export { doesFinance, hasAnyRole, rolesIn, rolesOfRow, runsHr, titleRole, type StaffRolesRow, type Who } from "@/lib/rbac/who";
+import { doesFinance, hasAnyRole, rolesIn, type Who } from "@/lib/rbac/who";
 
 /** laf-inventory-only roles. Real accounts, created from lafopsys like any
  * other, but scoped in lafopsys's own nav to Inventory (read-only) + Staff &
@@ -117,14 +122,17 @@ export const NAV_ITEMS: NavItem[] = [
 
 /** A role's level for a module: admins always edit (0050 refuses anything
  * else); no row means none. The rows come from shared.module_access. */
-export function levelFor(rows: readonly ModuleAccessRow[], role: Role, module: ModuleKey): AccessLevel {
-  if (role === "admin") return "edit";
+export function levelFor(rows: readonly ModuleAccessRow[], who: Who, module: ModuleKey): AccessLevel {
+  const roles = rolesIn(who);
+  if (roles.includes("admin")) return "edit";
   if (NAV_ITEMS.find((i) => i.module === module)?.adminOnly) return "none";
-  return rows.find((r) => r.role === role && r.module === module)?.level ?? "none";
+  // The highest level any of the person's roles has (shared.module_level, 0073).
+  const levels = rows.filter((r) => roles.includes(r.role) && r.module === module).map((r) => r.level);
+  return levels.includes("edit") ? "edit" : levels.includes("view") ? "view" : "none";
 }
 
-export function isNavItemVisible(item: NavItem, role: Role, rows: readonly ModuleAccessRow[]) {
-  return !isHiddenPath(item.href, role) && levelFor(rows, role, item.module) !== "none";
+export function isNavItemVisible(item: NavItem, who: Who, rows: readonly ModuleAccessRow[]) {
+  return !isHiddenPath(item.href, rolesIn(who)) && levelFor(rows, who, item.module) !== "none";
 }
 
 /** The module a path belongs to (longest matching menu href), or null for
@@ -161,77 +169,75 @@ export function canEditCalendarEvent(canEditCalendar: boolean, event: { source: 
 /** Who runs HR: admins, plus anyone an admin flagged as HR (0035's
  * shared.staff.is_hr). Also the RLS rule (hr.is_hr_staff()); this only
  * decides which HR pages and buttons render. */
-export function canManageHr(role: Role, isHr: boolean) {
-  return role === "admin" || isHr;
+export function canManageHr(who: Who, isHr: boolean) {
+  return hasAnyRole(who, "admin", "office_admin") || isHr;
 }
 
 /** Who sees the Compliances tracker: admins, finance, and anyone flagged as
  * HR. Mirrors the RLS on hr.compliance_filings (0043 + 0044). */
-export function canViewCompliance(role: Role, isHr: boolean) {
-  return role === "admin" || role === "finance" || isHr;
+export function canViewCompliance(who: Who, isHr: boolean) {
+  return doesFinance(who) || canManageHr(who, isHr);
 }
 
 /** Who may record a filing (in progress, submitted, reference): the same
  * people. Adding or editing an obligation, and deleting a filing, stays
  * with canManageHr. */
-export function canRecordComplianceFilings(role: Role, isHr: boolean) {
-  return canViewCompliance(role, isHr);
+export function canRecordComplianceFilings(who: Who, isHr: boolean) {
+  return canViewCompliance(who, isHr);
 }
 
 /** Who may add files to a module's records (the SQL twin is shared.file_write_allowed, 0045). */
-export function canUploadFiles(module: FileModule, role: Role, isHr: boolean) {
+export function canUploadFiles(module: FileModule, who: Who, isHr: boolean) {
   switch (module) {
     case "hr":
-      return canManageHr(role, isHr);
+      return canManageHr(who, isHr);
     case "compliance":
-      return canManageHr(role, isHr) || role === "finance";
+      return canManageHr(who, isHr) || doesFinance(who);
     case "patients":
-      return role === "admin" || role === "social_worker";
-    case "donors":
-      return role === "admin" || role === "finance";
+      return hasAnyRole(who, "admin", "social_worker", "office_admin");
     default:
-      return role === "admin" || role === "finance";
+      return doesFinance(who);
   }
 }
 
 /** Who may remove files: the same people, except compliance stays with admins and HR (shared.file_delete_allowed). */
-export function canDeleteFiles(module: FileModule, role: Role, isHr: boolean) {
-  return module === "compliance" ? canManageHr(role, isHr) : canUploadFiles(module, role, isHr);
+export function canDeleteFiles(module: FileModule, who: Who, isHr: boolean) {
+  return module === "compliance" ? canManageHr(who, isHr) : canUploadFiles(module, who, isHr);
 }
 
 /** Who draws the floor plan (place, rotate, add, retire beds; 0047). The
  * guard trigger on ops.units is the rule; this only decides whether the
  * edit tools render. */
-export function canEditFloorPlan(role: Role) {
-  return role === "admin";
+export function canEditFloorPlan(who: Who) {
+  return hasAnyRole(who, "admin");
 }
 
 /** Who may place a family outside the bed rules, with a reason (0072): social
  * workers, admins (CEO, Super Admin) and the inventory lead (Des); mirrors
  * ops.can_allow_bed_exception(). They still need Patients edit to check anyone in. */
-export function canAllowBedException(role: Role) {
-  return role === "admin" || role === "social_worker" || role === "inventory_lead";
+export function canAllowBedException(who: Who) {
+  return hasAnyRole(who, "admin", "social_worker", "inventory_lead");
 }
 
 /** Finance and Board never see clinical detail — enforced at the component level using this flag. */
-export function canSeeClinicalDetail(role: Role) {
-  return role !== "finance" && role !== "board";
+export function canSeeClinicalDetail(who: Who) {
+  return rolesIn(who).some((r) => r !== "finance" && r !== "board");
 }
 
 /** Post-login destination for this person, against the real navigation.
  * See lib/rbac/landing.ts for the precedence rules. */
 export function resolveLandingPath(
-  input: { role: Role; landingPath: string | null | undefined; next: string | null | undefined },
+  input: { role: Role | readonly Role[]; landingPath: string | null | undefined; next: string | null | undefined },
   rows: readonly ModuleAccessRow[]
 ) {
   return resolveLandingPathIn(input, landingNav(rows));
 }
 
-export function isAllowedLandingPath(role: Role, path: string, rows: readonly ModuleAccessRow[]) {
-  return isAllowedLandingPathIn(role, path, landingNav(rows));
+export function isAllowedLandingPath(who: Who, path: string, rows: readonly ModuleAccessRow[]) {
+  return isAllowedLandingPathIn(who, path, landingNav(rows));
 }
 
 /** Every nav href a role can be sent to -- what the landing-page picker offers. */
-export function landingChoicesFor(role: Role, rows: readonly ModuleAccessRow[]): { href: string; title: string }[] {
-  return NAV_ITEMS.filter((item) => isNavItemVisible(item, role, rows)).map((item) => ({ href: navHref(item), title: item.title }));
+export function landingChoicesFor(who: Who, rows: readonly ModuleAccessRow[]): { href: string; title: string }[] {
+  return NAV_ITEMS.filter((item) => isNavItemVisible(item, who, rows)).map((item) => ({ href: navHref(item), title: item.title }));
 }

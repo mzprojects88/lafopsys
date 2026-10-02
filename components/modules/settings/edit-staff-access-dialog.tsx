@@ -17,9 +17,10 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { landingChoicesFor } from "@/lib/rbac/roles";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ORG_ROLES, landingChoicesFor } from "@/lib/rbac/roles";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
-import type { Role } from "@/lib/types/common";
+import { ROLES, type Role } from "@/lib/types/common";
 import { updateStaffAccess } from "@/app/(app)/settings/users/actions";
 
 const ROLE_DEFAULT = "__role_default__";
@@ -36,6 +37,7 @@ export function EditStaffAccessDialog({
   staffId,
   name,
   role,
+  extraRoles,
   clockInExempt,
   landingPath,
   isHr,
@@ -43,6 +45,7 @@ export function EditStaffAccessDialog({
   staffId: string;
   name: string;
   role: Role;
+  extraRoles: Role[];
   clockInExempt: boolean;
   landingPath: string | null;
   isHr: boolean;
@@ -52,22 +55,32 @@ export function EditStaffAccessDialog({
   const [exempt, setExempt] = React.useState(clockInExempt);
   const [landing, setLanding] = React.useState(landingPath ?? ROLE_DEFAULT);
   const [hr, setHr] = React.useState(isHr);
+  const [mainRole, setMainRole] = React.useState<Role>(role);
+  const [extras, setExtras] = React.useState<Role[]>(extraRoles);
   const [saving, setSaving] = React.useState(false);
 
   const { rows: accessRows } = useModuleAccess();
-  const choices = landingChoicesFor(role, accessRows);
-  const changed = exempt !== clockInExempt || (landing === ROLE_DEFAULT ? null : landing) !== landingPath || hr !== isHr;
+  // Home-page choices follow the roles being set, not the ones saved.
+  const choices = landingChoicesFor([mainRole, ...extras], accessRows);
+  const sameRoles = mainRole === role && extras.length === extraRoles.length && extras.every((r) => extraRoles.includes(r));
+  const changed = exempt !== clockInExempt || (landing === ROLE_DEFAULT ? null : landing) !== landingPath || hr !== isHr || !sameRoles;
+  // Super Admin is only ever a main role (the server refuses it as an additional one).
+  const extraChoices = ORG_ROLES.filter((r) => r !== "admin" && r !== mainRole);
 
   function reset() {
     setExempt(clockInExempt);
     setLanding(landingPath ?? ROLE_DEFAULT);
     setHr(isHr);
+    setMainRole(role);
+    setExtras(extraRoles);
   }
 
   async function handleSave() {
     setSaving(true);
     const result = await updateStaffAccess({
       staffId,
+      role: mainRole,
+      extraRoles: extras,
       clockInExempt: exempt,
       landingPath: landing === ROLE_DEFAULT ? null : landing,
       isHr: hr,
@@ -103,6 +116,48 @@ export function EditStaffAccessDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-5">
+          <Field>
+            <FieldLabel htmlFor="main-role">Main role</FieldLabel>
+            <Select
+              value={mainRole}
+              onValueChange={(v) => {
+                setMainRole(v as Role);
+                setExtras((prev) => prev.filter((r) => r !== v));
+              }}
+              disabled={saving}
+            >
+              <SelectTrigger id="main-role" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ORG_ROLES.map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {ROLES.find((x) => x.value === r)?.label ?? r}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Their default first page and title come from it, unless an additional role is CEO or Office Admin.</p>
+          </Field>
+
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-1 text-sm font-medium">Additional roles</legend>
+            <p className="text-xs text-muted-foreground">For someone who does two jobs. They can do everything any of their roles allows.</p>
+            <div className="grid grid-cols-2 gap-2">
+              {extraChoices.map((r) => (
+                <label key={r} htmlFor={`extra-role-${r}`} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    id={`extra-role-${r}`}
+                    checked={extras.includes(r)}
+                    disabled={saving || (!extras.includes(r) && extras.length >= 3)}
+                    onCheckedChange={(on) => setExtras((prev) => (on === true ? [...prev, r] : prev.filter((x) => x !== r)))}
+                  />
+                  {ROLES.find((x) => x.value === r)?.label ?? r}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
           <div className="flex items-center justify-between gap-3">
             <div className="flex flex-col gap-0.5">
               <span className="text-sm font-medium">No clock-in needed</span>
@@ -113,7 +168,7 @@ export function EditStaffAccessDialog({
             <Switch checked={exempt} onCheckedChange={setExempt} disabled={saving} />
           </div>
 
-          {role !== "admin" ? (
+          {mainRole !== "admin" ? (
             <div className="flex items-center justify-between gap-3">
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-medium">Runs HR</span>

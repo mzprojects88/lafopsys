@@ -22,7 +22,9 @@ export function isAdminOnlyPath(path: string): boolean {
   return ADMIN_ONLY.some((p) => bare === p || bare.startsWith(`${p}/`));
 }
 
-/** Hidden from this viewer: everyone but an admin. */
-export function isHiddenPath(path: string, role: string | null | undefined): boolean {
-  return role !== "admin" && isAdminOnlyPath(path);
+/** Hidden from this viewer: everyone but an admin. Takes the main role or all of
+ * a person's roles (0073); admin is only ever a main role. */
+export function isHiddenPath(path: string, role: string | readonly string[] | null | undefined): boolean {
+  const isAdmin = typeof role === "string" ? role === "admin" : Boolean(role?.includes("admin"));
+  return !isAdmin && isAdminOnlyPath(path);
 }

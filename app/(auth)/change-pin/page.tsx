@@ -85,13 +85,13 @@ function ChangePinForm() {
     const { data: staffRow } = await supabase
       .schema("shared")
       .from("staff")
-      .select("role, landing_path")
+      .select("role, extra_roles, landing_path")
       .eq("id", userData.user.id)
       .single();
     router.push(
       resolveLandingPath(
         {
-          role: (staffRow?.role ?? "volunteer") as Role,
+          role: [(staffRow?.role ?? "volunteer") as Role, ...(((staffRow?.extra_roles as string[] | null) ?? []) as Role[])],
           landingPath: (staffRow?.landing_path ?? null) as string | null,
           next: null,
         },

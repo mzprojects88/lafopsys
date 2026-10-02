@@ -43,7 +43,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   const { patients, carers, stays, appointments, loading, refetch } = usePatientsData();
   const { units, bedPositions } = useHouseLayout();
   const patient = patients.find((p) => p.id === patientId);
-  const { role } = useRole();
+  const { roles } = useRole();
   const { canEdit: canEditModule } = useModuleAccess();
   const canEdit = canEditModule("patients");
   const { people: sheetPeople } = useHouseSheetPeople();
@@ -63,7 +63,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
     notFound();
   }
 
-  const canSeeClinical = canSeeClinicalDetail(role);
+  const canSeeClinical = canSeeClinicalDetail(roles);
   const patientCarers = carers.filter((c) => c.patientId === patient.id);
   const patientStays = stays.filter((s) => s.patientId === patient.id);
   const patientAppointments = appointments.filter((a) => a.patientId === patient.id);

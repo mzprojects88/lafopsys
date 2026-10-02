@@ -33,7 +33,7 @@ const STATUS_LABEL = Object.fromEntries(EMPLOYMENT_STATUSES.map((t) => [t.value,
 
 export function EmployeeDetail({ employeeId, privateRecord }: { employeeId: string; privateRecord: EmployeePrivate | null }) {
   const { employees, loading, error } = useEmployees();
-  const { role, isHr } = useRole();
+  const { role, roles, isHr } = useRole();
   const today = dayKey(useNow());
   const manages = canManageHr(role, isHr);
   const employee = employees.find((e) => e.id === employeeId);
@@ -104,8 +104,8 @@ export function EmployeeDetail({ employeeId, privateRecord }: { employeeId: stri
             recordId={employee.id}
             subKeyOptions={documentTypeOptions}
             subKeyLabel="201 document"
-            canUpload={canUploadFiles("hr", role, isHr)}
-            canDelete={canDeleteFiles("hr", role, isHr)}
+            canUpload={canUploadFiles("hr", roles, isHr)}
+            canDelete={canDeleteFiles("hr", roles, isHr)}
             title="201 files"
             description={`Scans and signed copies, kept under HR / 201 Files / ${employee.lastName}, ${employee.firstName} (${employee.employeeCode}). The employee sees their own.`}
           />

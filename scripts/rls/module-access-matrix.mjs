@@ -236,8 +236,14 @@ async function main() {
     withPatient(() => client.query("update shared.staff set extra_roles = '{social_worker}' where id = $1", [ids.driver])), q(insertAppt), rows(1));
   await scenario(ids, "a driver with Social Worker added keeps driving (Transport edit)", "driver",
     withExtra("driver", ["social_worker"]), q("select shared.module_level('transport') as l"), value("l", "edit"));
-  await scenario(ids, "an added admin role gives full powers (changes the grid)", "social_worker", withExtra("social_worker", ["admin"]),
-    q("update shared.module_access set level = 'view' where role = 'driver' and module = 'house_ops'"), rows(1));
+  // 0074: Super Admin is a main role only (server checks read the main role).
+  await scenario(ids, "Super Admin can't be an additional role", "admin", null,
+    async () => {
+      await client.query("reset role");
+      return client.query("update shared.staff set extra_roles = '{admin}' where id = $1", [ids.social_worker]);
+    }, checkFailed);
+  await scenario(ids, "a social worker with Finance added edits finance", "social_worker", withExtra("social_worker", ["finance"]),
+    q("select shared.module_level('finance') as l"), value("l", "edit"));
   await scenario(ids, "the Office Admin role runs HR", "driver", withExtra("driver", ["office_admin"]), q("select hr.is_hr_staff() as ok"), value("ok", true));
   await scenario(ids, "a driver alone does not run HR", "driver", null, q("select hr.is_hr_staff() as ok"), value("ok", false));
   const asServer = (sql, params) => async () => {

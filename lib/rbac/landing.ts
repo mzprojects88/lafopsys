@@ -32,8 +32,13 @@ export const ROLE_DEFAULT_LANDING: Partial<Record<Role, string>> = {
  * deep link, and these are the ones that are not really deep links. */
 const NOWHERE = new Set(["/", "/login", "/dashboard"]);
 
-function navVisible(item: LandingNavItem, role: Role): boolean {
-  return item.allowedRoles === "all" || item.allowedRoles.includes(role);
+/** One role, or all of a person's roles with the main role first (0073). */
+type Who = Role | readonly Role[];
+const rolesIn = (who: Who): readonly Role[] => (typeof who === "string" ? [who] : who);
+
+function navVisible(item: LandingNavItem, who: Who): boolean {
+  const allowed = item.allowedRoles;
+  return allowed === "all" || rolesIn(who).some((r) => allowed.includes(r));
 }
 
 /**
@@ -42,9 +47,9 @@ function navVisible(item: LandingNavItem, role: Role): boolean {
  * this is ignored rather than honoured: it protects a person from an admin's
  * typo, and from a page that has been assigned before it has shipped.
  */
-export function isAllowedLandingPath(role: Role, path: string, nav: readonly LandingNavItem[]): boolean {
+export function isAllowedLandingPath(who: Who, path: string, nav: readonly LandingNavItem[]): boolean {
   if (!path.startsWith("/")) return false;
-  return nav.some((item) => navVisible(item, role) && (path === item.href || path.startsWith(item.href + "/")));
+  return nav.some((item) => navVisible(item, who) && (path === item.href || path.startsWith(item.href + "/")));
 }
 
 /**
@@ -54,7 +59,7 @@ export function isAllowedLandingPath(role: Role, path: string, nav: readonly Lan
  *   3. the role's default, then /dashboard.
  */
 export function resolveLandingPath(
-  input: { role: Role; landingPath: string | null | undefined; next: string | null | undefined },
+  input: { role: Role | readonly Role[]; landingPath: string | null | undefined; next: string | null | undefined },
   nav: readonly LandingNavItem[]
 ): string {
   const next = input.next?.trim();
@@ -63,9 +68,9 @@ export function resolveLandingPath(
   const own = input.landingPath?.trim();
   if (own && isAllowedLandingPath(input.role, own, nav)) return own;
 
-  // A role's default only if that role can open it (an admin may have set the
-  // module to None, or it may be hidden on this deployment).
-  const roleDefault = ROLE_DEFAULT_LANDING[input.role];
+  // The main role's default only if the person can open it (an admin may have set
+  // the module to None, or it may be hidden on this deployment).
+  const roleDefault = ROLE_DEFAULT_LANDING[rolesIn(input.role)[0]!];
   if (roleDefault && isAllowedLandingPath(input.role, roleDefault, nav)) return roleDefault;
   return DEFAULT_LANDING;
 }

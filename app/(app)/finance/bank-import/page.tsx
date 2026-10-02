@@ -19,6 +19,7 @@ import { importBankRows } from "./actions";
 import { uploadFileToRecord } from "@/lib/files/upload-client";
 import { STATUS_TONE_TEXT } from "@/lib/utils/status-colors";
 import { cn } from "@/lib/utils";
+import { doesFinance } from "@/lib/rbac/roles";
 
 /** The one account on file today (seeded by 0033). A second account is a
  * second row in ops.accounts and a picker here; nothing else changes. */
@@ -34,8 +35,8 @@ type PreviewRow = BankRow & { status: "new" | "existing" | "review" };
  * carry on from the last import. The server action re-derives all of it.
  */
 export default function BankImportPage() {
-  const { role } = useRole();
-  const canImport = role === "admin" || role === "finance";
+  const { roles } = useRole();
+  const canImport = doesFinance(roles);
   const { transactions } = useBankTransactionsData();
 
   const [fileName, setFileName] = React.useState("");

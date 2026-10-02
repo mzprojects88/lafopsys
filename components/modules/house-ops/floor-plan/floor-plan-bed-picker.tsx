@@ -42,7 +42,7 @@ export function FloorPlanBedPicker({
 }) {
   const { rooms, units, bedPositions, labels, loading: layoutLoading } = useHouseLayout();
   const { patients, carers, stays, loading: patientsLoading } = usePatientsData();
-  const { role } = useRole();
+  const { roles } = useRole();
   const { reservations, loading: holdsLoading } = useBedReservations();
   const loading = layoutLoading || patientsLoading || holdsLoading;
   const [showPlan, setShowPlan] = React.useState(false);
@@ -84,7 +84,7 @@ export function FloorPlanBedPicker({
           dirtyLabelIds={new Set()}
           selection={value ? { kind: "bed", id: value } : null}
           editing={false}
-          canSeeClinical={canSeeClinicalDetail(role)}
+          canSeeClinical={canSeeClinicalDetail(roles)}
           onSelect={(sel) => {
             if (sel?.kind !== "bed") return;
             if (allowed.has(sel.id)) return onChange(sel.id);

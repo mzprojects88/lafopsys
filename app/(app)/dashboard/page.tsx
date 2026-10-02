@@ -43,11 +43,13 @@ import { inventoryAppHref } from "@/lib/utils/inventory-app";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
 import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
-import { ROLES } from "@/lib/types/common";
+import { ROLES, type Role } from "@/lib/types/common";
+import { doesFinance, hasAnyRole } from "@/lib/rbac/roles";
 
 export default function DashboardPage() {
-  const { role, user } = useRole();
-  const roleLabel = ROLES.find((r) => r.value === role)?.label ?? role;
+  const { role, roles, title, user } = useRole();
+  const has = (...r: Role[]) => hasAnyRole(roles, ...r);
+  const roleLabel = ROLES.find((r) => r.value === title)?.label ?? title;
   const { referrals } = useReferralsData();
   const { patients, stays } = usePatientsData();
   const { history: censusHistory } = useCensusData();
@@ -170,22 +172,22 @@ export default function DashboardPage() {
       </div>
 
       <KpiGrid>
-        {(role === "admin" || role === "social_worker" || role === "house_staff" || role === "driver") && (
+        {has("admin", "office_admin", "social_worker", "house_staff", "driver") && (
           <KpiCard label="In-House Now" value={inHouseNow} sublabel="Residents" icon={Users} />
         )}
-        {(role === "admin" || role === "social_worker") && (
+        {has("admin", "office_admin", "social_worker") && (
           <KpiCard label="Enrolled Patients" value={patients.length} sublabel="Total" icon={UserCheck} />
         )}
-        {(role === "admin" || role === "finance" || role === "board") && !isHiddenPath("/donors", role) && (
+        {has("admin", "office_admin", "finance", "board") && !isHiddenPath("/donors", roles) && (
           <KpiCard label="Cash Donations" value={formatCurrency(cashIn)} sublabel="This period" icon={Wallet} />
         )}
-        {(role === "admin" || role === "finance") && !isHiddenPath("/finance", role) && (
+        {doesFinance(roles) && !isHiddenPath("/finance", roles) && (
           <KpiCard label="Pending Approvals" value={pendingApprovals} sublabel="Items" icon={ClipboardList} tone={pendingApprovals > 0 ? "warning" : "default"} />
         )}
-        {(role === "admin" || role === "social_worker") && (
+        {has("admin", "office_admin", "social_worker") && (
           <KpiCard label="Pending Referrals" value={pendingReferrals} sublabel="Referrals" icon={Send} tone={pendingReferrals > 0 ? "warning" : "default"} />
         )}
-        {(role === "admin" || role === "house_staff") && (
+        {has("admin", "house_staff") && (
           <KpiCard label="Items Expiring ≤14d" value={expiringSoon} sublabel="Items" icon={PackageX} tone={expiringSoon > 0 ? "warning" : "default"} />
         )}
         {role === "volunteer" && !isHiddenPath("/donors", role) && <KpiCard label="Donations Recorded" value={donations.length} icon={HandCoins} />}

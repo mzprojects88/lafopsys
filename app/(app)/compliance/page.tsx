@@ -61,7 +61,7 @@ const STATUS_LABEL: Record<CalendarStatus, string> = {
  * HR keep the obligations; finance records filings as well.
  */
 export default function CompliancePage() {
-  const { role, isHr } = useRole();
+  const { role, roles, isHr } = useRole();
   const manages = canManageHr(role, isHr);
   const records = canRecordComplianceFilings(role, isHr);
   const views = canViewCompliance(role, isHr);
@@ -319,7 +319,7 @@ export default function CompliancePage() {
         </div>
       </SectionCard>
 
-      {recording ? <FilingDialog key={`${recording.itemId}|${recording.periodKey}`} entry={recording} close={() => setRecording(null)} canDelete={manages} canUploadFiles={canUploadFiles("compliance", role, isHr)} canDeleteFiles={canDeleteFiles("compliance", role, isHr)} /> : null}
+      {recording ? <FilingDialog key={`${recording.itemId}|${recording.periodKey}`} entry={recording} close={() => setRecording(null)} canDelete={manages} canUploadFiles={canUploadFiles("compliance", roles, isHr)} canDeleteFiles={canDeleteFiles("compliance", roles, isHr)} /> : null}
       {filesFor ? (
         <Dialog open onOpenChange={(o) => (o ? undefined : setFilesFor(null))}>
           <DialogContent>
@@ -331,7 +331,7 @@ export default function CompliancePage() {
                 {filesFor.periodLabel} · kept under Compliances / {filesFor.item.agency} / {filesFor.periodKey.slice(0, 4)}
               </DialogDescription>
             </DialogHeader>
-            <FileLibrary recordType="compliance_item" recordId={filesFor.itemId} subKey={filesFor.periodKey} canUpload={canUploadFiles("compliance", role, isHr)} canDelete={canDeleteFiles("compliance", role, isHr)} compact />
+            <FileLibrary recordType="compliance_item" recordId={filesFor.itemId} subKey={filesFor.periodKey} canUpload={canUploadFiles("compliance", roles, isHr)} canDelete={canDeleteFiles("compliance", roles, isHr)} compact />
           </DialogContent>
         </Dialog>
       ) : null}
