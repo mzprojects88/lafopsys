@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Bus, CheckCircle2, Circle, Flag, Plus, Truck, X } from "lucide-react";
+import { Bus, Car, CheckCircle2, Circle, Plus, Truck, X } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { LoadingState } from "@/components/patterns/loading-state";
@@ -23,6 +23,11 @@ import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { isActiveStay } from "@/lib/utils/beds";
+import { useErrands, useVehicles, type Vehicle } from "@/lib/hooks/use-vehicles-collection";
+import { OdometerDrums } from "@/components/modules/transport/odometer-drums";
+import { TripControls, TripReadings } from "@/components/modules/transport/trip-controls";
+import { ErrandCard, StartTripDialog, errandTitle } from "@/components/modules/transport/errands";
+import { formatKm } from "@/lib/utils/odometer";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
 
@@ -34,6 +39,9 @@ const time = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("en
  * social worker builds each pick-up's manifest
  * from NCH's list; the driver, on a phone, ticks everyone on board, departs,
  * and marks the arrival. Check-in at the house then names the trip.
+ * 0076: errands and hospital runs start here too, and once the Super Admin
+ * sets a vehicle's starting odometer, every departure and arrival takes the
+ * reading on the drums.
  */
 export default function TransportPage() {
   const { staffId } = useRole();
@@ -43,14 +51,22 @@ export default function TransportPage() {
   // tick, depart and arrive, but the social worker builds (0053).
   const canBuild = canEdit && access.canView("patients");
   const { pickups, loading } = usePickups();
+  const { vehicles } = useVehicles();
+  const { errands } = useErrands();
   const { staff } = useStaffRoster();
+  const { roles } = useRole();
   const [creating, setCreating] = React.useState(false);
+  const [starting, setStarting] = React.useState(false);
+  const activeVehicles = vehicles.filter((v) => v.active);
+  const vehicleOf = (id: string | null) => vehicles.find((v) => v.id === id);
 
   const today = todayIso();
-  const mineFirst = (a: Pickup, b: Pickup) => Number(b.driverId === staffId) - Number(a.driverId === staffId);
+  const mineFirst = (a: { driverId: string | null }, b: { driverId: string | null }) => Number(b.driverId === staffId) - Number(a.driverId === staffId);
   const todays = pickups.filter((p) => p.date === today).sort(mineFirst);
+  const todaysErrands = errands.filter((e) => e.date === today).sort(mineFirst);
   const upcoming = pickups.filter((p) => p.date > today).sort((a, b) => a.date.localeCompare(b.date));
   const earlier = pickups.filter((p) => p.date < today);
+  const earlierErrands = errands.filter((e) => e.date < today);
   const driverName = (id: string | null) => {
     const s = staff.find((x) => x.id === id);
     return s ? `${s.firstName} ${s.lastName}` : "No driver yet";
@@ -62,22 +78,46 @@ export default function TransportPage() {
         title="Transport"
         description="Pick-ups from NCH. The manifest comes from NCH's list; the driver ticks each family on board."
         action={
-          canBuild ? (
-            <Button onClick={() => setCreating(true)}>
-              <Plus /> New pick-up
-            </Button>
+          canEdit || canBuild ? (
+            <div className="flex flex-wrap gap-2">
+              {canEdit && activeVehicles.length > 0 && (
+                <Button variant={canBuild ? "outline" : "default"} onClick={() => setStarting(true)}>
+                  <Car /> Start a trip
+                </Button>
+              )}
+              {canBuild && (
+                <Button onClick={() => setCreating(true)}>
+                  <Plus /> New pick-up
+                </Button>
+              )}
+            </div>
           ) : undefined
         }
       />
 
+      {activeVehicles.length > 0 && (
+        <section className="grid grid-cols-1 gap-3 md:grid-cols-2" aria-label="Vehicles">
+          {activeVehicles.map((v) => (
+            <VehicleOdometer key={v.id} vehicle={v} isSuperAdmin={roles.includes("admin")} />
+          ))}
+        </section>
+      )}
+
       <section className="flex flex-col gap-3">
         <h2 className="text-base font-medium text-foreground">Today · {formatDate(today)}</h2>
-        {todays.length === 0 && loading ? (
+        {todays.length === 0 && todaysErrands.length === 0 && loading ? (
           <LoadingState rows={2} />
-        ) : todays.length === 0 ? (
-          <EmptyState icon={Bus} title="No pick-up today" description={canBuild ? "Start one with New pick-up." : undefined} />
+        ) : todays.length === 0 && todaysErrands.length === 0 ? (
+          <EmptyState icon={Bus} title="No trip today" description={canBuild ? "Start one with New pick-up or Start a trip." : canEdit ? "Start one with Start a trip." : undefined} />
         ) : (
-          todays.map((p) => <PickupCard key={p.id} pickup={p} mine={p.driverId === staffId} driverName={driverName(p.driverId)} canEdit={canEdit} canBuild={canBuild} />)
+          <>
+            {todays.map((p) => (
+              <PickupCard key={p.id} pickup={p} vehicle={vehicleOf(p.vehicleId)} mine={p.driverId === staffId} driverName={driverName(p.driverId)} canEdit={canEdit} canBuild={canBuild} />
+            ))}
+            {todaysErrands.map((e) => (
+              <ErrandCard key={e.id} errand={e} vehicle={vehicleOf(e.vehicleId)} mine={e.driverId === staffId} driverName={driverName(e.driverId)} canEdit={canEdit} />
+            ))}
+          </>
         )}
       </section>
 
@@ -85,12 +125,12 @@ export default function TransportPage() {
         <section className="flex flex-col gap-3">
           <h2 className="text-base font-medium text-foreground">Coming up</h2>
           {upcoming.map((p) => (
-            <PickupCard key={p.id} pickup={p} mine={p.driverId === staffId} driverName={driverName(p.driverId)} canEdit={canEdit} canBuild={canBuild} />
+            <PickupCard key={p.id} pickup={p} vehicle={vehicleOf(p.vehicleId)} mine={p.driverId === staffId} driverName={driverName(p.driverId)} canEdit={canEdit} canBuild={canBuild} />
           ))}
         </section>
       )}
 
-      {earlier.length > 0 && (
+      {(earlier.length > 0 || earlierErrands.length > 0) && (
         <section className="flex flex-col gap-3">
           <h2 className="text-base font-medium text-foreground">Earlier this week</h2>
           <div className="divide-y divide-border rounded-2xl border border-border bg-card">
@@ -102,6 +142,18 @@ export default function TransportPage() {
                 <span className="text-theme-xs text-muted-foreground">
                   {p.manifest.filter((m) => m.boardedAt).length} of {p.manifest.length} on board · {STATUS_LABEL[p.status]}
                   {p.arrivedAt ? ` ${time(p.arrivedAt)}` : ""}
+                  {p.odometerStart != null && p.odometerEnd != null ? ` · ${formatKm(p.odometerEnd - p.odometerStart)}` : ""}
+                </span>
+              </div>
+            ))}
+            {earlierErrands.map((e) => (
+              <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
+                <span>
+                  {formatDate(e.date, "EEE, MMM d")} · {errandTitle(e)} · {driverName(e.driverId)}
+                </span>
+                <span className="text-theme-xs text-muted-foreground">
+                  {STATUS_LABEL[e.status]}
+                  {e.odometerStart != null && e.odometerEnd != null ? ` · ${formatKm(e.odometerEnd - e.odometerStart)}` : ""}
                 </span>
               </div>
             ))}
@@ -110,12 +162,36 @@ export default function TransportPage() {
       )}
 
       {creating && <NewPickupDialog onClose={() => setCreating(false)} />}
+      {starting && <StartTripDialog vehicles={activeVehicles} onClose={() => setStarting(false)} />}
     </div>
   );
 }
 
-function PickupCard({ pickup: p, mine, driverName, canEdit, canBuild }: { pickup: Pickup; mine: boolean; driverName: string; canEdit: boolean; canBuild: boolean }) {
-  const { setBoarded, removeFromManifest, addToManifest, setStatus } = usePickups();
+/** Each vehicle's odometer on the drums, or how tracking starts. */
+function VehicleOdometer({ vehicle: v, isSuperAdmin }: { vehicle: Vehicle; isSuperAdmin: boolean }) {
+  return (
+    <Card>
+      <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate font-medium text-foreground">{v.name}</span>
+          <span className="text-theme-xs text-muted-foreground">
+            {v.plateNo ?? "No plate number yet"}
+            {v.startOdometer == null ? " · odometer not tracked yet" : ""}
+          </span>
+          {v.startOdometer == null && isSuperAdmin && (
+            <Link href="/settings#vehicles" className="text-theme-xs text-primary hover:underline">
+              Set the starting odometer to start tracking
+            </Link>
+          )}
+        </div>
+        {v.startOdometer != null && <OdometerDrums value={v.lastReading} />}
+      </CardContent>
+    </Card>
+  );
+}
+
+function PickupCard({ pickup: p, vehicle, mine, driverName, canEdit, canBuild }: { pickup: Pickup; vehicle: Vehicle | undefined; mine: boolean; driverName: string; canEdit: boolean; canBuild: boolean }) {
+  const { setBoarded, removeFromManifest, addToManifest } = usePickups();
   const candidates = useManifestCandidates(p.date);
   const [busy, setBusy] = React.useState<string | null>(null);
   const boarded = p.manifest.filter((m) => m.boardedAt).length;
@@ -196,25 +272,8 @@ function PickupCard({ pickup: p, mine, driverName, canEdit, canBuild }: { pickup
           </Select>
         )}
 
-        {canEdit && (
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            {p.status === "scheduled" && (
-              <Button size="lg" className="flex-1 sm:flex-none" disabled={boarded === 0 || busy === "go"} onClick={() => run("go", () => setStatus(p.id, "in_progress"), "On the road")}>
-                <Bus /> Depart with {boarded}
-              </Button>
-            )}
-            {p.status === "in_progress" && (
-              <>
-                <Button size="lg" className="flex-1 sm:flex-none" disabled={busy === "go"} onClick={() => run("go", () => setStatus(p.id, "completed"), "Arrived at LAF House")}>
-                  <Flag /> Arrived at LAF House
-                </Button>
-                <Button variant="ghost" size="sm" disabled={busy === "go"} onClick={() => run("go", () => setStatus(p.id, "scheduled"))}>
-                  Not left yet
-                </Button>
-              </>
-            )}
-          </div>
-        )}
+        <TripReadings trip={p} />
+        <TripControls trip={p} vehicle={vehicle} canEdit={canEdit} canDepart={boarded > 0} departLabel={`Depart with ${boarded}`} arriveLabel="Arrived at LAF House" />
         {p.status === "completed" && (
           <p className="text-theme-xs text-muted-foreground">
             Check the families in on the{" "}

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { Database, Users, Bell, RotateCcw, ClipboardCheck, CalendarDays, UserCog } from "lucide-react";
+import { Database, Users, Bell, RotateCcw, ClipboardCheck, CalendarDays, UserCog, Truck } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { IconCircle } from "@/components/patterns/icon-circle";
 import { SectionCard } from "@/components/patterns/section-card";
@@ -12,6 +12,7 @@ import { CalendarSheetSyncToggle } from "@/components/modules/settings/calendar-
 import { HouseSheetSyncToggle } from "@/components/modules/settings/house-sheet-sync-toggle";
 import { BedMoveHours } from "@/components/modules/settings/bed-move-hours";
 import { HrSettingsCard } from "@/components/modules/settings/hr-settings-card";
+import { VehiclesCard } from "@/components/modules/settings/vehicles-card";
 
 const REFERENCE_TABLES = [
   { slug: "provinces", label: "Provinces & Cities" },
@@ -60,6 +61,10 @@ export default function SettingsPage() {
 
         <SectionCard title="Bed moves">
           <BedMoveHours />
+        </SectionCard>
+
+        <SectionCard id="vehicles" className="scroll-mt-24" title={<CardTitleWithIcon icon={Truck}>Vehicles</CardTitleWithIcon>}>
+          <VehiclesCard />
         </SectionCard>
 
         <SectionCard className="md:col-span-2" title={<CardTitleWithIcon icon={UserCog}>Pay & Leave Policy</CardTitleWithIcon>}>

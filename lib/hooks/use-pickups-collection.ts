@@ -27,6 +27,9 @@ export interface Pickup {
   status: TripStatus;
   departedAt: string | null;
   arrivedAt: string | null;
+  vehicleId: string | null;
+  odometerStart: number | null;
+  odometerEnd: number | null;
   manifest: ManifestEntry[];
 }
 
@@ -38,6 +41,9 @@ interface Row {
   status: TripStatus;
   departed_at: string | null;
   arrived_at: string | null;
+  vehicle_id: string | null;
+  odometer_start: number | null;
+  odometer_end: number | null;
   trip_manifest: {
     id: string;
     house_sheet_person_id: string | null;
@@ -60,8 +66,10 @@ export const pickupsStore = createCollection<Pickup[]>({
     const { data, error } = await createClient()
       .schema("ops")
       .from("trips")
-      .select("id, date, departure_time, driver_staff_id, status, departed_at, arrived_at, trip_manifest(*)")
+      .select("id, date, departure_time, driver_staff_id, status, departed_at, arrived_at, vehicle_id, odometer_start, odometer_end, trip_manifest(*)")
       .eq("vehicle", LAF_HOPE_VEHICLE)
+      // Pick-ups only: LAF HOPE's errands (0076) are in errandsStore, never an arrival's trip.
+      .eq("direction", "from_hospital")
       .gte("date", since.toISOString().slice(0, 10))
       .order("date", { ascending: false })
       .order("departure_time");
@@ -74,6 +82,9 @@ export const pickupsStore = createCollection<Pickup[]>({
       status: r.status,
       departedAt: r.departed_at,
       arrivedAt: r.arrived_at,
+      vehicleId: r.vehicle_id,
+      odometerStart: r.odometer_start,
+      odometerEnd: r.odometer_end,
       manifest: (r.trip_manifest ?? [])
         .map((m) => ({
           id: m.id,
@@ -111,7 +122,6 @@ export function usePickups() {
     addToManifest: async (tripId: string, row: { id: string; patientName: string; carerName: string | null }) =>
       done((await ops().from("trip_manifest").insert({ trip_id: tripId, house_sheet_person_id: row.id, name: row.patientName, carer_name: row.carerName })).error),
     removeFromManifest: async (entryId: string) => done((await ops().from("trip_manifest").delete().eq("id", entryId)).error),
-    /** scheduled -> in_progress (departed) -> completed (arrived); the database stamps the times. */
-    setStatus: async (tripId: string, status: TripStatus) => done((await ops().from("trips").update({ status }).eq("id", tripId)).error),
+    // Departing and arriving: moveTrip in use-vehicles-collection (the odometer goes with them, 0076).
   };
 }

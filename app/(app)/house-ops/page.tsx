@@ -12,7 +12,7 @@ import { todayIso } from "@/lib/utils/date";
 
 const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/house-ops/meals", label: "Meals", icon: Utensils },
-  { href: "/house-ops/trips", label: "Trips", icon: Car },
+  { href: "/transport", label: "Trips", icon: Car },
   { href: "/house-ops/care-cart", label: "Care Cart", icon: HeartPulse },
   { href: "/house-ops/activity-center", label: "Activity Center", icon: Sparkles },
 ];

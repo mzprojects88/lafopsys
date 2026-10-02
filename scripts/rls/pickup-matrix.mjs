@@ -5,6 +5,8 @@
 // acknowledges that lafopsys has one database.
 //
 // Usage: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs
+// 0076 (vehicles, the odometer guard) pre-flight:
+//   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0076_fuel_vehicles.sql
 // Pre-flight (before 0049-0053 are applied, one rolled-back transaction):
 //   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0049_check_in.sql supabase/migrations/0050_module_access.sql supabase/migrations/0051_sheet_admission.sql supabase/migrations/0052_arrival_rides.sql supabase/migrations/0053_laf_hope_pickups.sql
 import { Client } from "pg";
@@ -23,6 +25,9 @@ const projectRef = "kptftyuzrnummbcjakro";
 const region = "ap-northeast-1";
 const client = new Client({
   connectionString: `postgresql://postgres.${projectRef}:${encodeURIComponent(password)}@aws-0-${region}.pooler.supabase.com:5432/postgres`,
+  // A silently dropped connection (2026-10-02) otherwise leaves the run waiting forever.
+  keepAlive: true,
+  query_timeout: 120000,
 });
 
 const ROLES = ["admin", "social_worker", "house_staff", "driver", "volunteer"];
@@ -162,6 +167,9 @@ const badInput = (r) => !r.ok && r.code === "22023";
 
 async function main() {
   await client.connect();
+  // If the connection drops mid-run, the server ends the open transaction (and the
+  // pre-flight's locks on live tables) instead of holding them.
+  await client.query("set idle_in_transaction_session_timeout = '60s'");
   if (PREFLIGHT.length) {
     await client.query("begin");
     for (const file of PREFLIGHT) {
@@ -239,6 +247,73 @@ async function main() {
   // --- the grid knows the module --------------------------------------------------------------
   await scenario(ids, "drivers start with Transport edit", "admin", null,
     q("select level from shared.module_access where role = 'driver' and module = 'transport'"), value("level", "edit"));
+
+  // --- 0076: vehicles and the odometer ------------------------------------------------------
+  const VEH = "00000000-0000-4000-8000-0000000000e1";
+  const T2 = "00000000-0000-4000-8000-0000000000e2";
+  const T3 = "00000000-0000-4000-8000-0000000000e3";
+  const vehicle = (start = 1000) => client.query(`insert into ops.vehicles (id, name, start_odometer) values ($1, 'RLSTEST Van', $2)`, [VEH, start]);
+  const vtrip = async (id = T2, stage = "scheduled", start = 1000, end = 1020) => {
+    await client.query(`insert into ops.trips (id, date, direction, vehicle_id, vehicle, departure_time, status, destination)
+      values ($1, ${TODAY}, 'errand', $2, 'typed name', '09:00', 'scheduled', 'Test errand')`, [id, VEH]);
+    if (stage !== "scheduled") await client.query(`update ops.trips set status = 'in_progress', odometer_start = $2 where id = $1`, [id, start]);
+    if (stage === "completed") await client.query(`update ops.trips set status = 'completed', odometer_end = $2 where id = $1`, [id, end]);
+  };
+  const tracked = (stage, more) => ({ setup: async () => { await vehicle(); await vtrip(T2, stage); if (more) await more(); } });
+  const afterAnother = { setup: async () => { await vehicle(); await vtrip(T3, "completed", 1000, 1050); await vtrip(T2); } };
+  const depart = (km) => q(`update ops.trips set status = 'in_progress', odometer_start = ${km} where id = '${T2}' returning odometer_start`);
+  const arrive = (km) => q(`update ops.trips set status = 'completed', odometer_end = ${km} where id = '${T2}' returning odometer_end`);
+  const correct = (start, end, reason) => q(`select ops.correct_odometer('${T2}', ${start}, ${end}, $1)`, [reason]);
+
+  await scenario(ids, "a trip takes its vehicle's name and link", "driver", tracked(),
+    q(`select vehicle = 'RLSTEST Van' and vehicle_id = '${VEH}' as ok from ops.trips where id = '${T2}'`), value("ok", true));
+  await scenario(ids, "a pick-up made by name is linked to LAF HOPE", "admin", withSeed(() => trip()),
+    q(`select vehicle_id is not null as ok from ops.trips where id = '${TRIP}'`), value("ok", true));
+  await scenario(ids, "an untracked vehicle's trip leaves without a reading", "driver",
+    withSeed(async () => { await trip(); await client.query(`update ops.vehicles set start_odometer = null where name = 'LAF HOPE Transport'`); }),
+    q(`update ops.trips set status = 'in_progress' where id = '${TRIP}'`), rows(1));
+  await scenario(ids, "the driver departs with the odometer", "driver", tracked(), depart(1000), value("odometer_start", 1000));
+  await scenario(ids, "a tracked vehicle can't leave without a reading", "driver", tracked(),
+    q(`update ops.trips set status = 'in_progress' where id = '${T2}'`), badInput);
+  await scenario(ids, "the odometer can't go below the starting reading", "driver", tracked(), depart(999), badInput);
+  await scenario(ids, "the odometer can't go below the last trip", "driver", afterAnother, depart(1040), badInput);
+  await scenario(ids, "the next trip starts from the last reading", "driver", afterAnother, depart(1050), value("odometer_start", 1050));
+  await scenario(ids, "the driver arrives with the odometer", "driver", tracked("in_progress"), arrive(1023), value("odometer_end", 1023));
+  await scenario(ids, "a tracked vehicle can't arrive without a reading", "driver", tracked("in_progress"),
+    q(`update ops.trips set status = 'completed' where id = '${T2}'`), badInput);
+  await scenario(ids, "the arrival reading can't be below the departure", "driver", tracked("in_progress"), arrive(999), badInput);
+  await scenario(ids, "a vehicle is on one trip at a time", "driver",
+    { setup: async () => { await vehicle(); await vtrip(T3, "in_progress", 1000); await vtrip(T2); } }, depart(1000), duplicate);
+  await scenario(ids, "'Not left yet' takes the reading back with the departure", "driver", tracked("in_progress"),
+    q(`update ops.trips set status = 'scheduled' where id = '${T2}' returning odometer_start is null and departed_at is null as ok`), value("ok", true));
+  await scenario(ids, "an arrived trip's reading is frozen for the driver", "driver", tracked("completed"),
+    q(`update ops.trips set odometer_end = 1030 where id = '${T2}'`), denied);
+  await scenario(ids, "house staff can't change an arrived trip's reading either", "house_staff", tracked("completed"),
+    q(`update ops.trips set odometer_start = 1001 where id = '${T2}'`), denied);
+  await scenario(ids, "setting the correction flag by hand opens nothing", "driver", tracked("completed"),
+    last({ sql: "select set_config('ops.odometer_correction', 'on', true)" }, { sql: `update ops.trips set odometer_end = 1030 where id = '${T2}'` }), denied);
+  await scenario(ids, "a trip with readings can't be deleted", "driver", tracked("completed"), q(`delete from ops.trips where id = '${T2}'`), denied);
+  await scenario(ids, "the driver can't correct a reading", "driver", tracked("completed"), correct(1000, 1030, "typo on arrival"), denied);
+  await scenario(ids, "a correction needs a reason", "admin", tracked("completed"), correct(1000, 1030, "  "), badInput);
+  await scenario(ids, "the Super Admin corrects a reading, on the record", "admin", tracked("completed"),
+    last({ sql: `select ops.correct_odometer('${T2}', 1000, 1030, 'typo on arrival')` },
+      { sql: `select (select odometer_end from ops.trips where id = $1) = 1030
+                 and exists (select 1 from ops.odometer_corrections where trip_id = $1 and old_end = 1020 and new_end = 1030 and corrected_by = $2) as ok`, params: [T2, ids.admin] }),
+    value("ok", true));
+  await scenario(ids, "nobody writes the correction log by hand", "admin", tracked("completed"),
+    q(`insert into ops.odometer_corrections (trip_id, reason) values ('${T2}', 'forged entry')`), denied);
+  await scenario(ids, "the driver reads the correction log", "driver",
+    tracked("completed", () => client.query(`insert into ops.odometer_corrections (trip_id, old_end, new_end, reason) values ($1, 1020, 1030, 'seeded')`, [T2])),
+    q(`select id from ops.odometer_corrections where trip_id = '${T2}'`), rows(1));
+  await scenario(ids, "a volunteer reads no vehicles", "volunteer", tracked(), q(`select id from ops.vehicles where id = '${VEH}'`), rows(0));
+  await scenario(ids, "the drums start from the last reading", "driver", tracked("completed"),
+    q(`select last_reading from ops.v_vehicle_odometer where vehicle_id = '${VEH}'`), value("last_reading", 1020));
+  await scenario(ids, "the Super Admin adds a vehicle", "admin", null,
+    q(`insert into ops.vehicles (name, plate_no, tank_litres) values ('RLSTEST Second', 'ABC 1234', 60)`), rows(1));
+  await scenario(ids, "a social worker can't add a vehicle", "social_worker", null, q(`insert into ops.vehicles (name) values ('RLSTEST Second')`), denied);
+  await scenario(ids, "the driver can't change a vehicle (0 rows)", "driver", tracked(), q(`update ops.vehicles set start_odometer = 5 where id = '${VEH}'`), rows(0));
+  await scenario(ids, "the starting odometer stays once trips have readings", "admin", tracked("completed"),
+    q(`update ops.vehicles set start_odometer = 900 where id = '${VEH}'`), badInput);
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
