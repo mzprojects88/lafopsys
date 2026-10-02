@@ -5,8 +5,8 @@
 // acknowledges that lafopsys has one database.
 //
 // Usage: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs
-// 0076 (vehicles, the odometer guard) pre-flight:
-//   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0076_fuel_vehicles.sql supabase/migrations/0077_vehicle_expenses.sql supabase/migrations/0078_odometer_photos.sql supabase/migrations/0079_fuel_monitoring.sql supabase/migrations/0080_vehicle_expense_posting.sql
+// 0076-0081 (Fuel Monitoring) pre-flight; once applied, pre-flight only what is not yet:
+//   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0076_fuel_vehicles.sql supabase/migrations/0077_vehicle_expenses.sql supabase/migrations/0078_odometer_photos.sql supabase/migrations/0079_fuel_monitoring.sql supabase/migrations/0080_vehicle_expense_posting.sql supabase/migrations/0081_vehicle_posting_approved_and_admin_fix.sql
 // Pre-flight (before 0049-0053 are applied, one rolled-back transaction):
 //   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0049_check_in.sql supabase/migrations/0050_module_access.sql supabase/migrations/0051_sheet_admission.sql supabase/migrations/0052_arrival_rides.sql supabase/migrations/0053_laf_hope_pickups.sql
 import { Client } from "pg";
@@ -496,9 +496,9 @@ async function main() {
     await client.query(`select ops.post_vehicle_expense($1)`, [EXP]);
   };
   const postIt = (on = null, amount = null) => q(`select ops.post_vehicle_expense('${EXP}', $1::date, $2::numeric) as id`, [on, amount]);
-  await scenario(ids, "finance posts a LAF-paid cost as a pending cash entry", "finance", logged(),
+  await scenario(ids, "finance posts a LAF-paid cost as an approved cash entry", "finance", logged(),
     last({ sql: `select ops.post_vehicle_expense('${EXP}')` },
-      { sql: `select c.direction = 'outflow' and c.source = 'vehicle_fuel' and c.approval_status = 'pending' and c.amount = 2500
+      { sql: `select c.direction = 'outflow' and c.source = 'vehicle_fuel' and c.approval_status = 'approved' and c.amount = 2500
                  and c.date = e.expense_date and c.program_id = 'prog-transport' and p.reimbursed_on is null as ok
                from ops.vehicle_expense_postings p join ops.cash_entries c on c.id = p.cash_entry_id join ops.vehicle_expenses e on e.id = p.expense_id
                where p.expense_id = $1`, params: [EXP] }),
@@ -518,9 +518,23 @@ async function main() {
                from ops.vehicle_expense_postings p join ops.cash_entries c on c.id = p.cash_entry_id where p.expense_id = $1`, params: [EXP] }),
     value("ok", true));
   await scenario(ids, "a LAF-paid cost has no one to pay back", "finance", logged(), q(`select ops.post_vehicle_expense('${EXP}', current_date, 100)`), badInput);
-  await scenario(ids, "a posted entry stays as it is, even for the Super Admin", "admin",
-    { setup: async () => { await logged().setup(); await postAsFinance(); } },
-    change("fixing the amount"), denied);
+  // 0081: the Super Admin corrects a posted entry with a reason, and the cash entry follows.
+  const postedLaf = { setup: async () => { await logged().setup(); await postAsFinance(); } };
+  await scenario(ids, "the driver can't change a posted entry, even the same day", "driver", postedLaf,
+    q(`update ops.vehicle_expenses set amount = 2600 where id = '${EXP}'`), denied);
+  await scenario(ids, "the Super Admin needs a reason for a posted entry", "admin", postedLaf, change(), badInput);
+  await scenario(ids, "the Super Admin corrects a posted entry; the cash entry follows, flagged", "admin", postedLaf,
+    last({ sql: `update ops.vehicle_expenses set amount = 2600, change_reason = 'receipt says 2,600' where id = '${EXP}'` },
+      { sql: `select c.amount = 2600 and c.needs_review and c.review_reason like '%receipt says 2,600%' and c.approval_status = 'approved' as ok
+               from ops.vehicle_expense_postings p join ops.cash_entries c on c.id = p.cash_entry_id where p.expense_id = $1`, params: [EXP] }),
+    value("ok", true));
+  await scenario(ids, "the Super Admin voids a posted entry; the cash entry is rejected, kept", "admin", postedLaf,
+    last({ sql: `update ops.vehicle_expenses set voided_at = now(), void_reason = 'bought for the house' where id = '${EXP}'` },
+      { sql: `select c.approval_status = 'rejected' and c.needs_review as ok
+               from ops.vehicle_expense_postings p join ops.cash_entries c on c.id = p.cash_entry_id where p.expense_id = $1`, params: [EXP] }),
+    value("ok", true));
+  await scenario(ids, "who paid can't change once posted", "admin", postedLaf,
+    q(`update ops.vehicle_expenses set paid_by = 'driver', paid_by_staff_id = '${ids.driver}', change_reason = 'driver paid it' where id = '${EXP}'`), badInput);
   await scenario(ids, "a posted entry can't be voided", "driver",
     { setup: async () => { await logged().setup(); await postAsFinance(); } },
     voidIt("logged twice"), denied);

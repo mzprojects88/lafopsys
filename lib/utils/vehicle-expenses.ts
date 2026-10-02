@@ -15,7 +15,7 @@ export function formatPesoCents(amount: number): string {
 /**
  * Who may change or void an entry, mirroring ops.guard_vehicle_expense: whoever logged it, the
  * same Manila day ("free"); after that the Super Admin, with a reason ("reason"); else "no".
- * A voided or posted entry stays as it is.
+ * A voided entry stays as it is; a posted one, the Super Admin with a reason (0081).
  */
 export function changeRule(
   e: { loggedBy: string | null; loggedAt: string; voidedAt: string | null; posting?: unknown },
@@ -23,8 +23,9 @@ export function changeRule(
   isSuperAdmin: boolean,
   now: Date = new Date()
 ): "free" | "reason" | "no" {
-  // Voided, or posted to Finance (0080): the cash entry is corrected there instead.
-  if (e.voidedAt || e.posting) return "no";
+  if (e.voidedAt) return "no";
+  // Posted to Finance: the Super Admin only, with a reason; the cash entry follows (0081).
+  if (e.posting) return isSuperAdmin ? "reason" : "no";
   if (me && e.loggedBy === me && dayKey(e.loggedAt) === dayKey(now)) return "free";
   return isSuperAdmin ? "reason" : "no";
 }

@@ -249,7 +249,8 @@ export function ExpenseDialog({
         )}
         <Field>
           <FieldLabel htmlFor="expPayer">Paid by</FieldLabel>
-          <Select value={payer} onValueChange={setPayer}>
+          {/* Who paid decided how it was posted to Finance; it stays once posted (0081). */}
+          <Select value={payer} onValueChange={setPayer} disabled={!!existing?.posting}>
             <SelectTrigger id="expPayer" className="w-full">
               <SelectValue />
             </SelectTrigger>

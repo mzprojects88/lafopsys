@@ -53,7 +53,7 @@ export default function VehicleCostsPage() {
     setPosting(e.id);
     const r = await postVehicleExpense(e.id);
     setPosting(null);
-    if (r.ok) toast.success("Posted to Finance as a pending entry");
+    if (r.ok) toast.success("Posted to Finance, approved");
     else toast.error(r.error);
   }
 
@@ -83,7 +83,7 @@ export default function VehicleCostsPage() {
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader
         title="Vehicle costs"
-        description="Fuel and vehicle expenses from Transport. Post each to Finance; a driver who paid is posted when paid back."
+        description="Fuel and vehicle expenses from Transport. Posting is the approval; a driver who paid is posted when paid back."
         action={
           <Button variant="outline" asChild>
             <Link href="/finance/approvals">Approvals</Link>
@@ -132,7 +132,7 @@ export default function VehicleCostsPage() {
       </SectionCard>
 
       {posted.length > 0 && (
-        <SectionCard title="Posted" description="The latest 30. Correct a posted cost on its cash entry in Finance.">
+        <SectionCard title="Posted" description="The latest 30. The Super Admin corrects one from Transport, with a reason; its cash entry follows and is flagged for review.">
           <ul className="flex flex-col divide-y divide-border">
             {posted.map((e) =>
               row(
