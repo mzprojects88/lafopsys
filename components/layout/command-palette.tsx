@@ -12,7 +12,7 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command";
-import { useVisibleNavItems } from "@/lib/rbac/use-role";
+import { useRole, useVisibleNavItems } from "@/lib/rbac/use-role";
 import { navHref } from "@/lib/rbac/roles";
 import { isHiddenPath } from "@/lib/rbac/hidden";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
@@ -32,9 +32,10 @@ export function CommandPalette({ externalOpen, onExternalOpenChange }: CommandPa
   const router = useRouter();
   const navItems = useVisibleNavItems();
   const { canView } = useModuleAccess();
+  const { role } = useRole();
   // Records only for modules the person can open (resident names are also
   // readable through House Operations, which has no patient page).
-  const opens = (href: string, m: Parameters<typeof canView>[0]) => !isHiddenPath(href) && canView(m);
+  const opens = (href: string, m: Parameters<typeof canView>[0]) => !isHiddenPath(href, role) && canView(m);
   const { patients } = usePatientsData();
   const { donors } = useDonorsData();
   const { rows: stockSummary } = useStockSummary();

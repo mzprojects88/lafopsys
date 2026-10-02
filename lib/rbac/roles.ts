@@ -1,6 +1,6 @@
 import type { Role } from "@/lib/types/common";
 import type { FileModule } from "@/lib/utils/file-paths";
-import { isHiddenPath } from "@/lib/rbac/hidden";
+import { isAdminOnlyPath, isHiddenPath } from "@/lib/rbac/hidden";
 import { isAllowedLandingPath as isAllowedLandingPathIn, resolveLandingPath as resolveLandingPathIn } from "@/lib/rbac/landing";
 import {
   LayoutDashboard,
@@ -124,7 +124,7 @@ export function levelFor(rows: readonly ModuleAccessRow[], role: Role, module: M
 }
 
 export function isNavItemVisible(item: NavItem, role: Role, rows: readonly ModuleAccessRow[]) {
-  return !isHiddenPath(item.href) && levelFor(rows, role, item.module) !== "none";
+  return !isHiddenPath(item.href, role) && levelFor(rows, role, item.module) !== "none";
 }
 
 /** The module a path belongs to (longest matching menu href), or null for
@@ -139,15 +139,16 @@ export function moduleForPath(path: string): ModuleKey | null {
 
 /** Where this menu entry's link goes: its module's page, or the page the day starts on. */
 export function navHref(item: NavItem): string {
-  return item.startsAt && !isHiddenPath(item.startsAt) ? item.startsAt : item.href;
+  // Seen as everyone sees it: a start page that is admin-only falls back to the module's own page.
+  return item.startsAt && !isAdminOnlyPath(item.startsAt) ? item.startsAt : item.href;
 }
 
 /** The nav as landing.ts wants it: shown items with the roles that can open them. */
 function landingNav(rows: readonly ModuleAccessRow[]) {
-  return NAV_ITEMS.filter((item) => !isHiddenPath(item.href)).map((item) => ({
+  return NAV_ITEMS.map((item) => ({
     href: item.href,
-    allowedRoles: ORG_ROLES.filter((role) => levelFor(rows, role, item.module) !== "none"),
-  }));
+    allowedRoles: ORG_ROLES.filter((role) => !isHiddenPath(item.href, role) && levelFor(rows, role, item.module) !== "none"),
+  })).filter((item) => item.allowedRoles.length > 0);
 }
 
 /** Whether THIS event may be edited: the person must have Calendar edit, and

@@ -1,10 +1,8 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { isHiddenPath } from "@/lib/rbac/hidden";
+import { type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
 export async function middleware(request: NextRequest) {
-  // A module hidden on this deployment is simply not there (lib/rbac/hidden.ts).
-  if (isHiddenPath(request.nextUrl.pathname)) return NextResponse.rewrite(new URL("/_hidden", request.url));
+  // Admin-only modules (lib/rbac/hidden.ts) are checked inside, once the session says who is asking.
   return updateSession(request);
 }
 

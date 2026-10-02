@@ -199,7 +199,7 @@ export default function CompliancePage() {
             {shown.map((e) => {
               const source = reportSourceFor(e.code);
               // The payroll figures live under HR, which finance cannot open; the DSWD figures are open to everyone here.
-              const canGenerate = source !== null && !isHiddenPath(source.href(e.periodKey)) && (manages || !source.href(e.periodKey).startsWith("/hr/"));
+              const canGenerate = source !== null && !isHiddenPath(source.href(e.periodKey), role) && (manages || !source.href(e.periodKey).startsWith("/hr/"));
               const badgeLabel =
                 e.status === "due" || e.status === "due_soon"
                   ? `${STATUS_LABEL[e.status]} · ${e.daysLeft} d to target`

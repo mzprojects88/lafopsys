@@ -25,6 +25,7 @@ import { FloorPlanBedPicker } from "@/components/modules/house-ops/floor-plan/fl
 import { CheckInDialog, type CheckInTarget } from "@/components/modules/patients/check-in-dialog";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { isHiddenPath } from "@/lib/rbac/hidden";
+import { useRole } from "@/context/role-provider";
 import { DischargeDialog } from "@/components/modules/patients/discharge-dialog";
 import { BedPlanDialog } from "@/components/modules/patients/bed-plan-dialog";
 import { confirmHouseSheetMatch } from "@/app/(app)/patients/house-sheet/actions";
@@ -61,6 +62,7 @@ function settledPatientId(p: HouseSheetPerson): string | null {
  * The sheet is NCH's; everything here is one click on top of it.
  */
 export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; canEdit: boolean }) {
+  const { role } = useRole();
   const { patients, stays, loading: patientsLoading } = usePatientsData();
   const { units, bedPositions, loading: layoutLoading } = useHouseLayout();
   const { nights, confirmNight } = useBedNights();
@@ -232,7 +234,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                           </Button>
                         );
                       }
-                      return isHiddenPath("/patients/referrals") ? (
+                      return isHiddenPath("/patients/referrals", role) ? (
                         <span className="text-theme-xs text-muted-foreground">Referral waiting for approval</span>
                       ) : (
                         <Link href="/patients/referrals" className="text-theme-xs text-primary hover:underline">

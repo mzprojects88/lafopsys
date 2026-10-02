@@ -141,7 +141,7 @@ export default function DashboardPage() {
   ].filter((a) => {
     // Only actions the person may actually take; the inventory app decides its own.
     const m = moduleForPath(a.href);
-    return !isHiddenPath(a.href) && (m === null || canEdit(m));
+    return !isHiddenPath(a.href, role) && (m === null || canEdit(m));
   });
 
   const chartConfig: ChartConfig = { amount: { label: "Donations", color: "var(--chart-1)" } };
@@ -176,10 +176,10 @@ export default function DashboardPage() {
         {(role === "admin" || role === "social_worker") && (
           <KpiCard label="Enrolled Patients" value={patients.length} sublabel="Total" icon={UserCheck} />
         )}
-        {(role === "admin" || role === "finance" || role === "board") && !isHiddenPath("/donors") && (
+        {(role === "admin" || role === "finance" || role === "board") && !isHiddenPath("/donors", role) && (
           <KpiCard label="Cash Donations" value={formatCurrency(cashIn)} sublabel="This period" icon={Wallet} />
         )}
-        {(role === "admin" || role === "finance") && !isHiddenPath("/finance") && (
+        {(role === "admin" || role === "finance") && !isHiddenPath("/finance", role) && (
           <KpiCard label="Pending Approvals" value={pendingApprovals} sublabel="Items" icon={ClipboardList} tone={pendingApprovals > 0 ? "warning" : "default"} />
         )}
         {(role === "admin" || role === "social_worker") && (
@@ -188,7 +188,7 @@ export default function DashboardPage() {
         {(role === "admin" || role === "house_staff") && (
           <KpiCard label="Items Expiring ≤14d" value={expiringSoon} sublabel="Items" icon={PackageX} tone={expiringSoon > 0 ? "warning" : "default"} />
         )}
-        {role === "volunteer" && !isHiddenPath("/donors") && <KpiCard label="Donations Recorded" value={donations.length} icon={HandCoins} />}
+        {role === "volunteer" && !isHiddenPath("/donors", role) && <KpiCard label="Donations Recorded" value={donations.length} icon={HandCoins} />}
       </KpiGrid>
 
       <div className="flex flex-col gap-2">
@@ -219,7 +219,7 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3 lg:gap-6">
         <div className="flex min-w-0 flex-col gap-5 lg:col-span-2 lg:gap-6">
-          {!isHiddenPath("/donors") && (
+          {!isHiddenPath("/donors", role) && (
             <SectionCard title="Donations Trend (This Period)" description="Last 30 days">
               <div className="mb-3 flex items-center gap-1.5 text-theme-xs text-muted-foreground">
                 <span className="size-2 rounded-full bg-chart-1" />
@@ -315,7 +315,7 @@ export default function DashboardPage() {
             </div>
           </SectionCard>
 
-          {!isHiddenPath("/finance") && (
+          {!isHiddenPath("/finance", role) && (
             <SectionCard title="Urgent Approvals" actions={<Badge className="rounded-full">{urgentApprovals.length}</Badge>} flush>
               <ul className="divide-y divide-border">
                 {urgentApprovals.map((a, i) => (

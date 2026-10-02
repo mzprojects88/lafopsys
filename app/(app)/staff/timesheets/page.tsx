@@ -198,7 +198,7 @@ export default function TimesheetsPage() {
         </SectionCard>
       ) : null}
 
-      {manages && !isHiddenPath("/hr") ? (
+      {manages && !isHiddenPath("/hr", role) ? (
         <Card>
           <CardContent className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-theme-sm text-muted-foreground">Approval is per pay period: each person&apos;s attendance summary is computed, checked and frozen for payroll under HR.</p>

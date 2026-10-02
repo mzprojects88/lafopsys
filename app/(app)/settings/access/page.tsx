@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { useRole } from "@/context/role-provider";
-import { isHiddenPath } from "@/lib/rbac/hidden";
+import { isAdminOnlyPath } from "@/lib/rbac/hidden";
 import { NAV_ITEMS, ORG_ROLES, levelFor, type AccessLevel, type NavItem } from "@/lib/rbac/roles";
 import { ROLES, type Role } from "@/lib/types/common";
 
@@ -67,9 +67,9 @@ export default function AccessPage() {
                     <div className="flex flex-col gap-0.5">
                       <span className="flex flex-wrap items-center gap-1.5 font-medium text-foreground">
                         {item.title}
-                        {isHiddenPath(item.href) && (
+                        {isAdminOnlyPath(item.href) && (
                           <Badge variant="secondary">
-                            Hidden on this site
+                            Super Admin only on this site
                           </Badge>
                         )}
                       </span>

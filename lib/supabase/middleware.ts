@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { supabaseUrl, supabaseAnonKey } from "@/lib/supabase/env";
+import { isAdminOnlyPath } from "@/lib/rbac/hidden";
 
 // /api/calendar/sync, /api/patients/{house,master}-sheet-sync and /api/patients/sheet-export check a bearer secret
 // themselves: their callers (scheduled jobs, the copy sheet's script) have no session, and a redirect to /login would be silent.
@@ -77,6 +78,20 @@ export async function updateSession(request: NextRequest) {
     }
     if (!isDonor && onPortalPath && pathname !== "/portal/login") {
       return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
+  }
+
+  // Modules still being built are the Super Admin's only (lib/rbac/hidden.ts):
+  // anyone else -- or no one signed in -- gets the not-found page, as when they
+  // were hidden from everyone. One staff-row read, on those paths only.
+  if (isAdminOnlyPath(pathname)) {
+    const { data: staff } = user
+      ? await supabase.schema("shared").from("staff").select("role").eq("id", user.id).maybeSingle()
+      : { data: null };
+    if (staff?.role !== "admin") {
+      const notFound = NextResponse.rewrite(new URL("/_hidden", request.url));
+      response.cookies.getAll().forEach((cookie) => notFound.cookies.set(cookie));
+      return notFound;
     }
   }
 
