@@ -260,6 +260,18 @@ async function main() {
     asServer("update shared.staff set role = 'office_admin' where id = $1", [ids.social_worker]), rows(1));
   await scenario(ids, "nobody signed in has no role", null, null, q("select shared.has_role('admin', 'finance') as ok"), value("ok", false));
   await scenario(ids, "a chef reads the hospital list now (any staff)", "chef", null, q("select id from ops.hospitals limit 1"), atLeast(0));
+  // --- 0075: what the Office Admin opens (a chef who also holds it) ----------------
+  const asOfficeAdmin = (more) => withExtra("chef", ["office_admin"], more);
+  await scenario(ids, "a chef alone reads no patients", "chef", withPatient(), q(readPatient), rows(0));
+  await scenario(ids, "with Office Admin added they read a patient", "chef", asOfficeAdmin(seedPatient), q(readPatient), rows(1));
+  await scenario(ids, "with Office Admin added they book an appointment", "chef", asOfficeAdmin(seedPatient), q(insertAppt), rows(1));
+  await scenario(ids, "with Office Admin added they edit finance", "chef", asOfficeAdmin(), q("select shared.module_level('finance') as l"), value("l", "edit"));
+  await scenario(ids, "with Office Admin added they edit donors", "chef", asOfficeAdmin(), q("select shared.module_level('donors') as l"), value("l", "edit"));
+  await scenario(ids, "the Office Admin does not open Settings", "chef", asOfficeAdmin(), q("select shared.module_level('settings') as l"), value("l", "none"));
+  await scenario(ids, "the Office Admin does not open Reports", "chef", asOfficeAdmin(), q("select shared.module_level('reports') as l"), value("l", "none"));
+  await scenario(ids, "the Office Admin does not open Transport", "chef", asOfficeAdmin(), q("select shared.module_level('transport') as l"), value("l", "none"));
+  await scenario(ids, "the Office Admin cannot change the grid", "chef", asOfficeAdmin(),
+    q("update shared.module_access set level = 'edit' where role = 'office_admin' and module = 'reports'"), rows(0));
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
