@@ -44,11 +44,15 @@ describe("estimateFuelLevel", () => {
     assert.equal(estimateFuelLevel({ ...base, currentOdometer: 1300, fills: [fill(1000, 50)] }), 0.5);
   });
   it("starts from the driver's gauge reading when it is later", () => {
-    const level = estimateFuelLevel({ ...base, currentOdometer: 1300, fills: [fill(1000, 50)], checks: [{ level: 0.25, odometer: 1300 }] });
+    const level = estimateFuelLevel({ ...base, currentOdometer: 1300, fills: [fill(1000, 50)], checks: [{ level: 0.25, odometer: 1300, date: "2026-10-02" }] });
     assert.equal(level, 0.25);
   });
   it("adds a top-up", () => {
     assert.equal(estimateFuelLevel({ ...base, currentOdometer: 1300, fills: [fill(1000, 50), fill(1200, 12, false)] }), 0.7);
+  });
+  it("adds a top-up logged without the odometer, by its day", () => {
+    const fills = [fill(1000, 50, true, "2026-10-01"), fill(null, 12, false, "2026-10-02"), fill(null, 9, false, "2026-09-30")];
+    assert.equal(estimateFuelLevel({ ...base, currentOdometer: 1300, fills }), 0.7);
   });
   it("needs a tank size, km per litre and a starting point", () => {
     assert.equal(estimateFuelLevel({ ...base, tankLitres: null, currentOdometer: 1000, fills: [fill(1000, 50)] }), null);

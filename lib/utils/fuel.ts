@@ -50,6 +50,8 @@ export interface LevelCheck {
   /** 0, 0.25, 0.5, 0.75 or 1, as the driver read the gauge. */
   level: number;
   odometer: number | null;
+  /** The Manila day it was read. */
+  date: string;
 }
 
 /**
@@ -70,12 +72,15 @@ export function estimateFuelLevel(args: {
   const lastCheck = args.checks.filter((c) => c.odometer != null).sort((a, b) => b.odometer! - a.odometer!)[0];
   const anchor =
     lastCheck && (!lastFull || lastCheck.odometer! >= lastFull.odometer!)
-      ? { odometer: lastCheck.odometer!, litres: lastCheck.level * tankLitres }
+      ? { odometer: lastCheck.odometer!, litres: lastCheck.level * tankLitres, date: lastCheck.date }
       : lastFull
-        ? { odometer: lastFull.odometer!, litres: tankLitres }
+        ? { odometer: lastFull.odometer!, litres: tankLitres, date: lastFull.date }
         : null;
   if (!anchor) return null;
-  const added = args.fills.filter((f) => f.odometer != null && f.odometer > anchor.odometer).reduce((s, f) => s + f.litres, 0);
+  // A top-up logged without the odometer still went in: placed by its day instead.
+  const added = args.fills
+    .filter((f) => (f.odometer != null ? f.odometer > anchor.odometer : f.date > anchor.date))
+    .reduce((s, f) => s + f.litres, 0);
   const used = Math.max(0, currentOdometer - anchor.odometer) / kmPerLitre;
   return Math.min(1, Math.max(0, (anchor.litres + added - used) / tankLitres));
 }

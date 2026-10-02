@@ -4,6 +4,7 @@ import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
 import { todayIso } from "@/lib/utils/date";
+import { dayKey } from "@/lib/utils/dtr";
 import { efficiencyDropped, estimateFuelLevel, measuredKmPerLitre, serviceDue, type FuelFill, type KmPerLitreInterval, type LevelCheck, type ServiceDue } from "@/lib/utils/fuel";
 import { useVehicles, type Vehicle } from "@/lib/hooks/use-vehicles-collection";
 import { expenseKindsStore, vehicleExpensesStore } from "@/lib/hooks/use-vehicle-expenses-collection";
@@ -55,7 +56,7 @@ export const fleetStore = createCollection<FleetData>({
       fills: (fills.data ?? []).map((f) => ({ vehicleId: f.vehicle_id, date: f.expense_date, odometer: f.odometer, litres: Number(f.litres), fullTank: !!f.full_tank })),
       services: (services.data ?? []).map((s) => ({ vehicleId: s.vehicle_id, kind: s.kind, date: s.expense_date, odometer: s.odometer })),
       rules: (rules.data ?? []).map((r) => ({ vehicleId: r.vehicle_id, kind: r.kind, everyKm: r.every_km, everyMonths: r.every_months })),
-      checks: (checks.data ?? []).map((c) => ({ vehicleId: c.vehicle_id, level: Number(c.level), odometer: c.odometer, checkedAt: c.checked_at })),
+      checks: (checks.data ?? []).map((c) => ({ vehicleId: c.vehicle_id, level: Number(c.level), odometer: c.odometer, date: dayKey(c.checked_at), checkedAt: c.checked_at })),
       efficiencyPct: new Map((vehicles.data ?? []).map((v) => [v.id as string, v.efficiency_alert_pct as number])),
     };
   },

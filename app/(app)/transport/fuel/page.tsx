@@ -181,7 +181,7 @@ export default function FuelMonitoringPage() {
           )}
         </SectionCard>
 
-        <SectionCard title="Needs a look" description="Readings and fill-ups that don't add up">
+        <SectionCard title="Needs a look" description="Readings and fill-ups in this period that don't add up">
           {checks.length === 0 ? (
             <p className="text-theme-sm text-muted-foreground">Nothing to check in this period.</p>
           ) : (
