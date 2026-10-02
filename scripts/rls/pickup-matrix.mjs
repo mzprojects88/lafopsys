@@ -488,6 +488,13 @@ async function main() {
       );
     },
   };
+  // Setup runs as postgres; posting asks for Finance (0080), so it signs in as the finance account first.
+  const postAsFinance = async () => {
+    // Test accounts are kept inactive; this one acts in the setup only (rolled back).
+    await client.query("update shared.staff set active = true, role = 'finance' where id = $1", [ids.finance]);
+    await client.query("select set_config('request.jwt.claims', $1, true)", [claims(ids.finance)]);
+    await client.query(`select ops.post_vehicle_expense($1)`, [EXP]);
+  };
   const postIt = (on = null, amount = null) => q(`select ops.post_vehicle_expense('${EXP}', $1::date, $2::numeric) as id`, [on, amount]);
   await scenario(ids, "finance posts a LAF-paid cost as a pending cash entry", "finance", logged(),
     last({ sql: `select ops.post_vehicle_expense('${EXP}')` },
@@ -498,7 +505,7 @@ async function main() {
     value("ok", true));
   await scenario(ids, "the driver can't post to Finance", "driver", logged(), postIt(), denied);
   await scenario(ids, "an entry posts once", "finance",
-    { setup: async () => { await logged().setup(); await client.query(`select ops.post_vehicle_expense($1)`, [EXP]); } }, postIt(), badInput);
+    { setup: async () => { await logged().setup(); await postAsFinance(); } }, postIt(), badInput);
   await scenario(ids, "a voided entry isn't posted", "finance",
     { setup: async () => { await logged().setup(); await client.query(`update ops.vehicle_expenses set voided_at = now(), void_reason = 'logged twice' where id = $1`, [EXP]); } },
     postIt(), badInput);
@@ -512,15 +519,15 @@ async function main() {
     value("ok", true));
   await scenario(ids, "a LAF-paid cost has no one to pay back", "finance", logged(), q(`select ops.post_vehicle_expense('${EXP}', current_date, 100)`), badInput);
   await scenario(ids, "a posted entry stays as it is, even for the Super Admin", "admin",
-    { setup: async () => { await logged().setup(); await client.query(`select ops.post_vehicle_expense($1)`, [EXP]); } },
+    { setup: async () => { await logged().setup(); await postAsFinance(); } },
     change("fixing the amount"), denied);
   await scenario(ids, "a posted entry can't be voided", "driver",
-    { setup: async () => { await logged().setup(); await client.query(`select ops.post_vehicle_expense($1)`, [EXP]); } },
+    { setup: async () => { await logged().setup(); await postAsFinance(); } },
     voidIt("logged twice"), denied);
   await scenario(ids, "nobody writes a posting by hand", "finance", logged(),
     q(`insert into ops.vehicle_expense_postings (expense_id, cash_entry_id) select '${EXP}', id from ops.cash_entries limit 1`), denied);
   await scenario(ids, "the driver sees that an entry was posted", "driver",
-    { setup: async () => { await logged().setup(); await client.query(`select ops.post_vehicle_expense($1)`, [EXP]); } },
+    { setup: async () => { await logged().setup(); await postAsFinance(); } },
     q(`select expense_id from ops.vehicle_expense_postings where expense_id = '${EXP}'`), rows(1));
 
   if (PREFLIGHT.length) await client.query("rollback");
