@@ -182,6 +182,7 @@ const TABLE_LABELS: Record<string, string> = {
   "treatment-phases": "Treatment Phases",
   programs: "Programs",
   "units-of-measure": "Units of Measure",
+  "vehicle-expense-types": "Vehicle Expense Types",
 };
 
 export default function ReferenceDataTablePage({ params }: { params: Promise<{ table: string }> }) {
