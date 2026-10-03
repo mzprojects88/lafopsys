@@ -1,6 +1,6 @@
 import type { Role } from "@/lib/types/common";
 import type { FileModule } from "@/lib/utils/file-paths";
-import { isAdminOnlyPath, isHiddenPath } from "@/lib/rbac/hidden";
+import { isAdminOnlyPath, isHiddenPath, openPageInside } from "@/lib/rbac/hidden";
 import { isAllowedLandingPath as isAllowedLandingPathIn, resolveLandingPath as resolveLandingPathIn } from "@/lib/rbac/landing";
 import {
   LayoutDashboard,
@@ -133,6 +133,17 @@ export function levelFor(rows: readonly ModuleAccessRow[], who: Who, module: Mod
 
 export function isNavItemVisible(item: NavItem, who: Who, rows: readonly ModuleAccessRow[]) {
   return !isHiddenPath(item.href, rolesIn(who)) && levelFor(rows, who, item.module) !== "none";
+}
+
+/** The menu as this person sees it. A hidden module with a page left open inside it
+ * (lib/rbac/hidden.ts) shows as that page instead: Financial becomes Vehicle Costs (2026-10-03). */
+export function visibleNavItems(who: Who, rows: readonly ModuleAccessRow[]): NavItem[] {
+  return NAV_ITEMS.flatMap((item) => {
+    if (levelFor(rows, who, item.module) === "none") return [];
+    if (!isHiddenPath(item.href, rolesIn(who))) return [item];
+    const open = openPageInside(item.href);
+    return open ? [{ ...item, title: open.title, href: open.href, startsAt: undefined }] : [];
+  });
 }
 
 /** The module a path belongs to (longest matching menu href), or null for

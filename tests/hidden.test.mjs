@@ -26,3 +26,21 @@ describe("admin-only modules", () => {
     assert.equal(isHiddenPath("/patients", "finance"), false);
   });
 });
+
+describe("a page left open inside a hidden module (2026-10-03)", async () => {
+  // A fresh copy of the module, read with Finance hidden.
+  process.env.NEXT_PUBLIC_HIDDEN_ROUTES = "/finance";
+  const m = await import("../lib/rbac/hidden.ts?finance");
+  it("Vehicle Costs is open; the rest of Finance stays the Super Admin's", () => {
+    assert.equal(m.isAdminOnlyPath("/finance/vehicle-costs"), false);
+    assert.equal(m.isHiddenPath("/finance/vehicle-costs", "finance"), false);
+    assert.equal(m.isHiddenPath("/finance/vehicle-costs", ["inventory_lead", "office_admin"]), false);
+    assert.equal(m.isHiddenPath("/finance", "finance"), true);
+    assert.equal(m.isHiddenPath("/finance/approvals", "finance"), true);
+    assert.equal(m.isHiddenPath("/finance/approvals", "admin"), false);
+  });
+  it("the hidden module's menu entry points at the open page", () => {
+    assert.deepEqual(m.openPageInside("/finance"), { href: "/finance/vehicle-costs", title: "Vehicle Costs" });
+    assert.equal(m.openPageInside("/hr"), null);
+  });
+});

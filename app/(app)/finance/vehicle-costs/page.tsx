@@ -16,6 +16,8 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useCollection } from "@/lib/data/collection-store";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
+import { useRole } from "@/context/role-provider";
+import { isHiddenPath } from "@/lib/rbac/hidden";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { useVehicles } from "@/lib/hooks/use-vehicles-collection";
 import { expenseKindsStore, financeVehicleCostsStore, postVehicleExpense, type VehicleExpense } from "@/lib/hooks/use-vehicle-expenses-collection";
@@ -31,6 +33,9 @@ import { formatPesoCents } from "@/lib/utils/vehicle-expenses";
 export default function VehicleCostsPage() {
   const access = useModuleAccess();
   const canPost = access.canEdit("finance");
+  const { roles } = useRole();
+  // While the rest of Finance is hidden, this page is open on its own (lib/rbac/hidden.ts).
+  const seesApprovals = !isHiddenPath("/finance/approvals", roles);
   const { data: entries, loading } = useCollection(financeVehicleCostsStore);
   const { data: kinds } = useCollection(expenseKindsStore);
   const { vehicles } = useVehicles();
@@ -85,9 +90,11 @@ export default function VehicleCostsPage() {
         title="Vehicle costs"
         description="Fuel and vehicle expenses from Transport. Posting is the approval; a driver who paid is posted when paid back."
         action={
-          <Button variant="outline" asChild>
-            <Link href="/finance/approvals">Approvals</Link>
-          </Button>
+          seesApprovals ? (
+            <Button variant="outline" asChild>
+              <Link href="/finance/approvals">Approvals</Link>
+            </Button>
+          ) : undefined
         }
       />
 

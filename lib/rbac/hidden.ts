@@ -16,10 +16,25 @@ const ADMIN_ONLY = (process.env.NEXT_PUBLIC_HIDDEN_ROUTES ?? "")
   .map((p) => p.trim().replace(/\/+$/, ""))
   .filter((p) => p.startsWith("/") && p.length > 1);
 
+/**
+ * Pages that stay open inside a hidden module, with the menu title they get there (decided
+ * 2026-10-03): Finance Staff and the Office Admin post vehicle costs while the rest of Finance
+ * waits for its roll-out. Who may open them still follows Roles & access and the database.
+ */
+export const OPEN_INSIDE_HIDDEN: readonly { href: string; title: string }[] = [{ href: "/finance/vehicle-costs", title: "Vehicle Costs" }];
+
+const under = (path: string, prefix: string) => path === prefix || path.startsWith(`${prefix}/`);
+
 /** On the list, whoever is looking: for the "Admin only" marks and middleware. */
 export function isAdminOnlyPath(path: string): boolean {
   const bare = path.split(/[?#]/)[0];
-  return ADMIN_ONLY.some((p) => bare === p || bare.startsWith(`${p}/`));
+  if (OPEN_INSIDE_HIDDEN.some((o) => under(bare, o.href))) return false;
+  return ADMIN_ONLY.some((p) => under(bare, p));
+}
+
+/** The page left open inside a hidden module (for its menu entry), or null. */
+export function openPageInside(moduleHref: string): { href: string; title: string } | null {
+  return OPEN_INSIDE_HIDDEN.find((o) => under(o.href, moduleHref) && isAdminOnlyPath(moduleHref)) ?? null;
 }
 
 /** Hidden from this viewer: everyone but an admin. Takes the main role or all of
