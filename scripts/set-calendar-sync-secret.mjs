@@ -9,6 +9,7 @@
 //
 // Usage: node --env-file=.env.local scripts/set-calendar-sync-secret.mjs
 
+import { pgUrl } from "./lib/db-url.mjs";
 import { Client } from "pg";
 
 const secret = process.env.CALENDAR_SYNC_SECRET;
@@ -22,10 +23,8 @@ if (!password) {
   process.exit(1);
 }
 
-const projectRef = "kptftyuzrnummbcjakro";
-const region = "ap-northeast-1";
 const client = new Client({
-  connectionString: `postgresql://postgres.${projectRef}:${encodeURIComponent(password)}@aws-0-${region}.pooler.supabase.com:5432/postgres`,
+  connectionString: pgUrl(password),
 });
 
 const NAME = "calendar_sync_secret";

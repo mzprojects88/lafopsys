@@ -7,6 +7,7 @@
 // Usage: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/admission-tasks-matrix.mjs
 // Pre-flight (before 0049-0054 are applied, one rolled-back transaction):
 //   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/admission-tasks-matrix.mjs supabase/migrations/0049_check_in.sql supabase/migrations/0050_module_access.sql supabase/migrations/0051_sheet_admission.sql supabase/migrations/0052_arrival_rides.sql supabase/migrations/0053_laf_hope_pickups.sql supabase/migrations/0054_stay_admission_tasks.sql
+import { pgUrl } from "../lib/db-url.mjs";
 import { Client } from "pg";
 import { readFile } from "node:fs/promises";
 
@@ -19,10 +20,8 @@ if (!password) {
   console.error("Missing SUPABASE_DB_PASSWORD in .env.local.");
   process.exit(1);
 }
-const projectRef = "kptftyuzrnummbcjakro";
-const region = "ap-northeast-1";
 const client = new Client({
-  connectionString: `postgresql://postgres.${projectRef}:${encodeURIComponent(password)}@aws-0-${region}.pooler.supabase.com:5432/postgres`,
+  connectionString: pgUrl(password),
 });
 
 const ROLES = ["admin", "social_worker", "house_staff", "driver"];

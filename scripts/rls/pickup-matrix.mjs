@@ -9,6 +9,7 @@
 //   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0076_fuel_vehicles.sql supabase/migrations/0077_vehicle_expenses.sql supabase/migrations/0078_odometer_photos.sql supabase/migrations/0079_fuel_monitoring.sql supabase/migrations/0080_vehicle_expense_posting.sql supabase/migrations/0081_vehicle_posting_approved_and_admin_fix.sql
 // Pre-flight (before 0049-0053 are applied, one rolled-back transaction):
 //   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/pickup-matrix.mjs supabase/migrations/0049_check_in.sql supabase/migrations/0050_module_access.sql supabase/migrations/0051_sheet_admission.sql supabase/migrations/0052_arrival_rides.sql supabase/migrations/0053_laf_hope_pickups.sql
+import { pgUrl } from "../lib/db-url.mjs";
 import { Client } from "pg";
 import { readFile } from "node:fs/promises";
 
@@ -21,10 +22,8 @@ if (!password) {
   console.error("Missing SUPABASE_DB_PASSWORD in .env.local.");
   process.exit(1);
 }
-const projectRef = "kptftyuzrnummbcjakro";
-const region = "ap-northeast-1";
 const client = new Client({
-  connectionString: `postgresql://postgres.${projectRef}:${encodeURIComponent(password)}@aws-0-${region}.pooler.supabase.com:5432/postgres`,
+  connectionString: pgUrl(password),
   // A silently dropped connection (2026-10-02) otherwise leaves the run waiting forever.
   keepAlive: true,
   query_timeout: 120000,

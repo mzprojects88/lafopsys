@@ -17,6 +17,7 @@
 //
 // Usage: node --env-file=.env.local scripts/smoke-test-realtime.mjs
 
+import { pgUrl } from "./lib/db-url.mjs";
 import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
@@ -86,7 +87,7 @@ async function checkPublicationCoverage() {
   }
   const projectRef = new URL(url).hostname.split(".")[0];
   const client = new pg.Client({
-    connectionString: `postgresql://postgres.${projectRef}:${encodeURIComponent(password)}@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres`,
+    connectionString: pgUrl(password),
     ssl: { rejectUnauthorized: false },
   });
   await client.connect();

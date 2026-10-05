@@ -25,6 +25,7 @@
 // first, then every scenario under a savepoint -- and is rolled back at
 // the end, so production is untouched either way:
 //   RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/hr-policy-matrix.mjs supabase/migrations/0042_hr_payroll.sql
+import { pgUrl } from "../lib/db-url.mjs";
 import { Client } from "pg";
 import { readFile } from "node:fs/promises";
 
@@ -37,10 +38,8 @@ if (!password) {
   console.error("Missing SUPABASE_DB_PASSWORD in .env.local.");
   process.exit(1);
 }
-const projectRef = "kptftyuzrnummbcjakro";
-const region = "ap-northeast-1";
 const client = new Client({
-  connectionString: `postgresql://postgres.${projectRef}:${encodeURIComponent(password)}@aws-0-${region}.pooler.supabase.com:5432/postgres`,
+  connectionString: pgUrl(password),
 });
 
 const ROLES = ["admin", "social_worker", "driver", "chef", "board", "finance"];

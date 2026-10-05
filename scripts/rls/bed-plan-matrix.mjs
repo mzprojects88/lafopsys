@@ -6,6 +6,7 @@
 //
 // Usage:      RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/bed-plan-matrix.mjs
 // Pre-flight: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/bed-plan-matrix.mjs supabase/migrations/0071_bed_plans.sql
+import { pgUrl } from "../lib/db-url.mjs";
 import { Client } from "pg";
 import { readFile } from "node:fs/promises";
 
@@ -19,7 +20,7 @@ if (!password) {
   process.exit(1);
 }
 const client = new Client({
-  connectionString: `postgresql://postgres.kptftyuzrnummbcjakro:${encodeURIComponent(password)}@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres`,
+  connectionString: pgUrl(password),
 });
 
 const ROLES = ["admin", "social_worker", "house_staff"];

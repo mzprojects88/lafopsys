@@ -7,6 +7,7 @@
 //   node --env-file=.env.local scripts/push-migrations.mjs --dry-run
 //   node --env-file=.env.local scripts/push-migrations.mjs
 
+import { pgUrl } from "./lib/db-url.mjs";
 import { spawnSync } from "node:child_process";
 
 const password = process.env.SUPABASE_DB_PASSWORD;
@@ -15,9 +16,7 @@ if (!password) {
   process.exit(1);
 }
 
-const projectRef = "kptftyuzrnummbcjakro";
-const region = "ap-northeast-1";
-const dbUrl = `postgresql://postgres.${projectRef}:${encodeURIComponent(password)}@aws-0-${region}.pooler.supabase.com:5432/postgres`;
+const dbUrl = pgUrl(password);
 
 const dryRun = process.argv.includes("--dry-run");
 const args = ["supabase", "db", "push", "--db-url", dbUrl];
