@@ -22,7 +22,7 @@ import { formatCurrency } from "@/lib/utils/currency";
 /** Staff-facing view of what a donor has committed to via the VIP portal --
  * closes the loop between a pledge/lead (ops.campaign_commitments) and the
  * real donation once it's recorded through the existing intake flow. */
-export function CampaignCommitmentsTab({ donorId, donorDonations }: { donorId: string; donorDonations: Donation[] }) {
+export function CampaignCommitmentsTab({ donorId, donorDonations, editable = false }: { donorId: string; donorDonations: Donation[]; editable?: boolean }) {
   const { commitments, markFulfilled } = useCampaignCommitmentsData();
   const { campaigns } = useCampaignsData();
   const [linkingId, setLinkingId] = React.useState<string | null>(null);
@@ -64,7 +64,7 @@ export function CampaignCommitmentsTab({ donorId, donorDonations }: { donorId: s
               </div>
               <div className="flex items-center gap-2">
                 <StatusBadge domain="commitment" status={c.status} />
-                {c.status === "pledged" && (
+                {editable && c.status === "pledged" && (
                   <Button size="sm" variant="ghost" onClick={() => setLinkingId(c.id)}>
                     Mark Fulfilled
                   </Button>

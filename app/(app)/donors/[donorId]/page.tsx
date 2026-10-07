@@ -1,9 +1,9 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import { notFound } from "next/navigation";
 import { toast } from "sonner";
-import { FileSignature, Award } from "lucide-react";
+import { FileSignature, Award, Pencil, Mail, Phone, IdCard } from "lucide-react";
 import { EntityDetailHeader } from "@/components/patterns/entity-detail-header";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { EmptyState } from "@/components/patterns/empty-state";
@@ -20,6 +20,8 @@ import { formatDate } from "@/lib/utils/date";
 import { useRole } from "@/lib/rbac/use-role";
 import { canDeleteFiles, canUploadFiles } from "@/lib/rbac/roles";
 import { FileLibrary } from "@/components/patterns/file-library";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
+import { DonorFormDialog } from "@/components/modules/donors/donor-form-dialog";
 
 export default function DonorDetailPage({ params }: { params: Promise<{ donorId: string }> }) {
   const { donorId } = use(params);
@@ -28,6 +30,9 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
   const { certificates, generateCertificate } = useDoneeCertificatesData();
   const donor = donors.find((d) => d.id === donorId);
   const { roles } = useRole();
+  const { canEdit } = useModuleAccess();
+  const editor = canEdit("donors");
+  const [editing, setEditing] = useState(false);
 
   if (!donor) {
     if (loading) return null;
@@ -66,11 +71,48 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
           { label: "First Gift", value: formatDate(donor.firstGiftDate) },
           { label: "Last Gift", value: formatDate(donor.lastGiftDate) },
         ]}
+        actions={
+          editor && (
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+              <Pencil />
+              Edit details
+            </Button>
+          )
+        }
       />
+      {editor && <DonorFormDialog open={editing} onOpenChange={setEditing} donor={donor} />}
+
+      {/* Contact and tax details: what an AR, a donee certificate or a thank-you needs. */}
+      <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-2xl border border-border bg-card px-5 py-3 text-theme-sm">
+        <span className="flex min-w-0 items-center gap-2">
+          <Mail className="size-4 shrink-0 text-muted-foreground" />
+          {donor.email ? (
+            <a href={`mailto:${donor.email}`} className="truncate text-primary hover:underline">
+              {donor.email}
+            </a>
+          ) : (
+            <span className="text-muted-foreground">No email</span>
+          )}
+        </span>
+        <span className="flex items-center gap-2">
+          <Phone className="size-4 shrink-0 text-muted-foreground" />
+          {donor.phone ? (
+            <a href={`tel:${donor.phone.replace(/[^0-9+]/g, "")}`} className="text-primary hover:underline">
+              {donor.phone}
+            </a>
+          ) : (
+            <span className="text-muted-foreground">No phone</span>
+          )}
+        </span>
+        <span className="flex items-center gap-2">
+          <IdCard className="size-4 shrink-0 text-muted-foreground" />
+          {donor.tin ? <span className="tabular-nums">TIN {donor.tin}</span> : <span className="text-muted-foreground">No TIN</span>}
+        </span>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <PledgeCard donorId={donor.id} />
-        <PortalAccountCard donorId={donor.id} />
+        <PledgeCard donorId={donor.id} editable={editor} />
+        <PortalAccountCard donorId={donor.id} editable={editor} />
       </div>
 
       <Tabs defaultValue="history">
@@ -90,18 +132,23 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
                 const cert = certificates.find((c) => c.donationId === d.id);
                 return (
                   <div key={d.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-theme-sm hover:bg-muted/60">
-                      <div className="flex flex-col">
-                        <span className="font-medium">
-                          {d.kind === "cash" ? "Cash Donation" : d.itemDescription}
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="line-clamp-2 font-medium break-words">
+                          {d.kind === "cash" ? "Cash Donation" : d.itemDescription || "In-kind donation"}
                         </span>
                         <span className="text-theme-xs text-muted-foreground">
                           {formatDate(d.date)} · {d.receivingEntity === "US_501C3" ? "US 501(c)(3)" : "PH SEC"}
+                          {d.status === "pending_review" && (
+                            <span className="ml-1.5 rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-medium text-warning-foreground dark:text-warning">
+                              Pending finance review
+                            </span>
+                          )}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
                         {ar ? (
                           <StatusBadge domain="ar" status={ar.status} />
-                        ) : (
+                        ) : !editor ? null : (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -111,7 +158,7 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
                             Generate AR
                           </Button>
                         )}
-                        {!cert && d.kind === "in_kind" && (
+                        {editor && !cert && d.kind === "in_kind" && (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -131,7 +178,7 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
         </TabsContent>
 
         <TabsContent value="commitments" className="pt-4">
-          <CampaignCommitmentsTab donorId={donor.id} donorDonations={donorDonations} />
+          <CampaignCommitmentsTab donorId={donor.id} donorDonations={donorDonations} editable={editor} />
         </TabsContent>
 
         <TabsContent value="documents" className="pt-4">

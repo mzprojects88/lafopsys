@@ -19,11 +19,22 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { useDonorPledgesData } from "@/lib/hooks/use-donor-pledges-collection";
 import type { DonationKind, PledgeFrequency } from "@/lib/types/donor";
 import { formatCurrency } from "@/lib/utils/currency";
-import { todayIso } from "@/lib/utils/date";
+import { formatDate, todayIso } from "@/lib/utils/date";
 
 const FREQUENCY_LABEL: Record<PledgeFrequency, string> = {
   weekly: "Weekly",
@@ -35,7 +46,7 @@ const FREQUENCY_LABEL: Record<PledgeFrequency, string> = {
 /** Recurring-giving commitment card on a donor's detail page. Staff record
  * and edit the pledge here; a donor account only ever sees this read-only,
  * on their own portal dashboard (RLS-scoped, no edit UI there). */
-export function PledgeCard({ donorId }: { donorId: string }) {
+export function PledgeCard({ donorId, editable = false }: { donorId: string; editable?: boolean }) {
   const { pledges, loading, addPledge, updatePledgeStatus } = useDonorPledgesData();
   const [open, setOpen] = React.useState(false);
   const [kind, setKind] = React.useState<DonationKind>("cash");
@@ -56,7 +67,7 @@ export function PledgeCard({ donorId }: { donorId: string }) {
     setNotes("");
   }
 
-  const canSubmit = kind === "cash" ? !!amount : !!itemDescription.trim();
+  const canSubmit = kind === "cash" ? Number(amount) > 0 && Number(amount) < 100_000_000 : !!itemDescription.trim();
 
   async function handleSubmit() {
     if (!canSubmit) return;
@@ -100,7 +111,7 @@ export function PledgeCard({ donorId }: { donorId: string }) {
         </span>
       }
       actions={
-        <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) reset(); }}>
+        editable && <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) reset(); }}>
           <DialogTrigger asChild>
             <Button size="sm" variant="outline" className="gap-1.5">
               <Plus className="size-3.5" />
@@ -143,7 +154,7 @@ export function PledgeCard({ donorId }: { donorId: string }) {
               {kind === "cash" ? (
                 <Field>
                   <FieldLabel htmlFor="pledgeAmount">Amount (₱)</FieldLabel>
-                  <Input id="pledgeAmount" type="number" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                  <Input id="pledgeAmount" type="number" min="1" step="0.01" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
                 </Field>
               ) : (
                 <Field>
@@ -178,24 +189,38 @@ export function PledgeCard({ donorId }: { donorId: string }) {
                   ? `${formatCurrency(currentPledge.amount ?? 0, currentPledge.currency)} · ${FREQUENCY_LABEL[currentPledge.frequency]}`
                   : `${currentPledge.itemDescription} · ${FREQUENCY_LABEL[currentPledge.frequency]}`}
               </span>
-              <span className="text-theme-xs text-muted-foreground">Since {currentPledge.startedAt}</span>
+              <span className="text-theme-xs text-muted-foreground">Since {formatDate(currentPledge.startedAt)}</span>
             </div>
             <div className="flex items-center gap-2">
               <StatusBadge domain="pledge" status={currentPledge.status} />
-              {currentPledge.status === "active" && (
+              {editable && currentPledge.status === "active" && (
                 <Button size="sm" variant="ghost" onClick={() => handleStatusChange("paused")}>
                   Pause
                 </Button>
               )}
-              {currentPledge.status === "paused" && (
+              {editable && currentPledge.status === "paused" && (
                 <Button size="sm" variant="ghost" onClick={() => handleStatusChange("active")}>
                   Resume
                 </Button>
               )}
-              {currentPledge.status !== "cancelled" && (
-                <Button size="sm" variant="destructive" onClick={() => handleStatusChange("cancelled")}>
-                  Cancel
-                </Button>
+              {editable && currentPledge.status !== "cancelled" && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button size="sm" variant="destructive">Cancel</Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Cancel this pledge?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        It stops counting toward VIP portal eligibility. A cancelled pledge can&apos;t be resumed; record a new one instead.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Keep it</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => handleStatusChange("cancelled")}>Cancel pledge</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               )}
             </div>
           </div>

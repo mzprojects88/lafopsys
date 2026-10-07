@@ -38,7 +38,7 @@ function eligibilityReasons(
  * shown here is a client-side convenience -- the real gate is enforced
  * server-side in createDonorPortalAccount, which re-checks every condition
  * since the admin client it uses bypasses RLS entirely. */
-export function PortalAccountCard({ donorId }: { donorId: string }) {
+export function PortalAccountCard({ donorId, editable = false }: { donorId: string; editable?: boolean }) {
   const { donors, loading: donorsLoading } = useDonorsData();
   const { pledges, loading: pledgesLoading } = useDonorPledgesData();
   const { accounts, loading: accountsLoading, refetch } = useDonorAccountsData();
@@ -94,9 +94,11 @@ export function PortalAccountCard({ donorId }: { donorId: string }) {
           ) : eligible ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-theme-sm text-muted-foreground">Eligible for the VIP Donors Portal.</p>
-              <Button size="sm" disabled={submitting} onClick={handleCreate}>
-                {submitting ? "Creating…" : "Create Portal Account"}
-              </Button>
+              {editable && (
+                <Button size="sm" disabled={submitting} onClick={handleCreate}>
+                  {submitting ? "Creating…" : "Create Portal Account"}
+                </Button>
+              )}
             </div>
           ) : (
             <ul className="list-inside list-disc text-theme-sm text-muted-foreground">

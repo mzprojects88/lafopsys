@@ -4,7 +4,7 @@ import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Users, Gift, Wallet, TrendingUp, Plus, Receipt, Award, Megaphone } from "lucide-react";
+import { Users, Gift, Wallet, TrendingUp, Plus, Receipt, Award, Megaphone, UserPlus } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
@@ -13,7 +13,9 @@ import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/modul
 import { Button } from "@/components/ui/button";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useDonorPledgesData } from "@/lib/hooks/use-donor-pledges-collection";
-import type { Donor } from "@/lib/types/donor";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
+import { DonorFormDialog } from "@/components/modules/donors/donor-form-dialog";
+import type { Donor, DonorType } from "@/lib/types/donor";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
 import { isVipEligible } from "@/lib/utils/donor-vip";
@@ -58,11 +60,28 @@ function buildColumns(pledges: import("@/lib/types/donor").DonorPledge[]): Colum
   ];
 }
 
+type FilterKey = DonorType | "vip" | "all";
+const FILTERS: { key: FilterKey; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "vip", label: "VIP" },
+  { key: "individual", label: "Individual" },
+  { key: "corporate", label: "Corporate" },
+  { key: "foundation", label: "Foundation" },
+  { key: "government", label: "Government" },
+  { key: "anonymous", label: "Anonymous" },
+];
+
 export default function DonorsPage() {
   const router = useRouter();
-  const { donors } = useDonorsData();
+  const { donors: all } = useDonorsData();
   const { pledges } = useDonorPledgesData();
+  const { canEdit } = useModuleAccess();
+  const editor = canEdit("donors");
+  const [adding, setAdding] = React.useState(false);
+  const [filter, setFilter] = React.useState<FilterKey>("all");
   const columns = React.useMemo(() => buildColumns(pledges), [pledges]);
+  const pick = (key: FilterKey) => (key === "all" ? all : key === "vip" ? all.filter((d) => isVipEligible(d, pledges)) : all.filter((d) => d.type === key));
+  const donors = pick(filter);
   const totalGifts = donors.reduce((sum, d) => sum + d.giftCount, 0);
   const totalLifetimeValue = donors.reduce((sum, d) => sum + d.lifetimeValue, 0);
   const avgGift = totalGifts > 0 ? totalLifetimeValue / totalGifts : 0;
@@ -71,14 +90,20 @@ export default function DonorsPage() {
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader
         title="Donors & Donations"
-        description="Unified from In-kind Donations and DonorsVisitors Information."
+        description="Everyone who has given to LAF. Gifts logged in LAF Inventory count here too."
         action={
           <>
-            <Button asChild><Link href="/donors/intake"><Plus />New Donation</Link></Button>
+            {editor && (
+              <>
+                <Button variant="outline" onClick={() => setAdding(true)}><UserPlus />Add donor</Button>
+                <Button asChild><Link href="/donors/intake"><Plus />New Donation</Link></Button>
+              </>
+            )}
             <ModuleSubNav items={SUB_NAV} />
           </>
         }
       />
+      {editor && <DonorFormDialog open={adding} onOpenChange={setAdding} />}
 
       <KpiGrid>
         <KpiCard label="Total Donors" value={donors.length} icon={Users} />
@@ -86,6 +111,20 @@ export default function DonorsPage() {
         <KpiCard label="Lifetime Value" value={formatCurrency(totalLifetimeValue)} icon={Wallet} />
         <KpiCard label="Avg Gift" value={formatCurrency(avgGift)} icon={TrendingUp} />
       </KpiGrid>
+
+      <div className="no-scrollbar -mx-1 flex gap-1.5 overflow-x-auto px-1" role="group" aria-label="Show donors">
+        {FILTERS.map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            aria-pressed={filter === f.key}
+            onClick={() => setFilter(f.key)}
+            className="shrink-0 rounded-full border border-border px-3 py-1 text-theme-xs font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary"
+          >
+            {f.label} <span className="tabular-nums">{pick(f.key).length}</span>
+          </button>
+        ))}
+      </div>
 
       <DataTable
         columns={columns}

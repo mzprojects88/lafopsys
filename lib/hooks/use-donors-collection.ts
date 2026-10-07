@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { createCollection, invalidateTables, useCollection } from "@/lib/data/collection-store";
 import type { Donor, Donation } from "@/lib/types/donor";
+import type { DonorInput } from "@/lib/utils/donor-details";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
 
@@ -35,6 +36,7 @@ interface DonationRow {
   currency: Donation["currency"];
   campaign_id: string | null;
   created_inventory_lot_id: string | null;
+  status: NonNullable<Donation["status"]>;
 }
 
 function toDonor(row: DonorRow): Donor {
@@ -69,6 +71,7 @@ function toDonation(row: DonationRow): Donation {
     currency: row.currency,
     campaignId: row.campaign_id ?? undefined,
     createdInventoryLotId: row.created_inventory_lot_id ?? undefined,
+    status: row.status,
   };
 }
 
@@ -105,9 +108,8 @@ export function useDonorsData() {
     loading,
   } = useCollection(donorsStore);
 
-  /** Records a new donation and updates the donor's rolled-up gift_count/lifetime_value/
-   * last_gift_date to match -- these are stored aggregates on ops.donors, not derived at
-   * read time, so they need to move together with every new donation. */
+  /** Records a new donation. The donor's gift count, lifetime value and first/last gift dates
+   * follow by themselves: the database recomputes them from ops.donations (0082). */
   async function addDonation(donation: Omit<Donation, "id">): Promise<MutationResult> {
     const supabase = createClient();
     const donor = donors.find((d) => d.id === donation.donorId);
@@ -131,21 +133,9 @@ export function useDonorsData() {
     });
     if (donationError) return { ok: false, error: donationError.message };
 
-    const { error: donorError } = await supabase
-      .schema("ops")
-      .from("donors")
-      .update({
-        gift_count: donor.giftCount + 1,
-        lifetime_value: donor.lifetimeValue + donation.totalValue,
-        last_gift_date: donation.date > donor.lastGiftDate ? donation.date : donor.lastGiftDate,
-        first_gift_date: donor.firstGiftDate && donor.firstGiftDate < donation.date ? donor.firstGiftDate : donation.date,
-      })
-      .eq("id", donation.donorId);
-    if (donorError) return { ok: false, error: donorError.message };
-
-    // ops.campaigns.raised_amount is a stored rollup, same as the donor
-    // fields above, not derived at read time -- it was previously never
-    // incremented anywhere, so every campaign progress bar was stuck at 0.
+    // ops.campaigns.raised_amount is a stored rollup, not derived at read time --
+    // it was previously never incremented anywhere, so every campaign progress bar
+    // was stuck at 0.
     if (donation.campaignId) {
       const { data: campaign } = await supabase
         .schema("ops")
@@ -168,5 +158,26 @@ export function useDonorsData() {
     return { ok: true };
   }
 
-  return { donors, donations, loading, addDonation, refetch: donorsStore.refetch };
+  /** Adds a donor (no id) or saves an existing one's details. Input is checked by the caller
+   * (lib/utils/donor-details.ts checkDonorInput); the database allows it only for donors editors. */
+  async function saveDonor(input: DonorInput, id?: string): Promise<MutationResult & { id?: string }> {
+    const row = {
+      name: input.name,
+      type: input.type,
+      tax_jurisdiction: input.taxJurisdiction,
+      email: input.email || null,
+      phone: input.phone || null,
+      tin: input.tin || null,
+    };
+    const supabase = createClient();
+    const res = id
+      ? await supabase.schema("ops").from("donors").update(row).eq("id", id).select("id")
+      : await supabase.schema("ops").from("donors").insert(row).select("id");
+    if (res.error) return { ok: false, error: res.error.message };
+    if (!res.data?.length) return { ok: false, error: "You don't have permission to change donors." };
+    await donorsStore.refetch();
+    return { ok: true, id: res.data[0]!.id as string };
+  }
+
+  return { donors, donations, loading, addDonation, saveDonor, refetch: donorsStore.refetch };
 }

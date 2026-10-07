@@ -33,6 +33,8 @@ export interface Donation {
   currency: Currency;
   campaignId?: string;
   createdInventoryLotId?: string;
+  /** pending_review: received (e.g. logged in LAF Inventory), not yet reviewed by finance. */
+  status?: "pending_review" | "reviewed" | "finalized";
 }
 
 export type ArStatus = "draft" | "issued" | "sent" | "acknowledged";
