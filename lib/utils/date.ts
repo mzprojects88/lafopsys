@@ -3,12 +3,16 @@ import { dayKey, timeLabel } from "@/lib/utils/dtr";
 
 export { dayKey, timeLabel, formatMinutes, ORG_TIMEZONE } from "@/lib/utils/dtr";
 
-export function formatDate(iso: string, pattern = "MMM d, yyyy") {
-  return format(parseISO(iso), pattern);
+/** A missing or unreadable date shows as "—" rather than throwing and taking the page down
+ * (e.g. a donor with no gifts has no first/last gift date since 0082). */
+export function formatDate(iso: string | null | undefined, pattern = "MMM d, yyyy") {
+  const d = iso ? parseISO(iso) : null;
+  return d && !Number.isNaN(d.getTime()) ? format(d, pattern) : "—";
 }
 
-export function formatRelative(iso: string) {
-  return formatDistanceToNow(parseISO(iso), { addSuffix: true });
+export function formatRelative(iso: string | null | undefined) {
+  const d = iso ? parseISO(iso) : null;
+  return d && !Number.isNaN(d.getTime()) ? formatDistanceToNow(d, { addSuffix: true }) : "—";
 }
 
 export function daysUntil(iso: string, from = parseISO(todayIso())) {
