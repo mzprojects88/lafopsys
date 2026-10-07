@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { unitsOfMeasure } from "@/lib/mock-data";
+import { unitsOfMeasure } from "@/lib/mock-data/reference-data";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { todayIso } from "@/lib/utils/date";
 

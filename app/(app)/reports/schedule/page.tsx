@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { reportDefinitions } from "@/lib/mock-data";
+import { reportDefinitions } from "@/lib/mock-data/reports";
 
 export default function SchedulePage() {
   return (

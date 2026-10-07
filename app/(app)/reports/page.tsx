@@ -9,7 +9,7 @@ import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { reportDefinitions } from "@/lib/mock-data";
+import { reportDefinitions } from "@/lib/mock-data/reports";
 
 const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/reports/builder", label: "Report Builder", icon: Wrench },

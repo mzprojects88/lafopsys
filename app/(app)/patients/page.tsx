@@ -13,7 +13,7 @@ import { PatientsSubNav } from "@/components/modules/patients/patients-subnav";
 import { MasterSheetStatus } from "@/components/modules/patients/master-sheet-status";
 import { SheetChangesPanel } from "@/components/modules/patients/sheet-changes-panel";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
-import { cities } from "@/lib/mock-data";
+import { cities } from "@/lib/mock-data/reference-data";
 import { useDiagnosesReferenceData } from "@/lib/hooks/use-diagnoses-reference-collection";
 import { PRIORITIES, recordGaps } from "@/lib/utils/master-sheet";
 import Link from "next/link";

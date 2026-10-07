@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/patterns/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { cities } from "@/lib/mock-data";
+import { cities } from "@/lib/mock-data/reference-data";
 import { useDiagnosesReferenceData } from "@/lib/hooks/use-diagnoses-reference-collection";
 import { useReferenceTableData } from "@/lib/hooks/use-reference-table-collection";
 import { ILLNESS_CODES, PRIORITIES, recordGaps } from "@/lib/utils/master-sheet";

@@ -10,7 +10,7 @@ import { ReasonDialog } from "@/components/patterns/reason-dialog";
 import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { hospitals } from "@/lib/mock-data";
+import { hospitals } from "@/lib/mock-data/hospitals";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import type { Referral, ReferralStatus } from "@/lib/types/patient";

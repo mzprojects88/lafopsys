@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/patterns/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useReferenceTableData } from "@/lib/hooks/use-reference-table-collection";
 import { useDiagnosesReferenceData, type DiagnosisCategory } from "@/lib/hooks/use-diagnoses-reference-collection";
-import { unitsOfMeasure } from "@/lib/mock-data";
+import { unitsOfMeasure } from "@/lib/mock-data/reference-data";
 
 const SIMPLE_TABLES: Record<string, { label: string; table: string; idPrefix: string; metaColumn?: string; metaLabel?: string }> = {
   provinces: { label: "Provinces & Cities", table: "provinces", idPrefix: "prov", metaColumn: "region", metaLabel: "Region" },
