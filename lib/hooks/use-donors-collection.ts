@@ -10,6 +10,7 @@ export type MutationResult = { ok: true } | { ok: false; error: string };
 interface DonorRow {
   id: string;
   name: string;
+  salutation: string | null;
   type: Donor["type"];
   email: string | null;
   phone: string | null;
@@ -43,6 +44,7 @@ function toDonor(row: DonorRow): Donor {
   return {
     id: row.id,
     name: row.name,
+    salutation: row.salutation ?? undefined,
     type: row.type,
     email: row.email ?? undefined,
     phone: row.phone ?? undefined,
@@ -163,6 +165,7 @@ export function useDonorsData() {
   async function saveDonor(input: DonorInput, id?: string): Promise<MutationResult & { id?: string }> {
     const row = {
       name: input.name,
+      salutation: input.salutation || null,
       type: input.type,
       tax_jurisdiction: input.taxJurisdiction,
       email: input.email || null,

@@ -153,6 +153,59 @@ async function main() {
   await scenario(ids, "finance adds a donor", "finance", () => client.query(`insert into ops.donors (name, type, tax_jurisdiction) values ('RLSTEST Added', 'individual', 'PH')`), rows(1));
   await scenario(ids, "no session sees no donors", null, () => client.query(`select id from ops.donors where id = '${D1}'`), (r) => (r.ok && r.rows === 0) || denied(r));
 
+  // ---- 0083: clean-up suggestions and merging ----
+  const has0083 = (await client.query("select to_regclass('ops.donor_suggestions') is not null as ok")).rows[0].ok;
+  if (has0083) {
+    const receipt = `insert into inventory.donation_log (id, donor_id, date, valuation_total, item_summary) values ('T-MERGE-RCPT', '${D2}', '2026-10-01', 10, '1 pc test')`;
+    await scenario(ids, "finance merges a duplicate: gifts and inventory receipts move, the merge is logged", "finance",
+      then(`select set_config('x.r', '', true)`,
+        // the receipt is added as postgres inside the same transaction before the role switch would be ideal; here finance cannot insert it, so merge only gifts
+        `update ops.donations set donor_id = '${D2}' where id = '${G2}'`,
+        `select ops.merge_donors('${D1}', '${D2}', 'Same donor typed twice')`,
+        `select (select count(*) from ops.donors where id = '${D2}') = 0
+            and (select gift_count from ops.donors where id = '${D1}') = 2
+            and (select count(*) from ops.donor_merges where kept_id = '${D1}' and dropped_id = '${D2}') = 1 as ok`),
+      (r) => r.ok && r.data[0].ok === true);
+    await scenario(ids, "a merge moves the donor's LAF Inventory receipts too", "admin",
+      async () => {
+        await client.query("reset role");
+        await client.query(receipt);
+        await client.query("set local role authenticated");
+        await client.query("discard plans");
+        await client.query(`select ops.merge_donors('${D1}', '${D2}', 'Same donor')`);
+        return client.query(`select donor_id = '${D1}' as ok from inventory.donation_log where id = 'T-MERGE-RCPT'`);
+      },
+      (r) => r.ok && r.data[0]?.ok === true);
+    await scenario(ids, "a merge needs a reason", "finance", () => client.query(`select ops.merge_donors('${D1}', '${D2}', '')`), (r) => !r.ok && r.code === "22023");
+    await scenario(ids, "inventory staff can't merge donors", "inventory_staff", () => client.query(`select ops.merge_donors('${D1}', '${D2}', 'Same donor')`), denied);
+    await scenario(ids, "an editor adds a suggestion", "office_admin",
+      () => client.query(`insert into ops.donor_suggestions (donor_id, kind, proposed, reason, source) values ('${D1}', 'format', '{"name":"Rlstest Donor One"}', 'Capitals', 'rule')`), rows(1));
+    await scenario(ids, "the chef can't add a suggestion", "chef",
+      () => client.query(`insert into ops.donor_suggestions (donor_id, kind, proposed, source) values ('${D1}', 'format', '{}', 'rule')`), denied);
+    await scenario(ids, "nobody adds a suggestion already marked applied", "finance",
+      () => client.query(`insert into ops.donor_suggestions (donor_id, kind, proposed, source, status) values ('${D1}', 'format', '{}', 'rule', 'applied')`), denied);
+    const suggested = async (sql) => {
+      await client.query("reset role");
+      await client.query(`insert into ops.donor_suggestions (id, donor_id, kind, proposed, reason, source) values ('00000000-0000-4000-8000-0000000d0e01', '${D1}', 'format', '{"name":"Rlstest Donor One","salutation":"Ms.","type":"individual"}', 'Capitals', 'rule')`);
+      await client.query("set local role authenticated");
+      await client.query("discard plans");
+      return client.query(sql);
+    };
+    const S1 = "'00000000-0000-4000-8000-0000000d0e01'";
+    await scenario(ids, "an editor applies a suggestion, edited first", "finance",
+      async () => {
+        await suggested(`select ops.apply_donor_suggestion(${S1}, 'Rlstest Donor Uno', null, null)`);
+        return client.query(`select (select name from ops.donors where id = '${D1}') = 'Rlstest Donor Uno' and (select salutation from ops.donors where id = '${D1}') = 'Ms.' and (select status from ops.donor_suggestions where id = ${S1}) = 'applied' as ok`);
+      },
+      (r) => r.ok && r.data?.[0]?.ok === true);
+    await scenario(ids, "an editor rejects a suggestion; it can't be decided twice", "finance",
+      () => suggested(`select ops.reject_donor_suggestion(${S1}, 'Name is right'); select ops.apply_donor_suggestion(${S1})`), (r) => !r.ok && r.code === "22023");
+    await scenario(ids, "the chef can't apply a suggestion", "chef", () => suggested(`select ops.apply_donor_suggestion(${S1})`), denied);
+    await scenario(ids, "nobody changes a suggestion directly", "finance", () => suggested(`update ops.donor_suggestions set status = 'applied' where id = ${S1}`), denied);
+  } else {
+    record("0083 scenarios", "SKIP", "0083 not applied (pass it as a pre-flight file)");
+  }
+
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
   console.table(results);

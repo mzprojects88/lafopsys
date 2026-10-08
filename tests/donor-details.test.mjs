@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { checkDonorInput, likelyDuplicates, normalizeDonorName } from "../lib/utils/donor-details.ts";
 
-const base = { name: "Maria Santos", type: "individual", taxJurisdiction: "PH", email: "", phone: "", tin: "" };
+const base = { name: "Maria Santos", salutation: "", type: "individual", taxJurisdiction: "PH", email: "", phone: "", tin: "" };
 const donor = (id, name, email) => ({ id, name, email, type: "individual", taxJurisdiction: "PH", firstGiftDate: "", lastGiftDate: "", lifetimeValue: 0, giftCount: 0 });
 
 describe("donor details", () => {
@@ -27,5 +27,18 @@ describe("donor details", () => {
     assert.equal(checkDonorInput({ ...base, phone: "call me" }).ok, false);
     assert.equal(checkDonorInput({ ...base, tin: "12" }).ok, false);
     assert.equal(checkDonorInput({ ...base, tin: "123-456-789-000", phone: "+63 917 000 0000" }).ok, true);
+  });
+});
+
+describe("duplicate donors", () => {
+  const d = (id, name) => ({ id, name });
+  it("sure: same name ignoring capitals, punctuation, titles, initials and order", async () => {
+    const { duplicateDonors } = await import("../lib/utils/donor-details.ts");
+    const { sure, maybe } = duplicateDonors([
+      d("1", "ALTERNATIVES FOOD CORP"), d("2", "ALTERNATIVES FOOD CORP."), d("3", "IRELYN TUAZON-DOMINGO"), d("4", "Irelyn Tuazon Domingo"),
+      d("5", "Jewel C. Calica"), d("6", "Jewel Calica"), d("7", "Mr. Ansong Ang"), d("8", "ANSON ANG"), d("9", "Maria Santos"), d("10", "Juan Santos"),
+    ]);
+    assert.deepEqual(sure.map((g) => g.map((x) => x.id).sort()), [["1", "2"], ["3", "4"], ["5", "6"]]);
+    assert.deepEqual(maybe.map(([a, b]) => [a.id, b.id]), [["7", "8"]]);
   });
 });

@@ -5,6 +5,8 @@ export type DonorType = "individual" | "corporate" | "foundation" | "government"
 export interface Donor {
   id: string;
   name: string;
+  /** "Mr.", "Ma'am"... kept out of the name (0083). */
+  salutation?: string;
   type: DonorType;
   email?: string;
   phone?: string;

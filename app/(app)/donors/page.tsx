@@ -4,7 +4,8 @@ import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Users, Gift, Wallet, TrendingUp, Plus, Receipt, Award, Megaphone, UserPlus } from "lucide-react";
+import { Users, Gift, Wallet, TrendingUp, Plus, Receipt, Award, Megaphone, UserPlus, Sparkles } from "lucide-react";
+import { useDonorSuggestions } from "@/lib/hooks/use-donor-suggestions";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
@@ -77,6 +78,7 @@ export default function DonorsPage() {
   const { pledges } = useDonorPledgesData();
   const { canEdit } = useModuleAccess();
   const editor = canEdit("donors");
+  const { suggestions } = useDonorSuggestions();
   const [adding, setAdding] = React.useState(false);
   const [filter, setFilter] = React.useState<FilterKey>("all");
   const columns = React.useMemo(() => buildColumns(pledges), [pledges]);
@@ -95,6 +97,9 @@ export default function DonorsPage() {
           <>
             {editor && (
               <>
+                <Button variant="outline" asChild>
+                  <Link href="/donors/cleanup"><Sparkles />Clean-up{suggestions.length ? ` (${suggestions.length})` : ""}</Link>
+                </Button>
                 <Button variant="outline" onClick={() => setAdding(true)}><UserPlus />Add donor</Button>
                 <Button asChild><Link href="/donors/intake"><Plus />New Donation</Link></Button>
               </>

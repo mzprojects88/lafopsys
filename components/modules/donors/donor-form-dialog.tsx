@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import type { Donor, DonorType } from "@/lib/types/donor";
 import { checkDonorInput, likelyDuplicates, type DonorInput } from "@/lib/utils/donor-details";
+import { formatDonorName } from "@/lib/utils/donor-format";
 
 const TYPES: { value: DonorType; label: string }[] = [
   { value: "individual", label: "Individual" },
@@ -24,6 +25,7 @@ const TYPES: { value: DonorType; label: string }[] = [
 
 const fromDonor = (d?: Donor): DonorInput => ({
   name: d?.name ?? "",
+  salutation: d?.salutation ?? "",
   type: d?.type ?? "individual",
   taxJurisdiction: d?.taxJurisdiction ?? "PH",
   email: d?.email ?? "",
@@ -59,6 +61,15 @@ function DonorForm({ donor, onDone }: { donor?: Donor; onDone: () => void }) {
     setConfirmDuplicate(false);
   };
   const duplicates = likelyDuplicates(donors, form, donor?.id);
+  // LAF's name style (lib/utils/donor-format.ts), offered while typing, never forced.
+  const styled = form.name.trim().length >= 2 ? formatDonorName(form.name) : null;
+  const styleDiffers =
+    !!styled && (styled.name !== form.name.trim() || (styled.salutation && styled.salutation !== form.salutation) || (form.type === "individual" && styled.suggestedType !== "individual"));
+  function useStyle() {
+    if (!styled) return;
+    setForm((f) => ({ ...f, name: styled.name, salutation: styled.salutation ?? f.salutation, type: f.type === "individual" ? styled.suggestedType : f.type }));
+    setConfirmDuplicate(false);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -92,10 +103,28 @@ function DonorForm({ donor, onDone }: { donor?: Donor; onDone: () => void }) {
         </DialogDescription>
       </DialogHeader>
       <FieldGroup>
-        <Field>
-          <FieldLabel htmlFor="donorName">Name</FieldLabel>
-          <Input id="donorName" value={form.name} onChange={(e) => set("name", e.target.value)} maxLength={200} autoComplete="off" required />
-        </Field>
+        <div className="grid grid-cols-[5.5rem_1fr] gap-3">
+          <Field>
+            <FieldLabel htmlFor="donorSalutation">Title</FieldLabel>
+            <Input id="donorSalutation" value={form.salutation} onChange={(e) => set("salutation", e.target.value)} maxLength={20} placeholder="Ms." autoComplete="off" />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="donorName">Name</FieldLabel>
+            <Input id="donorName" value={form.name} onChange={(e) => set("name", e.target.value)} maxLength={200} autoComplete="off" required />
+          </Field>
+        </div>
+        {styleDiffers && styled && (
+          <div className="-mt-2 flex flex-wrap items-center gap-2 text-theme-xs text-muted-foreground">
+            <span>
+              LAF style: <span className="font-medium text-foreground">{styled.salutation ? `${styled.salutation} ` : ""}{styled.name}</span>
+              {form.type === "individual" && styled.suggestedType !== "individual" ? ` (${styled.suggestedType})` : ""}
+              {styled.incomplete ? " · add the full name" : ""}
+            </span>
+            <Button type="button" size="sm" variant="outline" className="h-7" onClick={useStyle}>
+              Use
+            </Button>
+          </div>
+        )}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field>
             <FieldLabel htmlFor="donorType">Type</FieldLabel>

@@ -370,3 +370,117 @@ export async function readReceiptPhoto(jpeg: Uint8Array, kinds: { id: string; na
     clearTimeout(timer);
   }
 }
+
+const DONOR_TIMEOUT_MS = 60_000;
+
+export interface DonorNameItem {
+  /** Server-side handle; the model sees only a number. */
+  id: string;
+  name: string;
+  type: string;
+}
+
+export interface DonorNameAnswer {
+  id: string;
+  name: string;
+  salutation: string | null;
+  type: "individual" | "corporate" | "foundation" | "government" | "anonymous";
+  /** Only a given name or a nickname ("Ma'am Grace"): staff must supply the full name. */
+  incomplete: boolean;
+  note: string;
+}
+
+const donorNamesSchema = z.object({
+  items: z.array(
+    z.object({
+      n: z.number().int(),
+      name: z.string().max(200),
+      salutation: z.string().max(20).nullable(),
+      type: z.enum(["individual", "corporate", "foundation", "government", "anonymous"]),
+      incomplete: z.boolean(),
+      note: z.string().max(200),
+    })
+  ),
+});
+
+/**
+ * LAF's donor names written the way the foundation decided (2026-10-07): people in Title Case
+ * with Filipino particles lower-case inside a name ("Juan dela Cruz") and titles moved to a
+ * salutation; organisations as registered (acronyms kept, "Corp.", "Inc."); a household or group
+ * ("Juan & Maria Santos", "Garcia Family & Friends") stays one donor, type individual. The model
+ * sees each donor's name and current type only -- no email, phone, TIN or gift.
+ */
+export async function reviewDonorNames(items: DonorNameItem[]): Promise<DonorNameAnswer[]> {
+  if (items.length === 0) return [];
+  // The current type is not shown: the model anchored on it ("individual" for a lodge, 2026-10-08 test).
+  const lines = items.map((it, i) => `${i + 1}. ${it.name}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DONOR_TIMEOUT_MS);
+  try {
+    const { object } = await generateObject({
+      model: model(),
+      schema: donorNamesSchema,
+      system:
+        "You tidy the donor register of a Philippine children's charity. For each numbered donor return how the name should be written and what kind of donor it is. " +
+        "People: Title Case; Filipino surname particles (de, dela, del, delos, de los, de la) lower-case when inside a name ('Juan dela Cruz'); suffixes 'Jr.', 'Sr.', 'III'; middle initials 'C.'; " +
+        "a leading title (Mr., Mrs., Ms., Ma'am, Sir, Dr., Atty., Engr., Hon., Rev., Fr.) goes to salutation and out of the name, except for couples or lists of people, where titles stay in the name. " +
+        "Organisations: as registered -- keep acronyms in capitals (BDO, AFC, NU, DSWD), legal suffixes as 'Corp.', 'Inc.', 'Co.', 'Ltd.'; don't expand or invent words. " +
+        "Types: individual = a person, a family, a couple, a group of friends or supporters; corporate = a company or business; foundation = a nonprofit, church, school, university, club, lodge, fraternity, alumni batch or association; " +
+        "government = a government office or LGU; anonymous = explicitly anonymous. " +
+        "incomplete = true only for a person given by a first name or nickname alone (e.g. 'Ma'am Grace', 'Sir Eli'). " +
+        "Hard rules: for a single person the returned name never starts with a title -- the title goes in salutation (input 'Ma'am Grace' -> name 'Grace', salutation \"Ma'am\"). " +
+        "Decide the type from the name itself; most names of companies, schools, churches, lodges, fraternities and clubs are NOT individual. " +
+        "Examples: 'AFC FOODS' -> 'AFC Foods', corporate. 'MASONIC COREGIDOR LODGE' -> 'Masonic Coregidor Lodge', foundation. 'ALPHA PHI OMEGA' -> 'Alpha Phi Omega', foundation. " +
+        "'National University Fairview' -> foundation. 'DJ Meleya Supporters' -> individual. 'Kristine S. Co' -> individual (Co is a surname). 'MR. AND MRS. DE JESUS' -> 'Mr. and Mrs. de Jesus', salutation null. " +
+        "Never change the spelling of a real name or merge different people; if unsure, keep the name as given and say so in note. note: under 15 words, empty if nothing changed.",
+      prompt: `Donors:\n${lines.join("\n")}\n\nAnswer every number.`,
+      abortSignal: controller.signal,
+      providerOptions: { openai: { reasoningEffort: "low" } },
+    });
+    return object.items
+      .filter((a) => a.n >= 1 && a.n <= items.length)
+      .map((a) => ({ id: items[a.n - 1].id, name: a.name.trim(), salutation: a.salutation?.trim() || null, type: a.type, incomplete: a.incomplete, note: a.note }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export interface DonorPair {
+  id: string;
+  a: string;
+  b: string;
+}
+
+export interface DonorPairAnswer {
+  id: string;
+  same: "yes" | "no" | "unsure";
+  reason: string;
+}
+
+const donorPairsSchema = z.object({
+  items: z.array(z.object({ n: z.number().int(), same: z.enum(["yes", "no", "unsure"]), reason: z.string().max(200) })),
+});
+
+/** Are two near-identical donor names the same donor (a typo, a dropped initial) or two people? Names only. */
+export async function judgeDonorPairs(pairs: DonorPair[]): Promise<DonorPairAnswer[]> {
+  if (pairs.length === 0) return [];
+  const lines = pairs.map((p, i) => `${i + 1}. "${p.a}"  vs  "${p.b}"`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DONOR_TIMEOUT_MS);
+  try {
+    const { object } = await generateObject({
+      model: model(),
+      schema: donorPairsSchema,
+      system:
+        "Each numbered line is two donor names from a Philippine charity's register that look alike. Say whether they are the same donor written two ways " +
+        "(a typo, capitals, a missing middle initial, a title, a missing hyphen, 'Corp' vs 'Corp.') -> yes; clearly different people or organisations (different first names, e.g. 'Iya' vs 'IQ', siblings sharing a surname) -> no; otherwise unsure. " +
+        "reason: under 15 words.",
+      prompt: `Pairs:\n${lines.join("\n")}\n\nAnswer every number.`,
+      abortSignal: controller.signal,
+      providerOptions: { openai: { reasoningEffort: "low" } },
+    });
+    return object.items.filter((a) => a.n >= 1 && a.n <= pairs.length).map((a) => ({ id: pairs[a.n - 1].id, same: a.same, reason: a.reason }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
