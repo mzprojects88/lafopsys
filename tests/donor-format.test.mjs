@@ -47,6 +47,26 @@ describe("donor name format", () => {
     assert.equal(f("THE FOOD BANK").name, "The Food Bank");
   });
 
+  it("an outside decision on the kind of donor changes how the rules write it", () => {
+    assert.equal(formatDonorName("JES LIVES").name, "Jes Lives");
+    assert.equal(formatDonorName("JES LIVES", "organisation").name, "JES Lives");
+    assert.equal(formatDonorName("ALPHA PHI OMEGA", "organisation").name, "Alpha Phi Omega");
+    assert.equal(formatDonorName("BREADCOM DEACONS", "organisation").name, "Breadcom Deacons");
+    assert.equal(formatDonorName("UP ALCHEMES", "organisation").name, "UP Alchemes");
+  });
+
+  it("keywords decide the type before the AI does", async () => {
+    const { typeFromKeywords } = await import("../lib/utils/donor-format.ts");
+    assert.equal(typeFromKeywords("Garcia Family & Friends"), "individual");
+    assert.equal(typeFromKeywords("DJ Meleya Supporters"), "individual");
+    assert.equal(typeFromKeywords("ELCEE DUQUE & FRIENDS"), "individual");
+    assert.equal(typeFromKeywords("KAMI NAMAN CHARITY WORKS"), "foundation");
+    assert.equal(typeFromKeywords("MASONIC CORREGIDOR LODGE"), "foundation");
+    assert.equal(typeFromKeywords("BK SYSTEMS PHILIPPINES, INC."), "corporate");
+    assert.equal(typeFromKeywords("JANUS"), null);
+    assert.equal(typeFromKeywords("Maria Santos"), null);
+  });
+
   it("households stay one donor", () => {
     assert.equal(f("JUAN & MARIA SANTOS").name, "Juan & Maria Santos");
     assert.equal(f("juan and maria santos").name, "Juan and Maria Santos");

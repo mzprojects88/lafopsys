@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { openaiConfigured } from "@/lib/ai/env";
 import { judgeDonorPairs, reviewDonorNames, type DonorNameAnswer } from "@/lib/ai/openai";
-import { formatDonorName } from "@/lib/utils/donor-format";
+import { formatDonorName, typeFromKeywords } from "@/lib/utils/donor-format";
 import { duplicateDonors } from "@/lib/utils/donor-details";
 
 export type FindResult = { ok: true; added: { format: number; merge: number; incomplete: number }; ai: boolean; aiError?: string } | { ok: false; error: string };
@@ -52,10 +52,10 @@ export async function findDonorSuggestions(): Promise<FindResult> {
   const useAi = openaiConfigured();
   if (useAi) {
     try {
-      for (let i = 0; i < donors.length; i += 60) {
-        const answers = await reviewDonorNames(donors.slice(i, i + 60).map((d) => ({ id: d.id, name: d.name, type: d.type })));
-        for (const a of answers) ai.set(a.id, a);
-      }
+      // All batches at once: one after another took over 3 minutes on the live register.
+      const batches = [];
+      for (let i = 0; i < donors.length; i += 60) batches.push(donors.slice(i, i + 60).map((d) => ({ id: d.id, name: d.name, type: d.type })));
+      for (const answers of await Promise.all(batches.map((b) => reviewDonorNames(b)))) for (const a of answers) ai.set(a.id, a);
     } catch (e) {
       aiError = e instanceof Error ? e.message : "The AI didn't answer.";
       ai = new Map();
@@ -63,17 +63,29 @@ export async function findDonorSuggestions(): Promise<FindResult> {
   }
   for (const d of donors) {
     if (d.type === "anonymous") continue;
-    const rule = formatDonorName(d.name);
+    // The AI only classifies (person or organisation, first-name-only, a title the rules missed);
+    // the rules write the name. Live run 2026-10-08: the AI re-spelled real names ("Jennebeth" ->
+    // "Jennabeth", "Jovee" -> "Jov ee"), so its own text is never used unless the letters are the same.
     const a = ai.get(d.id);
-    // The AI decides person vs organisation and catches what rules can't; rules keep it honest.
-    const name = a?.name || rule.name;
-    const salutation = a?.salutation ?? rule.salutation;
-    const type = a?.type ?? rule.suggestedType;
-    // Either one noticing a first-name-only entry is enough (the AI isn't consistent about it).
-    const incomplete = (a?.incomplete ?? false) || rule.incomplete;
-    const fromAi = !!a && (a.name !== rule.name || a.type !== rule.suggestedType || (a.salutation ?? null) !== (rule.salutation ?? null));
+    // Clear words in the name decide first ("& Friends" -> individual, "Charity" -> foundation);
+    // the AI decides only names with no such clue (live run 2026-10-08 typed "Family & Friends" corporate).
+    const type = (typeFromKeywords(d.name) ?? a?.type ?? formatDonorName(d.name).suggestedType) as string;
+    const kind = type === "individual" || type === "anonymous" ? "person" : type === "government" ? "government" : "organisation";
+    let rule = formatDonorName(d.name, kind);
+    const sameLetters = (x: string, y: string) => x.toLowerCase().replace(/[^a-z0-9]/g, "") === y.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (a?.salutation && !rule.salutation && kind === "person" && sameLetters(`${a.salutation}${a.name}`, d.name)) {
+      rule = { ...formatDonorName(a.name, kind), salutation: a.salutation }; // e.g. "Atty.Millet Elezar"
+    }
+    const name = rule.name;
+    const salutation = rule.salutation;
+    // Either one noticing a first-name-only *person* is enough (the AI isn't consistent about it,
+    // and once flagged companies like "PFIZER" as first names).
+    const rulesAlone = formatDonorName(d.name);
+    const incomplete = kind === "person" && ((a?.incomplete ?? false) || rule.incomplete);
+    // "AI" when the AI changed the outcome: the type, a title the rules missed, or a first-name-only entry.
+    const fromAi = !!a && (a.type !== rulesAlone.suggestedType || (rule.salutation ?? null) !== (rulesAlone.salutation ?? null) || (incomplete && !rulesAlone.incomplete));
     if (incomplete) {
-      add({ donor_id: d.id, kind: "incomplete", proposed: { name, salutation }, reason: "Only a first name or nickname: add the donor's full name.", source: a ? "ai" : "rule" });
+      add({ donor_id: d.id, kind: "incomplete", proposed: { name, salutation }, reason: "Only a first name or nickname: add the donor's full name.", source: fromAi ? "ai" : "rule" });
     } else if (name !== d.name || type !== d.type || (salutation ?? null) !== (d.salutation ?? null)) {
       const why = [name !== d.name ? "name style" : "", type !== d.type ? `type: ${d.type} → ${type}` : "", salutation && salutation !== d.salutation ? `title "${salutation}" kept apart` : ""].filter(Boolean).join("; ");
       add({ donor_id: d.id, kind: "format", proposed: { name, salutation, type }, reason: fromAi && a?.note ? `${why}. AI: ${a.note}` : why, source: fromAi ? "ai" : "rule" });

@@ -36,6 +36,20 @@ const COMPANY = /\b(corp|corporation|inc|incorporated|company|ltd|llc|opc|enterp
 
 /** First letter up, the rest down, past any leading bracket or quote: "(mama" -> "(Mama". */
 const cap = (w: string) => w.toLowerCase().replace(/[a-z]/, (c) => c.toUpperCase());
+
+const PEOPLE_GROUP = /\b(family|families|friends|supporters|colleagues|batchmates|barkada|household)\b/i;
+
+/**
+ * The donor type when the name itself says it (decided 2026-10-07: groups of people stay
+ * individual); null when only judgement can tell (the AI's call). Keywords outrank the AI.
+ */
+export function typeFromKeywords(name: string): DonorType | null {
+  if (PEOPLE_GROUP.test(name) && !COMPANY.test(name.replace(PEOPLE_GROUP, ""))) return "individual";
+  if (GOVERNMENT.test(name)) return "government";
+  if (NONPROFIT.test(name)) return "foundation";
+  if (COMPANY.test(name)) return "corporate";
+  return null;
+}
 /** "tuazon-domingo" -> "Tuazon-Domingo", "o'brien" -> "O'Brien", "mcdonald" -> "McDonald". */
 function capWord(w: string): string {
   return w
@@ -44,7 +58,8 @@ function capWord(w: string): string {
     .join("-");
 }
 
-export function formatDonorName(raw: string): FormattedName {
+/** `kind` overrides the rules' own guess (the AI decides person vs organisation; the rules still write the name). */
+export function formatDonorName(raw: string, kindOverride?: FormattedName["kind"]): FormattedName {
   let text = String(raw ?? "").replace(/\s*,\s*/g, ", ").replace(/\s+/g, " ").trim().replace(/[,;:/]+$/, "").trim();
   // Titles at the start become the salutation (only the first one is kept).
   let salutation: string | null = null;
@@ -59,8 +74,14 @@ export function formatDonorName(raw: string): FormattedName {
   }
   text = words.join(" ");
 
-  const kind: FormattedName["kind"] = GOVERNMENT.test(text) ? "government" : NONPROFIT.test(text) || COMPANY.test(text) ? "organisation" : "person";
+  const kind: FormattedName["kind"] = kindOverride ?? (GOVERNMENT.test(text) ? "government" : NONPROFIT.test(text) || COMPANY.test(text) ? "organisation" : "person");
   const suggestedType: DonorType = kind === "government" ? "government" : kind === "person" ? "individual" : NONPROFIT.test(text) ? "foundation" : "corporate";
+  if (kind !== "person" && salutation) {
+    // An organisation has no salutation: put back what was taken off the front.
+    text = `${salutation} ${text}`;
+    words = text.split(" ");
+    salutation = null;
+  }
   const shouting = text === text.toUpperCase() && /[A-Z]{2}/.test(text);
 
   let name: string;
@@ -90,7 +111,8 @@ export function formatDonorName(raw: string): FormattedName {
         // Organisations keep their own capitals unless the whole name was typed in capitals.
         if (!shouting) return w;
         if (/^[A-Z]{2,4}$/.test(w) && !/[AEIOU]/.test(w)) return w; // BDO-like, no vowels
-        if (/^[A-Z]{2,3}$/.test(w) && !["THE", "OF", "AND", "FOR", "SAN", "DE", "LA"].includes(w)) return w; // AFC, NU, BK
+        // AFC, NU, BK -- but not short words, nor Greek letters (Alpha Phi Omega).
+        if (/^[A-Z]{2,3}$/.test(w) && !["THE", "OF", "AND", "FOR", "SAN", "DE", "LA", "PHI", "CHI", "PSI", "RHO", "TAU", "ETA", "MU", "XI", "PI"].includes(w)) return w;
         return capWord(w);
       })
       .join(" ");
