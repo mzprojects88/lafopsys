@@ -52,7 +52,7 @@ export function checkDonorInput(raw: DonorInput): { ok: true; value: DonorInput 
 }
 
 /** Letters to change to turn one string into another (stops early past 3). */
-function editDistance(a: string, b: string): number {
+export function editDistance(a: string, b: string): number {
   if (Math.abs(a.length - b.length) > 3) return 9;
   let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
   for (let i = 1; i <= a.length; i++) {
@@ -63,8 +63,10 @@ function editDistance(a: string, b: string): number {
   return prev[b.length]!;
 }
 
-/** The same words in any order, initials dropped: "Jewel C. Calica" = "Calica, Jewel". */
-const wordKey = (name: string) => normalizeDonorName(name).split(" ").filter((w) => w.length > 1).sort().join(" ");
+/** The same words in any order, initials dropped: "Jessa C. Calma" = "Calma, Jessa". The database
+ * writes the same key (ops.donor_name_key, 0084); tests pin the two together. */
+export const donorNameKey = (name: string) => normalizeDonorName(name).split(" ").filter((w) => w.length > 1).sort().join(" ");
+const wordKey = donorNameKey;
 
 /**
  * Donors that are probably one donor. `sure`: the same name once titles, capitals, punctuation,

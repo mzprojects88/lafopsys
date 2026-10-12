@@ -19,6 +19,8 @@ export interface Donor {
 }
 
 export type DonationKind = "cash" | "in_kind";
+/** How a cash gift was paid (0084). */
+export type PaymentMethod = "cash" | "check" | "bank_transfer" | "gcash" | "instapay" | "other";
 
 export interface Donation {
   id: string;
@@ -35,6 +37,10 @@ export interface Donation {
   currency: Currency;
   campaignId?: string;
   createdInventoryLotId?: string;
+  paymentMethod?: PaymentMethod;
+  /** The service invoice / AR number accounting wrote for a cash gift. */
+  invoiceNumber?: string;
+  notes?: string;
   /** pending_review: received (e.g. logged in LAF Inventory), not yet reviewed by finance. */
   status?: "pending_review" | "reviewed" | "finalized";
 }

@@ -4,7 +4,9 @@ import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Users, Gift, Wallet, TrendingUp, Plus, Receipt, Award, Megaphone, UserPlus, Sparkles } from "lucide-react";
+import { Users, Wallet, Banknote, Package, Plus, Receipt, Award, Megaphone, UserPlus, Sparkles } from "lucide-react";
+import { useCashGifts } from "@/lib/hooks/use-cash-gifts";
+import { givingSplit, namesToConfirm } from "@/lib/utils/cash-gifts";
 import { useDonorSuggestions } from "@/lib/hooks/use-donor-suggestions";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
@@ -28,7 +30,10 @@ const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/donors/campaigns", label: "Campaigns", icon: Megaphone },
 ];
 
-function buildColumns(pledges: import("@/lib/types/donor").DonorPledge[]): ColumnDef<Donor>[] {
+type Split = Map<string, { cash: number; inKind: number }>;
+
+function buildColumns(pledges: import("@/lib/types/donor").DonorPledge[], split: Split): ColumnDef<Donor>[] {
+  const money = (n: number) => (n ? formatCurrency(n) : <span className="text-muted-foreground">—</span>);
   return [
     {
       accessorKey: "name",
@@ -46,8 +51,9 @@ function buildColumns(pledges: import("@/lib/types/donor").DonorPledge[]): Colum
       ),
     },
     { accessorKey: "type", header: "Type", cell: ({ row }) => <span className="capitalize">{row.original.type}</span> },
-    { accessorKey: "taxJurisdiction", header: "Jurisdiction" },
     { accessorKey: "giftCount", header: "Gifts" },
+    { id: "cash", header: "Cash", accessorFn: (d) => split.get(d.id)?.cash ?? 0, cell: ({ getValue }) => money(getValue<number>()) },
+    { id: "inKind", header: "In kind", accessorFn: (d) => split.get(d.id)?.inKind ?? 0, cell: ({ getValue }) => money(getValue<number>()) },
     {
       accessorKey: "lifetimeValue",
       header: "Lifetime Value",
@@ -74,25 +80,29 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 
 export default function DonorsPage() {
   const router = useRouter();
-  const { donors: all } = useDonorsData();
+  const { donors: all, donations } = useDonorsData();
+  const cashGifts = useCashGifts();
   const { pledges } = useDonorPledgesData();
   const { canEdit } = useModuleAccess();
   const editor = canEdit("donors");
   const { suggestions } = useDonorSuggestions();
   const [adding, setAdding] = React.useState(false);
   const [filter, setFilter] = React.useState<FilterKey>("all");
-  const columns = React.useMemo(() => buildColumns(pledges), [pledges]);
+  const split = React.useMemo(() => givingSplit(donations), [donations]);
+  const columns = React.useMemo(() => buildColumns(pledges, split), [pledges, split]);
+  const namesWaiting = React.useMemo(() => namesToConfirm(cashGifts.lines, all, cashGifts.decided).length, [cashGifts.lines, cashGifts.decided, all]);
   const pick = (key: FilterKey) => (key === "all" ? all : key === "vip" ? all.filter((d) => isVipEligible(d, pledges)) : all.filter((d) => d.type === key));
   const donors = pick(filter);
   const totalGifts = donors.reduce((sum, d) => sum + d.giftCount, 0);
   const totalLifetimeValue = donors.reduce((sum, d) => sum + d.lifetimeValue, 0);
-  const avgGift = totalGifts > 0 ? totalLifetimeValue / totalGifts : 0;
+  const cashTotal = donors.reduce((sum, d) => sum + (split.get(d.id)?.cash ?? 0), 0);
+  const inKindTotal = donors.reduce((sum, d) => sum + (split.get(d.id)?.inKind ?? 0), 0);
 
   return (
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader
         title="Donors & Donations"
-        description="Everyone who has given to LAF. Gifts logged in LAF Inventory count here too."
+        description="Everyone who has given to LAF. Gifts in kind come from LAF Inventory; cash gifts from accounting's Donation Tracker."
         action={
           <>
             {editor && (
@@ -100,8 +110,11 @@ export default function DonorsPage() {
                 <Button variant="outline" asChild>
                   <Link href="/donors/cleanup"><Sparkles />Clean-up{suggestions.length ? ` (${suggestions.length})` : ""}</Link>
                 </Button>
+                <Button variant="outline" asChild>
+                  <Link href="/donors/cash"><Banknote />Cash gifts{namesWaiting ? ` (${namesWaiting})` : ""}</Link>
+                </Button>
                 <Button variant="outline" onClick={() => setAdding(true)}><UserPlus />Add donor</Button>
-                <Button asChild><Link href="/donors/intake"><Plus />New Donation</Link></Button>
+                <Button asChild><Link href="/donors/intake"><Plus />New cash gift</Link></Button>
               </>
             )}
             <ModuleSubNav items={SUB_NAV} />
@@ -111,10 +124,10 @@ export default function DonorsPage() {
       {editor && <DonorFormDialog open={adding} onOpenChange={setAdding} />}
 
       <KpiGrid>
-        <KpiCard label="Total Donors" value={donors.length} icon={Users} />
-        <KpiCard label="Total Gifts" value={totalGifts} icon={Gift} />
+        <KpiCard label="Total Donors" value={donors.length} icon={Users} sublabel={`${totalGifts.toLocaleString()} gifts`} />
         <KpiCard label="Lifetime Value" value={formatCurrency(totalLifetimeValue)} icon={Wallet} />
-        <KpiCard label="Avg Gift" value={formatCurrency(avgGift)} icon={TrendingUp} />
+        <KpiCard label="Cash" value={formatCurrency(cashTotal)} icon={Banknote} />
+        <KpiCard label="In kind" value={formatCurrency(inKindTotal)} icon={Package} />
       </KpiGrid>
 
       <div className="no-scrollbar -mx-1 flex gap-1.5 overflow-x-auto px-1" role="group" aria-label="Show donors">

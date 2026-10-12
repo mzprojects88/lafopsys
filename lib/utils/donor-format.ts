@@ -29,10 +29,10 @@ const LEGAL: Record<string, string> = { corp: "Corp.", corporation: "Corporation
 const ACRONYMS = new Set(["bdo", "bpi", "sm", "dswd", "lgu", "ncr", "pgh", "nch", "up", "ust", "dlsu", "admu", "pcso", "rcbc", "ph", "usa", "us", "jci", "abs", "cbn", "gma", "pldt", "doh", "deped", "bir", "sss", "pnb", "lbp", "dbp", "ofw", "rotc", "uerm", "feu", "pup", "ama", "ceu"]);
 // Strong signs only: a "Students Government" or a "University" is a school, not government.
 const GOVERNMENT = /\b(lgu|barangay|brgy|municipality|municipal|city of|province of|provincial|dswd|doh|deped|pcso|philhealth|department of|office of the|senate|congress)\b/i;
-const NONPROFIT = /\b(foundation|church|ministry|ministries|parish|chapel|mission|lodge|club|association|assoc|society|school|university|college|academy|alumni|rotary|lions|jaycees|charity|charities|org|organization|organisation|fellowship|guild|order|council|batch)\b/i;
+const NONPROFIT = /\b(foundation|church|ministry|ministries|parish|chapel|shrine|mission|lodge|club|association|assoc|society|school|university|college|academy|alumni|rotary|lions|jaycees|charity|charities|org|organization|organisation|fellowship|guild|order|council|batch|cooperative|coop)\b/i;
 // No "co" (Co is a Chinese-Filipino surname) and no "friends"/"family"/"supporters": a group of
 // people stays an individual (household) donor.
-const COMPANY = /\b(corp|corporation|inc|incorporated|company|ltd|llc|opc|enterprise|enterprises|distributors?|trading|industries|holdings|ventures|solutions|services|store|mart|restaurant|cafe|bakery|pharmacy|bank|clinic|hospital|hotel|realty|motors|marketing|food|foods|supply|supplies|construction|systems|bpo)\b/i;
+const COMPANY = /\b(corp|corporation|inc|incorporated|company|ltd|llc|opc|enterprise|enterprises|distributors?|trading|industries|holdings|ventures|solutions|services|store|mart|restaurant|cafe|bakery|pharmacy|bank|clinic|hospital|hotel|realty|motors|marketing|food|foods|supply|supplies|construction|builders|systems|bpo|studio|productions|hardware)\b/i;
 
 /** First letter up, the rest down, past any leading bracket or quote: "(mama" -> "(Mama". */
 const cap = (w: string) => w.toLowerCase().replace(/[a-z]/, (c) => c.toUpperCase());
@@ -50,17 +50,24 @@ export function typeFromKeywords(name: string): DonorType | null {
   if (COMPANY.test(name)) return "corporate";
   return null;
 }
-/** "tuazon-domingo" -> "Tuazon-Domingo", "o'brien" -> "O'Brien", "mcdonald" -> "McDonald". */
+/** "tuazon-domingo" -> "Tuazon-Domingo", "o'brien" -> "O'Brien", "mcdonald" -> "McDonald",
+ * "carlo/joy" -> "Carlo/Joy" (two people written with a slash), "ramos(b)" ->
+ * "Ramos(B)"; "bella's" stays "Bella's" and "c/o" stays "c/o". */
 function capWord(w: string): string {
-  return w
-    .split("-")
-    .map((part) => part.split("'").map((p) => (/^mc[a-z]{2,}/i.test(p) ? "Mc" + cap(p.slice(2)) : cap(p))).join("'"))
-    .join("-");
+  if (/^c\/o$/i.test(w)) return "c/o";
+  const up = (c: string) => c.toUpperCase();
+  return cap(w)
+    .replace(/([-/(])([a-z])/g, (_, mark: string, c: string) => mark + up(c))
+    .replace(/([A-Za-z])'([a-z])(?=[a-z])/g, (_, before: string, c: string) => `${before}'${up(c)}`)
+    .replace(/(^|[^A-Za-z])Mc([a-z])(?=[a-z])/g, (_, before: string, c: string) => `${before}Mc${up(c)}`);
 }
+
+/** Words that stay lower-case inside a name: "Shrine of Our Lady", "Kat from Acme". */
+const SMALL_WORDS = new Set(["of", "and", "the", "for", "from", "in", "at", "ng", "sa"]);
 
 /** `kind` overrides the rules' own guess (the AI decides person vs organisation; the rules still write the name). */
 export function formatDonorName(raw: string, kindOverride?: FormattedName["kind"]): FormattedName {
-  let text = String(raw ?? "").replace(/\s*,\s*/g, ", ").replace(/\s+/g, " ").trim().replace(/[,;:/]+$/, "").trim();
+  let text = String(raw ?? "").replace(/\s*,\s*/g, ", ").replace(/\s*\/\s*/g, "/").replace(/\s+/g, " ").trim().replace(/[,;:/]+$/, "").trim();
   // Titles at the start become the salutation (only the first one is kept).
   let salutation: string | null = null;
   let words = text.split(" ").filter(Boolean);
@@ -96,6 +103,9 @@ export function formatDonorName(raw: string, kindOverride?: FormattedName["kind"
         if (/^[a-z]\.?$/i.test(w)) return w[0]!.toUpperCase() + "."; // a middle initial
         // Initials written on purpose (JM, IQ) stay, unless the whole name was typed in capitals.
         if (!shouting && /^[A-Z]{2,4}$/.test(w)) return w;
+        // So does a capital inside a word ("OneHope", "BreadHouse", "DeGuzman") and a small word typed small.
+        if (!shouting && /[a-z][A-Z]/.test(w)) return w;
+        if (!shouting && i > 0 && SMALL_WORDS.has(w)) return w;
         if (shouting && words.length === 1 && w.length <= 5) return w; // "BNI": a one-word acronym
         if (w === "&" || /^and$/i.test(w)) return w === "&" ? "&" : "and";
         if (i > 0 && i < words.length - 1 && PARTICLES.has(bare)) return bare;
@@ -104,15 +114,17 @@ export function formatDonorName(raw: string, kindOverride?: FormattedName["kind"
       .join(" ");
   } else {
     name = words
-      .map((w) => {
+      .map((w, i) => {
         const bare = w.replace(/[.,]$/, "").toLowerCase();
+        if (shouting && i > 0 && SMALL_WORDS.has(bare)) return bare; // "SAMPLE REALTY AND DEVELOPMENT"
+        if (shouting && words.length === 1 && w.length <= 5) return w; // "ABCD", "BNI": a one-word acronym
         if (LEGAL[bare]) return LEGAL[bare];
         if (ACRONYMS.has(bare)) return bare.toUpperCase();
         // Organisations keep their own capitals unless the whole name was typed in capitals.
         if (!shouting) return w;
         if (/^[A-Z]{2,4}$/.test(w) && !/[AEIOU]/.test(w)) return w; // BDO-like, no vowels
         // AFC, NU, BK -- but not short words, nor Greek letters (Alpha Phi Omega).
-        if (/^[A-Z]{2,3}$/.test(w) && !["THE", "OF", "AND", "FOR", "SAN", "DE", "LA", "PHI", "CHI", "PSI", "RHO", "TAU", "ETA", "MU", "XI", "PI"].includes(w)) return w;
+        if (/^[A-Z]{2,3}$/.test(w) && !["THE", "OF", "AND", "FOR", "SAN", "DE", "LA", "PHI", "CHI", "PSI", "RHO", "TAU", "ETA", "MU", "XI", "PI", "OUR", "NEW", "ONE", "ALL", "BIG", "SUN", "DAY", "AID", "ART", "BAY", "SEA", "SKY", "TOP", "RED", "OLD", "JOY"].includes(w)) return w;
         return capWord(w);
       })
       .join(" ");

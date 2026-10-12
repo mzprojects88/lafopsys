@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, Fuel, MapPin, Wrench, type LucideIcon } from "lucide-react";
+import { Bell, CloudOff, Fuel, MapPin, Wrench, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -12,6 +12,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useRole } from "@/context/role-provider";
 import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { useFleetStatus } from "@/lib/hooks/use-fleet-collection";
+import { useTrackerReceivedAt } from "@/lib/hooks/use-cash-source-status";
+import { useNow } from "@/lib/hooks/use-now";
+import { TRACKER_STALE_MS } from "@/lib/utils/cash-gifts";
+import { formatRelative } from "@/lib/utils/date";
 import { formatKm } from "@/lib/utils/odometer";
 
 /** Something an admin still has to set up. Worked out from the settings, so it
@@ -41,11 +45,39 @@ export function NotificationCenter() {
   }
 
   // Fuel Monitoring (0079): refuel soon and services due, for the Super Admin and the drivers.
-  // Only they load the fleet's data; everyone else's bell is unchanged.
-  if (roles.includes("admin") || roles.includes("driver")) {
-    return <FleetReminders>{(fleet) => <BellPopover reminders={[...reminders, ...fleet]} />}</FleetReminders>;
-  }
-  return <BellPopover reminders={reminders} />;
+  // Cash gifts (0084): the Donation Tracker has stopped arriving, for the Super Admin and Finance.
+  // Only they load that data; everyone else's bell is unchanged.
+  const fleet = roles.includes("admin") || roles.includes("driver");
+  const tracker = roles.includes("admin") || roles.includes("finance");
+  const bell = (more: Reminder[]) => <BellPopover reminders={[...reminders, ...more]} />;
+  if (fleet && tracker) return <TrackerReminder>{(t) => <FleetReminders>{(f) => bell([...t, ...f])}</FleetReminders>}</TrackerReminder>;
+  if (fleet) return <FleetReminders>{bell}</FleetReminders>;
+  if (tracker) return <TrackerReminder>{bell}</TrackerReminder>;
+  return bell([]);
+}
+
+/** The tracker is read every hour. On 2026-10-12 it was found stopped for four days, unnoticed. */
+function TrackerReminder({ children }: { children: (reminders: Reminder[]) => React.ReactNode }) {
+  const receivedAt = useTrackerReceivedAt();
+  const now = useNow();
+  const stale = receivedAt != null && now.getTime() - Date.parse(receivedAt) > TRACKER_STALE_MS;
+  return (
+    <>
+      {children(
+        stale
+          ? [
+              {
+                id: "donation-tracker-stopped",
+                title: "The Donation Tracker has stopped arriving",
+                body: `Last received ${formatRelative(receivedAt)}. Newer cash gifts are not in the donor list. Its hourly script needs a look.`,
+                href: "/donors/cash",
+                icon: CloudOff,
+              },
+            ]
+          : [],
+      )}
+    </>
+  );
 }
 
 function FleetReminders({ children }: { children: (reminders: Reminder[]) => React.ReactNode }) {

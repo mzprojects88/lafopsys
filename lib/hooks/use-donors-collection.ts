@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 import { createCollection, invalidateTables, useCollection } from "@/lib/data/collection-store";
 import type { Donor, Donation } from "@/lib/types/donor";
 import type { DonorInput } from "@/lib/utils/donor-details";
@@ -38,6 +39,9 @@ interface DonationRow {
   campaign_id: string | null;
   created_inventory_lot_id: string | null;
   status: NonNullable<Donation["status"]>;
+  payment_method: Donation["paymentMethod"] | null;
+  invoice_number: string | null;
+  notes: string | null;
 }
 
 function toDonor(row: DonorRow): Donor {
@@ -74,6 +78,9 @@ function toDonation(row: DonationRow): Donation {
     campaignId: row.campaign_id ?? undefined,
     createdInventoryLotId: row.created_inventory_lot_id ?? undefined,
     status: row.status,
+    paymentMethod: row.payment_method ?? undefined,
+    invoiceNumber: row.invoice_number ?? undefined,
+    notes: row.notes ?? undefined,
   };
 }
 
@@ -91,16 +98,12 @@ export const donorsStore = createCollection<DonorsData>({
   ],
   fetch: async () => {
     const supabase = createClient();
-    const [donorsRes, donationsRes] = await Promise.all([
-      supabase.schema("ops").from("donors").select("*").order("name"),
-      supabase.schema("ops").from("donations").select("*").order("date", { ascending: false }),
+    // Both pass 1,000 rows once the cash gifts are in (0084); a single request stops there.
+    const [donorRows, donationRows] = await Promise.all([
+      fetchAll<DonorRow>((from, to) => supabase.schema("ops").from("donors").select("*").order("name").order("id").range(from, to)),
+      fetchAll<DonationRow>((from, to) => supabase.schema("ops").from("donations").select("*").order("date", { ascending: false }).order("id").range(from, to)),
     ]);
-    if (donorsRes.error) throw new Error(donorsRes.error.message);
-    if (donationsRes.error) throw new Error(donationsRes.error.message);
-    return {
-      donors: (donorsRes.data ?? []).map(toDonor),
-      donations: (donationsRes.data ?? []).map(toDonation),
-    };
+    return { donors: donorRows.map(toDonor), donations: donationRows.map(toDonation) };
   },
 });
 
@@ -131,6 +134,9 @@ export function useDonorsData() {
       total_value: donation.totalValue,
       currency: donation.currency,
       campaign_id: donation.campaignId ?? null,
+      payment_method: donation.paymentMethod ?? null,
+      invoice_number: donation.invoiceNumber ?? null,
+      notes: donation.notes ?? null,
       status: "finalized",
     });
     if (donationError) return { ok: false, error: donationError.message };

@@ -37,8 +37,9 @@ export interface ParseResult {
 // ---------------------------------------------------------------------------
 // CSV
 
-/** RFC 4180: quoted fields may contain commas, newlines and doubled quotes. */
-export function parseCsv(text: string): string[][] {
+/** RFC 4180: quoted fields may contain commas, newlines and doubled quotes. Blank rows are
+ * dropped unless `keepBlankRows` (when a row's position has to be the sheet's own row number). */
+export function parseCsv(text: string, keepBlankRows = false): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
@@ -77,7 +78,7 @@ export function parseCsv(text: string): string[][] {
     row.push(field);
     rows.push(row);
   }
-  return rows.filter((r) => r.some((c) => c.trim() !== ""));
+  return keepBlankRows ? rows : rows.filter((r) => r.some((c) => c.trim() !== ""));
 }
 
 // ---------------------------------------------------------------------------

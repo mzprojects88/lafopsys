@@ -17,6 +17,7 @@ import { PortalAccountCard } from "@/components/modules/donors/portal-account-ca
 import { CampaignCommitmentsTab } from "@/components/modules/donors/campaign-commitments-tab";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
+import { PAYMENT_METHOD_LABEL } from "@/lib/utils/cash-gifts";
 import { useRole } from "@/lib/rbac/use-role";
 import { canDeleteFiles, canUploadFiles } from "@/lib/rbac/roles";
 import { FileLibrary } from "@/components/patterns/file-library";
@@ -40,6 +41,7 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
   }
 
   const donorDonations = donations.filter((d) => d.donorId === donor.id).sort((a, b) => b.date.localeCompare(a.date));
+  const cashTotal = donorDonations.filter((d) => d.kind === "cash").reduce((s, d) => s + d.totalValue, 0);
 
   async function handleGenerateReceipt(donationId: string, entity: "US_501C3" | "PH_SEC") {
     const result = await generateReceipt(donationId, entity);
@@ -67,6 +69,8 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
         initials={donor.name.split(" ").map((w) => w[0]).slice(0, 2).join("")}
         metadata={[
           { label: "Lifetime Value", value: formatCurrency(donor.lifetimeValue) },
+          { label: "Cash", value: formatCurrency(cashTotal) },
+          { label: "In kind", value: formatCurrency(donor.lifetimeValue - cashTotal) },
           { label: "Gift Count", value: donor.giftCount },
           { label: "First Gift", value: formatDate(donor.firstGiftDate) },
           { label: "Last Gift", value: formatDate(donor.lastGiftDate) },
@@ -134,10 +138,12 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
                   <div key={d.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-theme-sm hover:bg-muted/60">
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span className="line-clamp-2 font-medium break-words">
-                          {d.kind === "cash" ? "Cash Donation" : d.itemDescription || "In-kind donation"}
+                          {d.kind === "cash" ? `Cash gift${d.paymentMethod ? ` · ${PAYMENT_METHOD_LABEL[d.paymentMethod]}` : ""}` : d.itemDescription || "In-kind donation"}
                         </span>
                         <span className="text-theme-xs text-muted-foreground">
                           {formatDate(d.date)} · {d.receivingEntity === "US_501C3" ? "US 501(c)(3)" : "PH SEC"}
+                          {d.kind === "cash" && d.invoiceNumber ? ` · Invoice ${d.invoiceNumber}` : ""}
+                          {d.kind === "cash" && d.notes ? ` · ${d.notes}` : ""}
                           {d.status === "pending_review" && (
                             <span className="ml-1.5 rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-medium text-warning-foreground dark:text-warning">
                               Pending finance review

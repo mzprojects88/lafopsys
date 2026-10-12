@@ -4,6 +4,8 @@
 //
 // Usage: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/donor-totals-matrix.mjs
 // Pre-flight: RLS_ALLOW_PROD=1 node --env-file=.env.local scripts/rls/donor-totals-matrix.mjs supabase/migrations/0082_donor_totals_follow_donations.sql
+//   (a migration that alters ops.donations keeps it locked for the whole pre-flight: rehearse the
+//   full matrix on a copy, and on the live tables run a few scenarios only, MATRIX_ONLY="regex")
 import { pgUrl } from "../lib/db-url.mjs";
 import { readFile } from "node:fs/promises";
 
@@ -51,6 +53,9 @@ async function accountIds() {
 const claims = (id) => JSON.stringify({ sub: id, role: "authenticated" });
 
 async function scenario(ids, name, actor, body, expect) {
+  // MATRIX_ONLY=<regex> runs just the matching scenarios: a pre-flight on the live tables holds
+  // the migration's locks for as long as it runs, so keep that run to a few scenarios.
+  if (process.env.MATRIX_ONLY && !new RegExp(process.env.MATRIX_ONLY, "i").test(name)) return;
   if (actor && !ids[actor]) {
     record(name, "SKIP", `no ${actor} account`);
     return;
@@ -113,6 +118,9 @@ const then = (...sqls) => async () => {
 
 async function main() {
   await client.connect();
+  // A pre-flight holds the migration's table locks until it ends: never wait long for a lock, and
+  // let the server end the transaction if this script dies or loses its connection.
+  await client.query("set lock_timeout = '5s'; set idle_in_transaction_session_timeout = '120s'");
   if (PREFLIGHT.length) {
     await client.query("begin");
     for (const file of PREFLIGHT) {
@@ -204,6 +212,129 @@ async function main() {
     await scenario(ids, "nobody changes a suggestion directly", "finance", () => suggested(`update ops.donor_suggestions set status = 'applied' where id = ${S1}`), denied);
   } else {
     record("0083 scenarios", "SKIP", "0083 not applied (pass it as a pre-flight file)");
+  }
+
+  // ---- 0084: cash gifts from accounting's sheets ----
+  const has0084 = (await client.query("select to_regclass('ops.cash_gift_lines') is not null as ok")).rows[0].ok;
+  if (has0084) {
+    const L = (row, name, amount, more = {}) => ({ sheet_row: row, date: "2024-03-01", donor_name: name, kind: "cash", payment_method: "check", amount, invoice_number: `T${row}`, notes: null, ...more });
+    const FIRST = [L(2, "RLSTEST DONOR ONE", 500), L(3, "Rlstest Newgiver", 250), L(4, "Rlstest Newgiver", 250)];
+    // As the server (postgres here): the sheet is read. Real 2024 lines, if any, are set aside first
+    // so the half-or-more guard judges only these (all rolled back).
+    const received = async (lines, sql) => {
+      await client.query("reset role");
+      await client.query("delete from ops.cash_gift_lines where source = '2024'; delete from ops.cash_gift_sources where source = '2024'");
+      const r = await client.query("select ops.receive_cash_lines('2024', $1::jsonb) as r", [JSON.stringify(lines)]);
+      await client.query("set local role authenticated");
+      await client.query("discard plans");
+      return sql ? client.query(sql) : r;
+    };
+    const again = async (lines) => {
+      await client.query("reset role");
+      const r = await client.query("select ops.receive_cash_lines('2024', $1::jsonb) as r", [JSON.stringify(lines)]);
+      await client.query("set local role authenticated");
+      await client.query("discard plans");
+      return r;
+    };
+    const decide = (d) => client.query("select ops.decide_sheet_names($1::jsonb) as posted", [JSON.stringify(d)]);
+    const K1 = "donor one rlstest";
+    const KN = "newgiver rlstest";
+    const sheetGifts = (donor) => `select count(*)::int as n from ops.donations where source_id like 'sheet:2024:%' and donor_id = '${donor}'`;
+    const giftsAre = (donor, n, v) => `(select count(*) = ${n} and coalesce(sum(total_value), 0) = ${v} from ops.donations where source_id like 'sheet:2024:%' and donor_id = '${donor}')`;
+
+    await scenario(ids, "the name key is the app's (same pairs as tests/cash-gifts.test.mjs)", "finance",
+      () => client.query(`select ops.donor_name_key('Ms. María  Santos-Cruz') = 'cruz maria santos' and ops.donor_name_key('Jessa C. Calma') = 'calma jessa'
+        and ops.donor_name_key('SAMPLE FOOD CORP.') = 'corp food sample' and ops.donor_name_key('Carlo/Joy De Jesus') = 'carlo de jesus joy'
+        and ops.donor_name_key('3M Philippines, Inc.') = '3m inc philippines' and ops.donor_name_key('???') = 'unnamed' as ok`),
+      (r) => r.ok && r.data[0].ok === true);
+    await scenario(ids, "a read lands the lines; nothing joins the donor list until a name is confirmed", "finance",
+      () => received(FIRST, `select (select count(*) from ops.cash_gift_lines where source = '2024') = 3 and (select count(*) from ops.donations where source_id like 'sheet:2024:%') = 0
+        and (select count(distinct line_key) from ops.cash_gift_lines where source = '2024' and name_key = '${KN}') = 2 as ok`),
+      (r) => r.ok && r.data[0].ok === true);
+    await scenario(ids, "the chef doesn't see the cash lines", "chef", () => received(FIRST, "select 1 from ops.cash_gift_lines where source = '2024'"), (r) => (r.ok && r.rows === 0) || denied(r));
+    await scenario(ids, "staff can't call the sheet reader themselves (the server does)", "finance", () => client.query("select ops.receive_cash_lines('2024', '[]'::jsonb)"), denied);
+    await scenario(ids, "nobody writes lines or name decisions directly", "finance",
+      () => client.query(`insert into ops.donor_sheet_names (name_key, sheet_name, donor_id) values ('x y', 'X Y', '${D1}')`), denied);
+    await scenario(ids, "finance confirms a name as an existing donor: its gift posts and the totals follow", "finance",
+      async () => {
+        await received(FIRST);
+        await decide([{ name_key: K1, donor_id: D1 }]);
+        return client.query(`select (select gift_count from ops.donors where id = '${D1}') = 3 and (select lifetime_value from ops.donors where id = '${D1}') = 650
+          and (select count(*) from ops.donations where donor_id = '${D1}' and kind = 'cash' and payment_method = 'check' and invoice_number = 'T2' and status = 'finalized' and total_value = 500) = 1 as ok`);
+      },
+      (r) => r.ok && r.data[0].ok === true);
+    await scenario(ids, "the office admin confirms a name as a new donor: the donor is made, both gifts post", "office_admin",
+      async () => {
+        await received(FIRST);
+        const r = await decide([{ name_key: KN, name: "  Rlstest   Newgiver ", salutation: "Ms.", type: "individual" }]);
+        await decide([{ name_key: KN, name: "Rlstest Newgiver", salutation: null, type: "individual" }]); // a second click
+        const q = await client.query(`select (select count(*) from ops.donors where name = 'Rlstest Newgiver' and salutation = 'Ms.' and gift_count = 2 and lifetime_value = 500) = 1 as ok`);
+        return { ...q, rows: [{ ok: q.rows[0].ok && r.rows[0].posted === 2 }] };
+      },
+      (r) => r.ok && r.data[0].ok === true);
+    await scenario(ids, "a name marked not a donor posts nothing", "finance",
+      async () => {
+        await received(FIRST);
+        await decide([{ name_key: KN, skip: true }]);
+        return client.query(`select (select count(*) from ops.donations where source_id like 'sheet:2024:%') = 0 and (select count(*) from ops.donor_sheet_names where name_key = '${KN}' and donor_id is null) = 1 as ok`);
+      },
+      (r) => r.ok && r.data[0].ok === true);
+    await scenario(ids, "inventory staff can't confirm names", "inventory_staff", async () => { await received(FIRST); return decide([{ name_key: K1, donor_id: D1 }]); }, denied);
+    await scenario(ids, "a name that isn't on the sheets can't be confirmed", "finance", async () => { await received(FIRST); return decide([{ name_key: "nobody here", donor_id: D1 }]); }, (r) => !r.ok && r.code === "22023");
+    await scenario(ids, "a new donor needs a name and a type", "finance", async () => { await received(FIRST); return decide([{ name_key: KN, name: "R", type: "individual" }]); }, (r) => !r.ok && r.code === "22023");
+    await scenario(ids, "the next read: a line gone from the sheet takes its gift away, a new line posts, an unchanged read changes nothing", "finance",
+      async () => {
+        await received(FIRST);
+        await decide([{ name_key: K1, donor_id: D1 }, { name_key: KN, donor_id: D2 }]);
+        const next = [L(2, "RLSTEST DONOR ONE", 500), L(3, "Rlstest Newgiver", 250), L(9, "Rlstest Donor One", 75)];
+        const a = await again(next);
+        const b = await again(next);
+        const q = await client.query(`select ${giftsAre(D1, 2, 575)} and ${giftsAre(D2, 1, 250)} as ok`);
+        return { ...q, rows: [{ ok: q.rows[0].ok && a.rows[0].r.status === "received" && b.rows[0].r.status === "unchanged" }] };
+      },
+      (r) => r.ok && r.data[0].ok === true);
+    await scenario(ids, "a gift with a receipt issued stays even when its line leaves the sheet", "finance",
+      async () => {
+        await received(FIRST);
+        await decide([{ name_key: K1, donor_id: D1 }]);
+        await client.query(`insert into ops.acknowledgment_receipts (donation_id, sequence_number, entity) select id, 'RLSTEST-AR-1', 'PH_SEC' from ops.donations where source_id like 'sheet:2024:%' and donor_id = '${D1}'`);
+        await again([L(3, "Rlstest Newgiver", 250), L(4, "Rlstest Newgiver", 250)]);
+        return client.query(sheetGifts(D1));
+      },
+      (r) => r.ok && r.data[0].n === 1);
+    await scenario(ids, "a read that lost more than half its lines is refused", "finance",
+      async () => { await received(FIRST); return again([L(2, "RLSTEST DONOR ONE", 500)]); }, (r) => !r.ok && r.code === "22023");
+    await scenario(ids, "a merge moves the merged donor's sheet names and cash gifts", "finance",
+      async () => {
+        await received(FIRST);
+        await decide([{ name_key: KN, donor_id: D2 }]);
+        await client.query(`select ops.merge_donors('${D1}', '${D2}', 'Same donor typed twice')`);
+        await again([...FIRST, L(9, "Rlstest Newgiver", 40)]);
+        return client.query(`select (select donor_id from ops.donor_sheet_names where name_key = '${KN}') = '${D1}' and ${giftsAre(D1, 3, 540)} as ok`);
+      },
+      (r) => r.ok && r.data[0].ok === true);
+    await scenario(ids, "an editor keeps the AI's hint for a name; it is never rewritten", "office_admin",
+      then(`insert into ops.sheet_name_hints (name_key, type, incomplete, note) values ('eagles', 'foundation', false, 'A club')`,
+        `insert into ops.sheet_name_hints (name_key, type) values ('eagles', 'corporate') on conflict (name_key) do nothing`,
+        `select type = 'foundation' and created_by is not null as ok from ops.sheet_name_hints where name_key = 'eagles'`),
+      (r) => r.ok && r.data[0]?.ok === true);
+    await scenario(ids, "nobody changes or removes a hint", "finance",
+      then(`insert into ops.sheet_name_hints (name_key, type) values ('eagles', 'foundation')`, `update ops.sheet_name_hints set type = 'corporate' where name_key = 'eagles'`), denied);
+    await scenario(ids, "the chef can't add a hint", "chef", () => client.query(`insert into ops.sheet_name_hints (name_key, type) values ('eagles', 'foundation')`), denied);
+    await scenario(ids, "inventory staff still log a gift in kind (what LAF Inventory sends)", "inventory_staff",
+      () => client.query(`insert into ops.donations (donor_id, date, receiving_entity, kind, item_description, item_type, quantity, unit_value, total_value, currency, status, source_id) values ('${D1}', '2026-10-12', 'PH_SEC', 'in_kind', '2 sack Rice', 'FOOD', 2, 1300, 2600, 'PHP', 'pending_review', 'don-rlstest-1')`), rows(1));
+    await scenario(ids, "the chef still logs a gift in kind", "chef",
+      () => client.query(`insert into ops.donations (donor_id, date, receiving_entity, kind, total_value, currency, status) values ('${D1}', '2026-10-12', 'PH_SEC', 'in_kind', 10, 'PHP', 'pending_review')`), rows(1));
+    await scenario(ids, "inventory staff can't record a cash gift", "inventory_staff",
+      () => client.query(`insert into ops.donations (donor_id, date, receiving_entity, kind, total_value, currency, status) values ('${D1}', '2026-10-12', 'PH_SEC', 'cash', 10, 'PHP', 'finalized')`), denied);
+    await scenario(ids, "an admin (receiving in LAF Inventory) still logs a gift in kind", "admin",
+      () => client.query(`insert into ops.donations (donor_id, date, receiving_entity, kind, total_value, currency, status, source_id) values ('${D1}', '2026-10-12', 'PH_SEC', 'in_kind', 10, 'PHP', 'pending_review', 'don-rlstest-2')`), rows(1));
+    await scenario(ids, "a payment method is only for cash", "finance",
+      () => client.query(`insert into ops.donations (donor_id, date, receiving_entity, kind, total_value, currency, payment_method) values ('${D1}', '2026-10-01', 'PH_SEC', 'in_kind', 10, 'PHP', 'gcash')`), (r) => !r.ok && r.code === "23514");
+    await scenario(ids, "finance records a cash gift by hand, with how it was paid", "finance",
+      () => client.query(`insert into ops.donations (donor_id, date, receiving_entity, kind, total_value, currency, payment_method, invoice_number) values ('${D1}', '2026-10-01', 'PH_SEC', 'cash', 10, 'PHP', 'gcash', '0531')`), rows(1));
+  } else {
+    record("0084 scenarios", "SKIP", "0084 not applied (pass it as a pre-flight file)");
   }
 
   if (PREFLIGHT.length) await client.query("rollback");

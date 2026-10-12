@@ -1,10 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
+import * as React from "react";
+import { AlertTriangle, ExternalLink, Info } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,9 +14,15 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { unitsOfMeasure } from "@/lib/mock-data/reference-data";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
-import { todayIso } from "@/lib/utils/date";
+import { useCashGifts } from "@/lib/hooks/use-cash-gifts";
+import { PAYMENT_METHOD_LABEL, invoiceMatches } from "@/lib/utils/cash-gifts";
+import { formatCurrency } from "@/lib/utils/currency";
+import { formatDate, todayIso } from "@/lib/utils/date";
+import { inventoryAppHref } from "@/lib/utils/inventory-app";
+import type { PaymentMethod } from "@/lib/types/donor";
+
+const METHODS = Object.keys(PAYMENT_METHOD_LABEL) as PaymentMethod[];
 
 const schema = z.object({
   // The day the gift was received. Was the frozen demo constant TODAY_ISO,
@@ -22,61 +30,76 @@ const schema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick the date"),
   donorId: z.string().min(1, "Select a donor"),
   receivingEntity: z.enum(["US_501C3", "PH_SEC"]),
-  kind: z.enum(["cash", "in_kind"]),
-  itemDescription: z.string().optional(),
-  quantity: z.number().optional(),
-  uomId: z.string().optional(),
-  unitValue: z.number().optional(),
-  cashAmount: z.number().optional(),
+  amount: z.number({ error: "Enter the amount" }).positive("Enter the amount").max(99_999_999, "That amount is too large"),
+  paymentMethod: z.enum(["cash", "check", "bank_transfer", "gcash", "instapay", "other"]),
+  invoiceNumber: z.string().trim().max(60, "60 characters at most"),
+  notes: z.string().trim().max(500, "500 characters at most"),
 });
 
 type FormValues = z.infer<typeof schema>;
 
+/**
+ * A cash gift, typed in by hand. Gifts in kind are recorded in LAF Inventory and nowhere else
+ * (decided 2026-10-08): it posts each receipt to the donor list. Cash on accounting's Donation
+ * Tracker arrives by itself (Donors > Cash gifts), so this form is for the gift that won't be there.
+ */
 export default function DonationIntakePage() {
   const router = useRouter();
-  const { donors, addDonation } = useDonorsData();
+  const { donors, donations, addDonation } = useDonorsData();
+  const { lines } = useCashGifts();
   const {
     register,
     handleSubmit,
     control,
-    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { date: todayIso(), donorId: "", receivingEntity: "PH_SEC", kind: "in_kind" },
+    defaultValues: { date: todayIso(), donorId: "", receivingEntity: "PH_SEC", paymentMethod: "cash", invoiceNumber: "", notes: "" },
   });
-
-  const kind = watch("kind");
-  const quantity = watch("quantity") ?? 0;
-  const unitValue = watch("unitValue") ?? 0;
+  // The same invoice number already on the tracker or in the donor list: probably the same gift.
+  const invoice = useWatch({ control, name: "invoiceNumber" });
+  const already = React.useMemo(() => invoiceMatches(invoice, lines, donations, new Map(donors.map((d) => [d.id, d.name]))), [invoice, lines, donations, donors]);
 
   async function onSubmit(values: FormValues) {
-    const totalValue = values.kind === "cash" ? values.cashAmount ?? 0 : (values.quantity ?? 0) * (values.unitValue ?? 0);
     const result = await addDonation({
       donorId: values.donorId,
       date: values.date,
       receivingEntity: values.receivingEntity,
-      kind: values.kind,
-      itemDescription: values.kind === "in_kind" ? values.itemDescription : undefined,
-      quantity: values.kind === "in_kind" ? values.quantity : undefined,
-      uomId: values.kind === "in_kind" ? values.uomId : undefined,
-      unitValue: values.kind === "in_kind" ? values.unitValue : undefined,
-      totalValue,
+      kind: "cash",
+      totalValue: values.amount,
       currency: values.receivingEntity === "US_501C3" ? "USD" : "PHP",
+      paymentMethod: values.paymentMethod,
+      invoiceNumber: values.invoiceNumber || undefined,
+      notes: values.notes || undefined,
     });
     if (!result.ok) {
-      toast.error(`Couldn't record the donation: ${result.error}`);
+      toast.error(`Couldn't record the gift: ${result.error}`);
       return;
     }
-    // Inventory lot creation depends on the laf-inventory side of the
-    // Donations Bridge, which hasn't been built yet -- don't claim it happened.
-    toast.success(values.kind === "in_kind" ? "In-kind donation recorded" : "Cash donation recorded");
+    toast.success("Cash gift recorded");
     router.push("/donors");
   }
 
   return (
     <div className="flex max-w-2xl flex-1 flex-col gap-6">
-      <PageHeader title="Donation Intake" description="Cash and in-kind in one flow." />
+      <PageHeader title="New cash gift" description="For a cash gift that is not on accounting's Donation Tracker." />
+
+      <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card px-5 py-4 text-theme-sm">
+        <p className="flex items-start gap-2">
+          <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <span>
+            <span className="font-medium">Gifts in kind are recorded in LAF Inventory.</span> Receiving them there puts the items into stock, makes the AR and adds the gift to the donor list.{" "}
+            <a href={inventoryAppHref("/intake")} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+              Open LAF Inventory <ExternalLink className="size-3.5" />
+            </a>
+          </span>
+        </p>
+        <p className="flex items-start gap-2 text-muted-foreground">
+          <Info className="mt-0.5 size-4 shrink-0" />
+          Cash gifts written on the Donation Tracker arrive here by themselves every hour. Typing one of those here as well would count it twice.
+        </p>
+      </div>
+
       <Card>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)}>
@@ -127,71 +150,56 @@ export default function DonationIntakePage() {
                 />
               </Field>
 
-              <Field>
-                <FieldLabel>Donation Type</FieldLabel>
-                <Controller
-                  name="kind"
-                  control={control}
-                  render={({ field }) => (
-                    <RadioGroup value={field.value} onValueChange={field.onChange} className="flex gap-4">
-                      <label className="flex items-center gap-2 text-sm">
-                        <RadioGroupItem value="in_kind" /> In-Kind
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
-                        <RadioGroupItem value="cash" /> Cash
-                      </label>
-                    </RadioGroup>
-                  )}
-                />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field data-invalid={!!errors.amount}>
+                  <FieldLabel htmlFor="amount">Amount</FieldLabel>
+                  <Input id="amount" type="number" min={0} step="0.01" inputMode="decimal" {...register("amount", { valueAsNumber: true })} />
+                  <FieldError errors={[errors.amount]} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="paymentMethod">How it was paid</FieldLabel>
+                  <Controller
+                    name="paymentMethod"
+                    control={control}
+                    render={({ field }) => (
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger id="paymentMethod" className="w-full"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {METHODS.map((m) => (
+                            <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABEL[m]}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </Field>
+              </div>
+
+              <Field data-invalid={!!errors.invoiceNumber}>
+                <FieldLabel htmlFor="invoiceNumber">Invoice number (optional)</FieldLabel>
+                <Input id="invoiceNumber" className="w-48" placeholder="e.g. 0531" {...register("invoiceNumber")} />
+                <FieldError errors={[errors.invoiceNumber]} />
+                {already.length > 0 && (
+                  <div role="alert" className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-theme-xs text-warning-foreground dark:text-warning">
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                    <span>
+                      This invoice number is already recorded:{" "}
+                      {already.map((m) => `${m.donor}, ${formatCurrency(m.amount)}, ${formatDate(m.date)} (${m.where === "tracker" ? "on the tracker" : "in the donor list"})`).join("; ")}.
+                      If this is the same gift, don&apos;t record it again.
+                    </span>
+                  </div>
+                )}
               </Field>
 
-              {kind === "in_kind" ? (
-                <>
-                  <Field>
-                    <FieldLabel htmlFor="itemDescription">Item Description</FieldLabel>
-                    <Input id="itemDescription" placeholder="e.g. Egg (30/Tray)" {...register("itemDescription")} />
-                  </Field>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <Field>
-                      <FieldLabel htmlFor="quantity">Quantity</FieldLabel>
-                      <Input id="quantity" type="number" min={0} {...register("quantity", { valueAsNumber: true })} />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="uomId">UoM</FieldLabel>
-                      <Controller
-                        name="uomId"
-                        control={control}
-                        render={({ field }) => (
-                          <Select value={field.value} onValueChange={field.onChange}>
-                            <SelectTrigger id="uomId" className="w-full"><SelectValue placeholder="Unit" /></SelectTrigger>
-                            <SelectContent>
-                              {unitsOfMeasure.map((u) => (
-                                <SelectItem key={u.id} value={u.id}>{u.code}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="unitValue">Unit Value (₱)</FieldLabel>
-                      <Input id="unitValue" type="number" min={0} {...register("unitValue", { valueAsNumber: true })} />
-                    </Field>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Total value: <span className="font-medium text-foreground">₱{(quantity * unitValue).toLocaleString()}</span>
-                  </p>
-                </>
-              ) : (
-                <Field>
-                  <FieldLabel htmlFor="cashAmount">Amount</FieldLabel>
-                  <Input id="cashAmount" type="number" min={0} {...register("cashAmount", { valueAsNumber: true })} />
-                </Field>
-              )}
+              <Field data-invalid={!!errors.notes}>
+                <FieldLabel htmlFor="notes">Notes (optional)</FieldLabel>
+                <Input id="notes" placeholder="e.g. Deposited Oct 12" {...register("notes")} />
+                <FieldError errors={[errors.notes]} />
+              </Field>
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => router.back()}>Cancel</Button>
-                <Button type="submit" disabled={isSubmitting}>Record Donation</Button>
+                <Button type="submit" disabled={isSubmitting}>{already.length > 0 ? "Record anyway" : "Record gift"}</Button>
               </div>
             </FieldGroup>
           </form>
