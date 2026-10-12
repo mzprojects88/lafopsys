@@ -9,7 +9,7 @@
 // Idempotent; prints nothing secret. If the key lacks writeBuckets, set the
 // same things in the B2 console: Bucket Settings -> Private, and CORS Rules
 // -> custom with the origins below.
-const ORIGINS = ["https://lafopsys.vercel.app", "https://*.vercel.app", "http://localhost:3000"];
+const ORIGINS = ["https://lafopsys.vercel.app", "https://laf-inventory.vercel.app", "https://stock.littlearkfoundation.org", "https://*.vercel.app", "http://localhost:3000"];
 const need = (n) => {
   if (!process.env[n]) {
     console.error(`Missing ${n}`);
