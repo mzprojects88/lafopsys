@@ -116,3 +116,82 @@ async function emptyHouse() {
        ('${DAD_S}', '${KID_S}', 'Dad S', 'Father', current_date, 'M')`
   );
 }
+
+const stayOf = (kid) => `(select id from ops.stays where patient_id = '${kid}' and status = 'in_house')`;
+
+async function main() {
+  await client.connect();
+  if (PREFLIGHT.length) {
+    await client.query("begin");
+    for (const file of PREFLIGHT) {
+      await client.query(await readFile(file, "utf8"));
+      console.log("pre-flight applied (rolled back at the end):", file);
+    }
+  }
+  const ids = await accountIds();
+  console.log("Acting accounts:", Object.fromEntries(Object.entries(ids).map(([k, v]) => [k, v ? "yes" : "none"])));
+
+  // A family put straight on a bed (as the owner: no rules, like a stay from before them).
+  const seat = (kid, unit, carer) =>
+    client.query(`insert into ops.stays (patient_id, bed_position_id, carer_id, check_in_at, status) values ('${kid}', 'unit-${unit}-A', ${carer ? `'${carer}'` : "null"}, ${TODAY}, 'in_house')`);
+  const lock = (...codes) => client.query(`update ops.units set status = 'maintenance', lock_reason = 'plan test' where id in (${codes.map((c) => `'unit-${c}'`).join(",")})`);
+  const planSql = (...moves) =>
+    `select ops.apply_bed_plan(jsonb_build_array(${moves
+      .map(([kid, unit]) => `jsonb_build_object('stay_id', ${stayOf(kid)}, 'unit_id', 'unit-${unit}', 'reason', 'test')`)
+      .join(", ")}), 'test plan') as id`;
+  const unitOf = (kid) => `(select bp.unit_id from ops.stays s join ops.bed_positions bp on bp.id = s.bed_position_id where s.patient_id = '${kid}' and s.status = 'in_house')`;
+
+  await scenario(ids, "a plan moves a woman from Room 2 up to Room 1, logged and tonight's bed", "social_worker",
+    () => seat(KID_A, "B5", MOM_A),
+    steps(planSql([KID_A, "B1"]),
+      `select ${unitOf(KID_A)} as unit,
+              (select count(*)::int from ops.bed_moves where stay_id = ${stayOf(KID_A)} and moved_by = auth.uid()) as logged,
+              (select count(*)::int from ops.bed_nights where stay_id = ${stayOf(KID_A)} and night = ${TODAY}) as nights`),
+    (r) => r.ok && r.data[0].unit === "unit-B1" && r.data[0].logged === 1 && r.data[0].nights === 1);
+  await scenario(ids, "a plan that puts a man in the women's room is refused", "social_worker",
+    async () => { await seat(KID_A, "B1", MOM_A); await seat(KID_D, "B5", DAD_D); },
+    q(planSql([KID_D, "B2"])), refused("women's room"));
+  await scenario(ids, "a swap applies as one (no free bed in between)", "social_worker",
+    async () => {
+      await seat(KID_D, "B1", DAD_D);
+      await seat(KID_A, "B5", MOM_A);
+      await lock("B2", "B3", "B4", "B6", "B7", "B8", "B9");
+    },
+    steps(planSql([KID_D, "B5"], [KID_A, "B1"]), `select ${unitOf(KID_A)} || '/' || ${unitOf(KID_D)} as s`),
+    (r) => r.ok && r.data[0].s === "unit-B1/unit-B5");
+  await scenario(ids, "two families on one bed are refused", "social_worker",
+    async () => { await seat(KID_A, "B5", MOM_A); await seat(KID_B, "B6", MOM_B); },
+    q(planSql([KID_A, "B1"], [KID_B, "B1"])), (r) => !r.ok && r.code === "23505");
+  await scenario(ids, "a family twice in the plan is refused", "social_worker", () => seat(KID_A, "B5", MOM_A),
+    q(planSql([KID_A, "B1"], [KID_A, "B2"])), (r) => !r.ok && r.code === "22023");
+  await scenario(ids, "a locked bed is refused", "social_worker", async () => { await seat(KID_A, "B5", MOM_A); await lock("B1"); },
+    q(planSql([KID_A, "B1"])), refused("locked"));
+  await scenario(ids, "outside the bed move hours it waits", "social_worker",
+    async () => {
+      await seat(KID_A, "B5", MOM_A);
+      await client.query("update shared.app_settings set bed_moves_from = '00:00', bed_moves_until = '00:01' where id");
+    },
+    q(planSql([KID_A, "B1"])), refused("Families are moved between"));
+  await scenario(ids, "house staff cannot apply a plan", "house_staff", () => seat(KID_A, "B5", MOM_A), q(planSql([KID_A, "B1"])), denied);
+  await scenario(ids, "nobody writes the move log directly", "admin", () => seat(KID_A, "B5", MOM_A),
+    q(`insert into ops.bed_moves (plan_id, stay_id, to_unit_id, reason) values (gen_random_uuid(), ${stayOf(KID_A)}, 'unit-B1', 'x')`), denied);
+  await scenario(ids, "patients staff read the move log", "social_worker", null, q("select count(*) from ops.bed_moves"), ok);
+  await scenario(ids, "the move hours are read by everyone signed in", "house_staff", null,
+    q("select bed_moves_from, bed_moves_until from shared.app_settings"), (r) => r.ok && r.rows === 1);
+
+  if (PREFLIGHT.length) await client.query("rollback");
+  await client.end();
+  console.table(results);
+  const failed = results.filter((r) => r.result === "FAIL");
+  const skipped = results.filter((r) => r.result === "SKIP");
+  console.log(`${results.length - failed.length - skipped.length} passed, ${failed.length} failed, ${skipped.length} skipped`);
+  process.exit(failed.length ? 1 : 0);
+}
+
+main().catch(async (e) => {
+  console.error(e.message);
+  try {
+    await client.end();
+  } catch {}
+  process.exit(1);
+});
