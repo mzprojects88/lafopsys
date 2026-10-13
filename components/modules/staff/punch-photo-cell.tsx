@@ -64,7 +64,6 @@ export function PunchPhotoCell({ punch, caption }: { punch: TimePunch; caption: 
             <DialogDescription>{caption}</DialogDescription>
           </DialogHeader>
           {/* A five-minute signed link from the private bucket; next/image cannot optimise it. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           {url ? <img src={url} alt={caption} className="w-full rounded-lg" /> : null}
         </DialogContent>
       </Dialog>
