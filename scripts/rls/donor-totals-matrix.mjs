@@ -408,6 +408,30 @@ async function main() {
     record("0086 scenarios", "SKIP", "0086 not applied (pass it as a pre-flight file)");
   }
 
+  // ---- 0087: inventory roles see donor names, not details ----
+  const has0087 = (await client.query("select to_regproc('ops.donor_directory') is not null as ok")).rows[0].ok;
+  if (has0087) {
+    const dirRows = (n) => (r) => r.ok && r.rows === n;
+    // 0088 closes the table once Inventory's release is live; until then the old reads still work.
+    const closed = !(await client.query("select exists (select 1 from pg_policies where schemaname = 'ops' and tablename = 'donors' and policyname = 'inventory roles read and add donors') as ok")).rows[0].ok;
+    if (closed) {
+      await scenario(ids, "inventory staff no longer read the donor table (email, phone, TIN)", "inventory_staff", () => client.query(`select email from ops.donors where id = '${D1}'`), (r) => (r.ok && r.rows === 0) || denied(r));
+      await scenario(ids, "the chef no longer reads the donor table", "chef", () => client.query(`select name from ops.donors where id = '${D1}'`), (r) => (r.ok && r.rows === 0) || denied(r));
+      await scenario(ids, "inventory staff can't insert donors directly any more", "inventory_staff", () => client.query("insert into ops.donors (name, type, tax_jurisdiction) values ('RLSTEST direct', 'individual', 'PH')"), denied);
+    } else record("0088 scenarios", "SKIP", "0088 not applied: inventory roles still read ops.donors (apply after Inventory's release)");
+    await scenario(ids, "inventory staff look donors up by name through the directory", "inventory_staff", () => client.query("select name from ops.donor_directory('rlstest donor one')"), dirRows(1));
+    await scenario(ids, "the chef looks a donor up by id through the directory", "chef", () => client.query(`select name, type, tax_jurisdiction from ops.donor_directory(null, array['${D1}']::uuid[])`), dirRows(1));
+    await scenario(ids, "the directory has no email, phone or TIN column", "inventory_staff", () => client.query("select email from ops.donor_directory('x')"), (r) => !r.ok && r.code === "42703");
+    await scenario(ids, "finance still reads the donor table in full", "finance", () => client.query(`select email, phone, tin from ops.donors where id = '${D1}'`), dirRows(1));
+    await scenario(ids, "inventory staff add a donor; the same name again is the same donor", "inventory_staff",
+      then("select id from ops.add_donor_basic('Rlstest New Giver', 'individual', 'PH')", "select id from ops.add_donor_basic('RLSTEST  new giver', 'corporate')", "select count(*)::int as n from ops.donor_directory('rlstest new giver')"),
+      (r) => r.ok && r.data[0].n === 1);
+    await scenario(ids, "a name needs two letters", "chef", () => client.query("select ops.add_donor_basic('X', 'individual', 'PH')"), (r) => !r.ok && r.code === "22023");
+    await scenario(ids, "nobody outside staff reads the directory", null, () => client.query("select name from ops.donor_directory('rlstest')"), (r) => (r.ok && r.rows === 0) || denied(r));
+  } else {
+    record("0087 scenarios", "SKIP", "0087 not applied (pass it as a pre-flight file)");
+  }
+
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
   console.table(results);
