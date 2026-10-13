@@ -199,7 +199,8 @@ async function main() {
       await client.query("set local role authenticated");
       return r;
     },
-    (r) => r.ok && r.data[0].n === 1 && r.data[0].again === 0 && r.data[0].reason === "daily_reset" && r.data[0].p2 === "in_house" && r.data[0].logged === 1);
+    // n counts every stay from before today, real ones on a live database included: at least the fixture.
+    (r) => r.ok && r.data[0].n >= 1 && r.data[0].again === 0 && r.data[0].reason === "daily_reset" && r.data[0].p2 === "in_house" && r.data[0].logged === 1);
   await scenario(ids, "staff cannot run the reset themselves", "social_worker", withSeed(), q("select ops.daily_admission_reset()"), denied);
   await scenario(ids, "the reset log is readable by house staff", "house_staff",
     withSeed(async () => { await resetAt("00:00")(); await client.query("select ops.daily_admission_reset()"); }),
