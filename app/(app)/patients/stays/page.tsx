@@ -16,6 +16,11 @@ import { isActiveStay, unitForBedPosition } from "@/lib/utils/beds";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { visitNights, visitsOf } from "@/lib/utils/visits";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
+import * as React from "react";
+import { Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { csvLines, downloadCsv } from "@/lib/utils/csv";
 
 function buildColumns(patients: Patient[], units: Unit[], bedPositions: BedPosition[]): ColumnDef<Stay>[] {
   const unitCodeFor = (bedPositionId: string) => unitForBedPosition(bedPositionId, units, bedPositions)?.code ?? "—";
@@ -93,6 +98,34 @@ export default function StayHistoryPage() {
   const visits = visitsOf(stays);
   const ended = visits.filter((v) => !v.active).length;
   const avgVisitNights = Math.round(visits.reduce((sum, v) => sum + visitNights(v), 0) / (visits.length || 1));
+  // The table and the CSV cover the nights in a date range (default: this month); the KPIs stay whole-record.
+  const [from, setFrom] = React.useState(`${todayIso().slice(0, 7)}-01`);
+  const [to, setTo] = React.useState(todayIso());
+  const shown = stays.filter((s) => s.checkInAt >= from && s.checkInAt <= to);
+  const { carers } = usePatientsData();
+  function exportCsv() {
+    const byId = new Map(patients.map((p) => [p.id, p]));
+    const lines = shown.map((s) => {
+      const p = byId.get(s.patientId);
+      const unit = unitForBedPosition(s.bedPositionId, units, bedPositions);
+      const visit = visitsOf(stays.filter((x) => (x.visitId ?? x.id) === (s.visitId ?? s.id)))[0];
+      return [
+        s.checkInAt,
+        p ? `${p.lastName}, ${p.firstName}` : "",
+        p?.patientNumber ?? "",
+        s.carerId ? (carers.find((c) => c.id === s.carerId)?.name ?? "") : "",
+        unit?.code ?? "",
+        s.visitId ?? s.id,
+        visit ? visit.firstNight : s.checkInAt,
+        visit ? String(visit.stays.length) : "1",
+        s.status,
+        s.checkOutAt ?? "",
+        s.checkOutReason ?? "",
+        s.arrivalMode ?? "",
+      ];
+    });
+    downloadCsv(csvLines(["Night", "Patient", "LFCN", "Carer", "Bed", "Visit", "Visit started", "Nights in visit", "Status", "Checked out", "Reason", "Arrival"], lines), `stays-${from}-to-${to}.csv`);
+  }
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -105,9 +138,18 @@ export default function StayHistoryPage() {
         <KpiCard label="Avg. nights per visit" value={`${avgVisitNights}`} icon={Timer} />
       </KpiGrid>
 
+      <div className="flex flex-wrap items-center gap-2 text-theme-sm">
+        Nights from
+        <Input type="date" aria-label="From" className="w-40" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
+        to
+        <Input type="date" aria-label="To" className="w-40" value={to} min={from} max={todayIso()} onChange={(e) => setTo(e.target.value)} />
+        <Button size="sm" variant="outline" disabled={!shown.length} onClick={exportCsv}>
+          <Download /> CSV ({shown.length})
+        </Button>
+      </div>
       <DataTable
         columns={columns}
-        data={stays}
+        data={shown}
         searchPlaceholder="Search stays…"
         onRowClick={(s) => router.push(`/patients/${s.patientId}`)}
       />

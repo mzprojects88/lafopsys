@@ -291,6 +291,9 @@ function PickupCard({ pickup: p, vehicle, mine, driverName, canEdit, canBuild }:
         )}
 
         <TripReadings trip={p} />
+        <Link href={`/transport/manifest/${p.id}`} target="_blank" className="text-theme-xs text-primary hover:underline">
+          Print manifest
+        </Link>
         <TripControls trip={p} vehicle={vehicle} canEdit={canEdit} canDepart={boarded > 0} departLabel={`Depart with ${boarded}`} arriveLabel="Arrived at LAF House" route="pickup" />
         {p.status === "completed" && (
           <p className="text-theme-xs text-muted-foreground">
