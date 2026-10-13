@@ -19,6 +19,7 @@ import { useTrackerReceivedAt } from "@/lib/hooks/use-cash-source-status";
 import { useNow } from "@/lib/hooks/use-now";
 import { TRACKER_STALE_MS } from "@/lib/utils/cash-gifts";
 import { formatRelative } from "@/lib/utils/date";
+import { formatTime12 } from "@/lib/utils/time12";
 import { formatKm } from "@/lib/utils/odometer";
 
 /** Something an admin still has to set up. Worked out from the settings, so it
@@ -85,7 +86,7 @@ function AdmissionReminder({ children }: { children: (reminders: Reminder[]) => 
           ? [
               {
                 id: "admissions-finalize",
-                title: hm >= admissions.finalizeBy ? "Tonight's beds are past the finalize time" : `Finalize tonight's beds by ${admissions.finalizeBy}`,
+                title: hm >= admissions.finalizeBy ? "Tonight's beds are past the finalize time" : `Finalize tonight's beds by ${formatTime12(admissions.finalizeBy)}`,
                 body: `${waiting} on today's NCH list ${waiting === 1 ? "has" : "have"} no bed for tonight yet.`,
                 href: "/patients/house-sheet",
                 icon: BedDouble,

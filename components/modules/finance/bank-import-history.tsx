@@ -35,7 +35,7 @@ export function BankImportHistory() {
   const countFor = (id: string) => files.filter((f) => f.recordType === "bank_statement_import" && f.recordId === id).length;
 
   const columns: ColumnDef<BankStatementImport>[] = [
-    { id: "when", header: "Imported", accessorFn: (i) => i.createdAt, cell: ({ row }) => formatDate(row.original.createdAt, "MMM d, yyyy HH:mm") },
+    { id: "when", header: "Imported", accessorFn: (i) => i.createdAt, cell: ({ row }) => formatDate(row.original.createdAt, "MMM d, yyyy h:mm a") },
     { id: "file", header: "File", accessorFn: (i) => i.fileName, cell: ({ row }) => <span className="max-w-[28ch] truncate" title={row.original.fileName}>{row.original.fileName}</span> },
     { id: "source", header: "Source", accessorFn: (i) => SOURCE_LABEL[i.source], cell: ({ row }) => <StatusBadge domain="finance" status={row.original.source === "quickbooks" ? "approved" : "pending"} label={SOURCE_LABEL[row.original.source]} /> },
     { id: "covers", header: "Covers", accessorFn: (i) => i.coversFrom, cell: ({ row }) => `${formatDate(row.original.coversFrom, "MMM d")} – ${formatDate(row.original.coversTo, "MMM d, yyyy")}` },

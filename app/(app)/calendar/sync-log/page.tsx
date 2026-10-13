@@ -55,7 +55,7 @@ export default function CalendarSyncLogPage() {
   }
 
   const columns: ColumnDef<CalendarSyncRun>[] = [
-    { id: "started", header: "Started", accessorFn: (r) => r.startedAt, cell: ({ row }) => formatDate(row.original.startedAt, "MMM d, HH:mm") },
+    { id: "started", header: "Started", accessorFn: (r) => r.startedAt, cell: ({ row }) => formatDate(row.original.startedAt, "MMM d, h:mm a") },
     { id: "trigger", header: "By", accessorFn: (r) => r.trigger, cell: ({ row }) => (row.original.trigger === "cron" ? "Schedule" : "Sync now") },
     {
       id: "status",
@@ -129,7 +129,7 @@ export default function CalendarSyncLogPage() {
                   <span className="truncate text-theme-sm font-medium text-foreground">{e.title}</span>
                   <span className="text-xs text-muted-foreground">
                     {formatDate(e.date, "EEE, MMM d, yyyy")}
-                    {e.time ? ` · ${e.time}` : ""} · hidden {formatDate(e.sheetRemovedAt, "MMM d, HH:mm")}
+                    {e.time ? ` · ${e.time}` : ""} · hidden {formatDate(e.sheetRemovedAt, "MMM d, h:mm a")}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">

@@ -42,6 +42,7 @@ import { isActiveStay, unitForBedPosition } from "@/lib/utils/beds";
 import { sexFromRelationship, sleeperOfStay, type Sex } from "@/lib/utils/bed-rules";
 import { BedRuleBreaches, BedRuleException, CarerSexField, NO_EXCEPTION, exceptionFor, useBedChoices, type ExceptionDraft } from "@/components/modules/patients/bed-rule-fields";
 import { formatDate, todayIso } from "@/lib/utils/date";
+import { formatTime12 } from "@/lib/utils/time12";
 import { PRIORITIES } from "@/lib/utils/master-sheet";
 import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
 import type { Stay } from "@/lib/types/patient";
@@ -169,13 +170,13 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
         <span>Left the sheet: <b className="text-foreground">{left.length}</b></span>
         <span>
           {todayReset
-            ? `Reset ran ${formatDate(todayReset.ranAt, "HH:mm")}: ${todayReset.checkedOut} checked out`
-            : `Reset at ${admissions.resetAt} not run yet`}
+            ? `Reset ran ${formatDate(todayReset.ranAt, "h:mm a")}: ${todayReset.checkedOut} checked out`
+            : `Reset at ${formatTime12(admissions.resetAt)} not run yet`}
         </span>
       </div>
       {arrivals.length > 0 ? (
         <p className={`rounded-2xl border px-4 py-2 text-theme-sm ${pastFinalize ? "border-destructive/40 bg-destructive/10 text-destructive" : "border-warning/40 bg-warning/10 text-warning-foreground dark:text-warning"}`}>
-          {arrivals.length} on today&apos;s NCH list still without tonight&apos;s bed — {pastFinalize ? `the finalize time (${admissions.finalizeBy}) has passed` : `finalize before ${admissions.finalizeBy}`}.
+          {arrivals.length} on today&apos;s NCH list still without tonight&apos;s bed — {pastFinalize ? `the finalize time (${formatTime12(admissions.finalizeBy)}) has passed` : `finalize before ${formatTime12(admissions.finalizeBy)}`}.
         </p>
       ) : null}
 

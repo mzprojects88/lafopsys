@@ -264,7 +264,7 @@ export default function HouseSheetPage() {
         {runs.length === 0 ? <p>No checks yet.</p> : null}
         {runs.slice(0, 8).map((r) => (
           <div key={r.id} className="flex flex-wrap items-center gap-x-2">
-            <span className="tabular-nums">{formatDate(r.startedAt, "MMM d, HH:mm")}</span>
+            <span className="tabular-nums">{formatDate(r.startedAt, "MMM d, h:mm a")}</span>
             <StatusBadge domain="calendarSync" status={r.status} label={r.status} />
             <span>{r.tabDate ? `tab ${formatDate(r.tabDate, "MMM d")}` : ""}</span>
             {r.status === "success" ? (

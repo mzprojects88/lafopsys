@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAppSettings } from "@/lib/hooks/use-app-settings";
+import { formatTime12 } from "@/lib/utils/time12";
 import { updateAdmissionTimes } from "@/app/(app)/settings/actions";
 
 /** The daily admission reset (0089): a stay is one night. */
@@ -39,6 +40,9 @@ export function AdmissionTimes() {
           {saving ? "Saving…" : "Save"}
         </Button>
       </div>
+      <span className="text-xs text-muted-foreground">
+        Today: reset at {formatTime12(resetAt ?? admissions.resetAt)}, beds finalized by {formatTime12(finalizeBy ?? admissions.finalizeBy)}.
+      </span>
     </div>
   );
 }

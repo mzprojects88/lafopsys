@@ -175,8 +175,8 @@ export default function PayrollRunPage() {
           </Button>
           <StatusBadge dot domain="payrollRun" status={run.status} />
           <span className="text-theme-xs text-muted-foreground">
-            {run.computedAt ? `computed ${formatDate(run.computedAt, "MMM d, HH:mm")} by ${staffName(run.computedBy)}` : "not computed"}
-            {run.approvedAt ? ` · approved ${formatDate(run.approvedAt, "MMM d, HH:mm")} by ${staffName(run.approvedBy)}${run.segregationWaiver ? " (waiver)" : ""}` : ""}
+            {run.computedAt ? `computed ${formatDate(run.computedAt, "MMM d, h:mm a")} by ${staffName(run.computedBy)}` : "not computed"}
+            {run.approvedAt ? ` · approved ${formatDate(run.approvedAt, "MMM d, h:mm a")} by ${staffName(run.approvedBy)}${run.segregationWaiver ? " (waiver)" : ""}` : ""}
             {run.paidOn ? ` · paid ${formatDate(run.paidOn)}${run.paidReference ? ` ref ${run.paidReference}` : ""}` : ""}
           </span>
         </div>

@@ -197,7 +197,7 @@ function TimesheetsInner() {
                 actions={
                   <div className="flex flex-wrap items-center gap-1.5">
                     {ts ? <StatusBadge dot domain="timesheet2" status={ts.status} /> : <StatusBadge domain="timesheet2" status="draft" label="Not computed" />}
-                    {ts?.approvedAt ? <span className="text-theme-xs text-muted-foreground">approved {formatDate(ts.approvedAt, "MMM d, HH:mm")}</span> : null}
+                    {ts?.approvedAt ? <span className="text-theme-xs text-muted-foreground">approved {formatDate(ts.approvedAt, "MMM d, h:mm a")}</span> : null}
                     {ts?.status === "approved" ? (
                       <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => setReopening(ts)} disabled={frozen || busy !== null}>
                         <RotateCcw className="size-3.5" />
