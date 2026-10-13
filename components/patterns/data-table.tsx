@@ -1,4 +1,7 @@
 "use client";
+// TanStack Table's hook returns functions the React Compiler can't memoize safely (its lint
+// warning, seen in Jesse's checks 2026-10-13): this file opts out of the compiler.
+"use no memo";
 
 import * as React from "react";
 import {
@@ -91,6 +94,7 @@ export function DataTable<TData>({
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = React.useState("");
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- the file opts out of the React Compiler ("use no memo" above)
   const table = useReactTable({
     data,
     columns,

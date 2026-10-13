@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   // Admin-only modules (lib/rbac/hidden.ts) are checked inside, once the session says who is asking.
   return updateSession(request);
 }
