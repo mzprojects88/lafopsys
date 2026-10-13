@@ -330,3 +330,28 @@ export async function updateDocumentSettings(input: DocumentSettingsInput): Prom
   revalidatePath("/settings");
   return { ok: true };
 }
+
+/**
+ * The daily admission reset (0089): when the morning check-out runs and by when tonight's beds
+ * must be assigned (Manila). Admin only; RLS on shared.app_settings is the real gate.
+ */
+export async function updateAdmissionTimes(input: { resetAt: string; finalizeBy: string }): Promise<UpdateClockInRequirementResult> {
+  const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+  if (!HHMM.test(input.resetAt) || !HHMM.test(input.finalizeBy)) return { ok: false, error: "Give both times as HH:MM." };
+  if (input.resetAt >= input.finalizeBy) return { ok: false, error: "The reset must run before the finalize time." };
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+  if (!caller) return { ok: false, error: "Not signed in." };
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") return { ok: false, error: "Only admins can change this setting." };
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({ admission_reset_at: input.resetAt, admission_finalize_by: input.finalizeBy, updated_at: new Date().toISOString(), updated_by: caller.id })
+    .eq("id", true);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/settings");
+  return { ok: true };
+}

@@ -47,5 +47,16 @@ export function useBedNights() {
     return { ok: true };
   }
 
-  return { nights, loading, confirmNight };
+  /** Tonight's stay for a child whose visit continues after the morning reset (0089): same bed
+   * unless another unit is given; carer, arrival and visit carried over, no house-rules step. */
+  async function readmitForTonight(patientId: string, unitId: string | null = null, exceptionReason: string | null = null): Promise<MutationResult> {
+    const { error } = await createClient()
+      .schema("ops")
+      .rpc("readmit_for_tonight", { p_patient_id: patientId, p_unit_id: unitId, p_exception_reason: exceptionReason });
+    if (error) return { ok: false, error: error.message };
+    await Promise.all([bedNightsStore.refetch(), patientsStore.refetch()]);
+    return { ok: true };
+  }
+
+  return { nights, loading, confirmNight, readmitForTonight };
 }

@@ -11,6 +11,7 @@ import { formatDate, todayIso } from "@/lib/utils/date";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { unitForBedPosition } from "@/lib/utils/beds";
+import { arrivalsOn, departuresOn, visitsOf } from "@/lib/utils/visits";
 import { useAllOrientationChecks } from "@/lib/hooks/use-orientation-topics";
 import { orientationProgress } from "@/lib/utils/admission-tasks";
 
@@ -20,8 +21,11 @@ export default function TodayBoardPage() {
   const { units, bedPositions } = useHouseLayout();
   const { topics, checks } = useAllOrientationChecks();
 
-  const arrivals = stays.filter((s) => s.checkInAt === todayIso());
-  const departures = stays.filter((s) => s.checkOutAt === todayIso());
+  // A stay is one night (0089): an arrival is a visit's first night, a departure a visit that
+  // really ended (the morning reset is not a departure).
+  const visits = visitsOf(stays);
+  const arrivals = arrivalsOn(visits, todayIso()).map((v) => v.stays[v.stays.length - 1]!);
+  const departures = departuresOn(visits, todayIso()).map((v) => v.stays[v.stays.length - 1]!);
   const inHouse = stays.filter((s) => s.status === "in_house");
   const overdue = stays.filter((s) => s.status === "overdue");
 

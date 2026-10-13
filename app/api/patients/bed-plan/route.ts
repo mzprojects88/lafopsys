@@ -34,11 +34,16 @@ export async function POST(request: Request) {
     ops.from("units").select("id, code, room_id, active, status, capacity"),
     ops.from("rooms").select("id, name, sort_order"),
     ops.from("bed_positions").select("id, unit_id"),
-    ops.from("stays").select("id, patient_id, bed_position_id, carer_id, check_in_at, expected_checkout_at").in("status", ["in_house", "overdue"]),
+    ops.from("stays").select("id, patient_id, bed_position_id, carer_id, check_in_at, expected_checkout_at, visit_id").in("status", ["in_house", "overdue"]),
     ops.from("bed_reservations").select("id, unit_id, patient_id, carer_sex").eq("status", "active"),
   ]);
   const failed = [units, rooms, positions, stays, holds].find((r) => r.error);
   if (failed?.error) return NextResponse.json({ ok: false, error: failed.error.message }, { status: 500 });
+  // The first night of each open visit (0089).
+  const visitIds = [...new Set((stays.data ?? []).map((s) => s.visit_id ?? s.id))];
+  const firstNights = visitIds.length ? await ops.from("stays").select("visit_id, check_in_at").in("visit_id", visitIds).order("check_in_at") : { data: [] as { visit_id: string; check_in_at: string }[] };
+  const visitStart = new Map<string, string>();
+  for (const n of firstNights.data ?? []) if (!visitStart.has(n.visit_id)) visitStart.set(n.visit_id, n.check_in_at);
 
   const patientIds = [...new Set((stays.data ?? []).map((s) => s.patient_id as string))];
   const carerIds = (stays.data ?? []).flatMap((s) => (s.carer_id ? [s.carer_id as string] : []));
@@ -79,7 +84,8 @@ export async function POST(request: Request) {
       sex: sex ?? undefined,
       familyId: patient?.family_id ?? undefined,
       unitId: unitOfPosition.get(s.bed_position_id) ?? null,
-      nightsHere: daysBetween(s.check_in_at, today),
+      // A stay is one night (0089): the visit's first night is what counts.
+      nightsHere: daysBetween(visitStart.get(s.visit_id ?? s.id) ?? s.check_in_at, today),
       leavesIn: s.expected_checkout_at ? daysBetween(today, s.expected_checkout_at) : undefined,
     };
   });

@@ -33,6 +33,8 @@ import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { houseSheetPeopleStore } from "@/lib/hooks/use-house-sheet-collection";
 import { useBedNights } from "@/lib/hooks/use-bed-nights-collection";
+import { useAdmissionResets } from "@/lib/hooks/use-admission-resets";
+import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { usePickups } from "@/lib/hooks/use-pickups-collection";
 import { useAllOrientationChecks } from "@/lib/hooks/use-orientation-topics";
 import { orientationProgress } from "@/lib/utils/admission-tasks";
@@ -65,7 +67,11 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const { role } = useRole();
   const { patients, stays, loading: patientsLoading } = usePatientsData();
   const { units, bedPositions, loading: layoutLoading } = useHouseLayout();
-  const { nights, confirmNight } = useBedNights();
+  const { nights, confirmNight, readmitForTonight } = useBedNights();
+  // The admission resets every morning (0089): the reset log and the finalize time.
+  const { resets } = useAdmissionResets();
+  const { admissions } = useAppSettings();
+  const [readmitting, setReadmitting] = React.useState<{ stay: Stay; name: string; from: string } | null>(null);
   const { pickups } = usePickups();
   const { topics, checks } = useAllOrientationChecks();
   const [checkIn, setCheckIn] = React.useState<CheckInTarget | null>(null);
@@ -113,6 +119,13 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const tonight = activeStays.filter((s) => !leftStayIds.has(s.id));
   const tonightNight = (s: Stay) => nights.find((n) => n.night === today && n.stayId === s.id);
   const unconfirmed = tonight.filter((s) => !tonightNight(s));
+  // A visit that continues: this morning's reset closed the child's night; one click gives tonight's (0089).
+  const resetStayFor = (patientId: string | null) =>
+    patientId ? stays.find((s) => s.patientId === patientId && s.checkOutReason === "daily_reset" && s.checkOutAt === today) : undefined;
+  const continuing = arrivals.filter((p) => resetStayFor(settledPatientId(p)));
+  const todayReset = resets.find((r) => r.day === today);
+  const nowHm = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Manila" });
+  const pastFinalize = nowHm >= admissions.finalizeBy;
 
   const nameOf = (patientId: string) => {
     const p = patientById.get(patientId);
@@ -126,6 +139,15 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
     setBusy(null);
     if (!r.ok) toast.error(plainError(r.error));
     else toast.success(done);
+  }
+
+  async function readmitAllSame() {
+    setBusy("readmit-all");
+    let failed = 0;
+    for (const p of continuing) if (!(await readmitForTonight(settledPatientId(p)!)).ok) failed += 1;
+    setBusy(null);
+    if (failed) toast.error(`${failed} could not be given last night's bed; do them one by one.`);
+    else toast.success(`${continuing.length} back in last night's bed${continuing.length === 1 ? "" : "s"}`);
   }
 
   async function confirmAllSame() {
@@ -145,7 +167,17 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
         <span>Need a bed: <b className="text-foreground">{arrivals.length}</b></span>
         <span>Tonight confirmed: <b className="text-foreground">{tonight.length - unconfirmed.length}/{tonight.length}</b></span>
         <span>Left the sheet: <b className="text-foreground">{left.length}</b></span>
+        <span>
+          {todayReset
+            ? `Reset ran ${formatDate(todayReset.ranAt, "HH:mm")}: ${todayReset.checkedOut} checked out`
+            : `Reset at ${admissions.resetAt} not run yet`}
+        </span>
       </div>
+      {arrivals.length > 0 ? (
+        <p className={`rounded-2xl border px-4 py-2 text-theme-sm ${pastFinalize ? "border-destructive/40 bg-destructive/10 text-destructive" : "border-warning/40 bg-warning/10 text-warning-foreground dark:text-warning"}`}>
+          {arrivals.length} on today&apos;s NCH list still without tonight&apos;s bed — {pastFinalize ? `the finalize time (${admissions.finalizeBy}) has passed` : `finalize before ${admissions.finalizeBy}`}.
+        </p>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <SectionCard
@@ -154,6 +186,13 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
               <DoorOpen className="size-4 text-muted-foreground" strokeWidth={1.75} />
               Arrived, needs a bed ({arrivals.length})
             </span>
+          }
+          actions={
+            canEdit && continuing.length > 1 ? (
+              <Button size="sm" variant="outline" disabled={busy === "readmit-all"} onClick={readmitAllSame}>
+                All same beds as last night
+              </Button>
+            ) : undefined
           }
           flush
           bodyClassName="flex flex-col divide-y divide-border"
@@ -203,7 +242,22 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                   </Button>
                 ) : null}
                 {canEdit ? (
-                  patient ? (
+                  patient && resetStayFor(patient.id) ? (
+                    // The visit continues (0089): last night's bed in one click, or another bed on the plan.
+                    (() => {
+                      const prev = resetStayFor(patient.id)!;
+                      return (
+                        <div className="flex items-center gap-1">
+                          <Button size="sm" disabled={busy === p.id} onClick={() => run(p.id, () => readmitForTonight(patient.id), `${p.patientName}: same bed as last night.`)}>
+                            <Check /> Same bed as last night ({bedOf(prev.bedPositionId)})
+                          </Button>
+                          <Button size="sm" variant="outline" disabled={busy === p.id} onClick={() => setReadmitting({ stay: prev, name: p.patientName, from: bedOf(prev.bedPositionId) })}>
+                            <BedDouble /> Another bed
+                          </Button>
+                        </div>
+                      );
+                    })()
+                  ) : patient ? (
                     <Button size="sm" onClick={() => setCheckIn({ patient, sheetRow: p })}>
                       <BedDouble /> {hold ? `Confirm bed ${units.find((u) => u.id === hold.unitId)?.code ?? ""}` : "Check in"}
                     </Button>
@@ -355,6 +409,22 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
       </div>
 
       {planning ? <BedPlanDialog onClose={() => setPlanning(false)} /> : null}
+      {readmitting ? (
+        <MoveTonightDialog
+          key={`readmit-${readmitting.stay.id}`}
+          stay={readmitting.stay}
+          name={readmitting.name}
+          from={readmitting.from}
+          title={`Tonight's bed for ${readmitting.name}`}
+          cta="Give this bed"
+          busy={busy === readmitting.stay.patientId}
+          onClose={() => setReadmitting(null)}
+          onMove={async (unitId, exceptionReason) => {
+            await run(readmitting.stay.patientId, () => readmitForTonight(readmitting.stay.patientId, unitId, exceptionReason), "Bed given for tonight.");
+            setReadmitting(null);
+          }}
+        />
+      ) : null}
       {moving ? (
         <MoveTonightDialog
           key={moving.stay.id}
@@ -442,6 +512,8 @@ function MoveTonightDialog({
   busy,
   onClose,
   onMove,
+  title,
+  cta = "Change bed",
 }: {
   stay: Stay;
   currentUnitId?: string;
@@ -450,6 +522,8 @@ function MoveTonightDialog({
   busy: boolean;
   onClose: () => void;
   onMove: (unitId: string, exceptionReason: string | null) => Promise<void>;
+  title?: string;
+  cta?: string;
 }) {
   const { carers, patients } = usePatientsData();
   const [unitId, setUnitId] = React.useState("");
@@ -463,8 +537,8 @@ function MoveTonightDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Change {name}&apos;s bed</DialogTitle>
-          <DialogDescription>Now in bed {from}. Tap the bed for tonight on the plan.</DialogDescription>
+          <DialogTitle>{title ?? `Change ${name}'s bed`}</DialogTitle>
+          <DialogDescription>{title ? `Last night in bed ${from}.` : `Now in bed ${from}.`} Tap the bed for tonight on the plan.</DialogDescription>
         </DialogHeader>
         <FloorPlanBedPicker value={unitId} onChange={setUnitId} options={options} blocked={blocked} />
         <BedRuleException blocked={blocked} value={exception} onChange={setException} />
@@ -473,7 +547,7 @@ function MoveTonightDialog({
             Cancel
           </Button>
           <Button disabled={!unitId || busy || (isException(unitId) && !reason)} onClick={() => onMove(unitId, reason)}>
-            {busy ? "Changing…" : "Change bed"}
+            {busy ? "Saving…" : cta}
           </Button>
         </DialogFooter>
       </DialogContent>

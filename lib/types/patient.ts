@@ -162,6 +162,8 @@ export interface Stay {
   arrivalMode?: ArrivalMode;
   arrivalRideId?: string;
   arrivalTripId?: string;
+  /** The nights of one visit share the first night's stay id (0089). */
+  visitId?: string;
 }
 
 export interface Appointment {

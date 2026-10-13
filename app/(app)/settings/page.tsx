@@ -9,6 +9,7 @@ import { ClockInRequirementToggle } from "@/components/modules/settings/clock-in
 import { OvertimeThresholdField } from "@/components/modules/settings/overtime-threshold-field";
 import { LafHouseLocationField } from "@/components/modules/settings/laf-house-location-field";
 import { DocumentSettingsField } from "@/components/modules/settings/document-settings-field";
+import { AdmissionTimes } from "@/components/modules/settings/admission-times";
 import { CalendarSheetSyncToggle } from "@/components/modules/settings/calendar-sheet-sync-toggle";
 import { HouseSheetSyncToggle } from "@/components/modules/settings/house-sheet-sync-toggle";
 import { BedMoveHours } from "@/components/modules/settings/bed-move-hours";
@@ -64,6 +65,9 @@ export default function SettingsPage() {
           <HouseSheetSyncToggle />
         </SectionCard>
 
+        <SectionCard title="Admissions: daily reset">
+          <AdmissionTimes />
+        </SectionCard>
         <SectionCard title="Bed moves">
           <BedMoveHours />
         </SectionCard>

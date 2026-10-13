@@ -45,6 +45,9 @@ export interface AppSettings extends HrSettings {
   /** What prints on receipts and donee certificates (0085): the registration line, the
    * foundation's address and TIN, and who signs certificates (a staff id). */
   documents: { header: string; orgAddress: string; orgTin: string; signatoryId: string | null };
+  /** The daily admission reset (0089), Manila "HH:MM": when the morning check-out runs and by
+   * when tonight's beds must be assigned. */
+  admissions: { resetAt: string; finalizeBy: string };
 }
 
 interface AppSettingsRow {
@@ -72,6 +75,8 @@ interface AppSettingsRow {
   org_address: string | null;
   org_tin: string | null;
   certificate_signatory_id: string | null;
+  admission_reset_at: string | null;
+  admission_finalize_by: string | null;
 }
 
 export const HR_SETTINGS_DEFAULTS: HrSettings = {
@@ -96,6 +101,7 @@ const DEFAULTS: AppSettings = {
   lafHouse: { lat: null, lng: null, radiusM: 20 },
   bedMoves: { from: "07:00", until: "20:00" },
   documents: { header: "", orgAddress: "", orgTin: "", signatoryId: null },
+  admissions: { resetAt: "06:00", finalizeBy: "18:00" },
   ...HR_SETTINGS_DEFAULTS,
 };
 
@@ -105,7 +111,7 @@ const SELECT =
   "leave_vl_days_per_year, leave_sl_days_per_year, leave_vl_convertible, minimum_wage_region, " +
   "compliance_pen_last_digit, compliance_employer_initial, compliance_tracking_from, compliance_lead_days, " +
   "laf_house_latitude, laf_house_longitude, laf_house_radius_m, bed_moves_from, bed_moves_until, " +
-  "report_header, org_address, org_tin, certificate_signatory_id";
+  "report_header, org_address, org_tin, certificate_signatory_id, admission_reset_at, admission_finalize_by";
 
 export const appSettingsStore = createCollection<AppSettings>({
   key: "shared.app_settings",
@@ -139,6 +145,7 @@ export const appSettingsStore = createCollection<AppSettings>({
       },
       bedMoves: { from: (row.bed_moves_from ?? "07:00").slice(0, 5), until: (row.bed_moves_until ?? "20:00").slice(0, 5) },
       documents: { header: row.report_header ?? "", orgAddress: row.org_address ?? "", orgTin: row.org_tin ?? "", signatoryId: row.certificate_signatory_id ?? null },
+      admissions: { resetAt: (row.admission_reset_at ?? "06:00").slice(0, 5), finalizeBy: (row.admission_finalize_by ?? "18:00").slice(0, 5) },
     };
   },
 });

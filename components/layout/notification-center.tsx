@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, CloudOff, Fuel, MapPin, Wrench, type LucideIcon } from "lucide-react";
+import { BedDouble, Bell, CloudOff, Fuel, MapPin, Wrench, type LucideIcon } from "lucide-react";
+import { usePatientsData } from "@/lib/hooks/use-patients-collection";
+import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
+import { houseSheetPatientId } from "@/lib/types/house-sheet";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -49,11 +52,49 @@ export function NotificationCenter() {
   // Only they load that data; everyone else's bell is unchanged.
   const fleet = roles.includes("admin") || roles.includes("driver");
   const tracker = roles.includes("admin") || roles.includes("finance");
+  // Daily admission reset (0089): tonight's beds must be finalized by the set time, for those who assign them.
+  const admissions = roles.includes("admin") || roles.includes("social_worker") || roles.includes("inventory_lead");
   const bell = (more: Reminder[]) => <BellPopover reminders={[...reminders, ...more]} />;
-  if (fleet && tracker) return <TrackerReminder>{(t) => <FleetReminders>{(f) => bell([...t, ...f])}</FleetReminders>}</TrackerReminder>;
-  if (fleet) return <FleetReminders>{bell}</FleetReminders>;
-  if (tracker) return <TrackerReminder>{bell}</TrackerReminder>;
-  return bell([]);
+  const rest = (a: Reminder[]) => {
+    const withA = (more: Reminder[]) => bell([...a, ...more]);
+    if (fleet && tracker) return <TrackerReminder>{(t) => <FleetReminders>{(f) => withA([...t, ...f])}</FleetReminders>}</TrackerReminder>;
+    if (fleet) return <FleetReminders>{withA}</FleetReminders>;
+    if (tracker) return <TrackerReminder>{withA}</TrackerReminder>;
+    return withA([]);
+  };
+  if (admissions) return <AdmissionReminder>{rest}</AdmissionReminder>;
+  return rest([]);
+}
+
+/** From an hour before the finalize time until every name on today's NCH list has tonight's bed (0089). */
+function AdmissionReminder({ children }: { children: (reminders: Reminder[]) => React.ReactNode }) {
+  const { admissions, loading } = useAppSettings();
+  const { stays } = usePatientsData();
+  const { people } = useHouseSheetPeople();
+  const now = useNow();
+  const hm = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Manila" });
+  const [fh, fm] = admissions.finalizeBy.split(":").map(Number);
+  const warnFrom = `${String(fh === 0 ? 23 : fh - 1).padStart(2, "0")}:${String(fm).padStart(2, "0")}`;
+  const inHouse = new Set(stays.filter((s) => s.status === "in_house" || s.status === "overdue").map((s) => s.patientId));
+  const waiting = people.filter((p) => p.offSheetAt === null && p.matchStatus !== "dismissed" && !(houseSheetPatientId(p) && inHouse.has(houseSheetPatientId(p)!))).length;
+  const due = !loading && waiting > 0 && hm >= warnFrom;
+  return (
+    <>
+      {children(
+        due
+          ? [
+              {
+                id: "admissions-finalize",
+                title: hm >= admissions.finalizeBy ? "Tonight's beds are past the finalize time" : `Finalize tonight's beds by ${admissions.finalizeBy}`,
+                body: `${waiting} on today's NCH list ${waiting === 1 ? "has" : "have"} no bed for tonight yet.`,
+                href: "/patients/house-sheet",
+                icon: BedDouble,
+              },
+            ]
+          : [],
+      )}
+    </>
+  );
 }
 
 /** The tracker is read every hour. On 2026-10-12 it was found stopped for four days, unnoticed. */

@@ -36,6 +36,7 @@ import { arrivalLabel } from "@/lib/utils/arrival";
 import { isFirstStay } from "@/lib/utils/admission-tasks";
 import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
 import { isActiveStay, unitForBedPosition } from "@/lib/utils/beds";
+import { visitOfStay } from "@/lib/utils/visits";
 import type { Patient, Stay } from "@/lib/types/patient";
 
 export default function PatientDetailPage({ params }: { params: Promise<{ patientId: string }> }) {
@@ -227,6 +228,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
                       <span className="text-theme-xs text-muted-foreground">
                         {formatDate(stay.checkInAt)} — {stay.checkOutAt ? formatDate(stay.checkOutAt) : "current"}
                         {stay.expectedCheckoutAt && !stay.checkOutAt && ` · expected ${formatDate(stay.expectedCheckoutAt)}`}
+                        {(() => {
+                          // A stay is one night (0089): say which night of the visit this is.
+                          const visit = visitOfStay(stay, patientStays);
+                          return visit.stays.length > 1 ? ` · night ${visit.stays.findIndex((s) => s.id === stay.id) + 1} of ${visit.stays.length}` : "";
+                        })()}
                       </span>
                       <span className="text-theme-xs text-muted-foreground">
                         Arrived by {arrivalLabel(stay.arrivalMode, rides.find((r) => r.id === stay.arrivalRideId)?.app)}

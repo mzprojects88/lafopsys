@@ -14,6 +14,7 @@ import type { BedPosition, Unit } from "@/lib/types/house-ops";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { isActiveStay, unitForBedPosition } from "@/lib/utils/beds";
 import { formatDate, todayIso } from "@/lib/utils/date";
+import { visitNights, visitsOf } from "@/lib/utils/visits";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 
 function buildColumns(patients: Patient[], units: Unit[], bedPositions: BedPosition[]): ColumnDef<Stay>[] {
@@ -88,24 +89,20 @@ export default function StayHistoryPage() {
 
   // In the house = checked in, not checked out (overdue included): one count everywhere.
   const inHouseCount = stays.filter(isActiveStay).length;
-  const discharged = stays.filter((s) => s.status === "checked_out").length;
-  const avgLengthDays = Math.round(
-    stays.reduce((sum, s) => {
-      const start = parseISO(s.checkInAt);
-      const end = s.checkOutAt ? parseISO(s.checkOutAt) : parseISO(todayIso());
-      return sum + Math.max(0, differenceInCalendarDays(end, start));
-    }, 0) / (stays.length || 1)
-  );
+  // A stay is one night (0089): visits group the nights back together.
+  const visits = visitsOf(stays);
+  const ended = visits.filter((v) => !v.active).length;
+  const avgVisitNights = Math.round(visits.reduce((sum, v) => sum + visitNights(v), 0) / (visits.length || 1));
 
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <PageHeader title="Stay History" description="Every house stay on record, past and present." />
+      <PageHeader title="Stay History" description="Every night in the house on record; a visit is its nights together." />
 
       <KpiGrid>
-        <KpiCard label="Total Stays" value={stays.length} icon={BedDouble} />
+        <KpiCard label="Visits" value={visits.length} icon={BedDouble} />
         <KpiCard label="In the house now" value={inHouseCount} icon={DoorOpen} />
-        <KpiCard label="Checked out" value={discharged} icon={LogOut} />
-        <KpiCard label="Avg. Length of Stay" value={`${avgLengthDays}d`} icon={Timer} />
+        <KpiCard label="Visits ended" value={ended} icon={LogOut} />
+        <KpiCard label="Avg. nights per visit" value={`${avgVisitNights}`} icon={Timer} />
       </KpiGrid>
 
       <DataTable

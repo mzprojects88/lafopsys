@@ -78,6 +78,7 @@ interface StayRow {
   arrival_mode: Stay["arrivalMode"] | null;
   arrival_ride_id: string | null;
   arrival_trip_id: string | null;
+  visit_id: string | null;
 }
 
 interface AppointmentRow {
@@ -226,6 +227,7 @@ function toStay(row: StayRow): Stay {
     arrivalMode: row.arrival_mode ?? undefined,
     arrivalRideId: row.arrival_ride_id ?? undefined,
     arrivalTripId: row.arrival_trip_id ?? undefined,
+    visitId: row.visit_id ?? undefined,
   };
 }
 
