@@ -12,6 +12,8 @@ export interface Donor {
   phone?: string;
   taxJurisdiction: "US" | "PH";
   tin?: string;
+  /** Printed on BIR Form 2322 (0085). */
+  address?: string;
   firstGiftDate: string;
   lastGiftDate: string;
   lifetimeValue: number;
@@ -50,12 +52,18 @@ export type ArStatus = "draft" | "issued" | "sent" | "acknowledged";
 export interface AcknowledgmentReceipt {
   id: string;
   donationId: string;
+  /** LAF-CSH-YYYY-NNNN from the database series (0085); older rows keep their AR-YYYY-… number. */
   sequenceNumber: string;
   entity: Entity;
   status: ArStatus;
   issuedAt?: string;
   sentAt?: string;
   acknowledgedAt?: string;
+  issuedBy?: string;
+  /** Accounting's paper AR / service invoice number, printed as reference. */
+  bookletNumber?: string;
+  amount?: number;
+  currency?: Currency;
 }
 
 export type DoneeCertStatus = "requested" | "prepared" | "approved" | "released" | "filed";
@@ -63,10 +71,16 @@ export type DoneeCertStatus = "requested" | "prepared" | "approved" | "released"
 export interface DoneeCertificate {
   id: string;
   donationId: string;
+  /** DC-YYYY-NNNN from the database series (0085). */
   controlNumber: string;
   status: DoneeCertStatus;
   requestedAt: string;
   releasedAt?: string;
+  kind?: DonationKind;
+  amount?: number;
+  description?: string;
+  signatoryId?: string;
+  releasedBy?: string;
 }
 
 export interface Campaign {

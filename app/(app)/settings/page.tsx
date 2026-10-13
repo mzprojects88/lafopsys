@@ -8,6 +8,7 @@ import { ResetDemoDataButton } from "@/components/modules/settings/reset-demo-da
 import { ClockInRequirementToggle } from "@/components/modules/settings/clock-in-requirement-toggle";
 import { OvertimeThresholdField } from "@/components/modules/settings/overtime-threshold-field";
 import { LafHouseLocationField } from "@/components/modules/settings/laf-house-location-field";
+import { DocumentSettingsField } from "@/components/modules/settings/document-settings-field";
 import { CalendarSheetSyncToggle } from "@/components/modules/settings/calendar-sheet-sync-toggle";
 import { HouseSheetSyncToggle } from "@/components/modules/settings/house-sheet-sync-toggle";
 import { BedMoveHours } from "@/components/modules/settings/bed-move-hours";
@@ -52,6 +53,9 @@ export default function SettingsPage() {
           <LafHouseLocationField />
         </SectionCard>
 
+        <SectionCard id="documents" className="scroll-mt-24" title="Receipts & certificates">
+          <DocumentSettingsField />
+        </SectionCard>
         <SectionCard title={<CardTitleWithIcon icon={CalendarDays}>Master Calendar</CardTitleWithIcon>}>
           <CalendarSheetSyncToggle />
         </SectionCard>

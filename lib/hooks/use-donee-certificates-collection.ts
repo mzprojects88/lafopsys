@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
-import type { DoneeCertificate, DoneeCertStatus } from "@/lib/types/donor";
+import type { DoneeCertificate, DoneeCertStatus, DonationKind } from "@/lib/types/donor";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
 
@@ -13,6 +13,11 @@ interface DoneeCertificateRow {
   status: DoneeCertStatus;
   requested_at: string;
   released_at: string | null;
+  kind: DonationKind | null;
+  amount: number | string | null;
+  description: string | null;
+  signatory_id: string | null;
+  released_by: string | null;
 }
 
 function toDoneeCertificate(row: DoneeCertificateRow): DoneeCertificate {
@@ -23,6 +28,11 @@ function toDoneeCertificate(row: DoneeCertificateRow): DoneeCertificate {
     status: row.status,
     requestedAt: row.requested_at,
     releasedAt: row.released_at ?? undefined,
+    kind: row.kind ?? undefined,
+    amount: row.amount == null ? undefined : Number(row.amount),
+    description: row.description ?? undefined,
+    signatoryId: row.signatory_id ?? undefined,
+    releasedBy: row.released_by ?? undefined,
   };
 }
 
@@ -38,33 +48,23 @@ export const doneeCertificatesStore = createCollection<DoneeCertificate[]>({
   },
 });
 
+/** Control numbers come from the database series (0085); the browser requests and advances, never writes. */
 export function useDoneeCertificatesData() {
   const { data: certificates, loading } = useCollection(doneeCertificatesStore);
 
-  async function generateCertificate(donationId: string): Promise<MutationResult> {
-    const supabase = createClient();
-    const controlNumber = `DC-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
-    const { error } = await supabase.schema("ops").from("donee_certificates").insert({
-      id: crypto.randomUUID(),
-      donation_id: donationId,
-      control_number: controlNumber,
-      status: "requested",
-      requested_at: new Date().toISOString(),
-    });
+  async function requestCertificate(donationId: string): Promise<MutationResult & { number?: string }> {
+    const { data, error } = await createClient().schema("ops").rpc("request_donee_certificate", { p_donation: donationId });
     if (error) return { ok: false, error: error.message };
     await doneeCertificatesStore.refetch();
-    return { ok: true };
+    return { ok: true, number: data as string };
   }
 
-  async function advanceStatus(id: string, nextStatus: DoneeCertStatus): Promise<MutationResult> {
-    const supabase = createClient();
-    const row: Record<string, unknown> = { status: nextStatus };
-    if (nextStatus === "released") row.released_at = new Date().toISOString();
-    const { error } = await supabase.schema("ops").from("donee_certificates").update(row).eq("id", id);
+  async function advanceStatus(id: string): Promise<MutationResult & { status?: DoneeCertStatus }> {
+    const { data, error } = await createClient().schema("ops").rpc("advance_donee_certificate", { p_id: id });
     if (error) return { ok: false, error: error.message };
     await doneeCertificatesStore.refetch();
-    return { ok: true };
+    return { ok: true, status: data as DoneeCertStatus };
   }
 
-  return { certificates, loading, generateCertificate, advanceStatus, refetch: doneeCertificatesStore.refetch };
+  return { certificates, loading, requestCertificate, advanceStatus, refetch: doneeCertificatesStore.refetch };
 }

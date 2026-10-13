@@ -17,6 +17,7 @@ interface DonorRow {
   phone: string | null;
   tax_jurisdiction: Donor["taxJurisdiction"];
   tin: string | null;
+  address: string | null;
   first_gift_date: string | null;
   last_gift_date: string | null;
   lifetime_value: number;
@@ -58,6 +59,7 @@ function toDonor(row: DonorRow): Donor {
     lastGiftDate: row.last_gift_date ?? "",
     lifetimeValue: row.lifetime_value,
     giftCount: row.gift_count,
+    address: row.address ?? undefined,
   };
 }
 
@@ -177,6 +179,7 @@ export function useDonorsData() {
       email: input.email || null,
       phone: input.phone || null,
       tin: input.tin || null,
+      address: input.address || null,
     };
     const supabase = createClient();
     const res = id

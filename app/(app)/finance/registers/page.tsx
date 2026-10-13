@@ -9,10 +9,12 @@ import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useAcknowledgmentReceiptsData } from "@/lib/hooks/use-acknowledgment-receipts-collection";
 import { useDoneeCertificatesData } from "@/lib/hooks/use-donee-certificates-collection";
 import type { AcknowledgmentReceipt, DoneeCertificate, Donation, Donor } from "@/lib/types/donor";
+import { registerGaps } from "@/lib/utils/register-gaps";
 
 function buildArColumns(donations: Donation[], donors: Donor[]): ColumnDef<AcknowledgmentReceipt>[] {
   return [
-    { accessorKey: "sequenceNumber", header: "Sequence #" },
+    { accessorKey: "sequenceNumber", header: "AR No." },
+    { accessorKey: "bookletNumber", header: "Booklet AR", cell: ({ row }) => row.original.bookletNumber ?? "—" },
     {
       id: "donor",
       header: "Donor",
@@ -48,10 +50,14 @@ export default function RegistersPage() {
   const { certificates } = useDoneeCertificatesData();
   const arColumns = buildArColumns(donations, donors);
   const certColumns = buildCertColumns(donations, donors);
+  const gaps = registerGaps([...receipts.map((r) => r.sequenceNumber), ...certificates.map((c) => c.controlNumber)]);
 
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <PageHeader title="AR / Donee Cert Registers" description="Sequential numbering with gap detection — shared with the Donors module." />
+      <PageHeader
+        title="AR / Donee Cert Registers"
+        description={gaps.length ? `Gaps found: ${gaps.map((g) => `${g.series} is missing ${g.missing} number${g.missing === 1 ? "" : "s"}`).join("; ")}.` : "Numbered by the database, one series per year — no gaps."}
+      />
       <Tabs defaultValue="ar">
         <TabsList>
           <TabsTrigger value="ar">Acknowledgment Receipts</TabsTrigger>

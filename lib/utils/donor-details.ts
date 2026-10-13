@@ -10,6 +10,8 @@ export interface DonorInput {
   email: string;
   phone: string;
   tin: string;
+  /** Street, city; printed on BIR Form 2322 (0085). */
+  address: string;
 }
 
 /** "Ms. Maria  Santos-Cruz" and "maria santos cruz" are the same donor for duplicate checks. */
@@ -41,6 +43,7 @@ export function checkDonorInput(raw: DonorInput): { ok: true; value: DonorInput 
     email: raw.email.trim(),
     phone: raw.phone.trim(),
     tin: raw.tin.trim(),
+    address: (raw.address ?? "").replace(/\s+/g, " ").trim(),
   };
   if (value.name.length < 2) return { ok: false, error: "Enter the donor's name." };
   if (value.name.length > 200) return { ok: false, error: "The name is too long (200 characters at most)." };
@@ -48,6 +51,7 @@ export function checkDonorInput(raw: DonorInput): { ok: true; value: DonorInput 
   if (value.email && (value.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.email))) return { ok: false, error: "That email address doesn't look right." };
   if (value.phone && !/^[0-9+()\-\s]{7,30}$/.test(value.phone)) return { ok: false, error: "Phone: digits, spaces, + ( ) and - only." };
   if (value.tin && !/^[0-9\-\s]{9,20}$/.test(value.tin)) return { ok: false, error: "TIN: 9 to 15 digits, dashes allowed (e.g. 123-456-789-000)." };
+  if (value.address.length > 300) return { ok: false, error: "Address: at most 300 characters." };
   return { ok: true, value };
 }
 

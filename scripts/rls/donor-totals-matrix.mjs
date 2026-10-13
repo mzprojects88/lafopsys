@@ -337,6 +337,48 @@ async function main() {
     record("0084 scenarios", "SKIP", "0084 not applied (pass it as a pre-flight file)");
   }
 
+  // ---- 0085: cash ARs and donee certificates numbered by the database ----
+  const has0085 = (await client.query("select to_regclass('ops.doc_counters') is not null as ok")).rows[0].ok;
+  if (has0085) {
+    const C1 = "00000000-0000-4000-8000-0000000d00c1";
+    const cashGift = `insert into ops.donations (id, donor_id, date, receiving_entity, kind, total_value, currency, payment_method, invoice_number) values ('${C1}', '${D1}', '2026-10-13', 'PH_SEC', 'cash', 1250.5, 'PHP', 'gcash', '0531')`;
+    const isSeries = (prefix) => (r) => r.ok && new RegExp(`^${prefix}-\\d{4}-\\d{4}$`).test(r.data[0].n);
+    const invalid = (r) => !r.ok && r.code === "22023";
+    await scenario(ids, "finance issues a LAF-CSH receipt for a cash gift; it carries the booklet number", "finance",
+      then(cashGift, `select ops.issue_cash_ar('${C1}') as n`, `select sequence_number as n from ops.acknowledgment_receipts where donation_id = '${C1}' and status = 'issued' and booklet_number = '0531' and amount = 1250.5 and issued_by = auth.uid()`),
+      isSeries("LAF-CSH"));
+    await scenario(ids, "a gift in kind is receipted in LAF Inventory, not here", "finance", () => client.query(`select ops.issue_cash_ar('${G1}')`), invalid);
+    await scenario(ids, "a cash gift is receipted once", "finance", then(cashGift, `select ops.issue_cash_ar('${C1}')`, `select ops.issue_cash_ar('${C1}')`), invalid);
+    await scenario(ids, "the chef can't issue a receipt", "chef", () => client.query(`select ops.issue_cash_ar('${G1}')`), denied);
+    await scenario(ids, "inventory staff can't issue a receipt", "inventory_staff", () => client.query(`select ops.issue_cash_ar('${G1}')`), denied);
+    await scenario(ids, "the browser can't write the receipt tables", "finance",
+      () => client.query(`insert into ops.acknowledgment_receipts (donation_id, sequence_number, entity) values ('${G1}', 'AR-X', 'PH_SEC')`), denied);
+    await scenario(ids, "nobody takes a number directly", "finance", () => client.query("select ops.next_doc_number('LAF-CSH', 2026)"), denied);
+    await scenario(ids, "a receipt goes issued -> sent -> acknowledged and then stops", "office_admin",
+      then(cashGift, `select ops.issue_cash_ar('${C1}')`, `select ops.advance_ar(id) from ops.acknowledgment_receipts where donation_id = '${C1}'`,
+        `select ops.advance_ar(id) as n from ops.acknowledgment_receipts where donation_id = '${C1}'`),
+      (r) => r.ok && r.data[0].n === "acknowledged");
+    await scenario(ids, "an acknowledged receipt can't be advanced", "finance",
+      then(cashGift, `select ops.issue_cash_ar('${C1}')`, `select ops.advance_ar(id) from ops.acknowledgment_receipts where donation_id = '${C1}'`,
+        `select ops.advance_ar(id) from ops.acknowledgment_receipts where donation_id = '${C1}'`, `select ops.advance_ar(id) from ops.acknowledgment_receipts where donation_id = '${C1}'`),
+      invalid);
+    await scenario(ids, "finance requests a DC certificate for a gift in kind", "finance",
+      then(`select ops.request_donee_certificate('${G1}')`, `select control_number as n from ops.donee_certificates where donation_id = '${G1}' and kind = 'in_kind' and amount = 100`), isSeries("DC"));
+    await scenario(ids, "and for a cash gift; a certificate is requested once", "finance",
+      then(cashGift, `select ops.request_donee_certificate('${C1}')`, `select ops.request_donee_certificate('${C1}')`), invalid);
+    await scenario(ids, "the chef can't request a certificate", "chef", () => client.query(`select ops.request_donee_certificate('${G1}')`), denied);
+    await scenario(ids, "a released certificate records who released it", "finance",
+      then(`select ops.request_donee_certificate('${G1}')`, `select ops.advance_donee_certificate(id) from ops.donee_certificates where donation_id = '${G1}'`,
+        `select ops.advance_donee_certificate(id) from ops.donee_certificates where donation_id = '${G1}'`,
+        `select ops.advance_donee_certificate(id) as n from ops.donee_certificates where donation_id = '${G1}'`,
+        `select status as n from ops.donee_certificates where donation_id = '${G1}' and released_by = auth.uid() and released_at is not null`),
+      (r) => r.ok && r.data[0].n === "released");
+    await scenario(ids, "the chef can't read the receipt or certificate registers", "chef",
+      () => client.query("select count(*)::int as n from ops.acknowledgment_receipts"), (r) => (r.ok && r.data[0].n === 0) || denied(r));
+  } else {
+    record("0085 scenarios", "SKIP", "0085 not applied (pass it as a pre-flight file)");
+  }
+
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
   console.table(results);

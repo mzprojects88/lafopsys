@@ -297,3 +297,36 @@ export async function updateBedMoveHours(input: { from: string; until: string })
   revalidatePath("/settings");
   return { ok: true };
 }
+
+export type DocumentSettingsInput = { header: string; orgAddress: string; orgTin: string; signatoryId: string | null };
+
+/**
+ * What prints on receipts and donee certificates (0085): the registration line, the
+ * foundation's address and TIN, and who signs certificates. Admin only, like the rest of
+ * this page; RLS on shared.app_settings is the real gate.
+ */
+export async function updateDocumentSettings(input: DocumentSettingsInput): Promise<UpdateClockInRequirementResult> {
+  const clean = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
+  const header = clean(input.header, 300);
+  const orgAddress = clean(input.orgAddress, 300);
+  const orgTin = clean(input.orgTin, 20);
+  const signatoryId = typeof input.signatoryId === "string" && /^[0-9a-f-]{36}$/i.test(input.signatoryId) ? input.signatoryId : null;
+  if (orgTin && !/^[0-9\-\s]{9,20}$/.test(orgTin)) return { ok: false, error: "TIN: 9 to 15 digits, dashes allowed." };
+
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+  if (!caller) return { ok: false, error: "Not signed in." };
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") return { ok: false, error: "Only admins can change this setting." };
+
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({ report_header: header, org_address: orgAddress, org_tin: orgTin, certificate_signatory_id: signatoryId, updated_at: new Date().toISOString(), updated_by: caller.id })
+    .eq("id", true);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/settings");
+  return { ok: true };
+}

@@ -3,7 +3,8 @@
 import { use, useState } from "react";
 import { notFound } from "next/navigation";
 import { toast } from "sonner";
-import { FileSignature, Award, Pencil, Mail, Phone, IdCard } from "lucide-react";
+import { FileSignature, Award, Download, Pencil, Mail, Phone, IdCard } from "lucide-react";
+import { downloadPdf } from "@/lib/utils/download-pdf";
 import { EntityDetailHeader } from "@/components/patterns/entity-detail-header";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { EmptyState } from "@/components/patterns/empty-state";
@@ -27,8 +28,8 @@ import { DonorFormDialog } from "@/components/modules/donors/donor-form-dialog";
 export default function DonorDetailPage({ params }: { params: Promise<{ donorId: string }> }) {
   const { donorId } = use(params);
   const { donors, donations, loading } = useDonorsData();
-  const { receipts, generateReceipt } = useAcknowledgmentReceiptsData();
-  const { certificates, generateCertificate } = useDoneeCertificatesData();
+  const { receipts, issueCashAr } = useAcknowledgmentReceiptsData();
+  const { certificates, requestCertificate } = useDoneeCertificatesData();
   const donor = donors.find((d) => d.id === donorId);
   const { roles } = useRole();
   const { canEdit } = useModuleAccess();
@@ -43,22 +44,28 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
   const donorDonations = donations.filter((d) => d.donorId === donor.id).sort((a, b) => b.date.localeCompare(a.date));
   const cashTotal = donorDonations.filter((d) => d.kind === "cash").reduce((s, d) => s + d.totalValue, 0);
 
-  async function handleGenerateReceipt(donationId: string, entity: "US_501C3" | "PH_SEC") {
-    const result = await generateReceipt(donationId, entity);
+  // Cash ARs and certificates are numbered by the database (0085); the PDFs are built on download.
+  async function handleIssueReceipt(donationId: string) {
+    const result = await issueCashAr(donationId);
     if (!result.ok) {
-      toast.error(`Couldn't generate the receipt: ${result.error}`);
+      toast.error(`Couldn't issue the receipt: ${result.error}`);
       return;
     }
-    toast.success("Acknowledgment receipt generated");
+    toast.success(`Acknowledgment receipt ${result.number} issued`);
   }
 
-  async function handleGenerateCertificate(donationId: string) {
-    const result = await generateCertificate(donationId);
+  async function handleRequestCertificate(donationId: string) {
+    const result = await requestCertificate(donationId);
     if (!result.ok) {
-      toast.error(`Couldn't generate the certificate: ${result.error}`);
+      toast.error(`Couldn't request the certificate: ${result.error}`);
       return;
     }
-    toast.success("Donee certificate requested");
+    toast.success(`Donee certificate ${result.number} requested`);
+  }
+
+  async function handleDownload(url: string, body: Record<string, unknown>, filename: string) {
+    const result = await downloadPdf(url, body, filename);
+    if (!result.ok) toast.error(result.error);
   }
 
   return (
@@ -153,27 +160,32 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
                       </div>
                       <div className="flex items-center gap-2">
                         {ar ? (
-                          <StatusBadge domain="ar" status={ar.status} />
-                        ) : !editor ? null : (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleGenerateReceipt(d.id, d.receivingEntity)}
-                          >
+                          <>
+                            <StatusBadge domain="ar" status={ar.status} />
+                            {ar.status !== "draft" ? (
+                              <Button size="sm" variant="ghost" title={`Download ${ar.sequenceNumber}`} onClick={() => handleDownload("/api/ar/pdf", { receiptId: ar.id }, `${ar.sequenceNumber}.pdf`)}>
+                                <Download />
+                                AR
+                              </Button>
+                            ) : null}
+                          </>
+                        ) : !editor || d.kind !== "cash" || donor.type === "anonymous" ? null : (
+                          <Button size="sm" variant="ghost" onClick={() => handleIssueReceipt(d.id)}>
                             <FileSignature />
-                            Generate AR
+                            Issue AR
                           </Button>
                         )}
-                        {editor && !cert && d.kind === "in_kind" && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleGenerateCertificate(d.id)}
-                          >
+                        {cert ? (
+                          <Button size="sm" variant="ghost" title={`Download ${cert.controlNumber} (${cert.status})`} onClick={() => handleDownload("/api/donee-cert/pdf", { certificateId: cert.id }, `${cert.controlNumber}.pdf`)}>
+                            <Award />
+                            2322
+                          </Button>
+                        ) : editor && donor.type !== "anonymous" ? (
+                          <Button size="sm" variant="ghost" onClick={() => handleRequestCertificate(d.id)}>
                             <Award />
                             Request Cert
                           </Button>
-                        )}
+                        ) : null}
                         <span className="font-medium tabular-nums">{formatCurrency(d.totalValue, d.currency)}</span>
                       </div>
                   </div>

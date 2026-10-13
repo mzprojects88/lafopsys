@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { toast } from "sonner";
+import { Download, Stamp } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { LifecycleStepper } from "@/components/patterns/lifecycle-stepper";
 import { EmptyState } from "@/components/patterns/empty-state";
@@ -9,47 +11,60 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useAcknowledgmentReceiptsData } from "@/lib/hooks/use-acknowledgment-receipts-collection";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import type { AcknowledgmentReceipt, ArStatus } from "@/lib/types/donor";
 import { formatCurrency } from "@/lib/utils/currency";
+import { formatDate } from "@/lib/utils/date";
+import { downloadPdf } from "@/lib/utils/download-pdf";
 
 const STAGES: ArStatus[] = ["draft", "issued", "sent", "acknowledged"];
 const STAGE_LABELS = ["Draft", "Issued", "Sent", "Acknowledged"];
 
+/**
+ * Cash acknowledgment receipts (0085): numbered by the database (LAF-CSH-YYYY-NNNN), printed
+ * on demand. Gifts in kind are receipted in LAF Inventory, so only cash gifts are offered here.
+ */
 export default function ReceiptsPage() {
   const { donations, donors } = useDonorsData();
-  const { receipts, generateReceipt, advanceStatus } = useAcknowledgmentReceiptsData();
+  const { receipts, issueCashAr, advanceStatus } = useAcknowledgmentReceiptsData();
+  const { canEdit } = useModuleAccess();
+  const editor = canEdit("donors");
+  const [busy, setBusy] = useState<string | null>(null);
   const outstanding = receipts.filter((a) => a.status !== "acknowledged");
-  const donationsNeedingAR = donations.filter((d) => !receipts.some((r) => r.donationId === d.id));
+  const cashWithoutAr = donations.filter((d) => d.kind === "cash" && !receipts.some((r) => r.donationId === d.id));
 
   async function advance(ar: AcknowledgmentReceipt) {
     const idx = STAGES.indexOf(ar.status);
     if (idx >= STAGES.length - 1) return;
-    const result = await advanceStatus(ar.id, STAGES[idx + 1]);
-    if (!result.ok) {
-      toast.error(`Couldn't advance the receipt: ${result.error}`);
-      return;
-    }
-    toast.success(`AR ${ar.sequenceNumber} marked ${STAGE_LABELS[idx + 1]}`);
+    const result = await advanceStatus(ar.id);
+    if (!result.ok) return void toast.error(`Couldn't advance the receipt: ${result.error}`);
+    toast.success(`AR ${ar.sequenceNumber} marked ${STAGE_LABELS[STAGES.indexOf(result.status ?? ar.status)]}`);
   }
 
-  async function handleGenerate(donationId: string, entity: "US_501C3" | "PH_SEC") {
-    const result = await generateReceipt(donationId, entity);
-    if (!result.ok) {
-      toast.error(`Couldn't generate the receipt: ${result.error}`);
-      return;
-    }
-    toast.success("Acknowledgment receipt generated");
+  async function issue(donationId: string) {
+    setBusy(donationId);
+    const result = await issueCashAr(donationId);
+    setBusy(null);
+    if (!result.ok) return void toast.error(`Couldn't issue the receipt: ${result.error}`);
+    toast.success(`Acknowledgment receipt ${result.number} issued`);
+  }
+
+  async function download(ar: AcknowledgmentReceipt) {
+    setBusy(ar.id);
+    const result = await downloadPdf("/api/ar/pdf", { receiptId: ar.id }, `${ar.sequenceNumber}.pdf`);
+    setBusy(null);
+    if (!result.ok) toast.error(result.error);
   }
 
   return (
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader
         title="Acknowledgment Receipts"
-        description={`Outstanding queue: ${outstanding.length} receipts not yet acknowledged.`}
+        description={`Cash gifts receipted by LAF (series LAF-CSH). ${outstanding.length} not yet acknowledged. Receipts for gifts in kind are issued in LAF Inventory.`}
       />
 
-      {receipts.length === 0 && donationsNeedingAR.length === 0 ? (
-        <EmptyState title="No donations recorded yet" description="Acknowledgment receipts are generated per donation." />
+      {receipts.length === 0 && cashWithoutAr.length === 0 ? (
+        <EmptyState title="No cash gifts recorded yet" description="An acknowledgment receipt is issued per cash gift." />
       ) : (
         <div className="flex flex-col gap-3">
           {receipts.map((ar) => {
@@ -62,15 +77,22 @@ export default function ReceiptsPage() {
                 <CardContent className="flex flex-col gap-4 p-5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-col">
-                      <span className="text-theme-sm font-medium">{ar.sequenceNumber} — {donor?.name}</span>
+                      <span className="text-theme-sm font-medium">{ar.sequenceNumber} — {donor?.name ?? "Unknown donor"}</span>
                       <span className="text-theme-xs text-muted-foreground">
-                        {donation && formatCurrency(donation.totalValue, donation.currency)} ·{" "}
+                        {donation ? `${formatDate(donation.date)} · ${formatCurrency(ar.amount ?? donation.totalValue, ar.currency ?? donation.currency)}` : ""}
+                        {ar.bookletNumber ? ` · booklet AR ${ar.bookletNumber}` : ""}
+                        {" · "}
                         {ar.entity === "US_501C3" ? "US 501(c)(3)" : "PH SEC"}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{STAGE_LABELS[stageIdx]}</Badge>
-                      {stageIdx < STAGES.length - 1 && (
+                      {ar.status !== "draft" ? (
+                        <Button size="sm" variant="outline" disabled={busy === ar.id} onClick={() => download(ar)}>
+                          <Download /> PDF
+                        </Button>
+                      ) : null}
+                      {editor && stageIdx < STAGES.length - 1 && (
                         <Button size="sm" onClick={() => advance(ar)}>
                           Mark {STAGE_LABELS[stageIdx + 1]}
                         </Button>
@@ -83,32 +105,36 @@ export default function ReceiptsPage() {
             );
           })}
 
-          {donationsNeedingAR.length > 0 && (
+          {cashWithoutAr.length > 0 && (
             <>
               <h2 className="mt-2 text-base font-medium text-foreground">
-                Donations without a receipt yet ({donationsNeedingAR.length})
+                Cash gifts without a receipt yet ({cashWithoutAr.length})
               </h2>
               <div className="flex flex-col divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
-                {donationsNeedingAR.slice(0, 20).map((d) => {
+                {cashWithoutAr.slice(0, 20).map((d) => {
                   const donor = donors.find((dn) => dn.id === d.donorId);
+                  const anonymous = !donor || donor.type === "anonymous";
                   return (
                     <div key={d.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm hover:bg-muted/60">
                       <div className="flex flex-col">
                         <span className="font-medium">{donor?.name ?? "Unknown donor"}</span>
                         <span className="text-theme-xs text-muted-foreground">
-                          {d.kind === "cash" ? "Cash donation" : d.itemDescription} · {formatCurrency(d.totalValue, d.currency)}
+                          {formatDate(d.date)} · {formatCurrency(d.totalValue, d.currency)}
+                          {d.invoiceNumber ? ` · booklet AR ${d.invoiceNumber}` : ""}
                         </span>
                       </div>
-                      <Button size="sm" variant="outline" onClick={() => handleGenerate(d.id, d.receivingEntity)}>
-                        Generate AR
-                      </Button>
+                      {editor ? (
+                        <Button size="sm" variant="outline" disabled={anonymous || busy === d.id} title={anonymous ? "Set the donor first" : undefined} onClick={() => issue(d.id)}>
+                          <Stamp /> {busy === d.id ? "Issuing…" : "Issue LAF AR"}
+                        </Button>
+                      ) : null}
                     </div>
                   );
                 })}
               </div>
-              {donationsNeedingAR.length > 20 && (
+              {cashWithoutAr.length > 20 && (
                 <p className="text-theme-xs text-muted-foreground">
-                  +{donationsNeedingAR.length - 20} more — generate receipts from the donor detail page.
+                  +{cashWithoutAr.length - 20} more — issue receipts from the donor detail page.
                 </p>
               )}
             </>

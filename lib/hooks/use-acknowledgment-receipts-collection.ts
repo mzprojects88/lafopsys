@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { AcknowledgmentReceipt, ArStatus } from "@/lib/types/donor";
+import type { Currency } from "@/lib/types/common";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
 
@@ -15,6 +16,10 @@ interface AcknowledgmentReceiptRow {
   issued_at: string | null;
   sent_at: string | null;
   acknowledged_at: string | null;
+  issued_by: string | null;
+  booklet_number: string | null;
+  amount: number | string | null;
+  currency: Currency | null;
 }
 
 function toAcknowledgmentReceipt(row: AcknowledgmentReceiptRow): AcknowledgmentReceipt {
@@ -27,6 +32,10 @@ function toAcknowledgmentReceipt(row: AcknowledgmentReceiptRow): AcknowledgmentR
     issuedAt: row.issued_at ?? undefined,
     sentAt: row.sent_at ?? undefined,
     acknowledgedAt: row.acknowledged_at ?? undefined,
+    issuedBy: row.issued_by ?? undefined,
+    bookletNumber: row.booklet_number ?? undefined,
+    amount: row.amount == null ? undefined : Number(row.amount),
+    currency: row.currency ?? undefined,
   };
 }
 
@@ -42,36 +51,23 @@ export const acknowledgmentReceiptsStore = createCollection<AcknowledgmentReceip
   },
 });
 
+/** Cash ARs are numbered by the database (0085): the browser only asks for one and reads the result. */
 export function useAcknowledgmentReceiptsData() {
   const { data: receipts, loading } = useCollection(acknowledgmentReceiptsStore);
 
-  async function generateReceipt(donationId: string, entity: AcknowledgmentReceipt["entity"]): Promise<MutationResult> {
-    const supabase = createClient();
-    const year = new Date().getFullYear();
-    const sequenceNumber = `AR-${year}-${Date.now().toString().slice(-6)}`;
-    const { error } = await supabase.schema("ops").from("acknowledgment_receipts").insert({
-      id: crypto.randomUUID(),
-      donation_id: donationId,
-      sequence_number: sequenceNumber,
-      entity,
-      status: "draft",
-      issued_at: new Date().toISOString(),
-    });
+  async function issueCashAr(donationId: string): Promise<MutationResult & { number?: string }> {
+    const { data, error } = await createClient().schema("ops").rpc("issue_cash_ar", { p_donation: donationId });
     if (error) return { ok: false, error: error.message };
     await acknowledgmentReceiptsStore.refetch();
-    return { ok: true };
+    return { ok: true, number: data as string };
   }
 
-  async function advanceStatus(id: string, nextStatus: ArStatus): Promise<MutationResult> {
-    const supabase = createClient();
-    const row: Record<string, unknown> = { status: nextStatus };
-    if (nextStatus === "sent") row.sent_at = new Date().toISOString();
-    if (nextStatus === "acknowledged") row.acknowledged_at = new Date().toISOString();
-    const { error } = await supabase.schema("ops").from("acknowledgment_receipts").update(row).eq("id", id);
+  async function advanceStatus(id: string): Promise<MutationResult & { status?: ArStatus }> {
+    const { data, error } = await createClient().schema("ops").rpc("advance_ar", { p_id: id });
     if (error) return { ok: false, error: error.message };
     await acknowledgmentReceiptsStore.refetch();
-    return { ok: true };
+    return { ok: true, status: data as ArStatus };
   }
 
-  return { receipts, loading, generateReceipt, advanceStatus, refetch: acknowledgmentReceiptsStore.refetch };
+  return { receipts, loading, issueCashAr, advanceStatus, refetch: acknowledgmentReceiptsStore.refetch };
 }

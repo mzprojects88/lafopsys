@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { checkDonorInput, likelyDuplicates, normalizeDonorName } from "../lib/utils/donor-details.ts";
 
-const base = { name: "Maria Santos", salutation: "", type: "individual", taxJurisdiction: "PH", email: "", phone: "", tin: "" };
+const base = { name: "Maria Santos", salutation: "", type: "individual", taxJurisdiction: "PH", email: "", phone: "", tin: "", address: "" };
 const donor = (id, name, email) => ({ id, name, email, type: "individual", taxJurisdiction: "PH", firstGiftDate: "", lastGiftDate: "", lifetimeValue: 0, giftCount: 0 });
 
 describe("donor details", () => {

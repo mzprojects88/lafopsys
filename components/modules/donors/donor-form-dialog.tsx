@@ -31,6 +31,7 @@ const fromDonor = (d?: Donor): DonorInput => ({
   email: d?.email ?? "",
   phone: d?.phone ?? "",
   tin: d?.tin ?? "",
+  address: d?.address ?? "",
 });
 
 /**
@@ -168,6 +169,10 @@ function DonorForm({ donor, onDone }: { donor?: Donor; onDone: () => void }) {
             <Input id="donorTin" inputMode="numeric" value={form.tin} onChange={(e) => set("tin", e.target.value)} maxLength={20} placeholder="123-456-789-000" autoComplete="off" />
           </Field>
         </div>
+        <Field>
+          <FieldLabel htmlFor="donorAddress">Address (optional)</FieldLabel>
+          <Input id="donorAddress" value={form.address} onChange={(e) => set("address", e.target.value)} maxLength={300} placeholder="Street, city — printed on the BIR 2322 certificate" autoComplete="off" />
+        </Field>
       </FieldGroup>
 
       {duplicates.length > 0 && (
