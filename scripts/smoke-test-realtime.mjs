@@ -85,7 +85,7 @@ async function checkPublicationCoverage() {
     console.log("[skip] publication coverage: SUPABASE_DB_PASSWORD not set");
     return;
   }
-  const projectRef = new URL(url).hostname.split(".")[0];
+
   const client = new pg.Client({
     connectionString: pgUrl(password),
     ssl: { rejectUnauthorized: false },

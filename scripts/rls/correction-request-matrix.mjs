@@ -93,10 +93,7 @@ async function scenario(ids, name, actor, opts, body, expect) {
 
 // --- assertion helpers -------------------------------------------------------
 const denied = (r) => !r.ok && r.code === "42501";
-const checkFailed = (r) => !r.ok && r.code === "23514";
-const duplicate = (r) => !r.ok && r.code === "23505";
 const rows = (n) => (r) => r.ok && r.rows === n;
-const atLeast = (n) => (r) => r.ok && r.rows >= n;
 const value = (field, v) => (r) => r.ok && r.rows === 1 && r.data[0][field] === v;
 
 const q = (sql, params) => () => client.query(sql, params);

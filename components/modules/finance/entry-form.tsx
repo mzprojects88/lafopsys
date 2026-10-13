@@ -1,4 +1,6 @@
 "use client";
+// react-hook-form's watch() can't be memoized by the React Compiler (its lint warning): this file opts out.
+"use no memo";
 
 import { useRouter } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
@@ -54,6 +56,7 @@ export function EntryForm() {
     defaultValues: { date: todayIso(), direction: "outflow", source: "", entity: "PH_SEC", description: "" },
   });
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- the file opts out of the React Compiler ("use no memo" above)
   const direction = watch("direction") as CashEntryDirection;
   const sources = direction === "inflow" ? inflowSources : outflowSources;
 
