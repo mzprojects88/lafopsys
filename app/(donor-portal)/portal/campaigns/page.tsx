@@ -28,7 +28,7 @@ import { formatCurrency } from "@/lib/utils/currency";
 import { todayIso } from "@/lib/utils/date";
 
 function isActive(campaign: Campaign, today: string) {
-  return campaign.startDate <= today && (!campaign.endDate || campaign.endDate >= today);
+  return campaign.status === "active" && campaign.startDate <= today && (!campaign.endDate || campaign.endDate >= today);
 }
 
 /** A donor "joining" a campaign creates a pledge/lead record in

@@ -15,6 +15,9 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
+import { useCampaignsData } from "@/lib/hooks/use-campaigns-collection";
+
+const NO_CAMPAIGN = "__none__";
 import { useCashGifts } from "@/lib/hooks/use-cash-gifts";
 import { PAYMENT_METHOD_LABEL, invoiceMatches } from "@/lib/utils/cash-gifts";
 import { formatCurrency } from "@/lib/utils/currency";
@@ -33,6 +36,7 @@ const schema = z.object({
   amount: z.number({ error: "Enter the amount" }).positive("Enter the amount").max(99_999_999, "That amount is too large"),
   paymentMethod: z.enum(["cash", "check", "bank_transfer", "gcash", "instapay", "other"]),
   invoiceNumber: z.string().trim().max(60, "60 characters at most"),
+  campaignId: z.string().optional(),
   notes: z.string().trim().max(500, "500 characters at most"),
 });
 
@@ -54,8 +58,11 @@ export default function DonationIntakePage() {
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { date: todayIso(), donorId: "", receivingEntity: "PH_SEC", paymentMethod: "cash", invoiceNumber: "", notes: "" },
+    defaultValues: { date: todayIso(), donorId: "", receivingEntity: "PH_SEC", paymentMethod: "cash", invoiceNumber: "", notes: "", campaignId: "" },
   });
+  // A gift may join an open campaign (0086); closed ones are not offered.
+  const { campaigns } = useCampaignsData();
+  const activeCampaigns = campaigns.filter((c) => c.status === "active");
   // The same invoice number already on the tracker or in the donor list: probably the same gift.
   const invoice = useWatch({ control, name: "invoiceNumber" });
   const already = React.useMemo(() => invoiceMatches(invoice, lines, donations, new Map(donors.map((d) => [d.id, d.name]))), [invoice, lines, donations, donors]);
@@ -71,6 +78,7 @@ export default function DonationIntakePage() {
       paymentMethod: values.paymentMethod,
       invoiceNumber: values.invoiceNumber || undefined,
       notes: values.notes || undefined,
+      campaignId: values.campaignId || undefined,
     });
     if (!result.ok) {
       toast.error(`Couldn't record the gift: ${result.error}`);
@@ -122,6 +130,27 @@ export default function DonationIntakePage() {
                 />
                 <FieldError errors={[errors.donorId]} />
               </Field>
+
+              {activeCampaigns.length ? (
+                <Field>
+                  <FieldLabel htmlFor="campaignId">Campaign (optional)</FieldLabel>
+                  <Controller
+                    name="campaignId"
+                    control={control}
+                    render={({ field }) => (
+                      <Select value={field.value || NO_CAMPAIGN} onValueChange={(v) => field.onChange(v === NO_CAMPAIGN ? "" : v)}>
+                        <SelectTrigger id="campaignId" className="w-full"><SelectValue placeholder="No campaign" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_CAMPAIGN}>No campaign</SelectItem>
+                          {activeCampaigns.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </Field>
+              ) : null}
 
               <Field data-invalid={!!errors.date}>
                 <FieldLabel htmlFor="donation-date">Date received</FieldLabel>

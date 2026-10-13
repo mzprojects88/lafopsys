@@ -143,28 +143,19 @@ export function useDonorsData() {
     });
     if (donationError) return { ok: false, error: donationError.message };
 
-    // ops.campaigns.raised_amount is a stored rollup, not derived at read time --
-    // it was previously never incremented anywhere, so every campaign progress bar
-    // was stuck at 0.
-    if (donation.campaignId) {
-      const { data: campaign } = await supabase
-        .schema("ops")
-        .from("campaigns")
-        .select("raised_amount")
-        .eq("id", donation.campaignId)
-        .single();
-      if (campaign) {
-        await supabase
-          .schema("ops")
-          .from("campaigns")
-          .update({ raised_amount: Number(campaign.raised_amount) + donation.totalValue })
-          .eq("id", donation.campaignId);
-      }
-    }
-
     await donorsStore.refetch();
-    // The campaign rollup lives in another store; wake it up too.
+    // The campaign's raised amount is recomputed by the database (0086); its store just rereads.
     if (donation.campaignId) void invalidateTables([{ schema: "ops", table: "campaigns" }]);
+    return { ok: true };
+  }
+
+  /** Links a recorded gift to a campaign (or none); the campaign totals follow (0086). */
+  async function setDonationCampaign(donationId: string, campaignId: string | null): Promise<MutationResult> {
+    const { data, error } = await createClient().schema("ops").from("donations").update({ campaign_id: campaignId }).eq("id", donationId).select("id");
+    if (error) return { ok: false, error: error.message };
+    if (!data?.length) return { ok: false, error: "You don't have permission to change gifts." };
+    await donorsStore.refetch();
+    void invalidateTables([{ schema: "ops", table: "campaigns" }]);
     return { ok: true };
   }
 
@@ -191,5 +182,5 @@ export function useDonorsData() {
     return { ok: true, id: res.data[0]!.id as string };
   }
 
-  return { donors, donations, loading, addDonation, saveDonor, refetch: donorsStore.refetch };
+  return { donors, donations, loading, addDonation, setDonationCampaign, saveDonor, refetch: donorsStore.refetch };
 }

@@ -12,10 +12,10 @@ export const donors: Donor[] = realDonors as Donor[];
 export const donations: Donation[] = realDonations as Donation[];
 
 export const campaigns: Campaign[] = [
-  { id: "camp-farewell", name: "Farewell with Dignity", targetAmount: 500000, raisedAmount: 318500, startDate: "2026-01-01" },
-  { id: "camp-paths", name: "Paths to Hope", targetAmount: 1200000, raisedAmount: 940200, startDate: "2026-01-01" },
-  { id: "camp-arkcircle", name: "The Ark Circle", targetAmount: 800000, raisedAmount: 512000, startDate: "2026-02-01" },
-  { id: "camp-compassion", name: "Compassion Fund", targetAmount: 300000, raisedAmount: 276750, startDate: "2026-01-01" },
+  { id: "camp-farewell", name: "Farewell with Dignity", targetAmount: 500000, raisedAmount: 318500, status: "active", startDate: "2026-01-01" },
+  { id: "camp-paths", name: "Paths to Hope", targetAmount: 1200000, raisedAmount: 940200, status: "active", startDate: "2026-01-01" },
+  { id: "camp-arkcircle", name: "The Ark Circle", targetAmount: 800000, raisedAmount: 512000, status: "active", startDate: "2026-02-01" },
+  { id: "camp-compassion", name: "Compassion Fund", targetAmount: 300000, raisedAmount: 276750, status: "active", startDate: "2026-01-01" },
 ];
 
 const arStatusPool: ArStatus[] = ["draft", "issued", "issued", "sent", "acknowledged", "acknowledged"];

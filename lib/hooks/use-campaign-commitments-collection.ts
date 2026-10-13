@@ -90,15 +90,19 @@ export function useCampaignCommitmentsData() {
     return { ok: true };
   }
 
-  /** Staff marking a commitment fulfilled once the real donation is recorded. */
+  /** Staff marking a commitment fulfilled once the real donation is recorded. The gift joins the
+   * commitment's campaign, so the campaign total counts it (0086). */
   async function markFulfilled(id: string, donationId: string): Promise<MutationResult> {
     const supabase = createClient();
-    const { error } = await supabase
+    const { data, error } = await supabase
       .schema("ops")
       .from("campaign_commitments")
       .update({ status: "fulfilled", fulfilled_donation_id: donationId })
-      .eq("id", id);
+      .eq("id", id)
+      .select("campaign_id");
     if (error) return { ok: false, error: error.message };
+    const campaignId = data?.[0]?.campaign_id as string | undefined;
+    if (campaignId) await supabase.schema("ops").from("donations").update({ campaign_id: campaignId }).eq("id", donationId).is("campaign_id", null);
     await campaignCommitmentsStore.refetch();
     return { ok: true };
   }

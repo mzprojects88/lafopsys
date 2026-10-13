@@ -86,7 +86,11 @@ export interface DoneeCertificate {
 export interface Campaign {
   id: string;
   name: string;
+  description?: string;
+  /** closed: no longer offered on new gifts; its total stays (0086). */
+  status: "active" | "closed";
   targetAmount: number;
+  /** Finalized PHP gifts linked to the campaign, kept by the database (0086). */
   raisedAmount: number;
   startDate: string;
   endDate?: string;

@@ -379,6 +379,35 @@ async function main() {
     record("0085 scenarios", "SKIP", "0085 not applied (pass it as a pre-flight file)");
   }
 
+  // ---- 0086: campaign totals follow the gifts ----
+  const has0086 = (await client.query("select to_regproc('ops.campaign_totals') is not null as ok")).rows[0].ok;
+  if (has0086) {
+    const K1 = "00000000-0000-4000-8000-0000000d00e1";
+    const K2 = "00000000-0000-4000-8000-0000000d00e2";
+    const campaigns = `insert into ops.campaigns (id, name, target_amount, raised_amount, start_date) values ('${K1}', 'RLSTEST Appeal', 1000, 999, '2026-10-01'), ('${K2}', 'RLSTEST Other', 1000, 0, '2026-10-01')`;
+    const raised = (k) => `select raised_amount::numeric as n from ops.campaigns where id = '${k}'`;
+    const gift = (campaign, more = "") => `insert into ops.donations (donor_id, date, receiving_entity, kind, total_value, currency, status, campaign_id) values ('${D1}', '2026-10-13', 'PH_SEC', 'cash', 100, 'PHP', 'finalized', '${campaign}')${more}`;
+    const equals = (v) => (r) => r.ok && Number(r.data[0].n) === v;
+    await scenario(ids, "a campaign's raised amount is what the database computes, not what the browser sends", "finance", then(campaigns, raised(K1)), equals(0));
+    await scenario(ids, "a finalized peso gift raises its campaign; one for another campaign doesn't", "finance",
+      then(campaigns, gift(K1), gift(K2), raised(K1)), equals(100));
+    await scenario(ids, "a US-dollar gift and a gift pending review are not counted", "finance",
+      then(campaigns, gift(K1), gift(K1).replace("'PHP'", "'USD'"), gift(K1).replace("'finalized'", "'pending_review'"), raised(K1)), equals(100));
+    await scenario(ids, "moving a gift to another campaign moves the amount", "finance",
+      then(campaigns, gift(K1, " returning id"), `update ops.donations set campaign_id = '${K2}' where campaign_id = '${K1}' and donor_id = '${D1}'`, `select (select raised_amount from ops.campaigns where id = '${K2}') - (select raised_amount from ops.campaigns where id = '${K1}') as n`),
+      equals(100));
+    await scenario(ids, "finalizing a pending gift adds it; deleting a gift removes it", "finance",
+      then(campaigns, gift(K1).replace("'finalized'", "'pending_review'"), `update ops.donations set status = 'finalized' where campaign_id = '${K1}'`, `delete from ops.donations where campaign_id = '${K1}' and total_value = 100 and date = '2026-10-13' and id = (select id from ops.donations where campaign_id = '${K1}' order by created_at limit 1)`, raised(K1)),
+      equals(0));
+    await scenario(ids, "a campaign with gifts can't be deleted", "finance", then(campaigns, gift(K1), `delete from ops.campaigns where id = '${K1}'`), (r) => !r.ok && r.code === "23503");
+    await scenario(ids, "finance edits a campaign (name, dates, closed)", "finance",
+      then(campaigns, `update ops.campaigns set name = 'RLSTEST Renamed', status = 'closed', end_date = '2026-12-31' where id = '${K1}'`, `select count(*)::int as n from ops.campaigns where id = '${K1}' and status = 'closed' and updated_at >= created_at`), equals(1));
+    await scenario(ids, "the chef can't create or change campaigns", "chef", () => client.query(campaigns), denied);
+    await scenario(ids, "the chef can't call the totals function", "chef", () => client.query(`select ops.campaign_totals('${K1}')`), denied);
+  } else {
+    record("0086 scenarios", "SKIP", "0086 not applied (pass it as a pre-flight file)");
+  }
+
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
   console.table(results);

@@ -10,6 +10,10 @@ import { StatusBadge } from "@/components/patterns/status-badge";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useCampaignsData } from "@/lib/hooks/use-campaigns-collection";
+
+const NO_CAMPAIGN = "__none__";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useAcknowledgmentReceiptsData } from "@/lib/hooks/use-acknowledgment-receipts-collection";
 import { useDoneeCertificatesData } from "@/lib/hooks/use-donee-certificates-collection";
@@ -27,7 +31,8 @@ import { DonorFormDialog } from "@/components/modules/donors/donor-form-dialog";
 
 export default function DonorDetailPage({ params }: { params: Promise<{ donorId: string }> }) {
   const { donorId } = use(params);
-  const { donors, donations, loading } = useDonorsData();
+  const { donors, donations, loading, setDonationCampaign } = useDonorsData();
+  const { campaigns } = useCampaignsData();
   const { receipts, issueCashAr } = useAcknowledgmentReceiptsData();
   const { certificates, requestCertificate } = useDoneeCertificatesData();
   const donor = donors.find((d) => d.id === donorId);
@@ -159,6 +164,26 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
+                        {/* The campaign a gift counts toward (0086): editors change it here; the totals follow. */}
+                        {editor && (campaigns.length > 0 || d.campaignId) ? (
+                          <Select
+                            value={d.campaignId ?? NO_CAMPAIGN}
+                            onValueChange={async (v) => {
+                              const result = await setDonationCampaign(d.id, v === NO_CAMPAIGN ? null : v);
+                              if (!result.ok) toast.error(result.error);
+                            }}
+                          >
+                            <SelectTrigger size="sm" className="w-40" aria-label="Campaign"><SelectValue placeholder="No campaign" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={NO_CAMPAIGN}>No campaign</SelectItem>
+                              {campaigns.filter((c) => c.status === "active" || c.id === d.campaignId).map((c) => (
+                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : d.campaignId ? (
+                          <span className="text-theme-xs text-muted-foreground">{campaigns.find((c) => c.id === d.campaignId)?.name}</span>
+                        ) : null}
                         {ar ? (
                           <>
                             <StatusBadge domain="ar" status={ar.status} />
