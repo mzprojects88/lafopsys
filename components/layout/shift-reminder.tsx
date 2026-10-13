@@ -7,6 +7,7 @@ import { useClockStatus } from "@/lib/hooks/use-clock-status";
 import { useRoster } from "@/lib/hooks/use-roster";
 import { useNow } from "@/lib/hooks/use-now";
 import { clockOutDueAt } from "@/lib/utils/dtr-prompts";
+import { formatTime12 } from "@/lib/utils/time12";
 import { PunchCameraDialog } from "@/components/modules/staff/punch-camera-dialog";
 
 /** "Still working" hides the bar for this long; then it asks again. */
@@ -45,7 +46,7 @@ export function ShiftReminder() {
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-warning/30 bg-warning/10 px-4 py-3 text-theme-sm text-warning-foreground dark:text-warning">
       <AlarmClock className="size-4 shrink-0" />
       <span className="min-w-0 flex-1">
-        {shift ? `Your shift ended at ${dueLabel}.` : `You have been clocked in since ${openEntry.clockIn}.`} Still working? Remember to clock out.
+        {shift ? `Your shift ended at ${dueLabel}.` : `You have been clocked in since ${formatTime12(openEntry.clockIn)}.`} Still working? Remember to clock out.
       </span>
       <div className="flex gap-2">
         <Button

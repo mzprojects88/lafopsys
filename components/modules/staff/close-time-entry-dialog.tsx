@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { timeEntriesStore } from "@/lib/hooks/use-time-entries-collection";
 import { timePunchesStore } from "@/lib/hooks/use-time-punches-collection";
 import { addDays } from "@/lib/utils/dtr";
+import { formatTime12 } from "@/lib/utils/time12";
 
 export interface OpenDay {
   timeEntryId: string;
@@ -86,7 +87,7 @@ function CloseTimeEntryForm({
       // Both collections changed: the punch was added and the day's summary
       // rewritten. Realtime will catch up too, but this makes it immediate.
       await Promise.all([timePunchesStore.refetch(), timeEntriesStore.refetch()]);
-      toast.success(`${day.staffName} clocked out at ${result.clockOut}`);
+      toast.success(`${day.staffName} clocked out at ${formatTime12(result.clockOut)}`);
       onDone?.();
       onOpenChange(false);
     } finally {
@@ -100,7 +101,7 @@ function CloseTimeEntryForm({
         <DialogHeader>
           <DialogTitle>Add the missing clock-out</DialogTitle>
           <DialogDescription>
-            {day.staffName} clocked in at {day.clockIn} on {day.date} and never clocked out.
+            {day.staffName} clocked in at {formatTime12(day.clockIn)} on {day.date} and never clocked out.
           </DialogDescription>
         </DialogHeader>
 

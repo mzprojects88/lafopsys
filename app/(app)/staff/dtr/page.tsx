@@ -28,7 +28,7 @@ import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
 import { csvLines, downloadCsv } from "@/lib/utils/csv";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { todayIso } from "@/lib/utils/date";
-import { dayKey, effectiveStatus, formatMinutes, isLong, sessionMinutes, timeLabel, totalsFor, type DtrSession } from "@/lib/utils/dtr";
+import { dayKey, effectiveStatus, formatMinutes, isLong, sessionMinutes, timeLabel12, totalsFor, type DtrSession } from "@/lib/utils/dtr";
 import type { PunchLocationStatus, TimePunch } from "@/lib/types/staff";
 import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 import { doesFinance } from "@/lib/rbac/roles";
@@ -328,8 +328,8 @@ export default function DtrPage() {
         staffName: staffName(s.staffId),
         dayKey: s.dayKey,
         dateLabel: formatDayKey(s.dayKey),
-        inLabel: s.clockInAt ? timeLabel(s.clockInAt) : "—",
-        outLabel: s.clockOutAt ? timeLabel(s.clockOutAt) : "—",
+        inLabel: s.clockInAt ? timeLabel12(s.clockInAt) : "—",
+        outLabel: s.clockOutAt ? timeLabel12(s.clockOutAt) : "—",
         minutes: sessionMinutes(s, now),
         status: displayStatus(s, now),
       });
@@ -349,7 +349,7 @@ export default function DtrPage() {
         isDriver: ((x) => !!x && (x.role === "driver" || x.extraRoles.includes("driver")))(staff.find((x) => x.id === p.staffId)),
         dayKey: day,
         dateLabel: formatDayKey(day),
-        timeLabel: timeLabel(p.punchedAt),
+        timeLabel: timeLabel12(p.punchedAt),
       });
     }
     return rows;

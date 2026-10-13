@@ -7,7 +7,7 @@
  * Late and undertime need a schedule; nobody has one yet (phase 3), so the
  * print shows hours worked and says what is missing or corrected.
  */
-import { addDays, pairSessions, sessionMinutes, timeLabel, type PunchLike } from "./dtr.ts";
+import { addDays, pairSessions, sessionMinutes, timeLabel12, type PunchLike } from "./dtr.ts";
 
 export interface PrintPunch extends PunchLike {
   source: "device" | "adjustment";
@@ -56,7 +56,7 @@ export function dtrPrintRows(
     rows.push({
       day,
       weekday: WEEKDAYS[new Date(`${day}T00:00:00Z`).getUTCDay()],
-      sessions: own.map((s) => ({ in: s.clockInAt ? timeLabel(s.clockInAt) : "", out: s.clockOutAt ? timeLabel(s.clockOutAt) : "" })),
+      sessions: own.map((s) => ({ in: s.clockInAt ? timeLabel12(s.clockInAt) : "", out: s.clockOutAt ? timeLabel12(s.clockOutAt) : "" })),
       minutes,
       remarks: [...remarks],
     });

@@ -14,6 +14,7 @@ import { usePickups, type Pickup } from "@/lib/hooks/use-pickups-collection";
 import type { HouseSheetPerson } from "@/lib/types/house-sheet";
 import { ARRIVAL_APP_LABELS, ARRIVAL_MODE_LABELS } from "@/lib/utils/arrival";
 import { formatCurrency } from "@/lib/utils/currency";
+import { formatTime12 } from "@/lib/utils/time12";
 import type { ArrivalApp, ArrivalMode, Stay } from "@/lib/types/patient";
 
 const NEW_RIDE = "new";
@@ -115,7 +116,7 @@ export function ArrivalFields({ value, onChange, arrivalDate, excludeStayId }: {
               <SelectItem value={NO_TRIP}>Not on a recorded pick-up</SelectItem>
               {tripsThatDay.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
-                  Pick-up {p.departureTime} · {p.manifest.filter((m) => m.boardedAt).length} on board
+                  Pick-up {formatTime12(p.departureTime)} · {p.manifest.filter((m) => m.boardedAt).length} on board
                 </SelectItem>
               ))}
             </SelectContent>

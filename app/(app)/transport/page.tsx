@@ -30,6 +30,7 @@ import { ErrandCard, StartTripDialog, errandTitle } from "@/components/modules/t
 import { ExpenseDialog, ExpensesList } from "@/components/modules/transport/expenses";
 import { TRANSPORT_SUB_NAV } from "@/components/modules/transport/transport-nav";
 import { ModuleSubNav } from "@/components/patterns/module-subnav";
+import { formatTime12 } from "@/lib/utils/time12";
 import { formatKm } from "@/lib/utils/odometer";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
@@ -140,12 +141,16 @@ export default function TransportPage() {
             {earlier.map((p) => (
               <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
                 <span>
-                  {formatDate(p.date, "EEE, MMM d")} · {p.departureTime} · {driverName(p.driverId)}
+                  {formatDate(p.date, "EEE, MMM d")} · {formatTime12(p.departureTime)} · {driverName(p.driverId)}
                 </span>
                 <span className="text-theme-xs text-muted-foreground">
                   {p.manifest.filter((m) => m.boardedAt).length} of {p.manifest.length} on board · {STATUS_LABEL[p.status]}
                   {p.arrivedAt ? ` ${time(p.arrivedAt)}` : ""}
                   {p.odometerStart != null && p.odometerEnd != null ? ` · ${formatKm(p.odometerEnd - p.odometerStart)}` : ""}
+                  {" · "}
+                  <Link href={`/transport/manifest/${p.id}`} target="_blank" className="text-primary hover:underline">
+                    Print manifest
+                  </Link>
                 </span>
               </div>
             ))}
@@ -230,7 +235,7 @@ function PickupCard({ pickup: p, vehicle, mine, driverName, canEdit, canBuild }:
         <div className="flex flex-col">
           <CardTitle className="flex items-center gap-2 text-base">
             <Truck className="size-4 text-muted-foreground" />
-            Pick-up {p.departureTime}
+            Pick-up {formatTime12(p.departureTime)}
             {mine && <Badge>Your trip</Badge>}
           </CardTitle>
           <span className="text-theme-xs text-muted-foreground">

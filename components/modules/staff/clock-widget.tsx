@@ -12,6 +12,7 @@ import { useClockStatus } from "@/lib/hooks/use-clock-status";
 import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
 import { todayIso } from "@/lib/utils/date";
 import { formatMinutes } from "@/lib/utils/dtr";
+import { formatTime12 } from "@/lib/utils/time12";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { LoadingState } from "@/components/patterns/loading-state";
 
@@ -43,9 +44,9 @@ export function ClockWidget() {
 
   const sessionsToday = todayEntry?.sessionCount ?? 0;
   const statusLabel = clockedIn
-    ? `Clocked in at ${openEntry?.clockIn}${openEntry && openEntry.date !== todayIso() ? " yesterday" : ""}`
+    ? `Clocked in at ${formatTime12(openEntry?.clockIn)}${openEntry && openEntry.date !== todayIso() ? " yesterday" : ""}`
     : todayEntry?.clockOut
-      ? `Clocked out at ${todayEntry.clockOut}`
+      ? `Clocked out at ${formatTime12(todayEntry.clockOut)}`
       : "Not clocked in today";
   const sessionsLabel = sessionsToday > 0 ? ` · ${sessionsToday} session${sessionsToday === 1 ? "" : "s"} today` : "";
 

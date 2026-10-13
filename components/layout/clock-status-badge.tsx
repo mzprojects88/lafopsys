@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useClockStatus } from "@/lib/hooks/use-clock-status";
 import { useNow } from "@/lib/hooks/use-now";
 import { formatMinutes } from "@/lib/utils/dtr";
+import { formatTime12 } from "@/lib/utils/time12";
 import { instantOn } from "@/lib/utils/dtr-prompts";
 import { PunchCameraDialog } from "@/components/modules/staff/punch-camera-dialog";
 
@@ -37,7 +38,7 @@ export function ClockStatusBadge() {
             ? "bg-success/12 text-success-foreground hover:bg-success/20 dark:bg-success/15 dark:text-success"
             : "bg-warning/12 text-warning-foreground hover:bg-warning/20 dark:bg-warning/15 dark:text-warning"
         )}
-        title={clockedIn ? `Clocked in at ${openEntry?.clockIn}. Tap to clock out.` : "Tap to clock in."}
+        title={clockedIn ? `Clocked in at ${formatTime12(openEntry?.clockIn)}. Tap to clock out.` : "Tap to clock in."}
       >
         {clockedIn ? <LogOut className="size-3.5" /> : <LogIn className="size-3.5" />}
         {clockedIn ? (

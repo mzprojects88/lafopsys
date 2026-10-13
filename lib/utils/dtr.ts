@@ -68,6 +68,14 @@ export function timeLabel(d: DateInput): string {
   return timeFormatter.format(toDate(d));
 }
 
+const timeFormatter12 = new Intl.DateTimeFormat("en-US", { timeZone: ORG_TIMEZONE, hour: "numeric", minute: "2-digit", hour12: true });
+
+/** "6:05 PM" of the instant in the org timezone: what people read (never 24-hour, user rule 2026-10-13).
+ * timeLabel stays HH:mm because that is what the time columns store. */
+export function timeLabel12(d: DateInput): string {
+  return timeFormatter12.format(toDate(d)).replace(/[\u202f\u00a0]/g, " ");
+}
+
 /** Offset of the org timezone from UTC at the given instant, in ms (Manila: +8h). */
 function zoneOffsetMs(at: Date): number {
   const parts: Record<string, string> = {};
@@ -283,7 +291,7 @@ export function planClockOut(
     .sort((a, b) => a.punchedAt.localeCompare(b.punchedAt))
     .pop();
   if (ownIn && at.getTime() <= new Date(ownIn.punchedAt).getTime()) {
-    return { ok: false, error: `The clock-out has to be after the clock-in at ${timeLabel(ownIn.punchedAt)}.` };
+    return { ok: false, error: `The clock-out has to be after the clock-in at ${timeLabel12(ownIn.punchedAt)}.` };
   }
   const iso = at.toISOString();
   const sessions = pairSessions([

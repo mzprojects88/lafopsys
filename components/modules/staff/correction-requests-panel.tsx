@@ -12,6 +12,7 @@ import { LoadingState } from "@/components/patterns/loading-state";
 import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 import { invalidateTables, useCollection } from "@/lib/data/collection-store";
 import { timeEntriesStore } from "@/lib/hooks/use-time-entries-collection";
+import { formatTime12 } from "@/lib/utils/time12";
 import { correctionRequestsStore, useCorrectionRequests, type CorrectionRequest } from "@/lib/hooks/use-correction-requests";
 
 const STATUS: Record<CorrectionRequest["status"], { label: string; className: string }> = {
@@ -94,7 +95,7 @@ function RequestCard({
         <Badge className={s.className}>{s.label}</Badge>
       </div>
       <span className="text-muted-foreground">
-        {entry?.clockIn ? `Clocked in ${entry.clockIn} · ` : ""}says they left <b className="text-foreground">{manila(r.requestedAt)}</b> · &ldquo;{r.reason}&rdquo;
+        {entry?.clockIn ? `Clocked in ${formatTime12(entry.clockIn)} · ` : ""}says they left <b className="text-foreground">{manila(r.requestedAt)}</b> · &ldquo;{r.reason}&rdquo;
       </span>
       {r.status !== "pending" ? (
         <span className="text-theme-xs text-muted-foreground">

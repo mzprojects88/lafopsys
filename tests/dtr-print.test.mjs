@@ -20,7 +20,7 @@ describe("dtrPrintRows", () => {
     assert.deepEqual(rows.map((r) => `${r.weekday} ${r.day}`), ["Wed 2026-09-16", "Thu 2026-09-17", "Fri 2026-09-18", "Sat 2026-09-19"]);
   });
   it("arrival, departure and hours in Manila time", () => {
-    assert.deepEqual(rows[0].sessions, [{ in: "08:00", out: "17:00" }]);
+    assert.deepEqual(rows[0].sessions, [{ in: "8:00 AM", out: "5:00 PM" }]);
     assert.equal(rows[0].minutes, 540);
     assert.deepEqual(rows[0].remarks, []);
   });

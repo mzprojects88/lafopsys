@@ -17,6 +17,7 @@ import { periodRange, type PeriodKind } from "@/lib/utils/fuel";
 import { csvLines, downloadCsv } from "@/lib/utils/csv";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { formatCurrency } from "@/lib/utils/currency";
+import { formatTime12 } from "@/lib/utils/time12";
 
 interface TripRow {
   id: string;
@@ -169,7 +170,7 @@ export default function TransportReportPage() {
           vehicleName(t.vehicleId, t.vehicle),
           staffName(t.driverId),
           t.status,
-          t.departureTime ?? "",
+          t.departureTime ? formatTime12(t.departureTime) : "",
           t.departedAt ? formatDate(t.departedAt, "yyyy-MM-dd h:mm a") : "",
           t.arrivedAt ? formatDate(t.arrivedAt, "yyyy-MM-dd h:mm a") : "",
           t.odometerStart?.toString() ?? "",
@@ -203,8 +204,7 @@ export default function TransportReportPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <PageHeader title="Transport & Fuel Report" description={`${period.label}: trips, kilometres, fuel and expenses, with CSV downloads.`} />
-      <ModuleSubNav items={TRANSPORT_SUB_NAV} />
+      <PageHeader title="Transport & Fuel Report" description={`${period.label}: trips, kilometres, fuel and expenses, with CSV downloads.`} action={<ModuleSubNav items={TRANSPORT_SUB_NAV} />} />
       <div className="flex flex-wrap items-center gap-2">
         <Select value={kind} onValueChange={(v) => setKind(v as PeriodKind)}>
           <SelectTrigger className="w-32" aria-label="Period"><SelectValue /></SelectTrigger>

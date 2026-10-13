@@ -107,7 +107,10 @@ export default function BedNightsPage() {
           </div>
         }
       />
-      <PatientsSubNav except="/patients/bed-nights" />
+      {/* The sub-nav's links are `sm:contents`: they need a wrapping row of their own outside the page header. */}
+      <div className="flex w-full flex-wrap items-center gap-2">
+        <PatientsSubNav except="/patients/bed-nights" />
+      </div>
 
       <KpiGrid>
         <KpiCard label="Bed nights" value={nightsCount} />

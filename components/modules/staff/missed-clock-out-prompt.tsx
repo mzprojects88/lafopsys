@@ -12,6 +12,7 @@ import { timeEntriesStore } from "@/lib/hooks/use-time-entries-collection";
 import { useCorrectionRequests } from "@/lib/hooks/use-correction-requests";
 import { forgottenDays, instantOn, type EntryLike } from "@/lib/utils/dtr-prompts";
 import { addDays } from "@/lib/utils/dtr";
+import { formatTime12 } from "@/lib/utils/time12";
 import { todayIso } from "@/lib/utils/date";
 
 const DISMISSED_KEY = "laf.missedClockOut.dismissed";
@@ -108,7 +109,7 @@ function ForgottenDay({
     return (
       <div className="flex flex-col gap-2 rounded-xl border border-border p-3 text-theme-sm">
         <span>
-          <b>{label}</b>: you clocked in at {entry.clockIn} and are still clocked in. Are you still on duty?
+          <b>{label}</b>: you clocked in at {formatTime12(entry.clockIn)} and are still clocked in. Are you still on duty?
         </span>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" onClick={onStillOnDuty}>
@@ -134,7 +135,7 @@ function ForgottenDay({
       }}
     >
       <span>
-        <b>{label}</b>: clocked in at {entry.clockIn}. When did you leave?
+        <b>{label}</b>: clocked in at {formatTime12(entry.clockIn)}. When did you leave?
       </span>
       <div className="grid grid-cols-2 gap-2">
         <Input type="date" aria-label="Day you left" value={day} min={entry.date} max={addDays(entry.date, 1)} onChange={(e) => setDay(e.target.value)} required />

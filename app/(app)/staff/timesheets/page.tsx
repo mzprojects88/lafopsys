@@ -17,6 +17,7 @@ import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
 import { useRoster } from "@/lib/hooks/use-roster";
 import { useHolidays } from "@/lib/hooks/use-hr-reference-collections";
 import { dayKey, formatMinutes } from "@/lib/utils/dtr";
+import { formatTime12 } from "@/lib/utils/time12";
 import { dayAttendance, type DayFlag } from "@/lib/utils/attendance";
 import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { useRole } from "@/lib/rbac/use-role";
@@ -64,8 +65,8 @@ const columns: ColumnDef<FlagRow>[] = [
       />
     ),
   },
-  { accessorKey: "clockIn", header: "Clock In", cell: ({ row }) => row.original.clockIn ?? "—" },
-  { accessorKey: "clockOut", header: "Clock Out", cell: ({ row }) => row.original.clockOut ?? "—" },
+  { accessorKey: "clockIn", header: "Clock In", cell: ({ row }) => (row.original.clockIn ? formatTime12(row.original.clockIn) : "—") },
+  { accessorKey: "clockOut", header: "Clock Out", cell: ({ row }) => (row.original.clockOut ? formatTime12(row.original.clockOut) : "—") },
   // First in / latest out of the day (Manila). An out earlier than the in is
   // an overnight shift; hours come from the punches, not from these labels.
   { accessorKey: "totalMinutes", header: "Hours", cell: ({ row }) => <span className="tabular-nums">{formatMinutes(row.original.totalMinutes)}</span> },
@@ -172,7 +173,7 @@ export default function TimesheetsPage() {
                 <div className="min-w-0">
                   <p className="truncate text-theme-sm font-medium">{staffLabel(entry.staffId)}</p>
                   <p className="text-theme-xs text-muted-foreground">
-                    {entry.date} · clocked in {entry.clockIn} · no clock-out
+                    {entry.date} · clocked in {formatTime12(entry.clockIn)} · no clock-out
                   </p>
                 </div>
                 {role === "admin" ? (
