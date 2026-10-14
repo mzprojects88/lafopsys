@@ -5,10 +5,10 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/patterns/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useModuleAccess } from "@/lib/hooks/use-module-access";
+import { OUTSIDE_AREAS, useModuleAccess, type OutsideArea } from "@/lib/hooks/use-module-access";
 import { useRole } from "@/context/role-provider";
 import { isAdminOnlyPath } from "@/lib/rbac/hidden";
-import { ASSIGNABLE_ROLES, NAV_ITEMS, levelFor, type AccessLevel, type NavItem } from "@/lib/rbac/roles";
+import { ASSIGNABLE_ROLES, NAV_ITEMS, PARTNER_ROLES, levelFor, type AccessLevel, type NavItem } from "@/lib/rbac/roles";
 import { ROLES, type Role } from "@/lib/types/common";
 
 const ROLE_LABEL: Record<Role, string> = Object.fromEntries(ROLES.map((r) => [r.value, r.label])) as Record<Role, string>;
@@ -24,7 +24,7 @@ const CONFIGURABLE = ASSIGNABLE_ROLES.filter((r) => r !== "admin");
  */
 export default function AccessPage() {
   const { role } = useRole();
-  const { rows, loading, setLevel } = useModuleAccess();
+  const { rows, loading, setLevel, setOutsideLevel, outsideLevel } = useModuleAccess();
   const [busy, setBusy] = React.useState<string | null>(null);
 
   async function change(forRole: Role, item: NavItem, next: AccessLevel) {
@@ -37,6 +37,18 @@ export default function AccessPage() {
       return;
     }
     toast.success(`${ROLE_LABEL[forRole]} · ${item.title}: ${LEVEL_LABEL[next]}`);
+  }
+
+  async function changeOutside(forRole: Role, area: OutsideArea, title: string, next: "none" | "view") {
+    const key = `${forRole}|${area}`;
+    setBusy(key);
+    const result = await setOutsideLevel(forRole, area, next);
+    setBusy(null);
+    if (!result.ok) {
+      toast.error(`Couldn’t save: ${result.error}`);
+      return;
+    }
+    toast.success(`${ROLE_LABEL[forRole]} · ${title}: ${LEVEL_LABEL[next]}`);
   }
 
   if (role !== "admin") return null;
@@ -118,6 +130,61 @@ export default function AccessPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-base font-medium text-foreground">Inventory app: outside accounts</h2>
+          <p className="max-w-[75ch] text-theme-sm text-muted-foreground">
+            An outside account (a partner’s representative, created under Users &amp; Roles) signs in to the Inventory app only. It can look at the areas
+            turned on here and nothing else: it never edits, never clocks in, and cannot open this system.
+          </p>
+        </div>
+        <div className="overflow-hidden rounded-2xl border border-border bg-card">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-theme-sm">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className="h-11 px-5 text-theme-xs font-medium text-muted-foreground">Area</th>
+                  {PARTNER_ROLES.map((r) => (
+                    <th key={r} className="h-11 w-40 px-3 text-theme-xs font-medium text-muted-foreground">
+                      {ROLE_LABEL[r]}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {OUTSIDE_AREAS.map((area) => (
+                  <tr key={area.key} className="border-b border-border last:border-0">
+                    <td className="px-5 py-3 align-top">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-medium text-foreground">{area.title}</span>
+                        <span className="text-theme-xs text-muted-foreground">{area.note}</span>
+                      </div>
+                    </td>
+                    {PARTNER_ROLES.map((r) => (
+                      <td key={r} className="px-3 py-3">
+                        <Select
+                          value={outsideLevel(r, area.key)}
+                          disabled={loading || busy === `${r}|${area.key}`}
+                          onValueChange={(v) => changeOutside(r, area.key, area.title, v as "none" | "view")}
+                        >
+                          <SelectTrigger size="sm" className="w-[112px] pl-3 pr-2" aria-label={`${area.title} for ${ROLE_LABEL[r]}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">{LEVEL_LABEL.none}</SelectItem>
+                            <SelectItem value="view">{LEVEL_LABEL.view}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ASSIGNABLE_ROLES, ORG_ROLES, isAllowedLandingPath, rolesProblem, type ModuleAccessRow } from "@/lib/rbac/roles";
+import { ASSIGNABLE_ROLES, CREATABLE_ROLES, ORG_ROLES, isAllowedLandingPath, isPartnerRole, rolesProblem, type ModuleAccessRow } from "@/lib/rbac/roles";
 import type { Role } from "@/lib/types/common";
 
 export interface CreateStaffInput {
@@ -53,7 +53,7 @@ export async function createStaffAccount(input: CreateStaffInput): Promise<Creat
   if (!firstName || !lastName || !position || !staffCode) {
     return { ok: false, error: "First name, last name, position, and staff code are all required." };
   }
-  if (!ASSIGNABLE_ROLES.includes(input.role)) {
+  if (!CREATABLE_ROLES.includes(input.role)) {
     return { ok: false, error: "Invalid role." };
   }
   if (!/^\d{6}$/.test(input.temporaryPin)) {
@@ -88,6 +88,8 @@ export async function createStaffAccount(input: CreateStaffInput): Promise<Creat
     position,
     active: true,
     must_change_pin: true,
+    // An outside account never clocks in (it cannot open this app at all).
+    clock_in_exempt: isPartnerRole(input.role),
   });
 
   if (insertError) {
@@ -154,6 +156,11 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
     return { ok: false, error: "That staff account no longer exists." };
   }
 
+  // An outside account has none of these settings; it is switched on and off (updatePartnerAccount).
+  if (isPartnerRole(target.role) || isPartnerRole(input.role)) {
+    return { ok: false, error: "An outside account has no staff access settings." };
+  }
+
   // Roles (0073). The Super Admin is only ever a main role: every server check reads the
   // main role, so an "additional admin" would be an admin to the database and not to them.
   const extraRoles = [...new Set(input.extraRoles)];
@@ -188,6 +195,60 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
     .update({ role: input.role, extra_roles: extraRoles, clock_in_exempt: input.clockInExempt, landing_path: landingPath, is_hr: input.isHr })
     .eq("id", input.staffId);
 
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/settings/users");
+  return { ok: true };
+}
+
+export interface UpdatePartnerAccountInput {
+  staffId: string;
+  /** Off closes the account at once: the database stops answering it, even mid-session. */
+  active: boolean;
+  /** A new 6-digit temporary PIN, or null to leave the PIN alone. She sets her own at sign-in. */
+  temporaryPin: string | null;
+}
+
+/**
+ * An outside (partner) account, 0090: switched on or off, and given a new temporary PIN. Only
+ * for partner accounts -- this is not a way to deactivate staff. Admin only, checked here
+ * because the admin client bypasses RLS.
+ */
+export async function updatePartnerAccount(input: UpdatePartnerAccountInput): Promise<CreateStaffResult> {
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+  if (!caller) {
+    return { ok: false, error: "Not signed in." };
+  }
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") {
+    return { ok: false, error: "Only admins can change an outside account." };
+  }
+  if (input.temporaryPin !== null && !/^\d{6}$/.test(input.temporaryPin)) {
+    return { ok: false, error: "Temporary PIN must be exactly 6 digits." };
+  }
+
+  const admin = createAdminClient();
+  const { data: target } = await admin.schema("shared").from("staff").select("role").eq("id", input.staffId).single();
+  if (!target || !isPartnerRole(target.role)) {
+    return { ok: false, error: "That is not an outside account." };
+  }
+
+  if (input.temporaryPin !== null) {
+    const { error: pinError } = await admin.auth.admin.updateUserById(input.staffId, { password: input.temporaryPin });
+    if (pinError) {
+      return { ok: false, error: pinError.message };
+    }
+  }
+  const { error } = await admin
+    .schema("shared")
+    .from("staff")
+    .update({ active: input.active, ...(input.temporaryPin !== null ? { must_change_pin: true } : {}) })
+    .eq("id", input.staffId);
   if (error) {
     return { ok: false, error: error.message };
   }

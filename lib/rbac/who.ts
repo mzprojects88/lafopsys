@@ -43,6 +43,15 @@ export function doesFinance(who: Who): boolean {
  * are no longer offered. */
 export const ASSIGNABLE_ROLES: readonly Role[] = ["admin", "office_admin", "finance", "inventory_lead", "inventory_staff", "social_worker", "driver", "chef"];
 
+/** Outside accounts (0090): a partner's representative, not LAF staff. The database answers a
+ * partner role as "no staff role", so it opens nothing here and is never asked to clock in; it
+ * signs in to the Inventory app only, to the areas Settings > Roles & Access gives it. Created
+ * like any account, but never an additional role and never mixed with one. */
+export const PARTNER_ROLES: readonly Role[] = ["partner_viewer"];
+export const isPartnerRole = (role: Role | string): boolean => (PARTNER_ROLES as readonly string[]).includes(role);
+/** The roles the Create Staff Account form offers. */
+export const CREATABLE_ROLES: readonly Role[] = [...ASSIGNABLE_ROLES, ...PARTNER_ROLES];
+
 /** Main roles a picker offers: the assignable ones (never CEO), plus the one held now. */
 export function mainRoleChoices(current: Role): Role[] {
   return ASSIGNABLE_ROLES.includes(current) ? [...ASSIGNABLE_ROLES] : [...ASSIGNABLE_ROLES, current];
@@ -58,6 +67,7 @@ export function extraRoleChoices(main: Role, held: readonly Role[] = []): Role[]
 /** Why a main role + additional roles can't be saved, or null. The server action applies it. */
 export function rolesProblem(main: Role, extras: readonly Role[]): string | null {
   if (main === "ceo") return "CEO is an additional role beside Super Admin, not a main role.";
+  if (isPartnerRole(main) || extras.some(isPartnerRole)) return "An outside account is its own kind of account: it can't be mixed with staff roles.";
   if (extras.includes("admin")) return "Super Admin can only be a main role.";
   if (extras.includes(main)) return "An additional role can't repeat the main role.";
   if (extras.length > 3) return "At most three additional roles.";

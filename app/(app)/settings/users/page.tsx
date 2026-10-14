@@ -3,7 +3,8 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { CreateStaffDialog } from "@/components/modules/settings/create-staff-dialog";
 import { EditStaffAccessDialog } from "@/components/modules/settings/edit-staff-access-dialog";
-import { NAV_ITEMS } from "@/lib/rbac/roles";
+import { PartnerAccountDialog } from "@/components/modules/settings/partner-account-dialog";
+import { NAV_ITEMS, isPartnerRole } from "@/lib/rbac/roles";
 import { createClient } from "@/lib/supabase/server";
 import { ROLES, type Role } from "@/lib/types/common";
 import { STATUS_TONE_CLASSES, type StatusTone } from "@/lib/utils/status-colors";
@@ -60,7 +61,8 @@ export default async function UsersPage() {
                   </span>
                   {s.must_change_pin && <Pill tone="warning">Awaiting first login</Pill>}
                   {!s.active && <Pill tone="neutral">Inactive</Pill>}
-                  {s.clock_in_exempt && <Pill tone="info">No clock-in needed</Pill>}
+                  {isPartnerRole(s.role) && <Pill tone="info">Outside account · Inventory view only</Pill>}
+                  {s.clock_in_exempt && !isPartnerRole(s.role) && <Pill tone="info">No clock-in needed</Pill>}
                   {s.is_hr && s.role !== "admin" && <Pill tone="info">Runs HR</Pill>}
                   {s.landing_path && <Pill tone="neutral">Starts on {NAV_TITLE[s.landing_path] ?? s.landing_path}</Pill>}
                 </div>
@@ -71,6 +73,9 @@ export default async function UsersPage() {
               <Pill tone="neutral" className="shrink-0">
                 {[s.role, ...(s.extra_roles ?? [])].map((r) => ROLE_LABEL[r] ?? r).join(" + ")}
               </Pill>
+              {isPartnerRole(s.role) ? (
+                <PartnerAccountDialog staffId={s.id} name={`${s.first_name} ${s.last_name}`} active={s.active} />
+              ) : (
               <EditStaffAccessDialog
                 staffId={s.id}
                 name={`${s.first_name} ${s.last_name}`}
@@ -80,6 +85,7 @@ export default async function UsersPage() {
                 landingPath={s.landing_path}
                 isHr={s.is_hr}
               />
+              )}
             </div>
           ))}
         </div>

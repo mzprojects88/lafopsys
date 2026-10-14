@@ -4,7 +4,7 @@ import * as React from "react";
 import { Role } from "@/lib/types/common";
 import { createClient } from "@/lib/supabase/client";
 import { resetAllCollections } from "@/lib/data/collection-store";
-import { runsHr, titleRole } from "@/lib/rbac/roles";
+import { isPartnerRole, runsHr, titleRole } from "@/lib/rbac/roles";
 
 interface RoleContextValue {
   /** The main role (shared.staff.role): the default home page and every server check. */
@@ -77,6 +77,13 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
           .eq("id", userData.user.id)
           .single();
 
+        // An outside (partner) account has no place here: its sign-in is the Inventory app's.
+        // The database already answers it nothing; this only spares it an empty shell.
+        if (!cancelled && staffRow && isPartnerRole(staffRow.role)) {
+          await supabase.auth.signOut();
+          window.location.assign("/login");
+          return;
+        }
         if (!cancelled && staffRow) {
           setRoleState(staffRow.role as Role);
           setExtraRoles(((staffRow.extra_roles as string[] | null) ?? []) as Role[]);

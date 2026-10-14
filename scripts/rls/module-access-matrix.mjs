@@ -169,7 +169,8 @@ async function main() {
   await scenario(ids, "board reads bank transactions", "board", null, q("select id from ops.bank_transactions limit 1"), atLeast(0));
   await scenario(ids, "board cannot write a month note", "board", null,
     q("insert into ops.finance_month_notes (month, drivers) values ('2020-01', 'x')"), denied);
-  await scenario(ids, "chef still reads donors (laf-inventory)", "chef", null, q("select id from ops.donors limit 1"), rows(1));
+  // 0088 closes ops.donors itself to inventory roles; names come through the directory (0087).
+  await scenario(ids, "chef still reads donor names (the directory, laf-inventory)", "chef", null, q("select id from ops.donor_directory(null, null, null, 1)"), rows(1));
   await scenario(ids, "house staff cannot add a calendar event", "house_staff", null,
     q("insert into ops.calendar_events (date, title) values (current_date, 'x')"), denied);
   await scenario(ids, "board cannot upload a patient file", "board", null, q("select shared.file_write_allowed('patients') as ok"), value("ok", false));

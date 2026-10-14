@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { Role } from "@/lib/types/common";
+import { isPartnerRole } from "@/lib/rbac/who";
 
 export interface StaffRosterEntry {
   id: string;
@@ -45,7 +46,9 @@ export const staffRosterStore = createCollection<StaffRosterEntry[]>({
       .select("id, first_name, last_name, role, extra_roles, position, active, clock_in_exempt, landing_path, is_hr")
       .order("first_name");
     if (error) throw new Error(error.message);
-    return ((data ?? []) as StaffRow[]).map((row) => ({
+    // Outside (partner) accounts are not staff: they never appear in a roster, the DTR, HR or a
+    // picker. Settings > Users reads the table itself and lists them.
+    return ((data ?? []) as StaffRow[]).filter((row) => !isPartnerRole(row.role)).map((row) => ({
       id: row.id,
       firstName: row.first_name,
       lastName: row.last_name,

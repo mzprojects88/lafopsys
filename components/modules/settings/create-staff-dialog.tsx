@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ROLES } from "@/lib/types/common";
-import { ASSIGNABLE_ROLES } from "@/lib/rbac/roles";
+import { CREATABLE_ROLES, isPartnerRole } from "@/lib/rbac/roles";
 import { createStaffAccount } from "@/app/(app)/settings/users/actions";
 
 // Org-wide default for every newly-created account (matches
@@ -124,7 +124,7 @@ export function CreateStaffDialog() {
               <SelectValue placeholder="Select a role" />
             </SelectTrigger>
             <SelectContent>
-              {ROLES.filter((r) => ASSIGNABLE_ROLES.includes(r.value)).map((r) => (
+              {ROLES.filter((r) => CREATABLE_ROLES.includes(r.value)).map((r) => (
                 <SelectItem key={r.value} value={r.value}>
                   {r.label}
                 </SelectItem>
@@ -134,8 +134,19 @@ export function CreateStaffDialog() {
         </Field>
 
         <Field>
-          <FieldLabel htmlFor="position">Position</FieldLabel>
-          <Input id="position" placeholder="e.g. House Manager" value={position} onChange={(e) => setPosition(e.target.value)} />
+          <FieldLabel htmlFor="position">{role && isPartnerRole(role) ? "Organisation and position" : "Position"}</FieldLabel>
+          <Input
+            id="position"
+            placeholder={role && isPartnerRole(role) ? "e.g. NCH Hospital representative" : "e.g. House Manager"}
+            value={position}
+            onChange={(e) => setPosition(e.target.value)}
+          />
+          {role && isPartnerRole(role) && (
+            <p className="text-theme-xs text-muted-foreground">
+              An outside account is not LAF staff. It signs in to the Inventory app only, sees the areas set under Roles &amp; Access (view only), never
+              clocks in, and cannot open this system.
+            </p>
+          )}
         </Field>
 
         <Field>

@@ -87,3 +87,19 @@ describe("what Settings > Users offers and accepts", () => {
     assert.match(rolesProblem("driver", ["chef", "finance", "social_worker", "office_admin"]), /three/);
   });
 });
+
+describe("outside (partner) accounts, 0090", async () => {
+  const { CREATABLE_ROLES, ASSIGNABLE_ROLES, PARTNER_ROLES, isPartnerRole } = await import("../lib/rbac/who.ts");
+  it("can be created, but is not one of the staff roles a person is given or mixed with", () => {
+    assert.equal(isPartnerRole("partner_viewer"), true);
+    assert.equal(isPartnerRole("inventory_staff"), false);
+    assert.equal(CREATABLE_ROLES.includes("partner_viewer"), true);
+    assert.equal(ASSIGNABLE_ROLES.includes("partner_viewer"), false); // not a column of the staff grid, not a role change
+    assert.equal(mainRoleChoices("driver").some(isPartnerRole), false);
+    assert.equal(extraRoleChoices("driver").some(isPartnerRole), false);
+    assert.match(rolesProblem("partner_viewer", []), /outside account/);
+    assert.match(rolesProblem("driver", ["partner_viewer"]), /outside account/);
+    assert.equal(rolesProblem("driver", ["inventory_staff"]), null);
+    assert.deepEqual([...PARTNER_ROLES], ["partner_viewer"]);
+  });
+});

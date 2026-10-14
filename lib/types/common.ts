@@ -11,7 +11,9 @@ export type Role =
   | "inventory_lead"
   | "nutritionist"
   | "office_admin"
-  | "ceo";
+  | "ceo"
+  /** An outside account (0090): not LAF staff. Opens the Inventory app to look, nothing here. */
+  | "partner_viewer";
 
 export const ROLES: { value: Role; label: string; sampleUser: string }[] = [
   // "admin" is the database name of the Super Admin (0073 kept it, to keep ~50 checks unchanged).
@@ -28,6 +30,7 @@ export const ROLES: { value: Role; label: string; sampleUser: string }[] = [
   { value: "inventory_staff", label: "Inventory Staff", sampleUser: "Jeffrey Olfato" },
   { value: "inventory_lead", label: "Inventory Lead", sampleUser: "Desiree Candia Loquinario" },
   { value: "nutritionist", label: "Nutritionist", sampleUser: "Staff Nutritionist" },
+  { value: "partner_viewer", label: "Partner viewer (outside)", sampleUser: "NCH Representative" },
 ];
 
 export type Entity = "US_501C3" | "PH_SEC";
