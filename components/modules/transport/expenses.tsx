@@ -18,7 +18,7 @@ import { uploadFileToRecord } from "@/lib/files/upload-client";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { useVehicleExpenses, type ExpenseInput, type VehicleExpense } from "@/lib/hooks/use-vehicle-expenses-collection";
 import type { OdometerPhotoRead, Vehicle } from "@/lib/hooks/use-vehicles-collection";
-import { canDeleteFiles, canUploadFiles } from "@/lib/rbac/roles";
+import { canDeleteFiles, canUploadFiles, holdsPower } from "@/lib/rbac/roles";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { formatKm } from "@/lib/utils/odometer";
 import { changeRule, formatPesoCents, pricePerLitre } from "@/lib/utils/vehicle-expenses";
@@ -47,7 +47,7 @@ export function ExpenseDialog({
   const { kinds, logExpense, editExpense } = useVehicleExpenses();
   const { staffId } = useRole();
   const { staff } = useStaffRoster();
-  const drivers = staff.filter((s) => s.active && (s.role === "driver" || s.extraRoles.includes("driver")));
+  const drivers = staff.filter((s) => s.active && holdsPower([s.role, ...s.extraRoles], "driver"));
   const fuel = mode === "fuel";
   const tracked = vehicle.startOdometer != null;
 

@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { useRole } from "@/context/role-provider";
 import { isHiddenPath } from "@/lib/rbac/hidden";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 
 export interface ModuleSubNavItem {
   href: string;
@@ -13,6 +14,8 @@ export interface ModuleSubNavItem {
 
 export function ModuleSubNav({ items }: { items: ModuleSubNavItem[] }) {
   const { role } = useRole();
+  // A page set to None for this person is not offered (0093).
+  const { levelOfPath } = useModuleAccess();
   return (
     // On a phone these pills used to wrap into a tall stack that pushed the page's
     // real content below the fold -- five sub-nav items on /patients cost most of the
@@ -20,7 +23,7 @@ export function ModuleSubNav({ items }: { items: ModuleSubNavItem[] }) {
     // dissolves this wrapper on larger screens so the links stay direct children of
     // PageHeader's action flex row and desktop layout is unchanged.
     <div className="no-scrollbar flex w-full gap-2 overflow-x-auto sm:contents">
-      {items.filter((item) => !isHiddenPath(item.href, role)).map((item) => (
+      {items.filter((item) => !isHiddenPath(item.href, role) && levelOfPath(item.href) !== "none").map((item) => (
         <Link
           key={item.href}
           href={item.href}

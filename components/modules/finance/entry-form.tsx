@@ -18,6 +18,7 @@ import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
 import { useProgramsData } from "@/lib/hooks/use-programs-collection";
 import { todayIso } from "@/lib/utils/date";
 import type { CashEntryDirection, CashEntrySource } from "@/lib/types/finance";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 
 const inflowSources: CashEntrySource[] = ["cash_donation", "in_kind_donation", "capital_infusion", "grant", "fundraising_event", "interest", "inter_entity_transfer"];
 const outflowSources: CashEntrySource[] = ["program_expense", "payroll", "rent_utilities", "vehicle_fuel", "admin_ops", "emergency_assistance", "burial_assistance"];
@@ -42,6 +43,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export function EntryForm() {
+  const editable = useModuleAccess().canEdit("finance");
   const router = useRouter();
   const { addEntry } = useCashEntriesData();
   const { programs } = useProgramsData();
@@ -80,6 +82,7 @@ export function EntryForm() {
     router.push("/finance");
   }
 
+  if (!editable) return <p className="rounded-2xl border border-border bg-card px-5 py-6 text-center text-sm text-muted-foreground">Recording a cash entry is view-only for your role.</p>;
   return (
     <Card className="max-w-xl">
       <CardContent>

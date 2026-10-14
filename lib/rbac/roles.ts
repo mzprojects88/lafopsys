@@ -59,8 +59,8 @@ export const ALL_ROLES: Role[] = [
   "volunteer",
 ];
 
-export { ASSIGNABLE_ROLES, CREATABLE_ROLES, PARTNER_ROLES, isPartnerRole, doesFinance, extraRoleChoices, hasAnyRole, mainRoleChoices, rolesIn, rolesOfRow, rolesProblem, runsHr, titleRole, type StaffRolesRow, type Who } from "@/lib/rbac/who";
-import { doesFinance, hasAnyRole, rolesIn, type Who } from "@/lib/rbac/who";
+export { BUILT_IN_POWERS, holdsPower, setRolePowers, type Power, type RolePowerRow, ASSIGNABLE_ROLES, CREATABLE_ROLES, PARTNER_ROLES, isPartnerRole, doesFinance, extraRoleChoices, hasAnyRole, mainRoleChoices, rolesIn, rolesOfRow, rolesProblem, runsHr, titleRole, type StaffRolesRow, type Who } from "@/lib/rbac/who";
+import { doesFinance, hasAnyRole, holdsPower, rolesIn, type Who } from "@/lib/rbac/who";
 
 /** laf-inventory-only roles. Real accounts, created from lafopsys like any
  * other, but scoped in lafopsys's own nav to Inventory (read-only) + Staff &
@@ -71,6 +71,10 @@ export const INVENTORY_ROLES: Role[] = ["chef", "inventory_staff", "nutritionist
  * Deliberately a superset of ALL_ROLES — lafopsys is the single place every
  * account gets created org-wide, inventory-only roles included. */
 export const ORG_ROLES: Role[] = [...ALL_ROLES, ...INVENTORY_ROLES];
+
+/** Today's built-in role keys (0093 seeds them in shared.roles). Any other key was created by an admin. */
+export const BUILT_IN_ROLES: readonly string[] = [...ORG_ROLES, "partner_viewer"];
+export const isCustomRole = (role: string): boolean => !BUILT_IN_ROLES.includes(role);
 
 export const LOGIN_VISIBLE_ROLES = ORG_ROLES;
 
@@ -147,7 +151,7 @@ export function canEditCalendarEvent(canEditCalendar: boolean, event: { source: 
  * shared.staff.is_hr). Also the RLS rule (hr.is_hr_staff()); this only
  * decides which HR pages and buttons render. */
 export function canManageHr(who: Who, isHr: boolean) {
-  return hasAnyRole(who, "admin", "office_admin") || isHr;
+  return holdsPower(who, "runs_hr") || isHr;
 }
 
 /** Who sees the Compliances tracker: admins, finance, and anyone flagged as
@@ -170,11 +174,12 @@ export function canUploadFiles(module: FileModule, who: Who, isHr: boolean) {
       return canManageHr(who, isHr);
     case "compliance":
       return canManageHr(who, isHr) || doesFinance(who);
+    // A role created in Roles & Access (0093) is offered the upload; the database decides by the menu's level.
     case "patients":
-      return hasAnyRole(who, "admin", "social_worker", "office_admin");
+      return hasAnyRole(who, "admin", "social_worker", "office_admin") || rolesIn(who).some(isCustomRole);
     case "transport":
       // Transport's editors by default (0053); the grid can change it, the database is the gate.
-      return hasAnyRole(who, "admin", "social_worker", "driver");
+      return hasAnyRole(who, "admin", "social_worker", "driver") || rolesIn(who).some(isCustomRole);
     default:
       return doesFinance(who);
   }
@@ -191,19 +196,19 @@ export function canDeleteFiles(module: FileModule, who: Who, isHr: boolean) {
  * guard trigger on ops.units is the rule; this only decides whether the
  * edit tools render. */
 export function canEditFloorPlan(who: Who) {
-  return hasAnyRole(who, "admin");
+  return holdsPower(who, "floor_plan_layout");
 }
 
 /** Who may place a family outside the bed rules, with a reason (0072): social
  * workers, admins (CEO, Super Admin) and the inventory lead (Des); mirrors
  * ops.can_allow_bed_exception(). They still need Patients edit to check anyone in. */
 export function canAllowBedException(who: Who) {
-  return hasAnyRole(who, "admin", "social_worker", "inventory_lead");
+  return holdsPower(who, "bed_exception");
 }
 
-/** Finance and Board never see clinical detail — enforced at the component level using this flag. */
+/** Clinical detail follows the "Sees clinical detail" power (0093; today every role but Finance and Board). */
 export function canSeeClinicalDetail(who: Who) {
-  return rolesIn(who).some((r) => r !== "finance" && r !== "board");
+  return holdsPower(who, "clinical_detail");
 }
 
 /** Post-login destination for this person, against the real navigation.

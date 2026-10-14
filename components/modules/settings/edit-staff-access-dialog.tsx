@@ -30,9 +30,9 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ADMIN_ONLY_MODULES, NAV_ITEMS, extraRoleChoices, landingChoicesFor, levelFor, mainRoleChoices, type AccessLevel, type ModuleKey, type Overrides } from "@/lib/rbac/roles";
-import { useModuleAccess } from "@/lib/hooks/use-module-access";
+import { useModuleAccess, useRoleNames } from "@/lib/hooks/use-module-access";
 import { useRole } from "@/context/role-provider";
-import { ROLES, type Role } from "@/lib/types/common";
+import type { Role } from "@/lib/types/common";
 import { deleteStaffAccount, setStaffOverride, updateStaffAccess } from "@/app/(app)/settings/users/actions";
 
 const LEVEL_LABEL: Record<AccessLevel, string> = { none: "None", view: "View only", edit: "Edit" };
@@ -61,6 +61,10 @@ export function EditStaffAccessDialog({
   isHr,
   active,
   overrides,
+  firstName,
+  lastName,
+  position,
+  hrPosition,
 }: {
   staffId: string;
   name: string;
@@ -73,6 +77,12 @@ export function EditStaffAccessDialog({
   active: boolean;
   /** This person's own overrides of the role grid (0091). */
   overrides: Overrides;
+  /** Full name and job title (0093). */
+  firstName: string;
+  lastName: string;
+  position: string;
+  /** The position on their HR record, when it differs: HR's documents print that one. */
+  hrPosition?: string | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -86,6 +96,10 @@ export function EditStaffAccessDialog({
   const [pin, setPin] = React.useState("");
   const [busyModule, setBusyModule] = React.useState<ModuleKey | null>(null);
   const [confirmRemove, setConfirmRemove] = React.useState(false);
+  const [first, setFirst] = React.useState(firstName);
+  const [last, setLast] = React.useState(lastName);
+  const [title, setTitle] = React.useState(position);
+  const { name: roleName, custom } = useRoleNames();
   const { staffId: myId } = useRole();
   const isMe = myId === staffId;
 
@@ -94,9 +108,13 @@ export function EditStaffAccessDialog({
   const choices = landingChoicesFor([mainRole, ...extras], accessRows, overrides);
   const sameRoles = mainRole === role && extras.length === extraRoles.length && extras.every((r) => extraRoles.includes(r));
   const pinOk = pin === "" || /^\d{6}$/.test(pin);
-  const changed = exempt !== clockInExempt || (landing === ROLE_DEFAULT ? null : landing) !== landingPath || hr !== isHr || !sameRoles || on !== active || pin !== "";
+  const nameChanged = first.trim() !== firstName || last.trim() !== lastName || title.trim() !== position;
+  const nameOk = !!first.trim() && !!last.trim() && !!title.trim();
+  const changed = exempt !== clockInExempt || (landing === ROLE_DEFAULT ? null : landing) !== landingPath || hr !== isHr || !sameRoles || on !== active || pin !== "" || nameChanged;
   // Super Admin is only ever a main role; CEO only beside it (the server refuses otherwise).
-  const extraChoices = extraRoleChoices(mainRole, extraRoles);
+  // A role an admin created (0093) is offered beside the built-in ones.
+  const extraChoices = [...extraRoleChoices(mainRole, extraRoles), ...custom.filter((r) => r !== mainRole && !extraRoleChoices(mainRole, extraRoles).includes(r))];
+  const mainChoices = [...mainRoleChoices(role), ...custom.filter((r) => !mainRoleChoices(role).includes(r))];
 
   function reset() {
     setExempt(clockInExempt);
@@ -106,6 +124,9 @@ export function EditStaffAccessDialog({
     setExtras(extraRoles);
     setOn(active);
     setPin("");
+    setFirst(firstName);
+    setLast(lastName);
+    setTitle(position);
   }
 
   async function changeOverride(module: ModuleKey, next: string) {
@@ -145,6 +166,9 @@ export function EditStaffAccessDialog({
       isHr: hr,
       active: on,
       temporaryPin: pin || null,
+      firstName: first.trim(),
+      lastName: last.trim(),
+      position: title.trim(),
     });
     setSaving(false);
     if (!result.ok) {
@@ -177,6 +201,24 @@ export function EditStaffAccessDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-5">
+          <div className="grid grid-cols-2 gap-3">
+            <Field>
+              <FieldLabel htmlFor="acc-first">First name</FieldLabel>
+              <Input id="acc-first" value={first} onChange={(e) => setFirst(e.target.value)} disabled={saving} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="acc-last">Last name</FieldLabel>
+              <Input id="acc-last" value={last} onChange={(e) => setLast(e.target.value)} disabled={saving} />
+            </Field>
+          </div>
+          <Field>
+            <FieldLabel htmlFor="acc-title">Job title</FieldLabel>
+            <Input id="acc-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Logistics & Facilities Support" disabled={saving} />
+            <p className="text-xs text-muted-foreground">
+              Printed beside their name on documents set to &ldquo;Full name + Job title&rdquo;.
+              {hrPosition ? ` Their HR record says “${hrPosition}”; payslips and HR certificates print that one.` : ""}
+            </p>
+          </Field>
           <Field>
             <FieldLabel htmlFor="main-role">Main role</FieldLabel>
             <Select
@@ -192,9 +234,9 @@ export function EditStaffAccessDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {mainRoleChoices(role).map((r) => (
+                {mainChoices.map((r) => (
                   <SelectItem key={r} value={r}>
-                    {ROLES.find((x) => x.value === r)?.label ?? r}
+                    {roleName(r)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -214,7 +256,7 @@ export function EditStaffAccessDialog({
                     disabled={saving || (!extras.includes(r) && extras.length >= 3)}
                     onCheckedChange={(on) => setExtras((prev) => (on === true ? [...prev, r] : prev.filter((x) => x !== r)))}
                   />
-                  {ROLES.find((x) => x.value === r)?.label ?? r}
+                  {roleName(r)}
                 </label>
               ))}
             </div>
@@ -337,7 +379,7 @@ export function EditStaffAccessDialog({
           <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={!changed || saving || !pinOk}>
+          <Button onClick={handleSave} disabled={!changed || saving || !pinOk || !nameOk}>
             {saving ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/utils/date";
 import { formatTime12 } from "@/lib/utils/time12";
 import { PrintButton } from "@/app/(print)/hr/payslips/[id]/print/print-button";
+import { nameFormat, titleFor } from "@/lib/utils/staff-name";
 
 /**
  * A LAF HOPE pick-up's manifest on paper (go-live, 2026-10-13): who was listed, who boarded,
@@ -23,9 +24,12 @@ export default async function ManifestPrintPage({ params }: { params: Promise<{ 
     .maybeSingle();
   if (!trip) notFound();
   const [{ data: driver }, { data: vehicle }] = await Promise.all([
-    trip.driver_staff_id ? supabase.schema("shared").from("staff").select("first_name, last_name").eq("id", trip.driver_staff_id).maybeSingle() : Promise.resolve({ data: null }),
+    trip.driver_staff_id ? supabase.schema("shared").from("staff").select("first_name, last_name, position").eq("id", trip.driver_staff_id).maybeSingle() : Promise.resolve({ data: null }),
     trip.vehicle_id ? supabase.schema("ops").from("vehicles").select("name, plate_no").eq("id", trip.vehicle_id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
+  // Settings > Documents (0094): the driver's job title under the line, or the name alone.
+  const { data: docSettings } = await supabase.schema("shared").from("app_settings").select("document_names").maybeSingle();
+  const driverTitle = titleFor(nameFormat(docSettings?.document_names, "manifest"), driver?.position);
   const manifest = ((trip.trip_manifest ?? []) as { id: string; name: string; carer_name: string | null; boarded_at: string | null }[]).sort((a, b) => a.name.localeCompare(b.name));
   const boarded = manifest.filter((m) => m.boarded_at).length;
 
@@ -84,8 +88,8 @@ export default async function ManifestPrintPage({ params }: { params: Promise<{ 
         <footer className="mt-6 flex items-end justify-between gap-6 text-xs text-neutral-600">
           <p>{boarded} of {manifest.length} on board. Families are checked in on the House Sheet on arrival.</p>
           <div className="w-56">
-            <div className="h-6 border-b border-neutral-400" />
-            <p className="pt-1">Driver</p>
+            <div className="h-6 border-b border-neutral-400 text-center text-sm font-medium text-neutral-900">{driver ? `${driver.first_name} ${driver.last_name}` : ""}</div>
+            <p className="pt-1">{driverTitle ? `Driver · ${driverTitle}` : "Driver"}</p>
           </div>
         </footer>
       </div>

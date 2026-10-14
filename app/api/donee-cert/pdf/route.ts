@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildDoneeCert, type DoneeCertLine } from "@/lib/pdf/donee-cert";
+import { nameFormat, titleFor } from "@/lib/utils/staff-name";
 
 /**
  * A certificate of donation (BIR Form 2322, 0085) as a PDF. The caller's session must be able
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
   const donor = donation.donors as unknown as { name: string; address: string | null; tin: string | null } | null;
 
   const [{ data: settings }, { data: ar }, { data: invLines }, { data: invReceipt }] = await Promise.all([
-    admin.schema("shared").from("app_settings").select("report_header, org_address, org_tin, certificate_signatory_id").eq("id", true).maybeSingle(),
+    admin.schema("shared").from("app_settings").select("report_header, org_address, org_tin, certificate_signatory_id, document_names").eq("id", true).maybeSingle(),
     admin.schema("ops").from("acknowledgment_receipts").select("sequence_number").eq("donation_id", cert.donation_id).maybeSingle(),
     donation.kind === "in_kind" && donation.source_id
       ? admin.schema("inventory").from("donation_lines").select("description, quantity, uom, value").eq("donation_id", donation.source_id).order("created_at")
@@ -70,7 +71,7 @@ export async function POST(req: Request) {
     orgTin: settings?.org_tin || undefined,
     header: settings?.report_header || undefined,
     signatoryName: signatory ? `${signatory.first_name} ${signatory.last_name}` : undefined,
-    signatoryPosition: signatory?.position?.trim() || undefined,
+    signatoryPosition: titleFor(nameFormat(settings?.document_names, "donee_cert"), signatory?.position) ?? undefined,
   });
 
   return new NextResponse(new Uint8Array(pdf), {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildCashAr } from "@/lib/pdf/cash-ar";
+import { nameFormat, titleFor } from "@/lib/utils/staff-name";
 
 /**
  * A cash acknowledgement receipt (0085) as a PDF, built on every download from the row the
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
   if (!donation) return NextResponse.json({ error: "Donation not found" }, { status: 404 });
   const [{ data: issuer }, { data: settings }] = await Promise.all([
     receipt.issued_by ? admin.schema("shared").from("staff").select("first_name, last_name, position").eq("id", receipt.issued_by).maybeSingle() : Promise.resolve({ data: null }),
-    admin.schema("shared").from("app_settings").select("report_header").eq("id", true).maybeSingle(),
+    admin.schema("shared").from("app_settings").select("report_header, document_names").eq("id", true).maybeSingle(),
   ]);
   const donor = donation.donors as unknown as { name: string } | null;
   const campaign = donation.campaigns as unknown as { name: string } | null;
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
     campaign: campaign?.name ?? undefined,
     notes: donation.notes ?? undefined,
     receivedBy: issuer ? `${issuer.first_name} ${issuer.last_name}` : undefined,
-    receivedByPosition: issuer?.position?.trim() || undefined,
+    receivedByPosition: titleFor(nameFormat(settings?.document_names, "cash_ar"), issuer?.position) ?? undefined,
     header: settings?.report_header || undefined,
   });
 

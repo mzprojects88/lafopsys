@@ -22,9 +22,12 @@ import { useMealServicesData } from "@/lib/hooks/use-meal-services-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import type { MealService } from "@/lib/types/house-ops";
 import { formatDate } from "@/lib/utils/date";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 
 export default function MealsPage() {
   const { meals, addException } = useMealServicesData();
+  // View on this page shows the log without the exception button (0093).
+  const editable = useModuleAccess().canEdit("house_ops");
   const { patients, stays } = usePatientsData();
   const [exceptionTarget, setExceptionTarget] = React.useState<MealService | null>(null);
   const [patientId, setPatientId] = React.useState("");
@@ -88,7 +91,7 @@ export default function MealsPage() {
     {
       id: "actions",
       header: "",
-      cell: ({ row }) => (
+      cell: ({ row }) => editable && (
         <Button
           size="sm"
           variant="outline"

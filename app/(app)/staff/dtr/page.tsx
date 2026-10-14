@@ -23,7 +23,7 @@ import { formatDistance } from "@/lib/utils/site";
 import { CorrectionRequestsPanel } from "@/components/modules/staff/correction-requests-panel";
 import { useCorrectionRequests } from "@/lib/hooks/use-correction-requests";
 import { useRole } from "@/lib/rbac/use-role";
-import { canManageHr } from "@/lib/rbac/roles";
+import { canManageHr, holdsPower } from "@/lib/rbac/roles";
 import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
 import { csvLines, downloadCsv } from "@/lib/utils/csv";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
@@ -346,7 +346,7 @@ export default function DtrPage() {
       rows.push({
         ...p,
         staffName: staffName(p.staffId),
-        isDriver: ((x) => !!x && (x.role === "driver" || x.extraRoles.includes("driver")))(staff.find((x) => x.id === p.staffId)),
+        isDriver: ((x) => !!x && holdsPower([x.role, ...x.extraRoles], "driver"))(staff.find((x) => x.id === p.staffId)),
         dayKey: day,
         dateLabel: formatDayKey(day),
         timeLabel: timeLabel12(p.punchedAt),

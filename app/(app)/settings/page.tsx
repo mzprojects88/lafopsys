@@ -9,6 +9,7 @@ import { ClockInRequirementToggle } from "@/components/modules/settings/clock-in
 import { OvertimeThresholdField } from "@/components/modules/settings/overtime-threshold-field";
 import { LafHouseLocationField } from "@/components/modules/settings/laf-house-location-field";
 import { DocumentSettingsField } from "@/components/modules/settings/document-settings-field";
+import { DocumentNames } from "@/components/modules/settings/document-names";
 import { AdmissionTimes } from "@/components/modules/settings/admission-times";
 import { CalendarSheetSyncToggle } from "@/components/modules/settings/calendar-sheet-sync-toggle";
 import { HouseSheetSyncToggle } from "@/components/modules/settings/house-sheet-sync-toggle";
@@ -63,6 +64,10 @@ export default function SettingsPage() {
 
         <SectionCard title="House Occupancy Tracker">
           <HouseSheetSyncToggle />
+        </SectionCard>
+
+        <SectionCard id="document-names" className="scroll-mt-24" title="Documents: staff names">
+          <DocumentNames />
         </SectionCard>
 
         <SectionCard title="Admissions: daily reset">

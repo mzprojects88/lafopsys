@@ -24,6 +24,7 @@ import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { inventoryAppHref } from "@/lib/utils/inventory-app";
 import type { PaymentMethod } from "@/lib/types/donor";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 
 const METHODS = Object.keys(PAYMENT_METHOD_LABEL) as PaymentMethod[];
 
@@ -48,6 +49,7 @@ type FormValues = z.infer<typeof schema>;
  * Tracker arrives by itself (Donors > Cash gifts), so this form is for the gift that won't be there.
  */
 export default function DonationIntakePage() {
+  const editable = useModuleAccess().canEdit("donors");
   const router = useRouter();
   const { donors, donations, addDonation } = useDonorsData();
   const { lines } = useCashGifts();
@@ -88,6 +90,7 @@ export default function DonationIntakePage() {
     router.push("/donors");
   }
 
+  if (!editable) return <p className="rounded-2xl border border-border bg-card px-5 py-6 text-center text-sm text-muted-foreground">Recording a cash gift is view-only for your role.</p>;
   return (
     <div className="flex max-w-2xl flex-1 flex-col gap-6">
       <PageHeader title="New cash gift" description="For a cash gift that is not on accounting's Donation Tracker." />

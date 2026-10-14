@@ -51,7 +51,7 @@ const LEVEL_WORD: Record<AccessLevel, string> = { none: "none", view: "view", ed
 
 export default async function UsersPage() {
   const supabase = await createClient();
-  const [{ data }, { data: overrideData }, { data: eventData }] = await Promise.all([
+  const [{ data }, { data: overrideData }, { data: eventData }, { data: roleData }, { data: hrData }] = await Promise.all([
     supabase
       .schema("shared")
       .from("staff")
@@ -59,7 +59,12 @@ export default async function UsersPage() {
       .order("first_name"),
     supabase.schema("shared").from("staff_module_access").select("staff_id, module, level"),
     supabase.schema("shared").from("staff_events").select("staff_id, action, actor_name, at").order("at", { ascending: false }).limit(400),
+    supabase.schema("shared").from("roles").select("key, name"),
+    supabase.schema("hr").from("employees").select("staff_id, position").not("staff_id", "is", null),
   ]);
+  // Role names from shared.roles (0093): created roles too.
+  const roleName = (key: string) => (roleData ?? []).find((r) => r.key === key)?.name ?? ROLE_LABEL[key] ?? key;
+  const hrPositionOf = new Map((hrData ?? []).map((e) => [e.staff_id as string, e.position as string]));
 
   const all = (data ?? []) as StaffRow[];
   const overrideRows = (overrideData ?? []) as StaffOverrideRow[];
@@ -105,7 +110,7 @@ export default async function UsersPage() {
                 {overrideLine(s.id) && <span className="text-theme-xs text-primary">Adjusted for this person: {overrideLine(s.id)}</span>}
               </div>
               <Pill tone="neutral" className="shrink-0">
-                {[s.role, ...(s.extra_roles ?? [])].map((r) => ROLE_LABEL[r] ?? r).join(" + ")}
+                {[s.role, ...(s.extra_roles ?? [])].map((r) => roleName(r)).join(" + ")}
               </Pill>
               {isPartnerRole(s.role) ? (
                 <PartnerAccountDialog staffId={s.id} name={`${s.first_name} ${s.last_name}`} active={s.active} />
@@ -120,6 +125,10 @@ export default async function UsersPage() {
                 isHr={s.is_hr}
                 active={s.active}
                 overrides={overridesOf(overrideRows, s.id)}
+                firstName={s.first_name}
+                lastName={s.last_name}
+                position={s.position}
+                hrPosition={hrPositionOf.get(s.id) && hrPositionOf.get(s.id) !== s.position ? hrPositionOf.get(s.id) : null}
               />
               )}
             </div>
@@ -145,7 +154,7 @@ export default async function UsersPage() {
                   </span>
                 </div>
                 <Pill tone="neutral" className="shrink-0">
-                  {[s.role, ...(s.extra_roles ?? [])].map((r) => ROLE_LABEL[r] ?? r).join(" + ")}
+                  {[s.role, ...(s.extra_roles ?? [])].map((r) => roleName(r)).join(" + ")}
                 </Pill>
                 {isPartnerRole(s.role) ? (
                   <PartnerAccountDialog staffId={s.id} name={`${s.first_name} ${s.last_name}`} active={s.active} />
@@ -160,6 +169,10 @@ export default async function UsersPage() {
                     isHr={s.is_hr}
                     active={s.active}
                     overrides={overridesOf(overrideRows, s.id)}
+                firstName={s.first_name}
+                lastName={s.last_name}
+                position={s.position}
+                hrPosition={hrPositionOf.get(s.id) && hrPositionOf.get(s.id) !== s.position ? hrPositionOf.get(s.id) : null}
                   />
                 )}
               </div>

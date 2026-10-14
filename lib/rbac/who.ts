@@ -20,16 +20,50 @@ export interface StaffRolesRow {
 }
 export const rolesOfRow = (row: StaffRolesRow): Role[] => [row.role, ...(row.extra_roles ?? [])] as Role[];
 
+/** What a role may do beyond its pages (0093, shared.role_powers). The Super Admin holds all. */
+export type Power = "runs_hr" | "finance_work" | "bed_exception" | "floor_plan_layout" | "driver" | "clinical_detail";
+export interface RolePowerRow {
+  role: string;
+  power: Power;
+}
+
+/** The roles' powers as 0093 seeds them: today's behaviour, used until the table has loaded
+ * (and on a database without 0093). Keep in step with the seed. */
+export const BUILT_IN_POWERS: readonly RolePowerRow[] = [
+  { role: "office_admin", power: "runs_hr" },
+  { role: "finance", power: "finance_work" },
+  { role: "office_admin", power: "finance_work" },
+  { role: "social_worker", power: "bed_exception" },
+  { role: "inventory_lead", power: "bed_exception" },
+  { role: "driver", power: "driver" },
+  ...["ceo", "office_admin", "social_worker", "house_staff", "driver", "volunteer", "chef", "inventory_staff", "inventory_lead", "nutritionist"].map(
+    (role) => ({ role, power: "clinical_detail" as Power })
+  ),
+];
+
+// ponytail: one module-level copy of shared.role_powers, set by the client store; server code asks
+// the database instead (lib/rbac/server-powers.ts). Role powers are org-wide, not per person.
+let livePowers: readonly RolePowerRow[] | null = null;
+export function setRolePowers(rows: readonly RolePowerRow[] | null) {
+  livePowers = rows;
+}
+
+/** Does any of these roles hold the power? */
+export function holdsPower(who: Who, power: Power, rows: readonly RolePowerRow[] = livePowers ?? BUILT_IN_POWERS): boolean {
+  const roles = rolesIn(who);
+  return roles.includes("admin") || rows.some((r) => r.power === power && roles.includes(r.role as Role));
+}
+
 /** Runs HR: the Super Admin, the Office Admin (2026-10-02) and anyone flagged
  * is_hr -- the same people as hr.is_hr_staff(), 0073. */
 export function runsHr(row: StaffRolesRow): boolean {
-  return hasAnyRole(rolesOfRow(row), "admin", "office_admin") || Boolean(row.is_hr);
+  return holdsPower(rolesOfRow(row), "runs_hr") || Boolean(row.is_hr);
 }
 
 /** Finance work (bank imports, month notes, payroll totals, everyone's DTR): Finance
  * Staff, the Office Admin (Donors & Finance, 2026-10-02) and the Super Admin. */
 export function doesFinance(who: Who): boolean {
-  return hasAnyRole(who, "admin", "finance", "office_admin");
+  return holdsPower(who, "finance_work");
 }
 
 /** The title a person is shown under: CEO or Office Admin when they hold it,

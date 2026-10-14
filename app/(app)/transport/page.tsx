@@ -33,6 +33,7 @@ import { ModuleSubNav } from "@/components/patterns/module-subnav";
 import { formatTime12 } from "@/lib/utils/time12";
 import { formatKm } from "@/lib/utils/odometer";
 import { formatDate, todayIso } from "@/lib/utils/date";
+import { holdsPower } from "@/lib/rbac/roles";
 import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
 
 const STATUS_LABEL = { scheduled: "Scheduled", in_progress: "On the road", completed: "Arrived" } as const;
@@ -338,7 +339,7 @@ function NewPickupDialog({ onClose }: { onClose: () => void }) {
   const [saving, setSaving] = React.useState(false);
   const candidates = useManifestCandidates(date);
   // Main role or an additional one (0073): an inventory staff member may also drive.
-  const drivers = staff.filter((s) => s.active && (s.role === "driver" || s.extraRoles.includes("driver")));
+  const drivers = staff.filter((s) => s.active && holdsPower([s.role, ...s.extraRoles], "driver"));
 
   function toggle(id: string, on: boolean) {
     setPicked((prev) => {

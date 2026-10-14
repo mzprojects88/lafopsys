@@ -7,6 +7,7 @@ import { formatAmount2 } from "@/lib/utils/money";
 import { payPeriodLabel } from "@/lib/utils/pay-period";
 import type { PayLine } from "@/lib/utils/payroll";
 import { PrintButton } from "./print-button";
+import { nameFormat, titleFor } from "@/lib/utils/staff-name";
 
 interface PayslipRow {
   id: string;
@@ -52,6 +53,9 @@ export default async function PayslipPrintPage({ params }: { params: Promise<{ i
   const employer = p.lines.filter((l) => l.kind === "employer");
   const info = p.lines.filter((l) => l.kind === "info");
   const name = employee ? `${employee.first_name} ${employee.last_name}${employee.suffix ? ` ${employee.suffix}` : ""}` : "—";
+  // Settings > Documents (0094): the Position row, or the name alone.
+  const { data: docSettings } = await supabase.schema("shared").from("app_settings").select("document_names").maybeSingle();
+  const position = titleFor(nameFormat(docSettings?.document_names, "payslip"), employee?.position);
   const periodLabel = period ? payPeriodLabel({ year: period.year, seq: period.seq, from: period.starts_on, to: period.ends_on, isSecondCutoff: period.seq % 2 === 0 }) : formatDate(p.pay_date, "MMMM yyyy");
 
   return (
@@ -85,9 +89,9 @@ export default async function PayslipPrintPage({ params }: { params: Promise<{ i
           <div>
             <span className="text-neutral-500">Employee ID</span> {employee?.employee_code ?? "—"}
           </div>
-          <div>
-            <span className="text-neutral-500">Position</span> {employee?.position ?? "—"}
-          </div>
+          {position && (<div>
+            <span className="text-neutral-500">Position</span> {position}
+          </div>)}
           <div>
             <span className="text-neutral-500">Pay basis</span> {p.pay_basis === "daily" ? "Daily rate" : "Monthly"}
           </div>

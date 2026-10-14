@@ -10,6 +10,7 @@ import { payPeriodLabel, periodFor, semiMonthlyPeriods } from "@/lib/utils/pay-p
 import { formatDate } from "@/lib/utils/date";
 import { PrintButton } from "@/app/(print)/hr/payslips/[id]/print/print-button";
 import { hasAnyRole, rolesOfRow } from "@/lib/rbac/roles";
+import { nameFormat, titleFor } from "@/lib/utils/staff-name";
 
 /**
  * The printed DTR for one pay period (DTR plan phase 5): each day's arrival
@@ -130,6 +131,9 @@ export default async function DtrPrintPage({ params, searchParams }: { params: P
     return notes;
   };
   const name = `${person.first_name} ${person.last_name}`;
+  // Settings > Documents (0094): the job title under the name, or the name alone.
+  const { data: docSettings } = await supabase.schema("shared").from("app_settings").select("document_names").maybeSingle();
+  const jobTitle = titleFor(nameFormat(docSettings?.document_names, "dtr"), person.position);
   const width = Math.max(2, ...dtr.rows.map((r) => r.sessions.length));
   const shown = Math.min(width, 3);
 
@@ -157,7 +161,7 @@ export default async function DtrPrintPage({ params, searchParams }: { params: P
         <div className="mt-4 flex flex-wrap justify-between gap-2">
           <div>
             <div className="text-base font-semibold">{name}</div>
-            <div className="text-xs text-neutral-600">{person.position}</div>
+            {jobTitle && <div className="text-xs text-neutral-600">{jobTitle}</div>}
           </div>
           <div className="text-right text-xs">
             <div>
@@ -242,7 +246,7 @@ export default async function DtrPrintPage({ params, searchParams }: { params: P
         <div className="mt-10 grid grid-cols-2 gap-10 text-xs">
           <div>
             <div className="border-t border-neutral-500 pt-1 font-semibold">{name}</div>
-            <div className="text-neutral-600">Employee</div>
+            <div className="text-neutral-600">{jobTitle ? `Employee · ${jobTitle}` : "Employee"}</div>
           </div>
           <div>
             <div className="border-t border-neutral-500 pt-1 font-semibold">&nbsp;</div>

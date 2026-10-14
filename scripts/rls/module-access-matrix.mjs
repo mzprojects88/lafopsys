@@ -106,6 +106,12 @@ const atLeast = (n) => (r) => r.ok && r.rows >= n;
 const value = (field, v) => (r) => r.ok && r.rows === 1 && r.data[0][field] === v;
 
 const q = (sql, params) => () => client.query(sql, params);
+// Several statements; the outcome is the last one.
+const last = (...steps) => async () => {
+  let r;
+  for (const st of steps) r = await client.query(st.sql, st.params);
+  return r;
+};
 
 const PREFLIGHT = process.argv.slice(2);
 
@@ -324,6 +330,51 @@ async function main() {
     }, rows(0));
     await scenario(ids, "0091: a non-admin cannot remove an account", "finance", null, q("select shared.delete_unused_staff($1)", [ids.driver]), denied);
     await scenario(ids, "0091: an admin cannot remove themselves", "admin", null, q("select shared.delete_unused_staff($1)", [ids.admin]), (r) => !r.ok && r.code === "22023");
+  }
+
+  // --- 0093: roles you create, page levels, powers ----------------------------------------------
+  const has0093 = (await client.query("select to_regclass('shared.roles') is not null as y")).rows[0].y;
+  if (has0093) {
+    const relief = async () => {
+      await client.query("insert into shared.roles (key, name) values ('role-relief-driver', 'Relief Driver')");
+      await client.query("insert into shared.role_page_access (role, page, level) values ('role-relief-driver', 'transport.trips', 'edit'), ('role-relief-driver', 'patients.manifest', 'view')");
+      await client.query("insert into shared.role_powers (role, power) values ('role-relief-driver', 'driver')");
+      await client.query("update shared.staff set role = 'role-relief-driver', extra_roles = '{}' where id = $1", [ids.board]);
+    };
+    // Role columns on shared.staff are written by the server (service role), so the constraints are checked as postgres.
+    const asPostgres = (sql, params) => async () => {
+      await client.query("reset role");
+      return client.query(sql, params);
+    };
+    const asRelief = (extra) => ({ setup: async () => { await relief(); if (extra) await extra(); } });
+    await scenario(ids, "0093: today's grid is unchanged (driver edits transport)", "driver", null, q("select shared.module_level('transport') as l"), value("l", "edit"));
+    await scenario(ids, "0093: a page level drives the menu level (Relief Driver: transport edit)", "board", asRelief(), q("select shared.module_level('transport') as l"), value("l", "edit"));
+    await scenario(ids, "0093: ...and a View page gives the menu View (patients)", "board", asRelief(), q("select shared.module_level('patients') as l"), value("l", "view"));
+    await scenario(ids, "0093: ...and nothing else (finance none)", "board", asRelief(), q("select shared.module_level('finance') as l"), value("l", "none"));
+    await scenario(ids, "0093: the custom role reads patients (View) but cannot book", "board", asRelief(seedPatient), q(insertAppt), denied);
+    await scenario(ids, "0093: lowering the page lowers the menu", "board",
+      asRelief(() => client.query("update shared.role_page_access set level = 'view' where role = 'role-relief-driver' and page = 'transport.trips'")),
+      q("select shared.module_level('transport') as l"), value("l", "view"));
+    await scenario(ids, "0093: a custom role holds a power it is given", "board", asRelief(), q("select shared.has_power('driver') as ok"), value("ok", true));
+    await scenario(ids, "0093: ...and not one it is not", "board", asRelief(), q("select shared.has_power('bed_exception') as ok"), value("ok", false));
+    await scenario(ids, "0093: the bed-exception power lets a custom role allow one", "board",
+      asRelief(() => client.query("insert into shared.role_powers (role, power) values ('role-relief-driver', 'bed_exception')")),
+      q("select ops.can_allow_bed_exception() as ok"), value("ok", true));
+    await scenario(ids, "0093: social workers keep the bed-exception power", "social_worker", null, q("select ops.can_allow_bed_exception() as ok"), value("ok", true));
+    await scenario(ids, "0093: a driver does not have it", "driver", null, q("select ops.can_allow_bed_exception() as ok"), value("ok", false));
+    await scenario(ids, "0093: Office Admin runs HR through the power", "chef", asOfficeAdmin(), q("select hr.is_hr_staff() as ok"), value("ok", true));
+    await scenario(ids, "0093: finance reads everyone's punches", "finance", null, q("select shared.has_power('finance_work') as ok"), value("ok", true));
+    await scenario(ids, "0093: a social worker cannot add a bed (no layout power)", "social_worker", null, q("select ops.create_bed('B98', null, null, null, 0)"), denied);
+    await scenario(ids, "0093: the admin creates a role, copying a driver's access", "admin", null,
+      last({ sql: "select shared.create_role('Relief Driver', 'Covers weekends', 'driver') as k" }, { sql: "select count(*)::int as n from shared.role_page_access where role = 'role-relief-driver'" }),
+      (r) => r.ok && r.data[0].n > 0);
+    await scenario(ids, "0093: only the admin creates roles", "finance", null, q("select shared.create_role('X', null, null)"), denied);
+    await scenario(ids, "0093: nobody but the admin sets page levels", "finance", null, q("insert into shared.role_page_access (role, page, level) values ('finance', 'patients.all', 'edit')"), denied);
+    await scenario(ids, "0093: the Super Admin's pages cannot be set", "admin", null, q("insert into shared.role_page_access (role, page, level) values ('admin', 'patients.all', 'view')"), checkFailed);
+    await scenario(ids, "0093: a built-in role cannot be archived", "admin", null, q("update shared.roles set archived_at = now() where key = 'driver'"), checkFailed);
+    await scenario(ids, "0093: a role someone holds cannot be archived", "admin", asRelief(), q("update shared.roles set archived_at = now() where key = 'role-relief-driver'"), checkFailed);
+    await scenario(ids, "0093: an outside role is never an additional role", "admin", null, asPostgres("update shared.staff set extra_roles = '{partner_viewer}' where id = $1", [ids.driver]), checkFailed);
+    await scenario(ids, "0093: an unknown role is refused", "admin", null, asPostgres("update shared.staff set role = 'role-nope' where id = $1", [ids.driver]), (r) => !r.ok && r.code === "23503");
   }
 
   if (PREFLIGHT.length) await client.query("rollback");

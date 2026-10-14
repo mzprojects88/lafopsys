@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { HrSettings } from "@/lib/hooks/use-app-settings";
+import { NAME_DOCUMENTS } from "@/lib/utils/staff-name";
 
 export interface UpdateClockInRequirementResult {
   ok: boolean;
@@ -350,6 +351,27 @@ export async function updateAdmissionTimes(input: { resetAt: string; finalizeBy:
     .schema("shared")
     .from("app_settings")
     .update({ admission_reset_at: input.resetAt, admission_finalize_by: input.finalizeBy, updated_at: new Date().toISOString(), updated_by: caller.id })
+    .eq("id", true);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
+/** How each document prints a staff name (0094): "name" or "name_title" per document key. */
+export async function updateDocumentNames(input: Record<string, "name" | "name_title">): Promise<UpdateClockInRequirementResult> {
+  const keys = new Set(NAME_DOCUMENTS.map((d) => d.key as string));
+  const clean = Object.fromEntries(Object.entries(input).filter(([k, v]) => keys.has(k) && (v === "name" || v === "name_title")));
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+  if (!caller) return { ok: false, error: "Not signed in." };
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") return { ok: false, error: "Only admins can change this setting." };
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({ document_names: clean, updated_at: new Date().toISOString(), updated_by: caller.id })
     .eq("id", true);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/settings");

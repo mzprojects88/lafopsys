@@ -13,7 +13,9 @@ export type Role =
   | "office_admin"
   | "ceo"
   /** An outside account (0090): not LAF staff. Opens the Inventory app to look, nothing here. */
-  | "partner_viewer";
+  | "partner_viewer"
+  /** A role an admin created in Settings > Roles & Access (0093): key "role-<name>". */
+  | (string & {});
 
 export const ROLES: { value: Role; label: string; sampleUser: string }[] = [
   // "admin" is the database name of the Super Admin (0073 kept it, to keep ~50 checks unchanged).

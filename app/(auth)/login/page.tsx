@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { LoginForm, type LoginRosterEntry } from "@/components/modules/auth/login-form";
-import { LOGIN_VISIBLE_ROLES } from "@/lib/rbac/roles";
 import pkg from "@/package.json";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -49,7 +48,8 @@ export default async function LoginPage() {
       .from("staff")
       .select("id, staff_code, first_name, last_name")
       .eq("active", true)
-      .in("role", LOGIN_VISIBLE_ROLES)
+      // Every staff role, created ones too (0093); an outside account signs in to Inventory only.
+      .neq("role", "partner_viewer")
       .order("first_name"),
     fetchAuthEmailsById(supabase),
   ]);

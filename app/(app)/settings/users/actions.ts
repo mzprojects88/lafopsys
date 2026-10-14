@@ -35,6 +35,12 @@ async function actingAdmin(): Promise<{ ok: true; id: string; name: string } | {
   return { ok: true, id: user.id, name: `${me.first_name} ${me.last_name}` };
 }
 
+/** The roles an admin created and has not archived (0093); empty before 0093. */
+async function liveCustomRoles(): Promise<Set<string>> {
+  const { data } = await createAdminClient().schema("shared").from("roles").select("key").eq("built_in", false).is("archived_at", null);
+  return new Set((data ?? []).map((r) => r.key as string));
+}
+
 /** What an admin did to an account (shared.staff_events, 0091). Never blocks the action. */
 async function logAccountEvent(
   admin: ReturnType<typeof createAdminClient>,
@@ -71,7 +77,7 @@ export async function createStaffAccount(input: CreateStaffInput): Promise<Creat
   if (!firstName || !lastName || !position || !staffCode) {
     return { ok: false, error: "First name, last name, position, and staff code are all required." };
   }
-  if (!CREATABLE_ROLES.includes(input.role)) {
+  if (!CREATABLE_ROLES.includes(input.role) && !(await liveCustomRoles()).has(input.role)) {
     return { ok: false, error: "Invalid role." };
   }
   if (!/^\d{6}$/.test(input.temporaryPin)) {
@@ -146,6 +152,10 @@ export interface UpdateStaffAccessInput {
   active?: boolean;
   /** A new 6-digit temporary PIN, or null to leave the PIN alone (0091). */
   temporaryPin?: string | null;
+  /** Full name and job title (0093): the job title is what documents print beside the name. */
+  firstName?: string;
+  lastName?: string;
+  position?: string;
 }
 
 /**
@@ -164,7 +174,7 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
   const caller = { id: actor.id };
 
   const admin = createAdminClient();
-  const { data: target } = await admin.schema("shared").from("staff").select("role, active, first_name, last_name, extra_roles, clock_in_exempt, landing_path, is_hr").eq("id", input.staffId).single();
+  const { data: target } = await admin.schema("shared").from("staff").select("role, active, first_name, last_name, position, extra_roles, clock_in_exempt, landing_path, is_hr").eq("id", input.staffId).single();
   if (!target) {
     return { ok: false, error: "That staff account no longer exists." };
   }
@@ -177,10 +187,19 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
   // Roles (0073). The Super Admin is only ever a main role: every server check reads the
   // main role, so an "additional admin" would be an admin to the database and not to them.
   const extraRoles = [...new Set(input.extraRoles)];
-  // A role no longer offered (house staff, board, ...) is accepted only as the one already held.
-  const known = (r: Role) => ASSIGNABLE_ROLES.includes(r) || r === "ceo" || r === target.role;
-  if (!ORG_ROLES.includes(input.role) || !known(input.role) || !extraRoles.every((r) => ORG_ROLES.includes(r))) {
+  // A role no longer offered (house staff, board, ...) is accepted only as the one already held;
+  // a role an admin created (0093) is offered while it is live.
+  const custom = await liveCustomRoles();
+  const staffRole = (r: Role) => ORG_ROLES.includes(r) || custom.has(r);
+  const known = (r: Role) => ASSIGNABLE_ROLES.includes(r) || r === "ceo" || custom.has(r) || r === target.role;
+  if (!staffRole(input.role) || !known(input.role) || !extraRoles.every(staffRole)) {
     return { ok: false, error: "Invalid role." };
+  }
+  const firstName = input.firstName?.trim() ?? target.first_name;
+  const lastName = input.lastName?.trim() ?? target.last_name;
+  const position = input.position?.trim() ?? target.position;
+  if (!firstName || !lastName || !position) {
+    return { ok: false, error: "Full name and job title are required." };
   }
   const problem = rolesProblem(input.role, extraRoles);
   if (problem) {
@@ -228,6 +247,9 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
       landing_path: landingPath,
       is_hr: input.isHr,
       active,
+      first_name: firstName,
+      last_name: lastName,
+      position,
       ...(input.temporaryPin != null ? { must_change_pin: true } : {}),
     })
     .eq("id", input.staffId);
@@ -246,9 +268,12 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
     extraRoles.some((r) => !before.includes(r)) ||
     input.clockInExempt !== target.clock_in_exempt ||
     landingPath !== (target.landing_path ?? null) ||
-    input.isHr !== target.is_hr;
+    input.isHr !== target.is_hr ||
+    firstName !== target.first_name ||
+    lastName !== target.last_name ||
+    position !== target.position;
   if (settingsMoved) {
-    await logAccountEvent(admin, actor, who, "access_changed", { role: input.role, extraRoles, clockInExempt: input.clockInExempt, landingPath, isHr: input.isHr });
+    await logAccountEvent(admin, actor, who, "access_changed", { role: input.role, extraRoles, clockInExempt: input.clockInExempt, landingPath, isHr: input.isHr, name: `${firstName} ${lastName}`, position });
   }
   if (input.temporaryPin != null) await logAccountEvent(admin, actor, who, "pin_reset");
   if (active !== target.active) await logAccountEvent(admin, actor, who, active ? "reactivated" : "deactivated");

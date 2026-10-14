@@ -21,6 +21,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useActivitySessionsData } from "@/lib/hooks/use-activity-sessions-collection";
 import type { ActivitySession } from "@/lib/types/house-ops";
 import { formatDate, todayIso } from "@/lib/utils/date";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 
 const columns: ColumnDef<ActivitySession>[] = [
   { accessorKey: "date", header: "Date", cell: ({ row }) => formatDate(row.original.date) },
@@ -33,6 +34,7 @@ const columns: ColumnDef<ActivitySession>[] = [
 
 export default function ActivityCenterPage() {
   const { sessions, addSession } = useActivitySessionsData();
+  const editable = useModuleAccess().canEdit("house_ops");
   const [open, setOpen] = React.useState(false);
   const [title, setTitle] = React.useState("");
   const [participants, setParticipants] = React.useState("");
@@ -76,7 +78,7 @@ export default function ActivityCenterPage() {
         title="Activity Center @ NCH"
         description="Session log: participants, hours, volunteers, facilitator."
         action={
-          <Dialog open={open} onOpenChange={setOpen}>
+          editable && <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button><Plus />Log Session</Button>
             </DialogTrigger>

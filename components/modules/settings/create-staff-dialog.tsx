@@ -19,6 +19,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ROLES } from "@/lib/types/common";
 import { CREATABLE_ROLES, isPartnerRole } from "@/lib/rbac/roles";
+import { useRoleNames } from "@/lib/hooks/use-module-access";
 import { createStaffAccount } from "@/app/(app)/settings/users/actions";
 
 // Org-wide default for every newly-created account (matches
@@ -37,6 +38,7 @@ function suggestStaffCode(firstName: string, lastName: string) {
 }
 
 export function CreateStaffDialog() {
+  const { name: roleName, custom } = useRoleNames();
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
@@ -124,9 +126,9 @@ export function CreateStaffDialog() {
               <SelectValue placeholder="Select a role" />
             </SelectTrigger>
             <SelectContent>
-              {ROLES.filter((r) => CREATABLE_ROLES.includes(r.value)).map((r) => (
-                <SelectItem key={r.value} value={r.value}>
-                  {r.label}
+              {[...ROLES.filter((r) => CREATABLE_ROLES.includes(r.value)).map((r) => r.value), ...custom].map((r) => (
+                <SelectItem key={r} value={r}>
+                  {roleName(r)}
                 </SelectItem>
               ))}
             </SelectContent>

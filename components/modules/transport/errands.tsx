@@ -18,6 +18,7 @@ import { formatDate } from "@/lib/utils/date";
 import { readingProblem, routeKey } from "@/lib/utils/odometer";
 import type { TripDirection } from "@/lib/types/house-ops";
 import { OdometerDrums, OdometerPhotoButton, PhotoReadNote } from "./odometer-drums";
+import { holdsPower } from "@/lib/rbac/roles";
 import { TripControls, TripReadings } from "./trip-controls";
 
 export const PURPOSE_LABEL: Record<Exclude<TripDirection, "from_hospital">, string> = {
@@ -64,8 +65,8 @@ export function StartTripDialog({ vehicles, onClose }: { vehicles: Vehicle[]; on
   const { roles, staffId } = useRole();
   const { staff } = useStaffRoster();
   const { errands } = useErrands();
-  const iDrive = roles.includes("driver");
-  const drivers = staff.filter((s) => s.active && (s.role === "driver" || s.extraRoles.includes("driver")));
+  const iDrive = holdsPower(roles, "driver");
+  const drivers = staff.filter((s) => s.active && holdsPower([s.role, ...s.extraRoles], "driver"));
   const [vehicleId, setVehicleId] = React.useState(vehicles[0]?.id ?? "");
   const [purpose, setPurpose] = React.useState<keyof typeof PURPOSE_LABEL>("errand");
   const [destination, setDestination] = React.useState("");

@@ -6,22 +6,25 @@ import { EmptyState } from "@/components/patterns/empty-state";
 import { useRole } from "@/context/role-provider";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { moduleForPath } from "@/lib/rbac/roles";
+import { pageForPath } from "@/lib/rbac/pages";
 
 /**
- * A module set to None for this role (Settings -> Roles & Access) is not
- * shown, even from a typed URL. The data behind it is refused by the
- * database either way (0050); this keeps the page from rendering empty.
- * HR-flagged people reach Compliances through HR whatever their role's row.
+ * A page set to None for this person's roles (Settings -> Roles & Access) is not shown, even
+ * from a typed URL (0093: per page; before, per menu). The data behind it is refused by the
+ * database by the menu's level either way (0050); this keeps the page from rendering.
+ * HR-flagged people reach Compliances through HR whatever their role's row; a page opened by a
+ * power (HR management) checks the power itself.
  */
 export function ModuleGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { ready, isHr } = useRole();
-  const { loading, canView } = useModuleAccess();
+  const { loading, canView, levelOfPage } = useModuleAccess();
   const moduleKey = moduleForPath(pathname);
+  const page = pageForPath(pathname);
 
   if (!moduleKey || (moduleKey === "compliance" && isHr)) return <>{children}</>;
   if (!ready || loading) return null;
-  if (canView(moduleKey)) return <>{children}</>;
+  if (page?.power || (page ? levelOfPage(page) !== "none" : canView(moduleKey))) return <>{children}</>;
   return (
     <EmptyState
       icon={Lock}

@@ -8,7 +8,7 @@ import { formatAmount2 } from "@/lib/utils/money";
 import { annexEFinancial, annexGAccomplishment, expenseSourceLabel, type CashEntryLike, type DonorLike, type IncomeBucket } from "@/lib/utils/dswd-annex";
 import type { BankTxnLike } from "@/lib/utils/finance-summary";
 import { PrintButton } from "@/app/(print)/hr/payslips/[id]/print/print-button";
-import { doesFinance, rolesOfRow, runsHr } from "@/lib/rbac/roles";
+import { callerHolds, callerRunsHr } from "@/lib/rbac/server-powers";
 
 const peso = (v: number) => formatAmount2(Math.round(v * 100));
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -54,7 +54,7 @@ export default async function DswdFiguresPage({ params }: { params: Promise<{ ye
   } = await supabase.auth.getUser();
   if (!user) notFound();
   const { data: me } = await supabase.schema("shared").from("staff").select("role, extra_roles, is_hr, active").eq("id", user.id).maybeSingle();
-  const allowed = !!me?.active && (doesFinance(rolesOfRow(me)) || runsHr(me));
+  const allowed = !!me?.active && ((await callerHolds(supabase, "finance_work")) || (await callerRunsHr(supabase)));
   if (!allowed) {
     return (
       <div className="mx-auto max-w-2xl p-6 text-sm">

@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { csvLines } from "@/lib/utils/csv";
 import type { ActionResult } from "../actions";
-import { runsHr } from "@/lib/rbac/roles";
+import { callerRunsHr } from "@/lib/rbac/server-powers";
 
 /**
  * The government lists. They carry SSS, PhilHealth, Pag-IBIG numbers and
@@ -23,7 +23,7 @@ async function hrCaller() {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in." as string, supabase: undefined, userId: undefined };
   const { data: staff } = await supabase.schema("shared").from("staff").select("role, extra_roles, is_hr, active").eq("id", user.id).single();
-  if (!staff?.active || !runsHr(staff)) return { error: "Only admins and HR can do this." as string, supabase: undefined, userId: undefined };
+  if (!staff?.active || !(await callerRunsHr(supabase))) return { error: "Only admins and HR can do this." as string, supabase: undefined, userId: undefined };
   return { error: undefined, supabase, userId: user.id };
 }
 

@@ -6,7 +6,7 @@ import { leaveBalance, requestDays, statutoryEligibility, type LeaveTypeRules } 
 import { todayIso } from "@/lib/utils/date";
 import type { ActionResult } from "../actions";
 import type { LeaveAdjustmentKind } from "@/lib/types/hr";
-import { runsHr } from "@/lib/rbac/roles";
+import { callerRunsHr } from "@/lib/rbac/server-powers";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -18,7 +18,7 @@ async function signedIn() {
   if (!user) return null;
   const { data: staff } = await supabase.schema("shared").from("staff").select("role, extra_roles, is_hr, active").eq("id", user.id).single();
   if (!staff?.active) return null;
-  return { supabase, userId: user.id, isHr: runsHr(staff) };
+  return { supabase, userId: user.id, isHr: await callerRunsHr(supabase) };
 }
 
 export interface LeaveRequestInput {

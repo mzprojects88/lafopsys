@@ -10,8 +10,10 @@ import { Button } from "@/components/ui/button";
 import { useVolunteersData } from "@/lib/hooks/use-volunteers-collection";
 import type { Volunteer } from "@/lib/types/staff";
 import { formatDate } from "@/lib/utils/date";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 
 export default function VolunteersPage() {
+  const editable = useModuleAccess().canEdit("staff");
   const { volunteers, incrementCertificates } = useVolunteersData();
 
   const columns: ColumnDef<Volunteer>[] = [
@@ -40,7 +42,7 @@ export default function VolunteersPage() {
     {
       id: "actions",
       header: "",
-      cell: ({ row }) => (
+      cell: ({ row }) => editable && (
         <Button
           size="sm"
           variant="outline"
