@@ -4,6 +4,10 @@ export interface Room {
   /** Normalised polygon over the plan image, [[x, y], ...]; null = not drawn yet (0047). */
   bounds: [number, number][] | null;
   sortOrder: number;
+  /** How many temporary beds the room takes (0092): 2 per room, 1 below Room 3. */
+  maxTemporary: number;
+  /** Preset centres for temporary beds, taken in order (0092). */
+  temporarySpots: { x: number; y: number; rot: number }[];
 }
 
 /** The stored lock state. 'occupied' is never stored -- see BedStatus. */
@@ -32,6 +36,10 @@ export interface Unit {
   rotationDeg: number;
   capacity: number;
   active: boolean;
+  /** An overflow mattress a social worker added (0092); removed by hand. */
+  temporary: boolean;
+  addedReason?: string;
+  addedAt?: string;
   retiredAt?: string;
   lockReason?: string;
   statusChangedAt?: string;

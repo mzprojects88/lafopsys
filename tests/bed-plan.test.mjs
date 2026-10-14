@@ -71,3 +71,22 @@ describe("findBedPlans", () => {
     assert.deepEqual(plans, []);
   });
 });
+
+describe("temporary beds (0092)", () => {
+  const bedsT = [...beds, bed("T1", "r1", 1, { temporary: true }), bed("T2", "r4", 4, { temporary: true })];
+  const arr = (people) => isValidArrangement(people, bedsT, new Map(people.map((p) => [p.key, p.unitId])));
+
+  it("a free temporary bed does not hold the next room back", () => {
+    assert.equal(arr([person("a", "F", "B1"), person("b", "F", "B2"), person("c", "F", "B3")]), true);
+  });
+
+  it("nobody sleeps on a temporary bed while a regular bed would take them", () => {
+    assert.equal(arr([person("a", "F", "T1")]), false);
+    assert.equal(arr([person("a", "F", "B1"), person("b", "F", "T2")]), false);
+  });
+
+  it("the temporary beds open once the regular beds are full", () => {
+    const full = [person("a", "F", "B1"), person("b", "F", "B2"), person("c", "F", "B3"), person("d", "F", "B4"), person("e", "F", "B5")];
+    assert.equal(arr([...full, person("f", "F", "T1")]), true);
+  });
+});

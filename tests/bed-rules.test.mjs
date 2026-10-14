@@ -127,3 +127,33 @@ describe("familyLink", () => {
     assert.deepEqual(familyLink({ id: "a", familyId: "f1" }, { id: "b", familyId: "f1" }).updates, []);
   });
 });
+
+describe("temporary beds (0092)", () => {
+  // Room 1 (B1, B2 + T1), Room 2 (B3, B4), Room 3 (B5), Below Room 3 (T2).
+  const roomsT = [...rooms, { id: "r4", name: "Below Room 3", bounds: null, sortOrder: 4 }];
+  const unitsT = [...units, unit("T1", "r1", { temporary: true }), unit("T2", "r4", { temporary: true })];
+  const positionsT = unitsT.map((u) => ({ id: `${u.id}-A`, unitId: u.id, label: "A" }));
+
+  it("a free temporary bed never makes the next room wait", () => {
+    const stays = [stay("s1", "kid-a", "B1", "mom-a"), stay("s2", "kid-s", "B2", "mom-s")];
+    const { allowed, blocked } = bedChoices(unitsT, positionsT, stays, roomsT, people, { who: { sex: "F" } });
+    assert.equal(codes(allowed), "B3,B4");
+    assert.equal(blocked.find((b) => b.unit.code === "T1")?.reason, "Room 2 still has a free bed: fill it first");
+  });
+
+  it("a temporary bed is refused while any room has a free regular bed for them", () => {
+    const { blocked } = bedChoices(unitsT, positionsT, [], roomsT, people, { who: { sex: "F" } });
+    assert.equal(blocked.find((b) => b.unit.code === "T1")?.reason, "Room 1 still has a free bed: fill it first");
+    assert.equal(blocked.find((b) => b.unit.code === "T2")?.reason, "Room 1 still has a free bed: fill it first");
+  });
+
+  it("once the regular beds are full or closed to them, the temporary beds open, Room 1 before the area below Room 3", () => {
+    const stays = [
+      stay("s1", "kid-a", "B1", "mom-a"), stay("s2", "kid-s", "B2", "mom-s"),
+      stay("s3", "kid-boy", "B3"), stay("s4", "kid-d", "B4", "dad-d"), stay("s5", "kid-boy", "B5"),
+    ];
+    const { allowed, blocked } = bedChoices(unitsT, positionsT, stays, roomsT, people, { who: { sex: "F" } });
+    assert.equal(codes(allowed), "T1");
+    assert.equal(blocked.find((b) => b.unit.code === "T2")?.reason, "Room 1 still has a free bed: fill it first");
+  });
+});

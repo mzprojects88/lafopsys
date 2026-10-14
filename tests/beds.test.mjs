@@ -138,7 +138,7 @@ describe("capacity and counts", () => {
     ];
     const positions = positionsFor(...units);
     const counts = bedCounts(units, positions, [stay("unit-B1-A"), stay("unit-B5-A")]);
-    assert.deepEqual(counts, { available: 1, occupied: 1, reserved: 0, maintenance: 1, blocked: 1, unplaced: 1, total: 4 });
+    assert.deepEqual(counts, { available: 1, occupied: 1, reserved: 0, maintenance: 1, blocked: 1, unplaced: 1, temporary: 0, total: 4 });
   });
 
   it("orders codes naturally", () => {

@@ -82,12 +82,21 @@ export function bedRuleProblem(unit: Unit, who: Sleeper, units: Unit[], rooms: R
   if (occupants.some((o) => o.roomId === room.id && clashes(o, who))) {
     return `${room.name} is a ${who.sex === "F" ? "men's" : "women's"} room now`;
   }
-  for (const earlier of [...rooms].filter((r) => r.sortOrder < room.sortOrder).sort((a, b) => a.sortOrder - b.sortOrder)) {
-    if (occupants.some((o) => o.roomId === earlier.id && clashes(o, who))) continue;
+  // Regular beds first (0092): for a regular bed the earlier rooms count; for a temporary bed,
+  // any room's free regular bed does, and so does an earlier room's free temporary bed (the
+  // area below Room 3 comes last). A free temporary bed never makes a later room wait.
+  const candidates = unit.temporary ? rooms : rooms.filter((r) => r.sortOrder < room.sortOrder);
+  for (const other of [...candidates].sort((a, b) => a.sortOrder - b.sortOrder)) {
+    if (occupants.some((o) => o.roomId === other.id && clashes(o, who))) continue;
     const free = units.some(
-      (u) => u.roomId === earlier.id && u.active && u.status === "available" && occupants.filter((o) => o.unitId === u.id).length < u.capacity
+      (u) =>
+        u.roomId === other.id &&
+        u.active &&
+        u.status === "available" &&
+        (!u.temporary || (unit.temporary && other.sortOrder < room.sortOrder)) &&
+        occupants.filter((o) => o.unitId === u.id).length < u.capacity
     );
-    if (free) return `${earlier.name} still has a free bed: fill it first`;
+    if (free) return `${other.name} still has a free bed: fill it first`;
   }
   return null;
 }

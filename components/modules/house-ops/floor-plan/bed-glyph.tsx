@@ -70,7 +70,7 @@ export const BedGlyph = React.forwardRef<SVGGElement, BedGlyphProps>(function Be
         rx={Math.min(8, small / 6)}
         style={{ fill: STATUS_FILL[bed.bedStatus], stroke: selected ? PLAN_INK : STATUS_STROKE[bed.bedStatus] }}
         strokeWidth={selected ? 4 : 2.5}
-        strokeDasharray={bed.dirty && editing ? "8 5" : undefined}
+        strokeDasharray={bed.dirty && editing ? "8 5" : bed.temporary ? "5 4" : undefined}
       />
       {/* pillow at the head */}
       <rect

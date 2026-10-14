@@ -226,6 +226,47 @@ async function main() {
     (r) => r.ok && r.data[0].active === true && r.data[0].x === 0.4 && r.data[0].room_id === "room-3"
   );
 
+  // --- temporary beds (0092) ----------------------------------------------------------
+  const has0092 = (await client.query("select to_regprocedure('ops.add_temporary_bed(text,text)') is not null as y")).rows[0].y;
+  if (has0092) {
+    const tempBed = (n, room, active = true, x = null, y = null) => () =>
+      client.query(
+        `insert into ops.units (id, code, room_id, status, shared_unit, capacity, active, temporary, added_reason, added_at, w, h, retired_at, x, y)
+         values ('unit-T${n}', 'T${n}', '${room}', 'available', false, 1, ${active}, true, 'matrix', now(), 0.05, 0.13, ${active ? "null" : "now()"}, ${x ?? "null"}, ${y ?? "null"});
+         insert into ops.bed_positions (id, unit_id, label) select 'unit-T${n}-' || l, 'unit-T${n}', l from unnest(array['A', 'B', 'C', 'D']) l`
+      );
+    const addTemp = (room = "room-3") => `select ops.add_temporary_bed('${room}', 'NCH sent 15 today') as id`;
+    await scenario(ids, "0092: social worker adds a temporary bed and gets its four positions", "social_worker", null,
+      last({ sql: addTemp() }, { sql: "select u.code, u.temporary, u.added_by = auth.uid() as mine, u.x::float as x, (select count(*)::int from ops.bed_positions p where p.unit_id = u.id) as n from ops.units u where u.code = 'T1'" }),
+      (r) => r.ok && r.data[0].temporary === true && r.data[0].mine === true && r.data[0].n === 4 && r.data[0].x === 0.2);
+    await scenario(ids, "0092: admin adds one too", "admin", null, q(addTemp("room-2")), (r) => r.ok);
+    await scenario(ids, "0092: house staff cannot add a temporary bed", "house_staff", null, q(addTemp()), denied);
+    await scenario(ids, "0092: driver cannot add a temporary bed", "driver", null, q(addTemp()), denied);
+    await scenario(ids, "0092: a temporary bed needs a reason", "social_worker", null, q("select ops.add_temporary_bed('room-3', ' ')"), (r) => !r.ok && r.code === "22023");
+    await scenario(ids, "0092: a third temporary bed in a room is refused", "social_worker",
+      { setup: async () => { await tempBed(1, "room-3")(); await tempBed(2, "room-3")(); } }, q(addTemp()), checkFailed);
+    await scenario(ids, "0092: a second temporary bed below Room 3 is refused", "social_worker",
+      { setup: tempBed(1, "room-below-3") }, q(addTemp("room-below-3")), checkFailed);
+    await scenario(ids, "0092: the second bed in a room takes the second preset spot", "social_worker",
+      { setup: tempBed(1, "room-3", true, 0.2, 0.56) }, last({ sql: addTemp() }, { sql: "select y::float as y from ops.units where code = 'T2'" }), value("y", 0.7));
+    await scenario(ids, "0092: temporary codes are never reused", "social_worker",
+      { setup: tempBed(1, "room-3", false) }, last({ sql: addTemp() }, { sql: "select code from ops.units where temporary and active" }), value("code", "T2"));
+    await scenario(ids, "0092: social worker removes an empty temporary bed, reason kept", "social_worker",
+      { setup: tempBed(1, "room-3") },
+      last({ sql: "select ops.remove_temporary_bed('unit-T1', 'overflow passed')" }, { sql: "select active, removed_reason, retired_at is not null as stamped from ops.units where id = 'unit-T1'" }),
+      (r) => r.ok && r.data[0].active === false && r.data[0].removed_reason === "overflow passed" && r.data[0].stamped === true);
+    await scenario(ids, "0092: house staff cannot remove a temporary bed", "house_staff", { setup: tempBed(1, "room-3") }, q("select ops.remove_temporary_bed('unit-T1', 'x')"), denied);
+    await scenario(ids, "0092: an occupied temporary bed cannot be removed", "social_worker",
+      { setup: async () => {
+          await tempBed(1, "room-3")();
+          await client.query(`insert into ops.patients (id, patient_number, first_name, last_name, sex, status, admitted_at) values ('${PATIENT}', 'RLSTEST-T1', 'Test', 'Temp', 'M', 'ongoing', current_date)`);
+          await client.query(`insert into ops.stays (id, patient_id, bed_position_id, check_in_at, status) values ('${STAY}', '${PATIENT}', 'unit-T1-A', current_date, 'in_house')`);
+        } },
+      q("select ops.remove_temporary_bed('unit-T1', 'x')"), checkFailed);
+    await scenario(ids, "0092: a regular bed is not removed this way", "social_worker", null, q("select ops.remove_temporary_bed('unit-B13', 'x')"), checkFailed);
+    await scenario(ids, "0092: the fourth area is a room, last in order", "driver", null, q("select name, sort_order, max_temporary from ops.rooms where id = 'room-below-3'"), (r) => r.ok && r.rows === 1 && r.data[0].sort_order === 4 && r.data[0].max_temporary === 1);
+  }
+
   // --- rooms -------------------------------------------------------------------------
   const bounds = `update ops.rooms set bounds = '[[0,0],[1,0],[1,1]]' where id = 'room-1'`;
   await scenario(ids, "admin redraws a room", "admin", null, q(bounds), rows(1));

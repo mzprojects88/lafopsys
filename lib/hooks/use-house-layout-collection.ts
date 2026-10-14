@@ -18,6 +18,8 @@ interface RoomRow {
   name: string;
   bounds: [number, number][] | null;
   sort_order: number;
+  max_temporary: number;
+  temporary_spots: { x: number; y: number; rot: number }[] | null;
 }
 
 interface UnitRow {
@@ -34,6 +36,9 @@ interface UnitRow {
   rotation_deg: number;
   capacity: number;
   active: boolean;
+  temporary: boolean;
+  added_reason: string | null;
+  added_at: string | null;
   retired_at: string | null;
   lock_reason: string | null;
   status_changed_at: string | null;
@@ -58,7 +63,7 @@ interface LabelRow {
 const num = (v: string | number | null): number | null => (v == null ? null : Number(v));
 
 function toRoom(r: RoomRow): Room {
-  return { id: r.id, name: r.name, bounds: r.bounds ?? null, sortOrder: r.sort_order };
+  return { id: r.id, name: r.name, bounds: r.bounds ?? null, sortOrder: r.sort_order, maxTemporary: r.max_temporary ?? 0, temporarySpots: r.temporary_spots ?? [] };
 }
 
 function toUnit(r: UnitRow): Unit {
@@ -75,6 +80,9 @@ function toUnit(r: UnitRow): Unit {
     rotationDeg: r.rotation_deg,
     capacity: r.capacity,
     active: r.active,
+    temporary: r.temporary,
+    addedReason: r.added_reason ?? undefined,
+    addedAt: r.added_at ?? undefined,
     retiredAt: r.retired_at ?? undefined,
     lockReason: r.lock_reason ?? undefined,
     statusChangedAt: r.status_changed_at ?? undefined,
@@ -225,6 +233,23 @@ export function useHouseLayout() {
     return { ok: true, id: typeof data === "string" ? data : undefined };
   }
 
+  /** A temporary bed for tonight's overflow (ops.add_temporary_bed, 0092): the room picks the spot. */
+  async function addTemporaryBed(roomId: string, reason: string): Promise<MutationResult> {
+    const supabase = createClient();
+    const { error } = await supabase.schema("ops").rpc("add_temporary_bed", { p_room_id: roomId, p_reason: reason });
+    if (error) return { ok: false, error: error.message };
+    await houseLayoutStore.refetch();
+    return { ok: true };
+  }
+
+  async function removeTemporaryBed(id: string, reason: string): Promise<MutationResult> {
+    const supabase = createClient();
+    const { error } = await supabase.schema("ops").rpc("remove_temporary_bed", { p_unit_id: id, p_reason: reason });
+    if (error) return { ok: false, error: error.message };
+    await houseLayoutStore.refetch();
+    return { ok: true };
+  }
+
   async function retireBed(id: string): Promise<MutationResult> {
     const supabase = createClient();
     const { error } = await supabase.schema("ops").rpc("retire_bed", { p_unit_id: id });
@@ -242,5 +267,5 @@ export function useHouseLayout() {
     return { ok: true };
   }
 
-  return { rooms, units, bedPositions, labels, loading, error, saveLayout, setBedStatus, createBed, retireBed, updateRoomBounds, refetch };
+  return { rooms, units, bedPositions, labels, loading, error, saveLayout, setBedStatus, createBed, retireBed, addTemporaryBed, removeTemporaryBed, updateRoomBounds, refetch };
 }

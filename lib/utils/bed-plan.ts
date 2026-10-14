@@ -17,6 +17,8 @@ export interface PlanBed {
   capacity: number;
   /** Active and not locked: a bed a family may be moved onto. */
   usable: boolean;
+  /** An overflow mattress (0092): used only when no regular bed would do. */
+  temporary?: boolean;
 }
 
 export interface PlanPerson {
@@ -76,15 +78,21 @@ export function isValidArrangement(people: PlanPerson[], beds: PlanBed[], unitOf
     }
   }
   // Rooms in order: nobody sits in a later room while an earlier room that
-  // would take them still has a free usable bed. Holds are placements already made.
-  const freeRooms = new Set(beds.filter((b) => b.roomId && b.usable && (perBed.get(b.id) ?? 0) < b.capacity).map((b) => b.roomId!));
+  // would take them still has a free usable REGULAR bed, and nobody sits on a
+  // temporary bed while any room would take them on a regular one (0092).
+  // Holds are placements already made.
+  const free = (temporary: boolean) => new Set(beds.filter((b) => b.roomId && b.usable && !!b.temporary === temporary && (perBed.get(b.id) ?? 0) < b.capacity).map((b) => b.roomId!));
+  const freeRegular = free(false);
+  const freeTemporary = free(true);
   const roomOrder = new Map(beds.filter((b) => b.roomId).map((b) => [b.roomId!, b.roomOrder]));
   for (const p of people) {
     if (p.fixed || !p.sex) continue;
     const mine = roomOf.get(p.key);
     if (!mine) continue;
+    // A temporary bed also waits for an earlier room's free temporary bed.
+    const freeRooms = mine.temporary ? new Set([...freeRegular, ...[...freeTemporary].filter((r) => (roomOrder.get(r) ?? 0) < mine.roomOrder)]) : freeRegular;
     for (const roomId of freeRooms) {
-      if ((roomOrder.get(roomId) ?? 0) >= mine.roomOrder) continue;
+      if (!mine.temporary && (roomOrder.get(roomId) ?? 0) >= mine.roomOrder) continue;
       if ((perRoom.get(roomId) ?? []).some((o) => clash(o, p))) continue;
       return false;
     }
@@ -124,7 +132,9 @@ function planByRooms(people: PlanPerson[], beds: PlanBed[], byKey: Map<string, P
   if ([...families.values()].some((sexes) => sexes.size > 1)) return null;
 
   const rooms = [...new Map(beds.filter((b) => b.roomId).map((b) => [b.roomId!, b])).values()].sort((a, b) => a.roomOrder - b.roomOrder);
-  const usableBeds = (roomId: string) => beds.filter((b) => b.roomId === roomId && b.usable).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  // Regular beds before temporary ones, then by code (0092).
+  const usableBeds = (roomId: string) =>
+    beds.filter((b) => b.roomId === roomId && b.usable).sort((a, b) => Number(!!a.temporary) - Number(!!b.temporary) || a.code.localeCompare(b.code, undefined, { numeric: true }));
   // Who stays put whatever happens: holds, anyone whose sex is unknown, anyone on a locked or unplaced bed.
   const pinned = people.filter((p) => {
     if (p.key === NEWCOMER) return false;

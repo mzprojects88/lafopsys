@@ -73,10 +73,10 @@ export function roomForUnit(unit: Unit, rooms: Room[]): Room | null {
   return (unit.roomId && rooms.find((r) => r.id === unit.roomId)) || null;
 }
 
-/** "B7 · Room 2", or "B7 · Unplaced" while the admin has not drawn it yet. */
+/** "B7 · Room 2", "T1 · Room 2 (temporary)", or "B7 · Unplaced" while the admin has not drawn it yet. */
 export function bedLabel(unit: Unit, rooms: Room[]): string {
   const room = roomForUnit(unit, rooms);
-  return `${unit.code} · ${room?.name ?? "Unplaced"}`;
+  return `${unit.code} · ${room?.name ?? "Unplaced"}${unit.temporary ? " (temporary)" : ""}`;
 }
 
 export interface AssignableBed {
@@ -130,15 +130,18 @@ export interface BedCounts {
   maintenance: number;
   blocked: number;
   unplaced: number;
+  /** Overflow mattresses among the live beds (0092). */
+  temporary: number;
   total: number;
 }
 
 /** Live beds only; a retired bed counts nowhere. */
 export function bedCounts(units: Unit[], positions: BedPosition[], stays: Stay[], holds: readonly BedHold[] = []): BedCounts {
-  const counts: BedCounts = { available: 0, occupied: 0, reserved: 0, maintenance: 0, blocked: 0, unplaced: 0, total: 0 };
+  const counts: BedCounts = { available: 0, occupied: 0, reserved: 0, maintenance: 0, blocked: 0, unplaced: 0, temporary: 0, total: 0 };
   for (const unit of units) {
     if (!unit.active) continue;
     counts.total += 1;
+    if (unit.temporary) counts.temporary += 1;
     counts[deriveBedStatus(unit, positions, stays, holds)] += 1;
     if (unit.x === null || unit.y === null) counts.unplaced += 1;
   }

@@ -17,6 +17,12 @@ export function FloorPlanLegend({ counts }: { counts: BedCounts }) {
           <span className="font-semibold text-foreground">{counts[status]}</span>
         </span>
       ))}
+      {counts.temporary > 0 && (
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block size-3 rounded-sm border-2 border-dashed" style={{ borderColor: STATUS_STROKE.available }} />
+          Temporary <span className="font-semibold text-foreground">{counts.temporary}</span>
+        </span>
+      )}
       {counts.unplaced > 0 && (
         <span className="flex items-center gap-1.5">
           <span className="inline-block size-3 rounded-sm border-2 border-dashed border-muted-foreground" />

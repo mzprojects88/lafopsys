@@ -34,6 +34,10 @@ import { BedDetailPanel } from "./bed-detail-panel";
 import { LabelDetailPanel } from "./label-detail-panel";
 import { LockBedDialog } from "./lock-bed-dialog";
 import { AddBedDialog } from "./add-bed-dialog";
+import { Button } from "@/components/ui/button";
+import { AddTemporaryBedDialog } from "./add-temporary-bed-dialog";
+import { ReasonDialog } from "@/components/patterns/reason-dialog";
+import { BedDouble } from "lucide-react";
 import { AddLabelDialog } from "./add-label-dialog";
 import { RetireBedDialog } from "./retire-bed-dialog";
 
@@ -45,7 +49,7 @@ import { RetireBedDialog } from "./retire-bed-dialog";
  */
 export function FloorPlanView() {
   const { roles } = useRole();
-  const { rooms, units, bedPositions, labels, loading, saveLayout, setBedStatus, createBed, retireBed } = useHouseLayout();
+  const { rooms, units, bedPositions, labels, loading, saveLayout, setBedStatus, createBed, retireBed, removeTemporaryBed } = useHouseLayout();
   const { patients, carers, stays } = usePatientsData();
   const editor = useFloorPlanEditor();
 
@@ -53,6 +57,9 @@ export function FloorPlanView() {
   const [saving, setSaving] = React.useState(false);
   const [lockTarget, setLockTarget] = React.useState<BedView | null>(null);
   const [retireTarget, setRetireTarget] = React.useState<BedView | null>(null);
+  // Temporary beds (0092): anyone who assigns beds adds and removes them.
+  const [addingTemporary, setAddingTemporary] = React.useState(false);
+  const [removeTemporaryTarget, setRemoveTemporaryTarget] = React.useState<BedView | null>(null);
   const [adding, setAdding] = React.useState(false);
   const [addingLabel, setAddingLabel] = React.useState(false);
 
@@ -267,6 +274,16 @@ export function FloorPlanView() {
     }
   }
 
+  async function handleRemoveTemporary(reason: string) {
+    if (!removeTemporaryTarget) return;
+    const result = await removeTemporaryBed(removeTemporaryTarget.id, reason);
+    if (result.ok) {
+      toast.success(`${removeTemporaryTarget.code} removed`);
+      if (selection?.kind === "bed" && selection.id === removeTemporaryTarget.id) setSelection(null);
+    } else toast.error(result.error);
+    setRemoveTemporaryTarget(null);
+  }
+
   async function handleRetire() {
     if (!retireTarget) return;
     const result = await retireBed(retireTarget.id);
@@ -285,6 +302,12 @@ export function FloorPlanView() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <FloorPlanLegend counts={counts} />
+        <div className="flex flex-wrap items-center gap-2">
+          {canLock && !editing && (
+            <Button variant="outline" size="sm" onClick={() => setAddingTemporary(true)}>
+              <BedDouble className="size-3.5" /> Add temporary bed
+            </Button>
+          )}
         <FloorPlanToolbar
           canEdit={canEdit}
           editing={editing}
@@ -296,6 +319,7 @@ export function FloorPlanView() {
           onAddBed={() => setAdding(true)}
           onAddLabel={() => setAddingLabel(true)}
         />
+        </div>
       </div>
 
       {!loading && beds.length === 0 && <p className="text-theme-sm text-muted-foreground">No beds on record yet.</p>}
@@ -350,6 +374,7 @@ export function FloorPlanView() {
               onSetRoom={handleSetRoom}
               onSetCapacity={handleSetCapacity}
               onRetire={(bed) => setRetireTarget(bed)}
+              onRemoveTemporary={(bed) => setRemoveTemporaryTarget(bed)}
             />
           )}
           {selectedLabel && (
@@ -375,6 +400,17 @@ export function FloorPlanView() {
       />
       <AddLabelDialog open={addingLabel} onOpenChange={setAddingLabel} onConfirm={handleAddLabel} />
       <RetireBedDialog bed={retireTarget} onOpenChange={(open) => !open && setRetireTarget(null)} onConfirm={handleRetire} />
+      <AddTemporaryBedDialog open={addingTemporary} onOpenChange={setAddingTemporary} />
+      <ReasonDialog
+        open={removeTemporaryTarget !== null}
+        onOpenChange={(open) => !open && setRemoveTemporaryTarget(null)}
+        title={`Remove ${removeTemporaryTarget?.code ?? "this temporary bed"}?`}
+        description="The mattress comes off the plan. A bed with a child in it, or a hold on it, is refused."
+        confirmLabel="Remove"
+        requireReason={false}
+        destructive
+        onConfirm={handleRemoveTemporary}
+      />
     </div>
   );
 }

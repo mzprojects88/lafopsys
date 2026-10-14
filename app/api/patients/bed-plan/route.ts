@@ -31,7 +31,7 @@ export async function POST(request: Request) {
 
   const ops = supabase.schema("ops");
   const [units, rooms, positions, stays, holds] = await Promise.all([
-    ops.from("units").select("id, code, room_id, active, status, capacity"),
+    ops.from("units").select("id, code, room_id, active, status, capacity, temporary"),
     ops.from("rooms").select("id, name, sort_order"),
     ops.from("bed_positions").select("id, unit_id"),
     ops.from("stays").select("id, patient_id, bed_position_id, carer_id, check_in_at, expected_checkout_at, visit_id").in("status", ["in_house", "overdue"]),
@@ -65,6 +65,7 @@ export async function POST(request: Request) {
         roomName: room ? (room.name as string) : "Unplaced",
         capacity: Number(u.capacity),
         usable: u.status === "available",
+        temporary: Boolean(u.temporary),
       };
     });
   const bedLabel = (unitId: string | null) => {

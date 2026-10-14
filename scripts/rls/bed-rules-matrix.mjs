@@ -184,6 +184,49 @@ async function main() {
     q(`insert into ops.bed_rule_exceptions (stay_id, unit_id, rule, reason) values (gen_random_uuid(), 'unit-B1', 'x', 'x')`), denied);
   await scenario(ids, "patients staff read the exceptions log", "social_worker", null, q("select count(*) from ops.bed_rule_exceptions"), ok);
 
+  // ---- temporary beds (0092) ----
+  const has0092 = (await client.query("select to_regprocedure('ops.add_temporary_bed(text,text)') is not null as y")).rows[0].y;
+  if (has0092) {
+    // Inserted as postgres (the function's gate needs a session); the rules are what is under test.
+    const tempBed = (n, room) =>
+      client.query(
+        `insert into ops.units (id, code, room_id, status, shared_unit, capacity, active, temporary, added_reason, added_at, w, h)
+         values ('unit-T${n}', 'T${n}', '${room}', 'available', false, 1, true, true, 'matrix', now(), 0.05, 0.13);
+         insert into ops.bed_positions (id, unit_id, label) select 'unit-T${n}-' || l, 'unit-T${n}', l from unnest(array['A', 'B', 'C', 'D']) l`
+      );
+    const KID_E = id("06");
+    const womenFillRoom1 = async () => {
+      await client.query(`insert into ops.patients (id, first_name, last_name, sex, status, admitted_at) values ('${KID_E}', 'Rule', 'E', 'F', 'ongoing', current_date)`);
+      await placed(KID_A, "B1", MOM_A)();
+      await placed(KID_B, "B2", MOM_B)();
+      await placed(KID_S, "B3", null)();
+      await client.query("update ops.units set status = 'maintenance', lock_reason = 'matrix' where id = 'unit-B4'");
+    };
+    const lockRooms2And3 = () => client.query("update ops.units set status = 'maintenance', lock_reason = 'matrix' where room_id in ('room-2', 'room-1') and active");
+    await scenario(ids, "0092: a free temporary bed in Room 1 does not hold Room 2 back", "social_worker",
+      async () => { await womenFillRoom1(); await tempBed(1, "room-3"); },
+      q(checkIn(KID_E, "B5", null)), ok);
+    await scenario(ids, "0092: a temporary bed is refused while a regular bed is free", "social_worker",
+      async () => { await tempBed(1, "room-3"); },
+      q(checkIn(KID_A, "T1", MOM_A)), refused("Room 1 still has a free bed"));
+    await scenario(ids, "0092: the temporary bed opens once the regular beds are full or locked", "social_worker",
+      async () => { await womenFillRoom1(); await lockRooms2And3(); await tempBed(1, "room-3"); },
+      q(checkIn(KID_E, "T1", null)), ok);
+    await scenario(ids, "0092: the area below Room 3 waits for a room's free temporary bed", "social_worker",
+      async () => { await womenFillRoom1(); await lockRooms2And3(); await tempBed(1, "room-3"); await tempBed(2, "room-below-3"); },
+      q(checkIn(KID_E, "T2", null)), refused("Room 1 still has a free bed"));
+    await scenario(ids, "0092: the area below Room 3 opens once the rooms' temporary beds are taken", "social_worker",
+      async () => {
+        await womenFillRoom1(); await lockRooms2And3(); await tempBed(1, "room-3"); await tempBed(2, "room-below-3");
+        await client.query("update ops.units set status = 'maintenance', lock_reason = 'matrix' where id = 'unit-T1'");
+      },
+      q(checkIn(KID_E, "T2", null)), ok);
+    await scenario(ids, "0092: a hold cannot sit on a temporary bed", "social_worker",
+      async () => { await tempBed(1, "room-3"); },
+      q(`insert into ops.bed_reservations (unit_id, patient_id, reserved_for, expected_on, carer_sex) values ('unit-T1', '${KID_A}', 'Rule A', current_date, 'F')`),
+      refused("temporary bed"));
+  }
+
   // ---- moving: Move tonight / Transfer bed ----
   await scenario(ids, "a move follows the room rule", "social_worker",
     async () => {

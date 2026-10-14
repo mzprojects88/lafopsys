@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useBedReservations } from "@/lib/hooks/use-bed-reservations";
 import { FloorPlanBedPicker } from "@/components/modules/house-ops/floor-plan/floor-plan-bed-picker";
+import { AddTemporaryBedDialog } from "@/components/modules/house-ops/floor-plan/add-temporary-bed-dialog";
 import { CheckInDialog, type CheckInTarget } from "@/components/modules/patients/check-in-dialog";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { isHiddenPath } from "@/lib/rbac/hidden";
@@ -87,6 +88,8 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const [replacing, setReplacing] = React.useState<{ holdId: string; bed: string; from: string } | null>(null);
   // "Move for tonight" picks the new bed on the floor plan (user, 2026-09-25).
   const [planning, setPlanning] = React.useState(false);
+  // Overflow (0092): a mattress for tonight, from the counts strip.
+  const [addingTemporary, setAddingTemporary] = React.useState(false);
   const [moving, setMoving] = React.useState<{ stay: Stay; name: string; from: string; unitId?: string } | null>(null);
 
   // Until patients, stays and beds are in, every name would look "not checked
@@ -173,7 +176,13 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
             ? `Reset ran ${formatDate(todayReset.ranAt, "h:mm a")}: ${todayReset.checkedOut} checked out`
             : `Reset at ${formatTime12(admissions.resetAt)} not run yet`}
         </span>
+        {canEdit && (
+          <button type="button" className="ml-auto font-medium text-primary hover:underline" onClick={() => setAddingTemporary(true)}>
+            Add temporary bed
+          </button>
+        )}
       </div>
+      <AddTemporaryBedDialog open={addingTemporary} onOpenChange={setAddingTemporary} />
       {arrivals.length > 0 ? (
         <p className={`rounded-2xl border px-4 py-2 text-theme-sm ${pastFinalize ? "border-destructive/40 bg-destructive/10 text-destructive" : "border-warning/40 bg-warning/10 text-warning-foreground dark:text-warning"}`}>
           {arrivals.length} on today&apos;s NCH list still without tonight&apos;s bed — {pastFinalize ? `the finalize time (${formatTime12(admissions.finalizeBy)}) has passed` : `finalize before ${formatTime12(admissions.finalizeBy)}`}.

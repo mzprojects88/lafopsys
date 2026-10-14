@@ -31,6 +31,8 @@ interface BedDetailPanelProps {
   onSetRoom: (bed: BedView, roomId: string | null) => void;
   onSetCapacity: (bed: BedView, capacity: number) => void;
   onRetire: (bed: BedView) => void;
+  /** A temporary bed (0092) is removed by anyone who assigns beds. */
+  onRemoveTemporary: (bed: BedView) => void;
 }
 
 /** The selected bed, with the actions a role may take. */
@@ -49,6 +51,7 @@ export function BedDetailPanel({
   onSetRoom,
   onSetCapacity,
   onRetire,
+  onRemoveTemporary,
 }: BedDetailPanelProps) {
   const [unlocking, setUnlocking] = React.useState(false);
   const [rotationText, setRotationText] = React.useState(String(bed.rotationDeg));
@@ -87,6 +90,19 @@ export function BedDetailPanel({
   return (
     <div className="flex flex-col gap-4">
       <BedSummary bed={bed} canSeeClinical={canSeeClinical} linkPatients />
+
+      {bed.temporary && (
+        <div className="flex flex-col gap-2 rounded-xl border border-dashed border-border px-3 py-2 text-theme-xs text-muted-foreground">
+          <span>
+            <b className="text-foreground">Temporary bed</b> · added for: {bed.addedReason}
+          </span>
+          {canLock && (
+            <Button variant="outline" size="sm" className="self-start" onClick={() => onRemoveTemporary(bed)}>
+              <Trash2 className="size-3.5" /> Remove temporary bed
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Any open hold can be released here, even once its child has left NCH's sheet. */}
       {canLock && bed.holds.length > 0 ? <ReleaseHolds bed={bed} /> : null}

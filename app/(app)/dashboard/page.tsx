@@ -70,6 +70,7 @@ export default function DashboardPage() {
 
   // The beds drawn on the floor plan (0047), one admission slot each by default.
   const capacity = houseCapacity(units);
+  const temporaryBeds = units.filter((u) => u.active && u.temporary).length;
   const occupiedPct = capacity > 0 ? Math.round((inHouseNow / capacity) * 100) : 0;
   const availableSlots = Math.max(0, capacity - inHouseNow);
 
@@ -294,7 +295,7 @@ export default function DashboardPage() {
               <div className="flex flex-1 flex-col gap-2 text-theme-sm">
                 <LegendRow color="bg-primary" label="In-House Now" value={inHouseNow} />
                 <LegendRow color="bg-primary/30" label="Available Slots" value={availableSlots} />
-                <LegendRow color="bg-muted-foreground/40" label="Total Capacity" value={capacity || "—"} />
+                <LegendRow color="bg-muted-foreground/40" label={temporaryBeds ? `Total Capacity (${temporaryBeds} temporary)` : "Total Capacity"} value={capacity || "—"} />
               </div>
             </div>
             <div className="border-t border-border px-5 py-3">
