@@ -37,8 +37,9 @@ import { deleteStaffAccount, setStaffOverride, updateStaffAccess } from "@/app/(
 
 const LEVEL_LABEL: Record<AccessLevel, string> = { none: "None", view: "View only", edit: "Edit" };
 const ROLE_LEVEL = "__role__";
-/** The modules an admin can set for one person: the menu, minus Settings (admins only). */
-const PERSON_MODULES = NAV_ITEMS.filter((n) => !ADMIN_ONLY_MODULES.includes(n.module));
+/** The modules an admin can set for one person: the menu, minus Settings (admins only) and minus HR and
+ * Compliances, which follow the roles and the "Runs HR" switch above rather than the grid. */
+const PERSON_MODULES = NAV_ITEMS.filter((n) => !ADMIN_ONLY_MODULES.includes(n.module) && n.module !== "hr" && n.module !== "compliance");
 
 const ROLE_DEFAULT = "__role_default__";
 

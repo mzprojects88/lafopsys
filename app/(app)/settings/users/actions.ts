@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ADMIN_ONLY_MODULES, ASSIGNABLE_ROLES, CREATABLE_ROLES, NAV_ITEMS, ORG_ROLES, isAllowedLandingPath, isPartnerRole, rolesProblem, type AccessLevel, type ModuleAccessRow, type ModuleKey } from "@/lib/rbac/roles";
+import { ADMIN_ONLY_MODULES, ASSIGNABLE_ROLES, CREATABLE_ROLES, NAV_ITEMS, ORG_ROLES, isAllowedLandingPath, isPartnerRole, overridesOf, rolesProblem, type AccessLevel, type ModuleAccessRow, type ModuleKey, type StaffOverrideRow } from "@/lib/rbac/roles";
 import type { Role } from "@/lib/types/common";
 
 export interface CreateStaffInput {
@@ -164,7 +164,7 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
   const caller = { id: actor.id };
 
   const admin = createAdminClient();
-  const { data: target } = await admin.schema("shared").from("staff").select("role, active, first_name, last_name").eq("id", input.staffId).single();
+  const { data: target } = await admin.schema("shared").from("staff").select("role, active, first_name, last_name, extra_roles, clock_in_exempt, landing_path, is_hr").eq("id", input.staffId).single();
   if (!target) {
     return { ok: false, error: "That staff account no longer exists." };
   }
@@ -202,8 +202,13 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
   }
 
   const landingPath = input.landingPath?.trim() || null;
-  const { data: accessRows } = await admin.schema("shared").from("module_access").select("role, module, level");
-  if (landingPath && !isAllowedLandingPath([input.role, ...extraRoles], landingPath, (accessRows ?? []) as ModuleAccessRow[])) {
+  // Against this person's own overrides too (0091): a page an override opened is a valid first page.
+  const [{ data: accessRows }, { data: overrideRows }] = await Promise.all([
+    admin.schema("shared").from("module_access").select("role, module, level"),
+    admin.schema("shared").from("staff_module_access").select("staff_id, module, level").eq("staff_id", input.staffId),
+  ]);
+  const targetOverrides = overridesOf((overrideRows ?? []) as StaffOverrideRow[], input.staffId);
+  if (landingPath && !isAllowedLandingPath([input.role, ...extraRoles], landingPath, (accessRows ?? []) as ModuleAccessRow[], targetOverrides)) {
     return { ok: false, error: "That page is not one this person's roles can open." };
   }
 
@@ -231,11 +236,22 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
     return { ok: false, error: error.message };
   }
 
+  // The log, latest last: settings only when one of them moved, then the PIN, then on/off (the
+  // Users page shows the latest line, so a switch-off is what it reads).
   const who = { id: input.staffId, name: `${target.first_name} ${target.last_name}` };
-  if (active !== target.active) await logAccountEvent(admin, actor, who, active ? "reactivated" : "deactivated");
+  const before = (target.extra_roles as string[] | null) ?? [];
+  const settingsMoved =
+    input.role !== target.role ||
+    extraRoles.length !== before.length ||
+    extraRoles.some((r) => !before.includes(r)) ||
+    input.clockInExempt !== target.clock_in_exempt ||
+    landingPath !== (target.landing_path ?? null) ||
+    input.isHr !== target.is_hr;
+  if (settingsMoved) {
+    await logAccountEvent(admin, actor, who, "access_changed", { role: input.role, extraRoles, clockInExempt: input.clockInExempt, landingPath, isHr: input.isHr });
+  }
   if (input.temporaryPin != null) await logAccountEvent(admin, actor, who, "pin_reset");
-  // The settings themselves, whenever the dialog is saved (a role, HR or page change).
-  await logAccountEvent(admin, actor, who, "access_changed", { role: input.role, extraRoles, clockInExempt: input.clockInExempt, landingPath, isHr: input.isHr });
+  if (active !== target.active) await logAccountEvent(admin, actor, who, active ? "reactivated" : "deactivated");
 
   revalidatePath("/settings/users");
   return { ok: true };
