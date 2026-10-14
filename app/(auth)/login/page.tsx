@@ -6,6 +6,11 @@ import pkg from "@/package.json";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
+// Rendered per request: the name picker reads the staff table, and without this the page was
+// prerendered at build time, so an account created after the last deploy did not appear until
+// the next one (found 2026-10-14; laf-inventory's login already had it).
+export const dynamic = "force-dynamic";
+
 // Login used to reconstruct `${staffCode}@staff.lafopsys.internal` and hope
 // it matched -- it only ever did for accounts created by this app. An
 // account created by the sibling laf-inventory app carries a different real

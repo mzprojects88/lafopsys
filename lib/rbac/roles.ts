@@ -23,30 +23,8 @@ import {
 
 /** One row per main menu entry in Settings -> Roles & Access (0050's
  * shared.module_access.module). The SQL check constraint lists the same keys. */
-export type ModuleKey =
-  | "executive"
-  | "dashboard"
-  | "calendar"
-  | "staff"
-  | "hr"
-  | "patients"
-  | "house_ops"
-  | "donors"
-  | "inventory"
-  | "finance"
-  | "compliance"
-  | "analytics"
-  | "reports"
-  | "settings"
-  | "transport";
-
-export type AccessLevel = "none" | "view" | "edit";
-
-export interface ModuleAccessRow {
-  role: Role;
-  module: ModuleKey;
-  level: AccessLevel;
-}
+export { ADMIN_ONLY_MODULES, levelFor, overridesOf, type AccessLevel, type ModuleAccessRow, type ModuleKey, type Overrides, type StaffOverrideRow } from "@/lib/rbac/access";
+import { levelFor, type ModuleAccessRow, type ModuleKey, type Overrides } from "@/lib/rbac/access";
 
 export interface NavItem {
   title: string;
@@ -120,26 +98,16 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Settings", href: "/settings", group: "Manage", icon: Settings, module: "settings", adminOnly: true, note: "Users, roles and this grid: admins only." },
 ];
 
-/** A role's level for a module: admins always edit (0050 refuses anything
- * else); no row means none. The rows come from shared.module_access. */
-export function levelFor(rows: readonly ModuleAccessRow[], who: Who, module: ModuleKey): AccessLevel {
-  const roles = rolesIn(who);
-  if (roles.includes("admin")) return "edit";
-  if (NAV_ITEMS.find((i) => i.module === module)?.adminOnly) return "none";
-  // The highest level any of the person's roles has (shared.module_level, 0073).
-  const levels = rows.filter((r) => roles.includes(r.role) && r.module === module).map((r) => r.level);
-  return levels.includes("edit") ? "edit" : levels.includes("view") ? "view" : "none";
-}
 
-export function isNavItemVisible(item: NavItem, who: Who, rows: readonly ModuleAccessRow[]) {
-  return !isHiddenPath(item.href, rolesIn(who)) && levelFor(rows, who, item.module) !== "none";
+export function isNavItemVisible(item: NavItem, who: Who, rows: readonly ModuleAccessRow[], overrides?: Overrides) {
+  return !isHiddenPath(item.href, rolesIn(who)) && levelFor(rows, who, item.module, overrides) !== "none";
 }
 
 /** The menu as this person sees it. A hidden module with a page left open inside it
  * (lib/rbac/hidden.ts) shows as that page instead: Financial becomes Vehicle Costs (2026-10-03). */
-export function visibleNavItems(who: Who, rows: readonly ModuleAccessRow[]): NavItem[] {
+export function visibleNavItems(who: Who, rows: readonly ModuleAccessRow[], overrides?: Overrides): NavItem[] {
   return NAV_ITEMS.flatMap((item) => {
-    if (levelFor(rows, who, item.module) === "none") return [];
+    if (levelFor(rows, who, item.module, overrides) === "none") return [];
     if (!isHiddenPath(item.href, rolesIn(who))) return [item];
     const open = openPageInside(item.href);
     return open ? [{ ...item, title: open.title, href: open.href, startsAt: undefined }] : [];
@@ -162,12 +130,10 @@ export function navHref(item: NavItem): string {
   return item.startsAt && !isAdminOnlyPath(item.startsAt) ? item.startsAt : item.href;
 }
 
-/** The nav as landing.ts wants it: shown items with the roles that can open them. */
-function landingNav(rows: readonly ModuleAccessRow[]) {
-  return NAV_ITEMS.map((item) => ({
-    href: item.href,
-    allowedRoles: ORG_ROLES.filter((role) => !isHiddenPath(item.href, role) && levelFor(rows, role, item.module) !== "none"),
-  })).filter((item) => item.allowedRoles.length > 0);
+/** The nav as landing.ts wants it, for THIS person: an item they can open is open to all of
+ * their roles, one they cannot is open to none (their own overrides count, 0091). */
+function landingNav(who: Who, rows: readonly ModuleAccessRow[], overrides?: Overrides) {
+  return NAV_ITEMS.filter((item) => isNavItemVisible(item, who, rows, overrides)).map((item) => ({ href: item.href, allowedRoles: "all" as const }));
 }
 
 /** Whether THIS event may be edited: the person must have Calendar edit, and
@@ -244,16 +210,17 @@ export function canSeeClinicalDetail(who: Who) {
  * See lib/rbac/landing.ts for the precedence rules. */
 export function resolveLandingPath(
   input: { role: Role | readonly Role[]; landingPath: string | null | undefined; next: string | null | undefined },
-  rows: readonly ModuleAccessRow[]
+  rows: readonly ModuleAccessRow[],
+  overrides?: Overrides
 ) {
-  return resolveLandingPathIn(input, landingNav(rows));
+  return resolveLandingPathIn(input, landingNav(input.role, rows, overrides));
 }
 
-export function isAllowedLandingPath(who: Who, path: string, rows: readonly ModuleAccessRow[]) {
-  return isAllowedLandingPathIn(who, path, landingNav(rows));
+export function isAllowedLandingPath(who: Who, path: string, rows: readonly ModuleAccessRow[], overrides?: Overrides) {
+  return isAllowedLandingPathIn(who, path, landingNav(who, rows, overrides));
 }
 
 /** Every nav href a role can be sent to -- what the landing-page picker offers. */
-export function landingChoicesFor(who: Who, rows: readonly ModuleAccessRow[]): { href: string; title: string }[] {
-  return NAV_ITEMS.filter((item) => isNavItemVisible(item, who, rows)).map((item) => ({ href: navHref(item), title: item.title }));
+export function landingChoicesFor(who: Who, rows: readonly ModuleAccessRow[], overrides?: Overrides): { href: string; title: string }[] {
+  return NAV_ITEMS.filter((item) => isNavItemVisible(item, who, rows, overrides)).map((item) => ({ href: navHref(item), title: item.title }));
 }

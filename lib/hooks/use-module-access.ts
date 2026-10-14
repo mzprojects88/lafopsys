@@ -4,7 +4,7 @@ import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
 import { useRole } from "@/context/role-provider";
-import { levelFor, type AccessLevel, type ModuleAccessRow, type ModuleKey } from "@/lib/rbac/roles";
+import { levelFor, overridesOf, type AccessLevel, type ModuleAccessRow, type ModuleKey, type Overrides, type StaffOverrideRow } from "@/lib/rbac/roles";
 import type { Role } from "@/lib/types/common";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
@@ -29,6 +29,25 @@ export const moduleAccessStore = createCollection<ModuleAccessRow[]>({
   },
 });
 
+/** One person's overrides (shared.staff_module_access, 0091): RLS hands a person their own rows
+ * and an admin everyone's. */
+export const staffOverridesStore = createCollection<StaffOverrideRow[]>({
+  key: "shared.staff_module_access",
+  empty: [],
+  tables: [{ schema: "shared", table: "staff_module_access" }],
+  fetch: async () => {
+    const { data, error } = await createClient().schema("shared").from("staff_module_access").select("staff_id, module, level");
+    if (error) throw new Error(error.message);
+    return (data ?? []) as StaffOverrideRow[];
+  },
+});
+
+/** The signed-in person's own overrides, one-shot, for code that runs before the app shell. */
+export async function fetchMyOverrides(staffId: string): Promise<Overrides> {
+  const { data } = await createClient().schema("shared").from("staff_module_access").select("staff_id, module, level").eq("staff_id", staffId);
+  return overridesOf((data ?? []) as StaffOverrideRow[], staffId);
+}
+
 /** The grid rows, one-shot, for code that runs before the app shell (login). */
 export async function fetchModuleAccess(): Promise<ModuleAccessRow[]> {
   const { data } = await createClient().schema("shared").from("module_access").select("role, module, level");
@@ -37,9 +56,11 @@ export async function fetchModuleAccess(): Promise<ModuleAccessRow[]> {
 
 export function useModuleAccess() {
   // Every role the person holds counts (0073): the highest level wins, as in shared.module_level.
-  const { roles } = useRole();
+  const { roles, staffId } = useRole();
   const { data: rows, loading } = useCollection(moduleAccessStore);
-  const level = React.useCallback((module: ModuleKey): AccessLevel => levelFor(rows, roles, module), [rows, roles]);
+  const { data: overrideRows } = useCollection(staffOverridesStore);
+  const overrides = React.useMemo(() => overridesOf(overrideRows, staffId), [overrideRows, staffId]);
+  const level = React.useCallback((module: ModuleKey): AccessLevel => levelFor(rows, roles, module, overrides), [rows, roles, overrides]);
 
   async function setLevel(forRole: Role, module: ModuleKey, next: AccessLevel): Promise<MutationResult> {
     const { error } = await createClient()
@@ -68,6 +89,10 @@ export function useModuleAccess() {
   return {
     rows,
     loading,
+    /** This person's own overrides (0091). */
+    overrides,
+    /** Anyone's overrides, for the admin's dialog (RLS gives admins every row). */
+    overridesFor: (id: string) => overridesOf(overrideRows, id),
     setOutsideLevel,
     outsideLevel,
     level,

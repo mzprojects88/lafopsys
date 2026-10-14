@@ -267,6 +267,65 @@ async function main() {
   await scenario(ids, "the Office Admin cannot change the grid", "chef", asOfficeAdmin(),
     q("update shared.module_access set level = 'edit' where role = 'office_admin' and module = 'reports'"), rows(0));
 
+  // --- 0091: one person's overrides, the account event log, removing an unused account --------
+  const has0091 = (await client.query("select to_regclass('shared.staff_module_access') is not null as y")).rows[0].y;
+  if (has0091) {
+    const override = (role, module, level) => ({
+      setup: async () => {
+        await seedPatient();
+        await client.query("insert into shared.staff_module_access (staff_id, module, level) values ($1, $2, $3)", [ids[role], module, level]);
+      },
+    });
+    await scenario(ids, "0091: a board member with Patients raised to View reads a patient", "board", override("board", "patients", "view"), q(readPatient), rows(1));
+    // Patient rows open to Patients OR House Operations (0050), so the social worker is checked on
+    // the level itself and the row test uses a module without a sibling.
+    await scenario(ids, "0091: a social worker with Patients lowered to None has no Patients level", "social_worker", override("social_worker", "patients", "none"), q("select shared.module_level('patients') as l"), value("l", "none"));
+    await scenario(ids, "0091: a board member with Finance lowered to None reads no bank line", "board", override("board", "finance", "none"), q("select id from ops.bank_transactions limit 1"), rows(0));
+    await scenario(ids, "0091: a driver with Patients raised to Edit books an appointment", "driver", override("driver", "patients", "edit"), q(insertAppt), rows(1));
+    await scenario(ids, "0091: an override on one module leaves the others as the roles have them", "board", override("board", "patients", "view"), q("select shared.module_level('finance') as l"), value("l", "view"));
+    await scenario(ids, "0091: an admin cannot be given an override", "admin", null,
+      q("insert into shared.staff_module_access (staff_id, module, level) values ($1, 'patients', 'none')", [ids.admin]), checkFailed);
+    await scenario(ids, "0091: Settings cannot be overridden", "admin", null,
+      q("insert into shared.staff_module_access (staff_id, module, level) values ($1, 'settings', 'view')", [ids.driver]), checkFailed);
+    await scenario(ids, "0091: a person cannot set their own override", "driver", null,
+      q("insert into shared.staff_module_access (staff_id, module, level) values ($1, 'patients', 'edit')", [ids.driver]), denied);
+    await scenario(ids, "0091: a person reads their own override and nobody else's", "driver", {
+      setup: async () => {
+        await client.query("insert into shared.staff_module_access (staff_id, module, level) values ($1, 'patients', 'view'), ($2, 'patients', 'view')", [ids.driver, ids.board]);
+      },
+    }, q("select staff_id from shared.staff_module_access"), rows(1));
+    await scenario(ids, "0091: an admin reads the account event log", "admin", {
+      setup: async () => {
+        await client.query("insert into shared.staff_events (staff_id, staff_name, action, actor_id, actor_name) values ($1, 'Test', 'pin_reset', $2, 'Admin')", [ids.driver, ids.admin]);
+      },
+    }, q("select id from shared.staff_events"), atLeast(1));
+    await scenario(ids, "0091: a non-admin reads no account events", "finance", null, q("select id from shared.staff_events"), rows(0));
+    await scenario(ids, "0091: nobody rewrites the account event log", "admin", null, q("delete from shared.staff_events"), denied);
+    await scenario(ids, "0091: an account with a time entry cannot be removed", "admin", {
+      setup: async () => {
+        await client.query("insert into ops.time_entries (staff_id, date, clock_in) values ($1, current_date, '08:00')", [ids.driver]);
+      },
+    }, q("select shared.delete_unused_staff($1)", [ids.driver]), (r) => !r.ok && r.code === "23503");
+    await scenario(ids, "0091: an account with no record is removed", "admin", {
+      setup: async () => {
+        await client.query(
+          `insert into auth.users (id, instance_id, aud, role, email, created_at, updated_at)
+           values ('00000000-0000-4000-8000-00000000a091', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rlstest-unused@staff.lafopsys.internal', now(), now())`
+        );
+        await client.query(
+          `insert into shared.staff (id, staff_code, first_name, last_name, role, position, active, must_change_pin)
+           values ('00000000-0000-4000-8000-00000000a091', 'RLSTEST-UNUSED', 'Unused', 'Account', 'driver', 'test', true, true)`
+        );
+        await client.query("insert into inventory.staff_house (staff_id, house_id) values ('00000000-0000-4000-8000-00000000a091', 'house-laf-main')");
+      },
+    }, async () => {
+      await client.query("select shared.delete_unused_staff('00000000-0000-4000-8000-00000000a091')");
+      return client.query("select id from shared.staff where id = '00000000-0000-4000-8000-00000000a091'");
+    }, rows(0));
+    await scenario(ids, "0091: a non-admin cannot remove an account", "finance", null, q("select shared.delete_unused_staff($1)", [ids.driver]), denied);
+    await scenario(ids, "0091: an admin cannot remove themselves", "admin", null, q("select shared.delete_unused_staff($1)", [ids.admin]), (r) => !r.ok && r.code === "22023");
+  }
+
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
 

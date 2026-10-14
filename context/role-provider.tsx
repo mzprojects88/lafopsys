@@ -70,12 +70,20 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
       setEmail(userData.user?.email ?? null);
 
       if (userData.user) {
-        const { data: staffRow } = await supabase
+        const { data: staffRow, error: staffError } = await supabase
           .schema("shared")
           .from("staff")
           .select("role, extra_roles, first_name, last_name, is_hr, landing_path")
           .eq("id", userData.user.id)
           .single();
+
+        // No row of their own to read means the account was switched off (0091): the database
+        // already answers it nothing; this only spares it an empty shell.
+        if (!cancelled && !staffRow && staffError?.code === "PGRST116") {
+          await supabase.auth.signOut();
+          window.location.assign("/login");
+          return;
+        }
 
         // An outside (partner) account has no place here: its sign-in is the Inventory app's.
         // The database already answers it nothing; this only spares it an empty shell.

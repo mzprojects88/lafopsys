@@ -8,6 +8,6 @@ export { useRole };
 
 export function useVisibleNavItems() {
   const { roles } = useRole();
-  const { rows } = useModuleAccess();
-  return visibleNavItems(roles, rows);
+  const { rows, overrides } = useModuleAccess();
+  return visibleNavItems(roles, rows, overrides);
 }

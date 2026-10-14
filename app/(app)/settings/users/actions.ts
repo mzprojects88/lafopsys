@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ASSIGNABLE_ROLES, CREATABLE_ROLES, ORG_ROLES, isAllowedLandingPath, isPartnerRole, rolesProblem, type ModuleAccessRow } from "@/lib/rbac/roles";
+import { ADMIN_ONLY_MODULES, ASSIGNABLE_ROLES, CREATABLE_ROLES, NAV_ITEMS, ORG_ROLES, isAllowedLandingPath, isPartnerRole, rolesProblem, type AccessLevel, type ModuleAccessRow, type ModuleKey } from "@/lib/rbac/roles";
 import type { Role } from "@/lib/types/common";
 
 export interface CreateStaffInput {
@@ -20,6 +20,36 @@ export interface CreateStaffResult {
   error?: string;
 }
 
+type AccountAction = "created" | "access_changed" | "override_set" | "deactivated" | "reactivated" | "pin_reset" | "deleted";
+
+/** The signed-in admin, or the reason they are not one. Every action here starts with it: the
+ * admin client bypasses RLS, so the caller's role is checked in code. */
+async function actingAdmin(): Promise<{ ok: true; id: string; name: string } | { ok: false; error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { data: me } = await supabase.schema("shared").from("staff").select("role, first_name, last_name").eq("id", user.id).single();
+  if (me?.role !== "admin") return { ok: false, error: "Only admins can manage accounts." };
+  return { ok: true, id: user.id, name: `${me.first_name} ${me.last_name}` };
+}
+
+/** What an admin did to an account (shared.staff_events, 0091). Never blocks the action. */
+async function logAccountEvent(
+  admin: ReturnType<typeof createAdminClient>,
+  actor: { id: string; name: string },
+  target: { id: string | null; name: string },
+  action: AccountAction,
+  detail: Record<string, unknown> = {}
+) {
+  const { error } = await admin
+    .schema("shared")
+    .from("staff_events")
+    .insert({ staff_id: target.id, staff_name: target.name, action, detail, actor_id: actor.id, actor_name: actor.name });
+  if (error) console.error("staff_events insert failed:", error.message);
+}
+
 /**
  * Creates a real staff account: a Supabase Auth user (synthesized internal
  * email + the temporary PIN as the password) plus its shared.staff row.
@@ -30,20 +60,8 @@ export interface CreateStaffResult {
  * admin-only (nav visibility is not access control).
  */
 export async function createStaffAccount(input: CreateStaffInput): Promise<CreateStaffResult> {
-  const supabase = await createClient();
-  const {
-    data: { user: caller },
-  } = await supabase.auth.getUser();
-
-  if (!caller) {
-    return { ok: false, error: "Not signed in." };
-  }
-
-  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
-
-  if (callerStaff?.role !== "admin") {
-    return { ok: false, error: "Only admins can create staff accounts." };
-  }
+  const actor = await actingAdmin();
+  if (!actor.ok) return actor;
 
   const firstName = input.firstName.trim();
   const lastName = input.lastName.trim();
@@ -108,6 +126,7 @@ export async function createStaffAccount(input: CreateStaffInput): Promise<Creat
     return { ok: false, error: `The account was created, but not given a House in laf-inventory: ${houseError.message}` };
   }
 
+  await logAccountEvent(admin, actor, { id: created.user.id, name: `${firstName} ${lastName}` }, "created", { role: input.role, position });
   revalidatePath("/settings/users");
   return { ok: true };
 }
@@ -123,6 +142,10 @@ export interface UpdateStaffAccessInput {
   landingPath: string | null;
   /** Runs HR without being an admin (0035). Ignored for admins, who are HR anyway. */
   isHr: boolean;
+  /** Off closes the account at once (0091): the database stops answering it, even mid-session. */
+  active?: boolean;
+  /** A new 6-digit temporary PIN, or null to leave the PIN alone (0091). */
+  temporaryPin?: string | null;
 }
 
 /**
@@ -136,22 +159,12 @@ export interface UpdateStaffAccessInput {
  * only send them to a page they cannot use.
  */
 export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<CreateStaffResult> {
-  const supabase = await createClient();
-  const {
-    data: { user: caller },
-  } = await supabase.auth.getUser();
-
-  if (!caller) {
-    return { ok: false, error: "Not signed in." };
-  }
-
-  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
-  if (callerStaff?.role !== "admin") {
-    return { ok: false, error: "Only admins can change access settings." };
-  }
+  const actor = await actingAdmin();
+  if (!actor.ok) return actor;
+  const caller = { id: actor.id };
 
   const admin = createAdminClient();
-  const { data: target } = await admin.schema("shared").from("staff").select("role, active").eq("id", input.staffId).single();
+  const { data: target } = await admin.schema("shared").from("staff").select("role, active, first_name, last_name").eq("id", input.staffId).single();
   if (!target) {
     return { ok: false, error: "That staff account no longer exists." };
   }
@@ -173,14 +186,19 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
   if (problem) {
     return { ok: false, error: problem };
   }
-  if (target.role === "admin" && input.role !== "admin") {
-    if (input.staffId === caller.id) {
-      return { ok: false, error: "You can't remove your own Super Admin role." };
-    }
+  const active = input.active ?? target.active;
+  if (input.staffId === caller.id && (input.role !== "admin" || !active)) {
+    return { ok: false, error: input.role !== "admin" ? "You can't remove your own Super Admin role." : "You can't switch off your own account." };
+  }
+  // Losing an admin, by role or by switching off: someone must be left to manage the rest.
+  if (target.role === "admin" && target.active && (input.role !== "admin" || !active)) {
     const { count } = await admin.schema("shared").from("staff").select("id", { count: "exact", head: true }).eq("role", "admin").eq("active", true);
-    if (target.active && (count ?? 0) <= 1) {
+    if ((count ?? 0) <= 1) {
       return { ok: false, error: "At least one active Super Admin must remain." };
     }
+  }
+  if (input.temporaryPin != null && !/^\d{6}$/.test(input.temporaryPin)) {
+    return { ok: false, error: "Temporary PIN must be exactly 6 digits." };
   }
 
   const landingPath = input.landingPath?.trim() || null;
@@ -189,15 +207,35 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
     return { ok: false, error: "That page is not one this person's roles can open." };
   }
 
+  if (input.temporaryPin != null) {
+    const { error: pinError } = await admin.auth.admin.updateUserById(input.staffId, { password: input.temporaryPin });
+    if (pinError) {
+      return { ok: false, error: pinError.message };
+    }
+  }
   const { error } = await admin
     .schema("shared")
     .from("staff")
-    .update({ role: input.role, extra_roles: extraRoles, clock_in_exempt: input.clockInExempt, landing_path: landingPath, is_hr: input.isHr })
+    .update({
+      role: input.role,
+      extra_roles: extraRoles,
+      clock_in_exempt: input.clockInExempt,
+      landing_path: landingPath,
+      is_hr: input.isHr,
+      active,
+      ...(input.temporaryPin != null ? { must_change_pin: true } : {}),
+    })
     .eq("id", input.staffId);
 
   if (error) {
     return { ok: false, error: error.message };
   }
+
+  const who = { id: input.staffId, name: `${target.first_name} ${target.last_name}` };
+  if (active !== target.active) await logAccountEvent(admin, actor, who, active ? "reactivated" : "deactivated");
+  if (input.temporaryPin != null) await logAccountEvent(admin, actor, who, "pin_reset");
+  // The settings themselves, whenever the dialog is saved (a role, HR or page change).
+  await logAccountEvent(admin, actor, who, "access_changed", { role: input.role, extraRoles, clockInExempt: input.clockInExempt, landingPath, isHr: input.isHr });
 
   revalidatePath("/settings/users");
   return { ok: true };
@@ -253,6 +291,61 @@ export async function updatePartnerAccount(input: UpdatePartnerAccountInput): Pr
     return { ok: false, error: error.message };
   }
 
+  revalidatePath("/settings/users");
+  return { ok: true };
+}
+
+/** What one person may open, beyond their roles (shared.staff_module_access, 0091): `null`
+ * removes the override so the roles decide again. The database refuses it for admins, outside
+ * accounts and Settings; the trigger message comes back as the error. */
+export async function setStaffOverride(input: { staffId: string; module: ModuleKey; level: AccessLevel | null }): Promise<CreateStaffResult> {
+  const actor = await actingAdmin();
+  if (!actor.ok) return actor;
+  if (!NAV_ITEMS.some((n) => n.module === input.module) || ADMIN_ONLY_MODULES.includes(input.module)) {
+    return { ok: false, error: "That module can't be set per person." };
+  }
+  const admin = createAdminClient();
+  const { data: target } = await admin.schema("shared").from("staff").select("role, first_name, last_name").eq("id", input.staffId).single();
+  if (!target) {
+    return { ok: false, error: "That staff account no longer exists." };
+  }
+  // Written as the admin (not the service role) so the table's own rules and trigger apply.
+  const supabase = await createClient();
+  const table = supabase.schema("shared").from("staff_module_access");
+  const { error } =
+    input.level === null
+      ? await table.delete().eq("staff_id", input.staffId).eq("module", input.module)
+      : await table.upsert({ staff_id: input.staffId, module: input.module, level: input.level }, { onConflict: "staff_id,module" });
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  await logAccountEvent(admin, actor, { id: input.staffId, name: `${target.first_name} ${target.last_name}` }, "override_set", { module: input.module, level: input.level ?? "role default" });
+  revalidatePath("/settings/users");
+  return { ok: true };
+}
+
+/** Removes an account that was never used (shared.delete_unused_staff, 0091), then its login.
+ * An account with any record is refused by the database; switch it off instead. */
+export async function deleteStaffAccount(staffId: string): Promise<CreateStaffResult> {
+  const actor = await actingAdmin();
+  if (!actor.ok) return actor;
+  const admin = createAdminClient();
+  const { data: target } = await admin.schema("shared").from("staff").select("first_name, last_name, staff_code").eq("id", staffId).single();
+  if (!target) {
+    return { ok: false, error: "That staff account no longer exists." };
+  }
+  // As the admin, so the function's own checks (admin, not yourself, last admin) apply.
+  const supabase = await createClient();
+  const { error } = await supabase.schema("shared").rpc("delete_unused_staff", { p_staff_id: staffId });
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  const { error: authError } = await admin.auth.admin.deleteUser(staffId);
+  if (authError) {
+    // The staff row is gone; the login no longer reaches anything. Say so rather than hide it.
+    console.error("auth user delete failed after staff delete:", authError.message);
+  }
+  await logAccountEvent(admin, actor, { id: null, name: `${target.first_name} ${target.last_name}` }, "deleted", { staffCode: target.staff_code });
   revalidatePath("/settings/users");
   return { ok: true };
 }

@@ -13,7 +13,7 @@ import { useRole } from "@/context/role-provider";
 import { createClient } from "@/lib/supabase/client";
 import type { Role } from "@/lib/types/common";
 import { resolveLandingPath } from "@/lib/rbac/roles";
-import { fetchModuleAccess } from "@/lib/hooks/use-module-access";
+import { fetchModuleAccess, fetchMyOverrides } from "@/lib/hooks/use-module-access";
 
 const PIN_LENGTH = 6;
 
@@ -79,7 +79,8 @@ export function LoginForm({ roster }: { roster: LoginRosterEntry[] }) {
         landingPath: staffRow.landing_path as string | null,
         next: searchParams.get("next"),
       },
-      await fetchModuleAccess()
+      await fetchModuleAccess(),
+      await fetchMyOverrides(signInData.user.id)
     );
 
     if (staffRow.must_change_pin) {
