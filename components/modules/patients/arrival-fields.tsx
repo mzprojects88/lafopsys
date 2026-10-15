@@ -76,7 +76,8 @@ export function ArrivalFields({ value, onChange, arrivalDate, excludeStayId }: {
   const { rides } = useArrivalRides();
   const { patients, stays } = usePatientsData();
   const { pickups } = usePickups();
-  const tripsThatDay = pickups.filter((p) => p.date === arrivalDate || p.id === value.trip);
+  // A family arrives on a pick-up; deliveries go the other way (0096).
+  const tripsThatDay = pickups.filter((p) => (p.direction === "from_hospital" && p.date === arrivalDate) || p.id === value.trip);
   // Rides that day still open to riders, plus the stay's own ride even if it was paid back since.
   const sameDay = rides.filter((r) => (r.rideDate === arrivalDate && !r.reimbursedAt) || r.id === value.ride);
   const ridersOf = (rideId: string) =>

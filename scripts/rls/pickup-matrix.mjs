@@ -29,7 +29,7 @@ const client = new Client({
   query_timeout: 120000,
 });
 
-const ROLES = ["admin", "social_worker", "house_staff", "driver", "volunteer", "finance"];
+const ROLES = ["admin", "social_worker", "house_staff", "driver", "volunteer", "finance", "office_admin"];
 const results = [];
 const record = (name, verdict, detail = "") =>
   results.push({ scenario: name, result: verdict, detail: String(detail).replace(/\s+/g, " ").slice(0, 80) });
@@ -186,7 +186,7 @@ async function main() {
   await scenario(ids, "social worker builds a pick-up from NCH's list", "social_worker",
     withSeed(() => client.query("update shared.staff set active = true where id = $1", [ids.driver])),
     last({ sql: create([ROW_A, ROW_B]) },
-      { sql: `select t.vehicle = 'LAF HOPE Transport' and t.direction = 'from_hospital' and t.status = 'scheduled' and t.driver_staff_id = $1
+      { sql: `select t.carries_passengers and t.vehicle_id is not distinct from (select id from ops.vehicles where active order by created_at, id limit 1) and t.direction = 'from_hospital' and t.status = 'scheduled' and t.driver_staff_id = $1
                  and (select count(*) from ops.trip_manifest m where m.trip_id = t.id) = 2
                  and (select patient_id from ops.trip_manifest m where m.trip_id = t.id and m.house_sheet_person_id = $2) = $3
                  and (select carer_name from ops.trip_manifest m where m.trip_id = t.id and m.house_sheet_person_id = $4) = 'Papa New' as ok
@@ -205,11 +205,35 @@ async function main() {
     q(boardA), (r) => value("boarded_by", ids.driver)(r));
   await scenario(ids, "the stamp cannot be written by hand", "driver", withSeed(() => trip()),
     q(`update ops.trip_manifest set boarded_at = now(), boarded_by = '${ids.admin}' where trip_id = '${TRIP}'`), denied);
-  await scenario(ids, "the driver cannot rename a passenger", "driver", withSeed(() => trip()),
-    q(`update ops.trip_manifest set name = 'Someone else' where trip_id = '${TRIP}'`), denied);
+  await scenario(ids, "the driver corrects a passenger's name before arrival (0096)", "driver", withSeed(() => trip()),
+    q(`update ops.trip_manifest set name = 'Someone else' where trip_id = '${TRIP}'`), rows(2));
   await scenario(ids, "house staff cannot tick on board", "house_staff", withSeed(() => trip()), q(boardA), rows(0));
   await scenario(ids, "house staff read the manifest", "house_staff", withSeed(() => trip()), q(`select id from ops.trip_manifest where trip_id = '${TRIP}'`), rows(2));
   await scenario(ids, "volunteer reads no manifest", "volunteer", withSeed(() => trip()), q(`select id from ops.trip_manifest where trip_id = '${TRIP}'`), rows(0));
+  // --- 0096: passengers both ways ------------------------------------------------------
+  const delivery = (who = "P1") => `select ops.create_trip(${TODAY}, '09:00', null, 'to_hospital', 'National Children''s Hospital', null, '{}', array['${who === "P1" ? P1 : who}']::uuid[]) as id`;
+  await scenario(ids, "the social worker plans a delivery to the hospital for a patient on file", "social_worker", withSeed(),
+    last({ sql: delivery() },
+      { sql: `select t.direction = 'to_hospital' and t.carries_passengers and t.destination = 'National Children''s Hospital'
+                 and (select string_agg(m.name, '|') from ops.trip_manifest m where m.trip_id = t.id) = 'Known, Pickup' as ok
+               from ops.trips t where exists (select 1 from ops.trip_manifest m where m.trip_id = t.id and m.patient_id = $1)`, params: [P1] }),
+    value("ok", true));
+  await scenario(ids, "the Office Admin (Patients edit, no Transport) plans one too", "office_admin", withSeed(), q(delivery()), rows(1));
+  await scenario(ids, "a volunteer can't plan a trip", "volunteer", withSeed(), q(delivery()), denied);
+  await scenario(ids, "a trip with passengers is a pick-up or a delivery", "social_worker", withSeed(),
+    q(`select ops.create_trip(${TODAY}, '09:00', null, 'errand', null, null, '{}', array['${P1}']::uuid[])`), badInput);
+  await scenario(ids, "the driver adds a passenger by name, stamped with who", "driver", withSeed(() => trip()),
+    q(`insert into ops.trip_manifest (trip_id, name, carer_name) values ('${TRIP}', 'Walk-in, Child', 'Tita') returning added_by`), (r) => value("added_by", ids.driver)(r));
+  await scenario(ids, "a patient is on a trip once", "driver", withSeed(() => trip()),
+    last({ sql: `insert into ops.trip_manifest (trip_id, patient_id, name) values ('${TRIP}', '${P1}', 'Known, Pickup')` },
+         { sql: `insert into ops.trip_manifest (trip_id, patient_id, name) values ('${TRIP}', '${P1}', 'Known, Pickup')` }), duplicate);
+  await scenario(ids, "a row can't be moved to another trip", "driver", withSeed(() => trip()),
+    q(`update ops.trip_manifest set trip_id = gen_random_uuid() where trip_id = '${TRIP}'`), denied);
+  await scenario(ids, "an arrived trip's names are frozen", "social_worker", withSeed(() => trip("completed")),
+    q(`update ops.trip_manifest set name = 'Changed later' where trip_id = '${TRIP}'`), checkFailed);
+  await scenario(ids, "finance can't change a manifest", "finance", withSeed(() => trip()),
+    q(`update ops.trip_manifest set note = 'x' where trip_id = '${TRIP}'`), rows(0));
+
   await scenario(ids, "someone on board cannot be taken off the manifest", "social_worker",
     withSeed(async () => { await trip(); await client.query(`update ops.trip_manifest set boarded_at = now() where house_sheet_person_id = $1`, [ROW_A]); }),
     q(`delete from ops.trip_manifest where house_sheet_person_id = '${ROW_A}'`), checkFailed);
@@ -275,8 +299,8 @@ async function main() {
   await scenario(ids, "a trip takes its vehicle's name and link", "driver", tracked(),
     q(`select vehicle = 'RLSTEST Van' and vehicle_id = '${VEH}' as ok from ops.trips where id = '${T2}'`), value("ok", true));
   await scenario(ids, "a pick-up made by name is linked to LAF HOPE", "admin", null,
-    q(`insert into ops.trips (date, direction, vehicle, departure_time) values (${TODAY}, 'from_hospital', 'LAF HOPE Transport', '07:30')
-       returning vehicle_id = (select id from ops.vehicles where name = 'LAF HOPE Transport') as ok`), value("ok", true));
+    q(`insert into ops.trips (date, direction, vehicle, departure_time) values (${TODAY}, 'from_hospital', (select name from ops.vehicles where active order by created_at, id limit 1), '07:30')
+       returning vehicle_id = (select id from ops.vehicles where active order by created_at, id limit 1) as ok`), value("ok", true));
   await scenario(ids, "an untracked vehicle's trip leaves without a reading", "driver", withSeed(() => trip()),
     q(`update ops.trips set status = 'in_progress' where id = '${TRIP}'`), rows(1));
   await scenario(ids, "an untracked vehicle is on one trip at a time too", "driver",

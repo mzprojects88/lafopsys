@@ -110,7 +110,8 @@ export const errandsStore = createCollection<Errand[]>({
       .from("trips")
       .select("id, date, direction, destination, vehicle_id, driver_staff_id, departure_time, status, departed_at, arrived_at, odometer_start, odometer_end")
       .not("vehicle_id", "is", null)
-      .neq("direction", "from_hospital")
+      // Trips with passengers are in pickupsStore (0096).
+      .eq("carries_passengers", false)
       .gte("date", since.toISOString().slice(0, 10))
       .order("date", { ascending: false })
       .order("departure_time", { ascending: false });

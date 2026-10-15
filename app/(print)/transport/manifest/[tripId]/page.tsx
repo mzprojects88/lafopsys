@@ -6,6 +6,7 @@ import { formatDate } from "@/lib/utils/date";
 import { formatTime12 } from "@/lib/utils/time12";
 import { PrintButton } from "@/app/(print)/hr/payslips/[id]/print/print-button";
 import { nameFormat, titleFor } from "@/lib/utils/staff-name";
+import { tripWords } from "@/lib/utils/trip-direction";
 
 /**
  * A LAF HOPE pick-up's manifest on paper (go-live, 2026-10-13): who was listed, who boarded,
@@ -19,7 +20,7 @@ export default async function ManifestPrintPage({ params }: { params: Promise<{ 
   const { data: trip } = await supabase
     .schema("ops")
     .from("trips")
-    .select("id, date, departure_time, departed_at, arrived_at, status, vehicle, vehicle_id, driver_staff_id, odometer_start, odometer_end, trip_manifest(id, name, carer_name, boarded_at)")
+    .select("id, date, direction, destination, departure_time, departed_at, arrived_at, status, vehicle, vehicle_id, driver_staff_id, odometer_start, odometer_end, trip_manifest(id, name, carer_name, note, boarded_at)")
     .eq("id", tripId)
     .maybeSingle();
   if (!trip) notFound();
@@ -30,7 +31,7 @@ export default async function ManifestPrintPage({ params }: { params: Promise<{ 
   // Settings > Documents (0094): the driver's job title under the line, or the name alone.
   const { data: docSettings } = await supabase.schema("shared").from("app_settings").select("document_names").maybeSingle();
   const driverTitle = titleFor(nameFormat(docSettings?.document_names, "manifest"), driver?.position);
-  const manifest = ((trip.trip_manifest ?? []) as { id: string; name: string; carer_name: string | null; boarded_at: string | null }[]).sort((a, b) => a.name.localeCompare(b.name));
+  const manifest = ((trip.trip_manifest ?? []) as { id: string; name: string; carer_name: string | null; note: string | null; boarded_at: string | null }[]).sort((a, b) => a.name.localeCompare(b.name));
   const boarded = manifest.filter((m) => m.boarded_at).length;
 
   return (
@@ -46,8 +47,8 @@ export default async function ManifestPrintPage({ params }: { params: Promise<{ 
           <div className="flex items-center gap-3">
             <Image src="/logo/laf-mark.png" alt="" width={48} height={51} />
             <div>
-              <h1 className="text-lg font-semibold">Pick-up Manifest</h1>
-              <p className="text-xs text-neutral-600">Little Ark Foundation, Inc. · LAF HOPE Transport</p>
+              <h1 className="text-lg font-semibold">{tripWords(trip.direction).short} Manifest</h1>
+              <p className="text-xs text-neutral-600">Little Ark Foundation, Inc. · {tripWords(trip.direction).long}{trip.destination ? ` · ${trip.destination}` : ""}</p>
             </div>
           </div>
           <div className="text-right text-xs text-neutral-700">
@@ -77,7 +78,10 @@ export default async function ManifestPrintPage({ params }: { params: Promise<{ 
                 <tr key={m.id} className="border-b border-neutral-200">
                   <td className="py-3 pr-2 text-neutral-500">{i + 1}</td>
                   <td className="py-3 pr-2 font-medium">{m.name}</td>
-                  <td className="py-3 pr-2">{m.carer_name ?? ""}</td>
+                  <td className="py-3 pr-2">
+                  {m.carer_name ?? ""}
+                  {m.note ? <span className="block text-xs text-neutral-600">{m.note}</span> : null}
+                </td>
                   <td className="py-3 pr-2">{m.boarded_at ? `✓ ${formatDate(m.boarded_at, "h:mm a")}` : "☐"}</td>
                   <td className="py-3"><div className="h-6 border-b border-neutral-400" /></td>
                 </tr>

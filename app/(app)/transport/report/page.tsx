@@ -18,11 +18,13 @@ import { csvLines, downloadCsv } from "@/lib/utils/csv";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatTime12 } from "@/lib/utils/time12";
+import { directionLabel } from "@/lib/utils/trip-direction";
 
 interface TripRow {
   id: string;
   date: string;
   direction: string;
+  carriesPassengers: boolean;
   destination: string | null;
   vehicleId: string | null;
   vehicle: string;
@@ -56,7 +58,6 @@ const PERIODS: { value: PeriodKind; label: string }[] = [
   { value: "quarter", label: "Quarter" },
   { value: "year", label: "Year" },
 ];
-const DIRECTION: Record<string, string> = { from_hospital: "Pick-up from NCH", to_hospital: "To the hospital", errand: "Errand", other: "Other" };
 
 /**
  * Transport & fuel report (go-live, 2026-10-13): the period's trips and fuel/expense entries as
@@ -80,7 +81,7 @@ export default function TransportReportPage() {
     Promise.all([
       ops
         .from("trips")
-        .select("id, date, direction, destination, vehicle, vehicle_id, driver_staff_id, status, departure_time, departed_at, arrived_at, odometer_start, odometer_end, trip_manifest(boarded_at), trip_passengers(patient_id)")
+        .select("id, date, direction, carries_passengers, destination, vehicle, vehicle_id, driver_staff_id, status, departure_time, departed_at, arrived_at, odometer_start, odometer_end, trip_manifest(boarded_at), trip_passengers(patient_id)")
         .gte("date", period.from)
         .lte("date", period.to)
         .order("date"),
@@ -101,6 +102,7 @@ export default function TransportReportPage() {
             id: r.id as string,
             date: r.date as string,
             direction: r.direction as string,
+            carriesPassengers: Boolean(r.carries_passengers),
             destination: (r.destination as string | null) ?? null,
             vehicleId: (r.vehicle_id as string | null) ?? null,
             vehicle: r.vehicle as string,
@@ -165,7 +167,7 @@ export default function TransportReportPage() {
         ["Date", "Type", "Destination", "Vehicle", "Driver", "Status", "Leaves", "Departed", "Arrived", "Odometer start", "Odometer end", "Km", "Passengers"],
         shownTrips.map((t) => [
           t.date,
-          DIRECTION[t.direction] ?? t.direction,
+          directionLabel(t.direction, t.carriesPassengers),
           t.destination ?? "",
           vehicleName(t.vehicleId, t.vehicle),
           staffName(t.driverId),
@@ -252,7 +254,7 @@ export default function TransportReportPage() {
               {shownTrips.map((t) => (
                 <tr key={t.id}>
                   <td className="px-5 py-2 whitespace-nowrap">{formatDate(t.date, "MMM d")}</td>
-                  <td className="px-2 py-2">{DIRECTION[t.direction] ?? t.direction}{t.destination ? ` · ${t.destination}` : ""}</td>
+                  <td className="px-2 py-2">{directionLabel(t.direction, t.carriesPassengers)}{t.destination ? ` · ${t.destination}` : ""}</td>
                   <td className="px-2 py-2">{vehicleName(t.vehicleId, t.vehicle)}</td>
                   <td className="px-2 py-2">{staffName(t.driverId) || "—"}</td>
                   <td className="px-2 py-2 text-right tabular-nums">{t.passengers}</td>
