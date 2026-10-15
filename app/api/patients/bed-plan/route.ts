@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { chooseBedPlan, type BedPlanPerson } from "@/lib/ai/openai";
 import { openaiConfigured } from "@/lib/ai/env";
-import { NEWCOMER, findBedPlans, type PlanBed, type PlanPerson } from "@/lib/utils/bed-plan";
+import { ARRIVAL_PREFIX, NEWCOMER, findBedPlans, isArrival, type PlanBed, type PlanPerson } from "@/lib/utils/bed-plan";
 import { todayIso } from "@/lib/utils/date";
 
 export const maxDuration = 60;
@@ -25,7 +25,15 @@ export async function POST(request: Request) {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
 
-  const body = (await request.json().catch(() => ({}))) as { newcomer?: { sex?: unknown; familyId?: unknown } };
+  const body = (await request.json().catch(() => ({}))) as { newcomer?: { sex?: unknown; familyId?: unknown }; arrivals?: unknown };
+  // Tonight's arrivals, placed together (bed plan polish, 2026-10-15): "new:<id>", the carer's sex, the family.
+  const arrivals = (Array.isArray(body.arrivals) ? body.arrivals : [])
+    .slice(0, 20)
+    .flatMap((a: { key?: unknown; sex?: unknown; familyId?: unknown }) =>
+      typeof a?.key === "string" && /^new:[0-9a-f-]{36}$/i.test(a.key) && (a.sex === "F" || a.sex === "M")
+        ? [{ key: a.key, sex: a.sex as Sex, familyId: typeof a.familyId === "string" ? a.familyId : undefined }]
+        : []
+    );
   const newcomerSex = body.newcomer?.sex === "F" || body.newcomer?.sex === "M" ? (body.newcomer.sex as Sex) : null;
   if (body.newcomer && !newcomerSex) return NextResponse.json({ ok: false, error: "Say whether the arriving carer is a woman or a man." }, { status: 400 });
 
@@ -92,14 +100,38 @@ export async function POST(request: Request) {
   });
   for (const h of holds.data ?? []) people.push({ key: `hold:${h.id}`, sex: h.carer_sex ?? undefined, familyId: undefined, unitId: h.unit_id, fixed: true });
   if (newcomerSex) people.push({ key: NEWCOMER, sex: newcomerSex, familyId: typeof body.newcomer?.familyId === "string" ? body.newcomer.familyId : undefined, unitId: null });
-
-  const plans = findBedPlans(people, beds);
+  // As many of tonight's arrivals as the rules allow, in the order sent (NCH's priority): if all of
+  // them don't fit, the last ones wait and are named, instead of no plan at all. Binary search on how
+  // many fit (about four searches for twelve arrivals).
+  // ponytail: assumes fewer arrivals never fit worse; a best-subset search if evenings get bigger.
+  const withFirst = (n: number) => [...people, ...arrivals.slice(0, n).map((a) => ({ key: a.key, sex: a.sex, familyId: a.familyId, unitId: null as string | null }))];
+  const plansFor = (n: number) => findBedPlans(withFirst(n), beds, { timeLimitMs: 1500 });
+  let placedArrivals = arrivals.length;
+  let plans = plansFor(placedArrivals);
+  if (!plans.length && arrivals.length) {
+    let lo = 0;
+    let hi = arrivals.length - 1;
+    let best = { n: 0, plans: plansFor(0) };
+    while (lo <= hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      const p = mid === 0 ? best.plans : plansFor(mid);
+      if (p.length || mid === 0) {
+        if (mid >= best.n) best = { n: mid, plans: p };
+        lo = mid + 1;
+      } else hi = mid - 1;
+    }
+    placedArrivals = best.n;
+    plans = best.plans;
+  }
+  people.push(...withFirst(placedArrivals).slice(people.length));
+  const waiting = arrivals.slice(placedArrivals).map((a) => a.key);
   if (!plans.length) {
     return NextResponse.json({
       ok: true,
       plans: [],
-      message: newcomerSex
-        ? "No arrangement within the rules has a bed for them. An admin can place them outside the rules, with a reason."
+      waiting,
+      message: newcomerSex || arrivals.length
+        ? "No arrangement within the rules has a bed for everyone arriving. Place them one at a time, or an admin can place someone outside the rules, with a reason."
         : "The house already keeps the bed rules: nothing to move.",
     });
   }
@@ -145,13 +177,33 @@ export async function POST(request: Request) {
     explanation,
     // "Family A" -> a stay id ("new" = the family arriving); the app puts names back.
     letters,
-    plans: plans.map((p) => ({
+    plans: plans.map((p, i) => ({
       moves: p.moves.map((m) => ({
-        stayId: m.key === NEWCOMER ? null : m.key,
+        stayId: isArrival(m.key) ? null : m.key,
+        // Which arrival a placement is for ("new:<id>"); null for a family already in the house.
+        arrivalKey: m.key.startsWith(ARRIVAL_PREFIX) ? m.key : null,
         fromUnitId: m.from,
         toUnitId: m.to,
-        reason: reasons[m.key === NEWCOMER ? "new" : m.key] ?? (m.key === NEWCOMER ? "Bed for the family arriving" : `To ${bedLabel(m.to)}: keeps the bed rules`),
+        reason: reasons[m.key === NEWCOMER ? "new" : m.key] ?? (isArrival(m.key) ? "Bed for the family arriving" : `To ${bedLabel(m.to)}: keeps the bed rules`),
       })),
+      // Why not this one, in a line (never for the suggested plan).
+      whyNot: i === chosen ? null : whyNot(p, plans[chosen]!),
     })),
+    // The house as the planner saw it -- keys, sexes, families, beds; no names -- so the social
+    // worker can leave a move out and see at once whether the rest still keeps the rules.
+    layout: { people, beds },
+    // Arrivals for whom no bed within the rules was found tonight.
+    waiting,
   });
+}
+
+const familyMovesOf = (p: { moves: { key: string }[] }) => p.moves.filter((m) => !isArrival(m.key)).length;
+
+/** One plain line comparing a plan with the suggested one. */
+function whyNot(plan: { moves: { key: string }[]; disruption: number }, best: { moves: { key: string }[]; disruption: number }): string {
+  const mine = familyMovesOf(plan);
+  const theirs = familyMovesOf(best);
+  if (mine > theirs) return `Moves ${mine} ${mine === 1 ? "family" : "families"}; the suggested plan moves ${theirs}.`;
+  if (mine < theirs) return `Moves fewer families, but they have stayed longer or leave sooner.`;
+  return plan.disruption > best.disruption ? "Same number of moves, but it moves families who have stayed longer, leave sooner or go further from Room 1." : "As gentle as the suggested plan; the AI preferred the other.";
 }

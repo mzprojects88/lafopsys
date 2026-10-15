@@ -28,8 +28,9 @@ import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { isHiddenPath } from "@/lib/rbac/hidden";
 import { useRole } from "@/context/role-provider";
 import { DischargeDialog } from "@/components/modules/patients/discharge-dialog";
-import { BedPlanDialog } from "@/components/modules/patients/bed-plan-dialog";
+import { BedPlanDialog, type PlanArrival } from "@/components/modules/patients/bed-plan-dialog";
 import { MealTicks } from "@/components/modules/patients/meal-ticks";
+import { BedMovesToday } from "@/components/modules/patients/bed-moves-today";
 import { UrgentTripDialog } from "@/components/modules/patients/urgent-trip-dialog";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { confirmHouseSheetMatch } from "@/app/(app)/patients/house-sheet/actions";
@@ -73,7 +74,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   // Meals are ticked by anyone who edits Patients or House Ops (0095), not only bed editors.
   const access = useModuleAccess();
   const canTickMeals = access.canEdit("patients") || access.canEdit("house_ops");
-  const { patients, stays, loading: patientsLoading } = usePatientsData();
+  const { patients, stays, carers, loading: patientsLoading } = usePatientsData();
   const { units, bedPositions, loading: layoutLoading } = useHouseLayout();
   const { nights, confirmNight, readmitForTonight } = useBedNights();
   // The admission resets every morning (0089): the reset log and the finalize time.
@@ -135,6 +136,17 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const resetStayFor = (patientId: string | null) =>
     patientId ? stays.find((s) => s.patientId === patientId && s.checkOutReason === "daily_reset" && s.checkOutAt === today) : undefined;
   const continuing = arrivals.filter((p) => resetStayFor(settledPatientId(p)));
+  // Tonight's arrivals without a held bed, for the bed plan (2026-10-15): the carer's sex from last
+  // night's stay, else from the sheet's relationship; a family whose sex isn't known yet is left out.
+  const planArrivals: PlanArrival[] = arrivals.flatMap((p) => {
+    const patientId = settledPatientId(p);
+    if (holdFor(patientId, p.id)) return [];
+    const lastNight = resetStayFor(patientId);
+    const sex = (lastNight ? sleeperOfStay(lastNight, carers, patients).sex : undefined) ?? sexFromRelationship(p.relationship ?? "") ?? undefined;
+    if (!sex) return [];
+    const patient = patientId ? patientById.get(patientId) : undefined;
+    return [{ key: `new:${patientId ?? p.id}`, name: p.patientName, sex, familyId: patient?.familyId, patientId, sheetPersonId: p.id }];
+  });
   const todayReset = resets.find((r) => r.day === today);
   const nowHm = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Manila" });
   const pastFinalize = nowHm >= admissions.finalizeBy;
@@ -340,9 +352,9 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
           actions={
             canEdit ? (
               <span className="flex flex-wrap gap-1.5">
-                {tonight.length ? (
+                {tonight.length || planArrivals.length ? (
                   <Button size="sm" variant="outline" onClick={() => setPlanning(true)}>
-                    <Sparkles /> Suggest bed plan
+                    <Sparkles /> Suggest bed plan{planArrivals.length ? ` (+${planArrivals.length} arriving)` : ""}
                   </Button>
                 ) : null}
                 {unconfirmed.length > 1 ? (
@@ -358,6 +370,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
         >
           <div className="px-5 pt-3 empty:hidden"><BedRuleBreaches /></div>
           {tonight.length === 0 ? <p className="px-5 py-3 text-theme-xs text-muted-foreground">Nobody is checked in.</p> : null}
+          <BedMovesToday />
           {tonight.map((s) => {
             const night = tonightNight(s);
             const tasks = orientationProgress(s, stays, topics, checks);
@@ -432,7 +445,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
         </SectionCard>
       </div>
 
-      {planning ? <BedPlanDialog onClose={() => setPlanning(false)} /> : null}
+      {planning ? <BedPlanDialog arrivals={planArrivals} onClose={() => setPlanning(false)} /> : null}
       {readmitting ? (
         <MoveTonightDialog
           key={`readmit-${readmitting.stay.id}`}

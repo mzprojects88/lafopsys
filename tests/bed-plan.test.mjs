@@ -90,3 +90,27 @@ describe("temporary beds (0092)", () => {
     assert.equal(arr([...full, person("f", "F", "T1")]), true);
   });
 });
+
+describe("tonight's arrivals together (bed plan polish, 2026-10-15)", () => {
+  it("places two arrivals of different sexes without moving anyone", () => {
+    const people = [person("a", "F", "B1"), person("new:w", "F", null), person("new:m", "M", null)];
+    const [plan] = findBedPlans(people, beds);
+    assert.equal(plan.moves.filter((m) => !m.key.startsWith("new:")).length, 0);
+    assert.equal(plan.moves.find((m) => m.key === "new:w")?.to, "B2");
+    assert.ok(["B3", "B4"].includes(plan.moves.find((m) => m.key === "new:m")?.to));
+  });
+
+  it("moves one family to make a men's room for two men arriving", () => {
+    // Room 1 has a woman; a woman sits alone in Room 2; two men arrive.
+    const people = [person("a", "F", "B1"), person("b", "F", "B3"), person("new:m1", "M", null), person("new:m2", "M", null)];
+    const [plan] = findBedPlans(people, beds);
+    assert.equal(plan.moves.find((m) => m.key === "b")?.to, "B2");
+    const men = ["new:m1", "new:m2"].map((k) => plan.moves.find((m) => m.key === k)?.to).sort();
+    assert.deepEqual(men, ["B3", "B4"]);
+  });
+
+  it("an arrival left without a bed makes the arrangement invalid", () => {
+    const people = [person("a", "F", "B1"), person("new:x", "F", null)];
+    assert.equal(isValidArrangement(people, beds, new Map([["a", "B1"], ["new:x", null]])), false);
+  });
+});

@@ -20,6 +20,8 @@ interface BedGlyphProps {
   onClick: () => void;
   /** Show the hover preview. Off inside the bed picker and on touch screens, where a tap would pop it off-screen. */
   preview?: boolean;
+  /** A bed plan's picture: the family leaves this bed ("from") or takes it ("to"). */
+  mark?: "from" | "to";
 }
 
 /**
@@ -30,7 +32,7 @@ interface BedGlyphProps {
  * popover, and the selected bed shows a corner handle for resizing.
  */
 export const BedGlyph = React.forwardRef<SVGGElement, BedGlyphProps>(function BedGlyph(
-  { bed, selected, editing, dragging, canSeeClinical, onPointerDown, onPointerMove, onPointerUp, onKeyDown, onClick, preview = true },
+  { bed, selected, editing, dragging, canSeeClinical, onPointerDown, onPointerMove, onPointerUp, onKeyDown, onClick, preview = true, mark },
   ref
 ) {
   if (bed.x === null || bed.y === null) return null;
@@ -62,6 +64,19 @@ export const BedGlyph = React.forwardRef<SVGGElement, BedGlyphProps>(function Be
       onClick={onClick}
       style={{ opacity: dragging ? 0.85 : 1 }}
     >
+      {mark ? (
+        <rect
+          x={-w / 2 - 6}
+          y={-h / 2 - 6}
+          width={w + 12}
+          height={h + 12}
+          rx={Math.min(10, small / 5)}
+          fill="none"
+          stroke={mark === "to" ? "#16a34a" : "#dc2626"}
+          strokeWidth={4}
+          strokeDasharray={mark === "from" ? "6 4" : undefined}
+        />
+      ) : null}
       <rect
         x={-w / 2}
         y={-h / 2}

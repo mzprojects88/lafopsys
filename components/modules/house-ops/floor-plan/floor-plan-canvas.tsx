@@ -46,6 +46,8 @@ interface FloorPlanCanvasProps {
   onDeleteLabel: (label: FloorPlanLabel) => void;
   /** Hover previews on beds (default on). The bed picker turns them off; touch screens never get them. */
   previews?: boolean;
+  /** A bed plan's picture: beds a family leaves ("from", red dashed) or takes ("to", green). */
+  marks?: Map<string, "from" | "to">;
 }
 
 /** A mouse or trackpad that can hover. A phone's tap would open a hover card half off the screen. */
@@ -104,6 +106,7 @@ export function FloorPlanCanvas({
   onRotateLabel,
   onDeleteLabel,
   previews = true,
+  marks,
 }: FloorPlanCanvasProps) {
   const canHover = useCanHover();
   const svgRef = React.useRef<SVGSVGElement>(null);
@@ -351,6 +354,7 @@ export function FloorPlanCanvas({
             onKeyDown={bedKeyDown(bed)}
             onClick={() => onSelect({ kind: "bed", id: bed.id })}
             preview={previews && canHover}
+            mark={marks?.get(bed.id)}
           />
         ))}
       </svg>

@@ -22,7 +22,7 @@ export interface PlanBed {
 }
 
 export interface PlanPerson {
-  /** A stay id; NEWCOMER for the family being admitted. */
+  /** A stay id; NEWCOMER or "new:<id>" for a family being admitted. */
   key: string;
   sex?: Sex;
   familyId?: string;
@@ -48,6 +48,9 @@ export interface BedPlan {
 }
 
 export const NEWCOMER = "__newcomer__";
+/** Tonight's arrivals (several at once): "new:<id>". Placing one is not a move. */
+export const ARRIVAL_PREFIX = "new:";
+export const isArrival = (key: string) => key === NEWCOMER || key.startsWith(ARRIVAL_PREFIX);
 
 const clash = (a: PlanPerson, b: PlanPerson) => !!a.sex && !!b.sex && a.sex !== b.sex && !(a.familyId && a.familyId === b.familyId);
 
@@ -59,7 +62,7 @@ export function isValidArrangement(people: PlanPerson[], beds: PlanBed[], unitOf
   for (const p of people) {
     const u = unitOf.get(p.key);
     if (!u) {
-      if (p.key === NEWCOMER) return false; // the newcomer must be placed
+      if (isArrival(p.key)) return false; // an arrival must be placed
       continue;
     }
     const bed = bedById.get(u);
@@ -105,7 +108,7 @@ export function isValidArrangement(people: PlanPerson[], beds: PlanBed[], unitOf
 function disruptionOf(moves: PlanMove[], people: Map<string, PlanPerson>, bedById: Map<string, PlanBed>): number {
   let d = 0;
   for (const m of moves) {
-    if (m.key === NEWCOMER) continue;
+    if (isArrival(m.key)) continue;
     const p = people.get(m.key);
     const away = (bedById.get(m.to)?.roomOrder ?? 0) - (bedById.get(m.from ?? "")?.roomOrder ?? 0);
     d += 10 + (p?.nightsHere ?? 0) + (p?.leavesIn !== undefined && p.leavesIn <= 1 ? 20 : 0) + Math.max(0, away) * 5;
@@ -137,7 +140,7 @@ function planByRooms(people: PlanPerson[], beds: PlanBed[], byKey: Map<string, P
     beds.filter((b) => b.roomId === roomId && b.usable).sort((a, b) => Number(!!a.temporary) - Number(!!b.temporary) || a.code.localeCompare(b.code, undefined, { numeric: true }));
   // Who stays put whatever happens: holds, anyone whose sex is unknown, anyone on a locked or unplaced bed.
   const pinned = people.filter((p) => {
-    if (p.key === NEWCOMER) return false;
+    if (isArrival(p.key)) return false;
     const bed = bedById.get(p.unitId ?? "");
     return p.fixed || !p.sex || !bed || !bed.usable || !bed.roomId;
   });
@@ -213,7 +216,8 @@ export function findBedPlans(people: PlanPerson[], beds: PlanBed[], opts: { maxM
   const start = new Map(people.map((p) => [p.key, p.unitId]));
   const byKey = new Map(people.map((p) => [p.key, p]));
   const bedById = new Map(beds.map((b) => [b.id, b]));
-  const hasNewcomer = byKey.has(NEWCOMER);
+  const arrivals = people.filter((p) => isArrival(p.key)).length;
+  const hasNewcomer = arrivals > 0;
   if (!hasNewcomer && isValidArrangement(people, beds, start)) return [];
 
   const byRooms = planByRooms(people, beds, byKey, bedById);
@@ -227,10 +231,10 @@ export function findBedPlans(people: PlanPerson[], beds: PlanBed[], opts: { maxM
   const found: BedPlan[] = [];
 
   const count = (unitOf: Map<string, string | null>, bedId: string) => people.filter((p) => unitOf.get(p.key) === bedId).length;
-  const movesOf = (moves: PlanMove[]) => moves.filter((m) => m.key !== NEWCOMER).length;
+  const movesOf = (moves: PlanMove[]) => moves.filter((m) => !isArrival(m.key)).length;
 
   // Each step moves one family to a bed with room, or swaps two families.
-  for (let step = 0; step < maxMoves + (hasNewcomer ? 1 : 0) && !found.length; step++) {
+  for (let step = 0; step < maxMoves + arrivals && !found.length; step++) {
     const next: typeof frontier = [];
     for (const { unitOf, moves } of frontier) {
       if (Date.now() > deadline) break;
@@ -272,7 +276,7 @@ export function findBedPlans(people: PlanPerson[], beds: PlanBed[], opts: { maxM
   return rank(found, limit);
 }
 
-const familyMoves = (moves: PlanMove[]) => moves.filter((m) => m.key !== NEWCOMER).length;
+const familyMoves = (moves: PlanMove[]) => moves.filter((m) => !isArrival(m.key)).length;
 
 /** Distinct plans, fewest moves first, then the gentlest. */
 function rank(plans: BedPlan[], limit: number): BedPlan[] {

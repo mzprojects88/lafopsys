@@ -170,7 +170,8 @@ function NewReferralForm() {
       ? patients.filter((p) => normName(p.lastName) === normName(lastName) && normName(p.firstName).split(" ")[0] === normName(firstName).split(" ")[0])
       : [];
   // No bed fits the rules: the planner may make room (bed rules, 0071).
-  const newcomer = carerSex ? { sex: carerSex, name: `${firstName} ${lastName}`.trim() || "the child" } : undefined;
+  // The sibling's family goes to the bed planner too: a family may share a room (0070).
+  const newcomer = carerSex ? { sex: carerSex, familyId: sibling?.familyId, name: `${firstName} ${lastName}`.trim() || "the child" } : undefined;
 
   const prefilledFor = React.useRef<string | null>(null);
   React.useEffect(() => {
