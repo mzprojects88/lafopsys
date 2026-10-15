@@ -4,7 +4,7 @@ import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Users, Wallet, Banknote, Package, Plus, Receipt, Award, Megaphone, UserPlus, Sparkles } from "lucide-react";
+import { Users, Wallet, Banknote, Package, Plus, Receipt, Award, Megaphone, UserPlus, Sparkles, Sigma } from "lucide-react";
 import { useCashGifts } from "@/lib/hooks/use-cash-gifts";
 import { givingSplit, namesToConfirm } from "@/lib/utils/cash-gifts";
 import { useDonorSuggestions } from "@/lib/hooks/use-donor-suggestions";
@@ -28,6 +28,7 @@ const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/donors/receipts", label: "Receipts", icon: Receipt },
   { href: "/donors/donee-certs", label: "Donee Certs", icon: Award },
   { href: "/donors/campaigns", label: "Campaigns", icon: Megaphone },
+  { href: "/donors/totals", label: "Totals", icon: Sigma },
 ];
 
 type Split = Map<string, { cash: number; inKind: number }>;

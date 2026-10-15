@@ -24,7 +24,7 @@ const client = new Client({
   connectionString: pgUrl(password),
 });
 
-const ROLES = ["admin", "social_worker", "house_staff", "driver"];
+const ROLES = ["admin", "social_worker", "house_staff", "driver", "finance"];
 const results = [];
 const record = (name, verdict, detail = "") =>
   results.push({ scenario: name, result: verdict, detail: String(detail).replace(/\s+/g, " ").slice(0, 80) });
@@ -235,6 +235,21 @@ async function main() {
     value("v", true));
   await scenario(ids, "everyone signed in reads the reset times", "house_staff", withSeed(),
     q("select admission_reset_at, admission_finalize_by from shared.app_settings"), rows(1));
+
+  // ---- 0095: meals served per family ----
+  if ((await client.query("select to_regclass('ops.meals_served') is not null as ok")).rows[0].ok) {
+    const tick = (meal, day = TODAY) => `insert into ops.meals_served (patient_id, date, meal) values ('${P1}', ${day}, '${meal}') returning served_by is not null as stamped`;
+    await scenario(ids, "the social worker ticks today's breakfast, stamped with who", "social_worker", withSeed(), q(tick("breakfast")), value("stamped", true));
+    await scenario(ids, "house staff tick lunch", "house_staff", withSeed(), q(tick("lunch")), rows(1));
+    await scenario(ids, "the same meal twice for one child is one row", "social_worker", withSeed(),
+      last({ sql: tick("dinner") }, { sql: tick("dinner") }), duplicate);
+    await scenario(ids, "yesterday can't be ticked after the fact", "social_worker", withSeed(), q(tick("dinner", `${TODAY} - 1`)), denied);
+    await scenario(ids, "only breakfast, lunch or dinner", "social_worker", withSeed(), q(tick("snack")), (r) => !r.ok && r.code === "23514");
+    await scenario(ids, "a tick is undone the same day", "social_worker", withSeed(),
+      last({ sql: tick("lunch") }, { sql: `delete from ops.meals_served where patient_id = '${P1}' and meal = 'lunch'` }), rows(1));
+    await scenario(ids, "the driver (House Ops edit) may tick a meal", "driver", withSeed(), q(tick("breakfast")), rows(1));
+    await scenario(ids, "finance (no Patients or House Ops edit) can't tick a meal", "finance", withSeed(), q(tick("breakfast")), denied);
+  } else record("0095 meals scenarios", "SKIP", "0095 not applied (pass it as a pre-flight file)");
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();

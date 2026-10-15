@@ -22,8 +22,11 @@ describe("document names", () => {
 });
 
 describe("pages and powers (0093)", () => {
-  it("the migration seeds exactly the catalogue's levelled pages", () => {
-    const sql = readFileSync(new URL("../supabase/migrations/0093_roles_pages_powers.sql", import.meta.url), "utf8");
+  it("the migrations seed exactly the catalogue's levelled pages", () => {
+    // 0093 seeded the first pages; later pages are seeded by the migration that adds them.
+    const sql = ["0093_roles_pages_powers.sql", "0095_gift_totals_and_meals_served.sql"]
+      .map((f) => readFileSync(new URL(`../supabase/migrations/${f}`, import.meta.url), "utf8"))
+      .join("\n");
     const seeded = [...sql.matchAll(/\('([a-z_]+\.[a-z_]+)'\)/g)].map((m) => m[1]).sort();
     assert.deepEqual(seeded, PAGES.filter((p) => !p.power).map((p) => p.key).sort());
   });

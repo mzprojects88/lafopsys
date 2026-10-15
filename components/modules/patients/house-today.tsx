@@ -29,6 +29,8 @@ import { isHiddenPath } from "@/lib/rbac/hidden";
 import { useRole } from "@/context/role-provider";
 import { DischargeDialog } from "@/components/modules/patients/discharge-dialog";
 import { BedPlanDialog } from "@/components/modules/patients/bed-plan-dialog";
+import { MealTicks } from "@/components/modules/patients/meal-ticks";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { confirmHouseSheetMatch } from "@/app/(app)/patients/house-sheet/actions";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
@@ -67,6 +69,9 @@ function settledPatientId(p: HouseSheetPerson): string | null {
  */
 export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; canEdit: boolean }) {
   const { role } = useRole();
+  // Meals are ticked by anyone who edits Patients or House Ops (0095), not only bed editors.
+  const access = useModuleAccess();
+  const canTickMeals = access.canEdit("patients") || access.canEdit("house_ops");
   const { patients, stays, loading: patientsLoading } = usePatientsData();
   const { units, bedPositions, loading: layoutLoading } = useHouseLayout();
   const { nights, confirmNight, readmitForTonight } = useBedNights();
@@ -364,6 +369,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                     {tasks.total > 0 && tasks.done < tasks.total ? ` · orientation ${tasks.done}/${tasks.total}` : ""}
                   </span>
                 </div>
+                <MealTicks patientId={s.patientId} name={nameOf(s.patientId)} canTick={canTickMeals} />
                 {canEdit && !night ? (
                   <div className="flex items-center gap-1">
                     <Button size="sm" disabled={busy === s.id} onClick={() => run(s.id, () => confirmNight(s.id), "Same bed tonight.")}>

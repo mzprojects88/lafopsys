@@ -77,6 +77,7 @@ export const PAGES: PageDef[] = [
   p("donors", "cleanup", "/donors/cleanup", "Donor clean-up"),
   p("donors", "cash", "/donors/cash", "Cash gifts"),
   p("donors", "intake", "/donors/intake", "New cash gift"),
+  p("donors", "totals", "/donors/totals", "Donation totals"),
   p("finance", "overview", "/finance", "Financial Tracking"),
   p("finance", "monthly_summary", "/finance/monthly-summary", "Monthly Summary"),
   p("finance", "bank_import", "/finance/bank-import", "Bank Import"),

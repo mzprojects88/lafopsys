@@ -81,6 +81,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   users: "Users",
   notifications: "Notifications",
   impact: "Public Impact Feed",
+  totals: "Donation Totals",
 };
 
 function labelFor(segment: string) {

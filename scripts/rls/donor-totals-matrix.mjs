@@ -408,6 +408,29 @@ async function main() {
     record("0086 scenarios", "SKIP", "0086 not applied (pass it as a pre-flight file)");
   }
 
+  // ---- 0095: gift-in-kind batches split food / non-food ----
+  const has0095 = (await client.query("select to_regproc('ops.gik_batches') is not null as ok")).rows[0].ok;
+  if (has0095) {
+    // One batch on a date nothing else uses: a FOOD line (₱300) and a non-food line (₱200).
+    const batch = `insert into inventory.donation_log (id, date, donor_id, valuation_total, item_summary) values ('rlstest-gik-1', '2001-01-02', '${D1}', 500, 'RLSTEST batch');
+      insert into inventory.donation_lines (id, donation_id, description, quantity, category, unit_value) values
+        ('rlstest-gik-1a', 'rlstest-gik-1', 'RLSTEST rice', 1, (select name from inventory.categories where meal_use limit 1), 300),
+        ('rlstest-gik-1b', 'rlstest-gik-1', 'RLSTEST soap', 1, (select name from inventory.categories where meal_use is not true limit 1), 200)`;
+    const split = `select food_value::int as food, nonfood_value::int as nonfood, total_value::int as total from ops.gik_batches('2001-01-01', '2001-01-03')`;
+    const asOwnerThen = (sql) => async () => {
+      await client.query("reset role");
+      await client.query(batch);
+      await client.query("set local role authenticated");
+      return client.query(sql);
+    };
+    await scenario(ids, "finance sees a batch split into food and non-food", "finance", asOwnerThen(split),
+      (r) => r.ok && r.rows === 1 && r.data[0].food === 300 && r.data[0].nonfood === 200 && r.data[0].total === 500);
+    await scenario(ids, "the office admin sees the same batches", "office_admin", asOwnerThen(split), rows(1));
+    await scenario(ids, "the chef can't read donation totals", "chef", asOwnerThen(split), denied);
+    await scenario(ids, "inventory staff can't read them through arkos either", "inventory_staff", asOwnerThen(split), denied);
+    await scenario(ids, "a range longer than ten years is refused", "finance", () => client.query("select * from ops.gik_batches('1990-01-01', '2026-01-01')"), (r) => !r.ok && r.code === "22023");
+  } else record("0095 gik scenarios", "SKIP", "0095 not applied (pass it as a pre-flight file)");
+
   // ---- 0087: inventory roles see donor names, not details ----
   const has0087 = (await client.query("select to_regproc('ops.donor_directory') is not null as ok")).rows[0].ok;
   if (has0087) {
