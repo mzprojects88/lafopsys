@@ -24,7 +24,7 @@ const client = new Client({
   connectionString: pgUrl(password),
 });
 
-const ROLES = ["admin", "social_worker", "house_staff", "driver", "finance"];
+const ROLES = ["admin", "social_worker", "house_staff", "driver", "finance", "ceo"];
 const results = [];
 const record = (name, verdict, detail = "") =>
   results.push({ scenario: name, result: verdict, detail: String(detail).replace(/\s+/g, " ").slice(0, 80) });
@@ -97,6 +97,7 @@ async function scenario(ids, name, actor, opts, body, expect) {
 // --- assertion helpers -------------------------------------------------------
 const denied = (r) => !r.ok && r.code === "42501";
 const duplicate = (r) => !r.ok && r.code === "23505";
+const badInput = (r) => !r.ok && r.code === "22023";
 const rows = (n) => (r) => r.ok && r.rows === n;
 const value = (field, v) => (r) => r.ok && r.rows === 1 && r.data[0][field] === v;
 
@@ -281,6 +282,49 @@ async function main() {
     await scenario(ids, "the driver can't change an appointment (0 rows)", "driver", withSeed(appt),
       q(`update ops.appointments set needs_transport = true where id = '00000000-0000-4000-8000-0000000000a7'`), rows(0));
   } else record("0097 scenarios", "SKIP", "0097 not applied (pass it as a pre-flight file)");
+
+  // ---- 0098: NCH Cancer Assistance Fund billing ----
+  if ((await client.query("select to_regclass('ops.caf_billings') is not null as ok")).rows[0].ok) {
+    // P1, a PWD cancer patient, slept 16 nights in February 2001 (a month nothing real uses).
+    const CAF_STAY = "00000000-0000-4000-8000-0000000000f9";
+    const febNights = async () => {
+      await client.query(`update ops.patients set caf_billing = true, pwd = true where id = '${P1}'`);
+      await client.query(`insert into ops.stays (id, patient_id, bed_position_id, check_in_at, check_out_at, status, check_out_reason)
+                          values ('${CAF_STAY}', '${P1}', 'unit-B1-A', '2001-02-01', '2001-02-17', 'checked_out', 'completed_treatment')`);
+      await client.query(`insert into ops.bed_nights (night, stay_id, bed_position_id) select d::date, '${CAF_STAY}', 'unit-B1-A' from generate_series('2001-02-01'::date, '2001-02-16'::date, '1 day') d`);
+    };
+    const draft = `select ops.caf_draft('2001-02-10') as id`;
+    const billId = `(select id from ops.caf_billings where month = '2001-02-01')`;
+    const drafted = async () => { await febNights(); await client.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: ids.social_worker, role: "authenticated" })]); await client.query(`update shared.staff set active = true, role = 'social_worker' where id = $1`, [ids.social_worker]); await client.query(draft); };
+    await scenario(ids, "the social worker drafts February from the nights at LAF", "social_worker", withSeed(febNights),
+      last({ sql: draft }, { sql: `select cardinality(l.nights) as n, l.pwd from ops.caf_billing_lines l where l.billing_id = ${billId} and l.patient_id = '${P1}'` }),
+      (r) => r.ok && r.data[0]?.n === 16 && r.data[0]?.pwd === true);
+    await scenario(ids, "the CEO sees the bill", "ceo", withSeed(drafted), q(`select id from ops.caf_billing_lines where billing_id = ${billId}`), rows(1));
+    await scenario(ids, "the driver sees no bill", "driver", withSeed(drafted), q(`select id from ops.caf_billing_lines where billing_id = ${billId}`), rows(0));
+    await scenario(ids, "finance can't prepare the bill", "finance", withSeed(febNights), q(draft), denied);
+    await scenario(ids, "nobody writes a line directly", "social_worker", withSeed(drafted),
+      q(`update ops.caf_billing_lines set nights = '{}' where billing_id = ${billId}`), denied);
+    await scenario(ids, "nights changed by hand need a reason", "social_worker", withSeed(drafted),
+      q(`select ops.caf_set_nights(${billId}, '${P1}', array['2001-02-01']::date[], ' ')`), badInput);
+    await scenario(ids, "a night outside the month is refused", "social_worker", withSeed(drafted),
+      q(`select ops.caf_set_nights(${billId}, '${P1}', array['2001-03-01']::date[], 'from the House Sheet')`), badInput);
+    await scenario(ids, "nights set by hand stay on a refresh", "social_worker", withSeed(drafted),
+      last({ sql: `select ops.caf_set_nights(${billId}, '${P1}', array['2001-02-01','2001-02-02']::date[], 'from the House Sheet')` }, { sql: draft },
+        { sql: `select cardinality(nights) as n, manual_reason from ops.caf_billing_lines where billing_id = ${billId}` }),
+      (r) => r.ok && r.data[0]?.n === 2 && r.data[0]?.manual_reason === "from the House Sheet");
+    await scenario(ids, "a final bill can't change", "social_worker", withSeed(drafted),
+      last({ sql: `select ops.caf_set_status(${billId}, 'final')` }, { sql: `select ops.caf_set_nights(${billId}, '${P1}', array['2001-02-01']::date[], 'late fix')` }), denied);
+    await scenario(ids, "a bill isn't paid before it is final and sent", "social_worker", withSeed(drafted), q(`select ops.caf_set_status(${billId}, 'paid')`), badInput);
+    await scenario(ids, "the social worker can't reopen a final bill", "social_worker", withSeed(drafted),
+      last({ sql: `select ops.caf_set_status(${billId}, 'final')` }, { sql: `select ops.caf_reopen(${billId}, 'wrong nights')` }), denied);
+    await scenario(ids, "the Super Admin reopens it, with the reason kept", "admin",
+      withSeed(async () => { await drafted(); await client.query(`select ops.caf_set_status(${billId}, 'final')`); }),
+      last({ sql: `select ops.caf_reopen(${billId}, 'wrong nights')` }, { sql: `select status, reopen_reason from ops.caf_billings where id = ${billId}` }),
+      (r) => r.ok && r.data[0]?.status === "draft" && r.data[0]?.reopen_reason === "wrong nights");
+    await scenario(ids, "a new cancer patient is billed to CAF by default", "admin", null,
+      asPostgres(`insert into ops.patients (patient_number, first_name, last_name, sex, status, admitted_at, illness_code) values ('RLSTEST-CAF', 'New', 'Cancer', 'F', 'ongoing', '2026-01-10', 'C') returning caf_billing`),
+      value("caf_billing", true));
+  } else record("0098 scenarios", "SKIP", "0098 not applied (pass it as a pre-flight file)");
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();

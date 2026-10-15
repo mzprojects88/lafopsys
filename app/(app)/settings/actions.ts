@@ -377,3 +377,54 @@ export async function updateDocumentNames(input: Record<string, "name" | "name_t
   revalidatePath("/settings");
   return { ok: true };
 }
+
+/** Settings > NCH billing (0098): the figures and names on the Cancer Assistance Fund bill. Super Admin only. */
+export interface CafSettingsInput {
+  rate: number;
+  cap: number;
+  discount_pct: number;
+  payer_name: string;
+  payer_address: string;
+  bank_name: string;
+  bank_account_name: string;
+  bank_account_no: string;
+  bank_account_type: string;
+  prepared_by: string | null;
+  approved_by: string | null;
+}
+
+export async function updateCafSettings(input: CafSettingsInput): Promise<UpdateClockInRequirementResult> {
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+  if (!caller) return { ok: false, error: "Not signed in." };
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") return { ok: false, error: "Only the Super Admin can change the billing figures." };
+  const num = (v: unknown, min: number, max: number) => (typeof v === "number" && Number.isFinite(v) && v >= min && v <= max ? v : null);
+  const rate = num(input.rate, 0, 100000);
+  const cap = num(input.cap, 1, 31);
+  const discount = num(input.discount_pct, 0, 100);
+  if (rate === null || cap === null || !Number.isInteger(cap) || discount === null) return { ok: false, error: "Check the rate, the nights a month (1-31) and the discount (0-100%)." };
+  const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  const uuid = (v: unknown) => (typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v) ? v : null);
+  const { data: current } = await supabase.schema("shared").from("app_settings").select("caf").eq("id", true).single();
+  const caf = {
+    ...((current?.caf as Record<string, unknown>) ?? {}),
+    rate,
+    cap,
+    discount_pct: discount,
+    payer_name: text(input.payer_name, 120),
+    payer_address: text(input.payer_address, 200),
+    bank_name: text(input.bank_name, 60),
+    bank_account_name: text(input.bank_account_name, 120),
+    bank_account_no: text(input.bank_account_no, 40),
+    bank_account_type: text(input.bank_account_type, 30) || "Savings",
+    prepared_by: uuid(input.prepared_by),
+    approved_by: uuid(input.approved_by),
+  };
+  const { error } = await supabase.schema("shared").from("app_settings").update({ caf, updated_at: new Date().toISOString(), updated_by: caller.id }).eq("id", true);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/settings");
+  return { ok: true };
+}

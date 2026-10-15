@@ -28,6 +28,8 @@ export const POWERS: { key: Power; title: string; note: string }[] = [
   { key: "floor_plan_layout", title: "Edits the floor-plan layout", note: "Add, move and retire beds; draw rooms and labels." },
   { key: "driver", title: "Is a driver", note: "Offered as the driver of trips and errands." },
   { key: "clinical_detail", title: "Sees clinical detail", note: "Diagnosis and treatment notes on patient records." },
+  { key: "caf_billing", title: "Prepares NCH billing", note: "The monthly Cancer Assistance Fund bill: nights, final, sent, paid." },
+  { key: "caf_billing_view", title: "Sees NCH billing", note: "Reads the monthly bills and downloads them." },
 ];
 
 const p = (module: ModuleKey, key: string, path: string, title: string, power?: Power): PageDef => ({ key: `${module}.${key}`, module, path, title, power });
@@ -95,6 +97,7 @@ export const PAGES: PageDef[] = [
   p("reports", "documents", "/reports/documents", "Documents"),
   p("reports", "builder", "/reports/builder", "Report Builder"),
   p("reports", "schedule", "/reports/schedule", "Scheduled Delivery"),
+  p("reports", "caf_billing", "/reports/caf-billing", "NCH billing", "caf_billing_view"),
   p("executive", "overview", "/executive", "Executive Overview"),
 ];
 

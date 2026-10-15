@@ -37,6 +37,9 @@ interface PatientRow {
   death_info: string | null;
   length_of_stay: string | null;
   illness_code: Patient["illnessCode"] | null;
+  pwd: boolean | null;
+  pwd_id_no: string | null;
+  caf_billing: boolean | null;
   priority: Patient["priority"] | null;
   legacy_code: string | null;
   distance_km: number | null;
@@ -125,6 +128,9 @@ function toPatient(row: PatientRow, carerIds: string[]): Patient {
     deathInfo: row.death_info ?? undefined,
     lengthOfStay: row.length_of_stay ?? undefined,
     illnessCode: row.illness_code ?? undefined,
+    pwd: row.pwd ?? false,
+    pwdIdNo: row.pwd_id_no ?? undefined,
+    cafBilling: row.caf_billing ?? false,
     priority: row.priority ?? undefined,
     legacyCode: row.legacy_code ?? undefined,
     distanceKm: row.distance_km ?? undefined,
@@ -174,6 +180,9 @@ function fromPatient(p: Patient) {
 function patientPatchToRow(patch: Partial<Patient>) {
   const row: Record<string, unknown> = {};
   if ("status" in patch) row.status = patch.status;
+  if ("pwd" in patch) row.pwd = patch.pwd ?? false;
+  if ("pwdIdNo" in patch) row.pwd_id_no = patch.pwdIdNo?.trim() || null;
+  if ("cafBilling" in patch) row.caf_billing = patch.cafBilling ?? false;
   if ("remarks" in patch) row.remarks = patch.remarks ?? null;
   if ("isolationRequired" in patch) row.isolation_required = patch.isolationRequired ?? null;
   if ("photoConsentGranted" in patch) row.photo_consent_granted = patch.photoConsentGranted ?? null;

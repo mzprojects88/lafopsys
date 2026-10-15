@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
@@ -45,6 +46,10 @@ export function EditDetailsDialog({ patient, carer, open, onOpenChange }: EditDe
   const inHouse = patients.filter((x) => x.id !== patient.id && stays.some((st) => st.patientId === x.id && isActiveStay(st)));
   const sameFamilyAtOpen = patient.familyId ? inHouse.find((x) => x.familyId === patient.familyId)?.id ?? "" : "";
   const [familyWith, setFamilyWith] = React.useState(sameFamilyAtOpen);
+  // NCH billing (0098): the discount needs PWD; the bill needs the child on the Fund.
+  const [pwd, setPwd] = React.useState(patient.pwd ?? false);
+  const [pwdIdNo, setPwdIdNo] = React.useState(patient.pwdIdNo ?? "");
+  const [cafBilling, setCafBilling] = React.useState(patient.cafBilling ?? false);
   const [saving, setSaving] = React.useState(false);
 
   async function save() {
@@ -56,7 +61,7 @@ export function EditDetailsDialog({ patient, carer, open, onOpenChange }: EditDe
     // A family is one id shared by siblings: join the other child's, or start one for both.
     const sibling = patients.find((x) => x.id === familyWith);
     const familyId = sibling ? familyLink(patient, sibling).familyId : familyWith === sameFamilyAtOpen ? patient.familyId : undefined;
-    const p = await updatePatient(patient.id, { birthDate: birthDate || undefined, sex, rawAddress: address.trim() || undefined, familyId });
+    const p = await updatePatient(patient.id, { birthDate: birthDate || undefined, sex, rawAddress: address.trim() || undefined, familyId, pwd, pwdIdNo: pwd ? pwdIdNo : "", cafBilling });
     const f = sibling && sibling.familyId !== familyId ? await updatePatient(sibling.id, { familyId }) : ({ ok: true } as const);
     const c = !carerName.trim()
       ? ({ ok: true } as const)
@@ -144,6 +149,18 @@ export function EditDetailsDialog({ patient, carer, open, onOpenChange }: EditDe
           ) : null}
           <div className="sm:col-span-2">
             <SiblingField value={familyWith} onChange={setFamilyWith} excludeId={patient.id} />
+          </div>
+          <div className="flex flex-col gap-2 rounded-xl border border-border p-3 sm:col-span-2">
+            <span className="text-theme-xs font-medium text-muted-foreground">NCH billing</span>
+            <label className="flex items-center gap-2 text-theme-sm">
+              <Checkbox checked={cafBilling} onCheckedChange={(v) => setCafBilling(!!v)} />
+              Billed to NCH&apos;s Cancer Assistance Fund
+            </label>
+            <label className="flex items-center gap-2 text-theme-sm">
+              <Checkbox checked={pwd} onCheckedChange={(v) => setPwd(!!v)} />
+              Person with disability (PWD discount)
+            </label>
+            {pwd && <Input aria-label="PWD ID number" value={pwdIdNo} maxLength={40} placeholder="PWD ID number (optional)" onChange={(e) => setPwdIdNo(e.target.value)} />}
           </div>
         </div>
         <DialogFooter>

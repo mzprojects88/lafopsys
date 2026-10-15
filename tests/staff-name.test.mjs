@@ -62,5 +62,10 @@ describe("pages and powers (0093)", () => {
     assert.equal(holdsPower("chef", "clinical_detail"), true);
     assert.equal(holdsPower("admin", "floor_plan_layout"), true);
     assert.equal(holdsPower("role-relief", "driver", [{ role: "role-relief", power: "driver" }]), true);
+    // NCH billing (0098): the social worker prepares, the CEO sees, finance neither.
+    assert.equal(holdsPower("social_worker", "caf_billing"), true);
+    assert.equal(holdsPower("ceo", "caf_billing"), false);
+    assert.equal(holdsPower("ceo", "caf_billing_view"), true);
+    assert.equal(holdsPower("finance", "caf_billing_view"), false);
   });
 });

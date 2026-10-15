@@ -6,7 +6,9 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { SectionCard } from "@/components/patterns/section-card";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
-import type { ModuleKey } from "@/lib/rbac/roles";
+import { holdsPower, type ModuleKey } from "@/lib/rbac/roles";
+import type { Power } from "@/lib/rbac/who";
+import { useRole } from "@/context/role-provider";
 
 const SUB_NAV: ModuleSubNavItem[] = [{ href: "/reports/documents", label: "Documents", icon: FolderOpen }];
 
@@ -18,6 +20,8 @@ interface ReportLink {
   icon: LucideIcon;
   /** The module whose view access opens it. */
   module: ModuleKey;
+  /** Opened by a power instead of the module (NCH billing, 0098). */
+  power?: Power;
 }
 
 /**
@@ -35,13 +39,16 @@ const REPORTS: ReportLink[] = [
   { href: "/staff/dtr", label: "Daily Time Record", what: "Hours per person for a date range; sessions and punches with site, device and photo status.", out: "Screen · CSV · CS Form 48 print", icon: CalendarClock, module: "staff" },
   { href: "/hr/timesheets", label: "Timesheets", what: "Per pay period: days, absences, late, undertime, overtime and night minutes, approved by HR.", out: "Screen · CSV", icon: FileText, module: "hr" },
   { href: "/finance/registers", label: "AR & Donee Certificate Registers", what: "Every receipt and certificate number, with gaps flagged.", out: "Screen", icon: Receipt, module: "finance" },
+  { href: "/reports/caf-billing", label: "NCH Billing (Cancer Assistance Fund)", what: "The month's bill to NCH from the nights at LAF: Billing Statement, Statements of Account and Endorsement Letters.", out: "Screen · PDF", icon: Receipt, module: "reports", power: "caf_billing_view" },
   { href: "/compliance", label: "DSWD Annex E & G", what: "The yearly DSWD report, printed from the records.", out: "Print / PDF", icon: Printer, module: "compliance" },
 ];
 
 export default function ReportsPage() {
   const { canView } = useModuleAccess();
-  const open = REPORTS.filter((r) => canView(r.module));
-  const closed = REPORTS.filter((r) => !canView(r.module));
+  const { roles } = useRole();
+  const opens = (r: ReportLink) => (r.power ? holdsPower(roles, r.power) : canView(r.module));
+  const open = REPORTS.filter(opens);
+  const closed = REPORTS.filter((r) => !opens(r));
   return (
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader title="Reports" description="What the system can report today, and where. Each report opens inside its module." action={<ModuleSubNav items={SUB_NAV} />} />

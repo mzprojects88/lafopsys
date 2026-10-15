@@ -10,6 +10,7 @@ import { OvertimeThresholdField } from "@/components/modules/settings/overtime-t
 import { LafHouseLocationField } from "@/components/modules/settings/laf-house-location-field";
 import { DocumentSettingsField } from "@/components/modules/settings/document-settings-field";
 import { DocumentNames } from "@/components/modules/settings/document-names";
+import { CafBillingSettings } from "@/components/modules/settings/caf-billing-settings";
 import { AdmissionTimes } from "@/components/modules/settings/admission-times";
 import { CalendarSheetSyncToggle } from "@/components/modules/settings/calendar-sheet-sync-toggle";
 import { HouseSheetSyncToggle } from "@/components/modules/settings/house-sheet-sync-toggle";
@@ -68,6 +69,10 @@ export default function SettingsPage() {
 
         <SectionCard id="document-names" className="scroll-mt-24" title="Documents: staff names">
           <DocumentNames />
+        </SectionCard>
+
+        <SectionCard id="nch-billing" className="scroll-mt-24" title="NCH billing (Cancer Assistance Fund)">
+          <CafBillingSettings canEdit />
         </SectionCard>
 
         <SectionCard title="Admissions: daily reset">

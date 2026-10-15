@@ -21,7 +21,7 @@ export interface StaffRolesRow {
 export const rolesOfRow = (row: StaffRolesRow): Role[] => [row.role, ...(row.extra_roles ?? [])] as Role[];
 
 /** What a role may do beyond its pages (0093, shared.role_powers). The Super Admin holds all. */
-export type Power = "runs_hr" | "finance_work" | "bed_exception" | "floor_plan_layout" | "driver" | "clinical_detail";
+export type Power = "runs_hr" | "finance_work" | "bed_exception" | "floor_plan_layout" | "driver" | "clinical_detail" | "caf_billing" | "caf_billing_view";
 export interface RolePowerRow {
   role: string;
   power: Power;
@@ -39,6 +39,10 @@ export const BUILT_IN_POWERS: readonly RolePowerRow[] = [
   ...["ceo", "office_admin", "social_worker", "house_staff", "driver", "volunteer", "chef", "inventory_staff", "inventory_lead", "nutritionist"].map(
     (role) => ({ role, power: "clinical_detail" as Power })
   ),
+  // NCH billing (0098).
+  { role: "social_worker", power: "caf_billing" },
+  { role: "office_admin", power: "caf_billing" },
+  ...["social_worker", "office_admin", "ceo"].map((role) => ({ role, power: "caf_billing_view" as Power })),
 ];
 
 // ponytail: one module-level copy of shared.role_powers, set by the client store; server code asks

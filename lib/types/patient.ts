@@ -59,6 +59,11 @@ export interface Patient {
   // From the Patients Database sheet and its intake form (0057), kept by the sync.
   /** Sheet column I: C, T, B, H, O or FD (lib/utils/master-sheet.ts ILLNESS_CODES). */
   illnessCode?: "C" | "T" | "B" | "H" | "O" | "FD";
+  /** NCH billing (0098): a person with disability (the discount applies), the ID, and whether the
+   * child is billed to NCH's Cancer Assistance Fund (on for cancer patients). */
+  pwd?: boolean;
+  pwdIdNo?: string;
+  cafBilling?: boolean;
   /** Sheet column P: A chemo, B blood transfusion, C post procedure, D follow-up. */
   priority?: "A" | "B" | "C" | "D";
   /** The sheet's old CODE, e.g. LAF-2024-001-C. */
