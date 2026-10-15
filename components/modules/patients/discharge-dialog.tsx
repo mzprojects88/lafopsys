@@ -24,6 +24,7 @@ import { plainError } from "@/lib/utils/plain-error";
 // signed off as the real ones to use.
 export const CHECKOUT_REASONS = [
   { value: "completed_treatment", label: "Completed Treatment" },
+  { value: "admitted_to_hospital", label: "Admitted to hospital (urgent call)" },
   { value: "transferred", label: "Transferred" },
   { value: "deceased", label: "Deceased" },
   { value: "lost_to_follow_up", label: "Lost to Follow-up" },

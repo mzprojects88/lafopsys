@@ -28,6 +28,9 @@ import Link from "next/link";
 import { Home } from "lucide-react";
 import { AdmissionChecklist } from "@/components/modules/patients/admission-checklist";
 import { DischargeDialog } from "@/components/modules/patients/discharge-dialog";
+import { AppointmentDialog } from "@/components/modules/patients/appointment-dialog";
+import { formatTime12 } from "@/lib/utils/time12";
+import type { Appointment } from "@/lib/types/patient";
 import { ExtendStayDialog } from "@/components/modules/patients/extend-stay-dialog";
 import { TransferBedDialog } from "@/components/modules/patients/transfer-bed-dialog";
 import { ArrivalDialog } from "@/components/modules/patients/arrival-fields";
@@ -51,6 +54,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   const [dischargeTarget, setDischargeTarget] = useState<Stay | null>(null);
   const [extendTarget, setExtendTarget] = useState<Stay | null>(null);
   const [transferTarget, setTransferTarget] = useState<Stay | null>(null);
+  // The social worker's interview (0097): the next check-up and whether it needs a ride.
+  const [appointment, setAppointment] = useState<Appointment | "new" | null>(null);
   const [arrivalTarget, setArrivalTarget] = useState<Stay | null>(null);
   const { rides } = useArrivalRides();
   const [checkingIn, setCheckingIn] = useState(false);
@@ -67,7 +72,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   const canSeeClinical = canSeeClinicalDetail(roles);
   const patientCarers = carers.filter((c) => c.patientId === patient.id);
   const patientStays = stays.filter((s) => s.patientId === patient.id);
-  const patientAppointments = appointments.filter((a) => a.patientId === patient.id);
+  const patientAppointments = appointments.filter((a) => a.patientId === patient.id).sort((a, b) => b.date.localeCompare(a.date));
   // The orientation belongs to the newest stay (0054).
   const latestStay = [...patientStays].sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0] ?? null;
   const currentStay = patientStays.find(isActiveStay);
@@ -269,7 +274,12 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
           )}
         </TabsContent>
 
-        <TabsContent value="appointments" className="pt-4">
+        <TabsContent value="appointments" className="flex flex-col gap-3 pt-4">
+          {canEdit && (
+            <Button size="sm" variant="outline" className="self-start" onClick={() => setAppointment("new")}>
+              <CalendarClock /> New appointment
+            </Button>
+          )}
           {patientAppointments.length === 0 ? (
             <EmptyState title="No appointments scheduled" />
           ) : (
@@ -281,8 +291,13 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
                     <span className="text-theme-xs text-muted-foreground">{a.purpose}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {a.needsTransport && <Badge variant="secondary">Needs Transport</Badge>}
-                    <span className="text-theme-xs text-muted-foreground">{formatDate(a.date)} · {a.time}</span>
+                    {a.needsTransport && <Badge variant="secondary">Needs a ride</Badge>}
+                    <span className="text-theme-xs text-muted-foreground">{formatDate(a.date)} · {/^\d{2}:\d{2}/.test(a.time) ? formatTime12(a.time) : a.time}</span>
+                    {canEdit && (
+                      <Button size="icon-sm" variant="ghost" aria-label={`Change the ${a.clinic} appointment on ${formatDate(a.date)}`} onClick={() => setAppointment(a)}>
+                        <PencilLine />
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -337,6 +352,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
         target={checkingIn ? { patient } : null}
         onOpenChange={(open) => !open && setCheckingIn(false)}
       />
+      {appointment && <AppointmentDialog patientId={patient.id} appointment={appointment === "new" ? null : appointment} onClose={() => setAppointment(null)} />}
       <DischargeDialog
         key={dischargeTarget?.id ?? "none"}
         stay={dischargeTarget}

@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeftRight, BedDouble, BookmarkPlus, Check, DoorOpen, FilePlus2, LogOut, MoonStar, Sparkles } from "lucide-react";
+import { Ambulance, ArrowLeftRight, BedDouble, BookmarkPlus, Check, DoorOpen, FilePlus2, LogOut, MoonStar, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -30,6 +30,7 @@ import { useRole } from "@/context/role-provider";
 import { DischargeDialog } from "@/components/modules/patients/discharge-dialog";
 import { BedPlanDialog } from "@/components/modules/patients/bed-plan-dialog";
 import { MealTicks } from "@/components/modules/patients/meal-ticks";
+import { UrgentTripDialog } from "@/components/modules/patients/urgent-trip-dialog";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { confirmHouseSheetMatch } from "@/app/(app)/patients/house-sheet/actions";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
@@ -95,6 +96,8 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const [planning, setPlanning] = React.useState(false);
   // Overflow (0092): a mattress for tonight, from the counts strip.
   const [addingTemporary, setAddingTemporary] = React.useState(false);
+  // The doctor's urgent call (0097): a trip to the hospital now, and the family checked out.
+  const [urgent, setUrgent] = React.useState<{ stayId: string; name: string } | null>(null);
   const [moving, setMoving] = React.useState<{ stay: Stay; name: string; from: string; unitId?: string } | null>(null);
 
   // Until patients, stays and beds are in, every name would look "not checked
@@ -370,6 +373,11 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                   </span>
                 </div>
                 <MealTicks patientId={s.patientId} name={nameOf(s.patientId)} canTick={canTickMeals} />
+                {canEdit && (
+                  <Button size="sm" variant="outline" className="text-destructive" aria-label={`Urgent call: send ${nameOf(s.patientId)} to the hospital`} onClick={() => setUrgent({ stayId: s.id, name: nameOf(s.patientId) })}>
+                    <Ambulance /> Urgent
+                  </Button>
+                )}
                 {canEdit && !night ? (
                   <div className="flex items-center gap-1">
                     <Button size="sm" disabled={busy === s.id} onClick={() => run(s.id, () => confirmNight(s.id), "Same bed tonight.")}>
@@ -441,6 +449,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
           }}
         />
       ) : null}
+      {urgent && <UrgentTripDialog stayId={urgent.stayId} name={urgent.name} onClose={() => setUrgent(null)} />}
       {moving ? (
         <MoveTonightDialog
           key={moving.stay.id}

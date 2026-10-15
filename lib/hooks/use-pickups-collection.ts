@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/client";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
 import { todayIso } from "@/lib/utils/date";
 import type { TripStatus } from "@/lib/types/house-ops";
+import { patientsStore } from "@/lib/hooks/use-patients-collection";
+import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
 
@@ -24,6 +26,8 @@ export interface Pickup {
   /** from_hospital = a pick-up to LAF House, to_hospital = a delivery to the hospital (0096). */
   direction: "from_hospital" | "to_hospital";
   destination: string | null;
+  /** A doctor's urgent call (0097): shown first, marked for the driver. */
+  urgent: boolean;
   departureTime: string;
   driverId: string | null;
   status: TripStatus;
@@ -40,6 +44,7 @@ interface Row {
   date: string;
   direction: "from_hospital" | "to_hospital";
   destination: string | null;
+  urgent: boolean;
   departure_time: string;
   driver_staff_id: string | null;
   status: TripStatus;
@@ -73,7 +78,7 @@ export const pickupsStore = createCollection<Pickup[]>({
     const { data, error } = await createClient()
       .schema("ops")
       .from("trips")
-      .select("id, date, direction, destination, departure_time, driver_staff_id, status, departed_at, arrived_at, vehicle_id, odometer_start, odometer_end, trip_manifest(*)")
+      .select("id, date, direction, destination, urgent, departure_time, driver_staff_id, status, departed_at, arrived_at, vehicle_id, odometer_start, odometer_end, trip_manifest(*)")
       // Errands (0076) are in errandsStore.
       .eq("carries_passengers", true)
       .gte("date", since.toISOString().slice(0, 10))
@@ -85,6 +90,7 @@ export const pickupsStore = createCollection<Pickup[]>({
       date: r.date,
       direction: r.direction,
       destination: r.destination,
+      urgent: r.urgent,
       departureTime: r.departure_time,
       driverId: r.driver_staff_id,
       status: r.status,
@@ -153,6 +159,14 @@ export function usePickups() {
           })
         ).error
       ),
+    /** The doctor's urgent call (0097): a delivery leaving now with the child, and the family checked out
+     * (tonight's bed freed) -- both in one database step. */
+    urgentHospitalTrip: async (u: { stayId: string; destination: string; driverId: string | null; note: string | null }) => {
+      const { error } = await ops().rpc("urgent_hospital_trip", { p_stay_id: u.stayId, p_destination: u.destination, p_driver_id: u.driverId, p_note: u.note });
+      if (error) return { ok: false, error: error.message } as MutationResult;
+      await Promise.all([pickupsStore.refetch(), patientsStore.refetch(), bedNightsStore.refetch()]);
+      return { ok: true } as MutationResult;
+    },
     /** A passenger the driver or social worker adds: a patient on file or a typed name. Who added is stamped. */
     addPassenger: async (tripId: string, p: { patientId: string | null; name: string; carerName: string | null; note: string | null }) =>
       done((await ops().from("trip_manifest").insert({ trip_id: tripId, patient_id: p.patientId, name: p.name, carer_name: p.carerName, note: p.note })).error),

@@ -251,6 +251,37 @@ async function main() {
     await scenario(ids, "finance (no Patients or House Ops edit) can't tick a meal", "finance", withSeed(), q(tick("breakfast")), denied);
   } else record("0095 meals scenarios", "SKIP", "0095 not applied (pass it as a pre-flight file)");
 
+  // ---- 0097: the doctor's urgent call ----
+  if ((await client.query("select to_regproc('ops.urgent_hospital_trip') is not null as ok")).rows[0].ok) {
+    // P1 slept here last night and tonight's bed is confirmed; the carer is on file.
+    const P1Tonight = async () => {
+      await carerForP1();
+      await stayP1InB1();
+      await client.query(`insert into ops.bed_nights (night, stay_id, bed_position_id) values (${TODAY}, '${STAY1}', 'unit-B1-A')`);
+    };
+    const urgent = (who = STAY1) => `select ops.urgent_hospital_trip('${who}', null, null, null) as trip`;
+    await scenario(ids, "an urgent call: the trip leaves now and the family is checked out, tonight's bed freed", "social_worker", withSeed(P1Tonight),
+      last({ sql: urgent() },
+        { sql: `select t.urgent and t.direction = 'to_hospital' and t.carries_passengers and t.destination = 'National Children''s Hospital' and t.date = ${TODAY}
+                   and m.patient_id = '${P1}' and m.carer_name = 'Mama Sheet' and m.note = 'Urgent call by the doctor'
+                   and s.status = 'checked_out' and s.check_out_reason = 'admitted_to_hospital' and s.check_out_at = ${TODAY}
+                   and not exists (select 1 from ops.bed_nights bn where bn.stay_id = s.id and bn.night = ${TODAY}) as ok
+                 from ops.trips t join ops.trip_manifest m on m.trip_id = t.id join ops.stays s on s.id = '${STAY1}'
+                 where t.urgent and m.patient_id = '${P1}'` }),
+      value("ok", true));
+    await scenario(ids, "the driver (no Patients edit) can't send a family off", "driver", withSeed(P1Tonight), q(urgent()), denied);
+    await scenario(ids, "finance can't either", "finance", withSeed(P1Tonight), q(urgent()), denied);
+    await scenario(ids, "a family not in the house can't be sent", "social_worker", withSeed(P1Reset), q(urgent()), (r) => !r.ok && r.code === "P0002");
+    // Appointments are corrected and removed in the app (the database has allowed it since 0050).
+    const appt = () => client.query(`insert into ops.appointments (id, patient_id, date, time, clinic, purpose, needs_transport) values ('00000000-0000-4000-8000-0000000000a7', '${P1}', ${TODAY} + 1, '09:00', 'NCH OPD', 'Check-up', false)`);
+    await scenario(ids, "the social worker marks an appointment as needing a ride", "social_worker", withSeed(appt),
+      q(`update ops.appointments set needs_transport = true, time = '08:30' where id = '00000000-0000-4000-8000-0000000000a7'`), rows(1));
+    await scenario(ids, "the social worker removes an appointment", "social_worker", withSeed(appt),
+      q(`delete from ops.appointments where id = '00000000-0000-4000-8000-0000000000a7'`), rows(1));
+    await scenario(ids, "the driver can't change an appointment (0 rows)", "driver", withSeed(appt),
+      q(`update ops.appointments set needs_transport = true where id = '00000000-0000-4000-8000-0000000000a7'`), rows(0));
+  } else record("0097 scenarios", "SKIP", "0097 not applied (pass it as a pre-flight file)");
+
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
 

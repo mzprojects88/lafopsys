@@ -18,3 +18,11 @@ export function directionLabel(direction: string, carriesPassengers: boolean): s
 
 /** Where a delivery goes when nobody says otherwise. */
 export const DEFAULT_HOSPITAL = "National Children's Hospital";
+
+/** Leave an hour before the earliest check-up, not before 5:00 AM. */
+export function leaveBefore(times: string[]): string {
+  const minutes = Math.min(...times.filter((t) => /^[0-9]{2}:[0-9]{2}/.test(t)).map((t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))));
+  if (!Number.isFinite(minutes)) return "07:00";
+  const m = Math.max(5 * 60, minutes - 60);
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}

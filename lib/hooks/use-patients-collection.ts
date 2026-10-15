@@ -391,6 +391,22 @@ export function usePatientsData() {
     return { ok: true };
   }
 
+  /** Corrects an appointment (0097: date, time, clinic, purpose, needs a ride). Patients editors only. */
+  async function updateAppointment(id: string, patch: Omit<Appointment, "id" | "patientId">): Promise<MutationResult> {
+    const row = { date: patch.date, time: patch.time, clinic: patch.clinic, purpose: patch.purpose, needs_transport: patch.needsTransport };
+    const { error } = await createClient().schema("ops").from("appointments").update(row).eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await refetch();
+    return { ok: true };
+  }
+
+  async function removeAppointment(id: string): Promise<MutationResult> {
+    const { error } = await createClient().schema("ops").from("appointments").delete().eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await refetch();
+    return { ok: true };
+  }
+
   async function updatePatient(id: string, patch: Partial<Patient>): Promise<MutationResult> {
     const supabase = createClient();
     const { error } = await supabase.schema("ops").from("patients").update(patientPatchToRow(patch)).eq("id", id);
@@ -418,6 +434,8 @@ export function usePatientsData() {
     updateCarer,
     addStay,
     addAppointment,
+    updateAppointment,
+    removeAppointment,
     updatePatient,
     updateStay,
     refetch,

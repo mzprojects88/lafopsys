@@ -11,7 +11,6 @@ import { StatusBadge } from "@/components/patterns/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -19,24 +18,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useRole } from "@/context/role-provider";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { usePickups, type ManifestEntry, type Pickup } from "@/lib/hooks/use-pickups-collection";
-import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
-import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
-import { isActiveStay } from "@/lib/utils/beds";
 import { useErrands, useVehicles, type Vehicle } from "@/lib/hooks/use-vehicles-collection";
 import { OdometerDrums } from "@/components/modules/transport/odometer-drums";
 import { TripControls, TripReadings } from "@/components/modules/transport/trip-controls";
 import { ErrandCard, StartTripDialog, errandTitle } from "@/components/modules/transport/errands";
 import { ExpenseDialog, ExpensesList } from "@/components/modules/transport/expenses";
+import { NewTripDialog, useManifestCandidates, usePatientsInHouse } from "@/components/modules/transport/new-trip-dialog";
 import { TRANSPORT_SUB_NAV } from "@/components/modules/transport/transport-nav";
 import { ModuleSubNav } from "@/components/patterns/module-subnav";
 import { formatTime12 } from "@/lib/utils/time12";
 import { formatKm, routeKey } from "@/lib/utils/odometer";
-import { DEFAULT_HOSPITAL, tripWords } from "@/lib/utils/trip-direction";
+import { tripWords } from "@/lib/utils/trip-direction";
 import { plainError } from "@/lib/utils/plain-error";
 import { formatDate, todayIso } from "@/lib/utils/date";
-import { holdsPower } from "@/lib/rbac/roles";
-import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
 
 const STATUS_LABEL = { scheduled: "Scheduled", in_progress: "On the road", completed: "Arrived" } as const;
 const time = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" }) : "");
@@ -70,7 +65,8 @@ export default function TransportPage() {
 
   const today = todayIso();
   const mineFirst = (a: { driverId: string | null }, b: { driverId: string | null }) => Number(b.driverId === staffId) - Number(a.driverId === staffId);
-  const todays = pickups.filter((p) => p.date === today).sort(mineFirst);
+  // An urgent call first (0097), then the viewer's own trips.
+  const todays = pickups.filter((p) => p.date === today).sort((a, b) => Number(b.urgent) - Number(a.urgent) || mineFirst(a, b));
   const todaysErrands = errands.filter((e) => e.date === today).sort(mineFirst);
   const upcoming = pickups.filter((p) => p.date > today).sort((a, b) => a.date.localeCompare(b.date));
   const earlier = pickups.filter((p) => p.date < today);
@@ -237,13 +233,14 @@ function PickupCard({ pickup: p, vehicle, mine, driverName, canEdit, canBuild }:
   }
 
   return (
-    <Card className={mine ? "border-primary/50" : undefined}>
+    <Card className={p.urgent && p.status !== "completed" ? "border-destructive/60" : mine ? "border-primary/50" : undefined}>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
         <div className="flex flex-col gap-1">
           <CardTitle className="flex flex-wrap items-center gap-2 text-base">
             <Truck className="size-4 text-muted-foreground" />
             {words.short} {formatTime12(p.departureTime)}
             <Badge variant="outline">{words.long}</Badge>
+            {p.urgent && <Badge variant="destructive">Urgent</Badge>}
             {mine && <Badge>Your trip</Badge>}
           </CardTitle>
           <span className="text-theme-xs text-muted-foreground">
@@ -350,30 +347,6 @@ function PickupCard({ pickup: p, vehicle, mine, driverName, canEdit, canBuild }:
   );
 }
 
-/** Names on NCH's sheet that day who are not in the house yet and not on another open pick-up. */
-function useManifestCandidates(date: string): HouseSheetPerson[] {
-  const { people } = useHouseSheetPeople();
-  const { stays } = usePatientsData();
-  const { pickups } = usePickups();
-  const inHouse = new Set(stays.filter(isActiveStay).map((s) => s.patientId));
-  const taken = new Set(pickups.filter((p) => p.date === date && p.status !== "completed").flatMap((p) => p.manifest.map((m) => m.sheetRowId)));
-  return people.filter((p) => {
-    if (p.offSheetAt !== null || p.matchStatus === "dismissed" || taken.has(p.id)) return false;
-    const pid = houseSheetPatientId(p);
-    return !(pid && inHouse.has(pid));
-  });
-}
-
-/** Children in the house now, by name: who can ride to the hospital. */
-function usePatientsInHouse(): { id: string; name: string }[] {
-  const { patients, stays } = usePatientsData();
-  const inHouse = new Set(stays.filter(isActiveStay).map((s) => s.patientId));
-  return patients
-    .filter((p) => inHouse.has(p.id))
-    .map((p) => ({ id: p.id, name: `${p.lastName}, ${p.firstName}` }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
 const TYPED = "typed";
 
 /** Adds a passenger (a child in the house or a typed name) or corrects one, until the trip arrives (0096). */
@@ -456,157 +429,3 @@ function PassengerDialog({ trip, entry, onClose }: { trip: Pickup; entry: Manife
   );
 }
 
-/** A pick-up from NCH's list or a delivery of children in the house to the hospital (0096). */
-function NewTripDialog({ vehicles, onClose }: { vehicles: Vehicle[]; onClose: () => void }) {
-  const { createTrip } = usePickups();
-  const { staff } = useStaffRoster();
-  const [direction, setDirection] = React.useState<"from_hospital" | "to_hospital">("from_hospital");
-  const [date, setDate] = React.useState(todayIso());
-  const [departure, setDeparture] = React.useState("18:00"); // LAF staff pick up at 6 PM (Important Notes)
-  const [destination, setDestination] = React.useState(DEFAULT_HOSPITAL);
-  const [vehicleId, setVehicleId] = React.useState(vehicles[0]?.id ?? "");
-  const [driverId, setDriverId] = React.useState("");
-  const [picked, setPicked] = React.useState<Set<string>>(new Set());
-  const [saving, setSaving] = React.useState(false);
-  const candidates = useManifestCandidates(date);
-  const inHouse = usePatientsInHouse();
-  const pickup = direction === "from_hospital";
-  const choices = pickup ? candidates.map((c) => ({ id: c.id, name: c.patientName, carer: c.carerName })) : inHouse.map((c) => ({ ...c, carer: null }));
-  // Main role or an additional one (0073): an inventory staff member may also drive.
-  const drivers = staff.filter((s) => s.active && holdsPower([s.role, ...s.extraRoles], "driver"));
-
-  function toggle(id: string, on: boolean) {
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  }
-
-  async function save() {
-    setSaving(true);
-    const r = await createTrip({
-      date,
-      departureTime: departure,
-      driverId: driverId || null,
-      direction,
-      destination: pickup ? null : destination.trim() || null,
-      vehicleId: vehicleId || null,
-      sheetRowIds: pickup ? [...picked] : [],
-      patientIds: pickup ? [] : [...picked],
-    });
-    setSaving(false);
-    if (!r.ok) {
-      toast.error(`Couldn't create the trip: ${plainError(r.error)}`);
-      return;
-    }
-    toast.success(`${tripWords(direction).short} ready for the driver`);
-    onClose();
-  }
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>New trip</DialogTitle>
-          <DialogDescription>The driver sees the passengers on their phone and can add one on the way.</DialogDescription>
-        </DialogHeader>
-        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Direction">
-          {(["from_hospital", "to_hospital"] as const).map((d) => (
-            <Button
-              key={d}
-              type="button"
-              role="radio"
-              aria-checked={direction === d}
-              variant={direction === d ? "default" : "outline"}
-              onClick={() => {
-                setDirection(d);
-                setPicked(new Set());
-                setDeparture(d === "from_hospital" ? "18:00" : "07:00");
-              }}
-            >
-              {tripWords(d).long}
-            </Button>
-          ))}
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field>
-            <FieldLabel htmlFor="tripDate">Day</FieldLabel>
-            <Input id="tripDate" type="date" min={todayIso()} value={date} onChange={(e) => { setDate(e.target.value); setPicked(new Set()); }} />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="tripTime">Leaves LAF House</FieldLabel>
-            <Input id="tripTime" type="time" value={departure} onChange={(e) => setDeparture(e.target.value)} />
-          </Field>
-        </div>
-        {!pickup && (
-          <Field>
-            <FieldLabel htmlFor="tripDestination">Hospital</FieldLabel>
-            <Input id="tripDestination" value={destination} maxLength={160} onChange={(e) => setDestination(e.target.value)} />
-          </Field>
-        )}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {vehicles.length > 1 && (
-            <Field>
-              <FieldLabel htmlFor="tripVehicle">Vehicle</FieldLabel>
-              <Select value={vehicleId} onValueChange={setVehicleId}>
-                <SelectTrigger id="tripVehicle" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {vehicles.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-          )}
-          <Field>
-            <FieldLabel htmlFor="tripDriver">Driver</FieldLabel>
-            <Select value={driverId} onValueChange={setDriverId}>
-              <SelectTrigger id="tripDriver" className="w-full">
-                <SelectValue placeholder={drivers.length ? "Select the driver" : "No driver accounts"} />
-              </SelectTrigger>
-              <SelectContent>
-                {drivers.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.firstName} {d.lastName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-        </div>
-        <Field>
-          <FieldLabel>{pickup ? "From NCH's list" : "Children in the house"}</FieldLabel>
-          {choices.length === 0 ? (
-            <FieldDescription>{pickup ? "Nobody on NCH's sheet is waiting for a ride." : "Nobody is checked in."}</FieldDescription>
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              {choices.map((c) => (
-                <label key={c.id} className="flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 py-2 text-theme-sm">
-                  <Checkbox checked={picked.has(c.id)} onCheckedChange={(v) => toggle(c.id, !!v)} />
-                  <span className="flex flex-col">
-                    <span className="font-medium">{c.name}</span>
-                    {c.carer && <span className="text-theme-xs text-muted-foreground">with {c.carer}</span>}
-                  </span>
-                </label>
-              ))}
-            </div>
-          )}
-        </Field>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button disabled={picked.size === 0 || !departure || (!pickup && !destination.trim()) || saving} onClick={save}>
-            {saving ? "Saving…" : `Create with ${picked.size}`}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
