@@ -13,7 +13,7 @@ import { useVehicles } from "@/lib/hooks/use-vehicles-collection";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { useVehicleExpenses } from "@/lib/hooks/use-vehicle-expenses-collection";
 import { TRANSPORT_SUB_NAV } from "@/components/modules/transport/transport-nav";
-import { periodRange, type PeriodKind } from "@/lib/utils/fuel";
+import { periodRange, shiftPeriod, type PeriodKind } from "@/lib/utils/fuel";
 import { csvLines, downloadCsv } from "@/lib/utils/csv";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { formatCurrency } from "@/lib/utils/currency";
@@ -151,15 +151,9 @@ export default function TransportReportPage() {
   const totalCost = shownExpenses.reduce((n, e) => n + e.amount, 0);
   const driverPaid = shownExpenses.filter((e) => e.paidBy === "driver").reduce((n, e) => n + e.amount, 0);
 
-  const step = (dir: -1 | 1) => {
-    const d = new Date(`${anchor}T00:00:00`);
-    if (kind === "day") d.setDate(d.getDate() + dir);
-    else if (kind === "week") d.setDate(d.getDate() + 7 * dir);
-    else if (kind === "month") d.setMonth(d.getMonth() + dir);
-    else if (kind === "quarter") d.setMonth(d.getMonth() + 3 * dir);
-    else d.setFullYear(d.getFullYear() + dir);
-    setAnchor(d.toISOString().slice(0, 10));
-  };
+  // Day keys stepped in UTC: a local midnight turned into ISO slipped a day back in Manila (UTC+8),
+  // so the arrows could stay on the same period. Same stepping as Fuel Monitoring.
+  const step = (dir: -1 | 1) => setAnchor(shiftPeriod(kind, anchor, dir));
 
   function exportTrips() {
     downloadCsv(

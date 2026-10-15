@@ -31,7 +31,7 @@ import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useCensusData } from "@/lib/hooks/use-census-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
-import { houseCapacity } from "@/lib/utils/beds";
+import { houseCapacity, isActiveStay } from "@/lib/utils/beds";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
 import { useLeaveRequests } from "@/lib/hooks/use-leave-collections";
@@ -41,7 +41,8 @@ import { moduleForPath } from "@/lib/rbac/roles";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { inventoryAppHref } from "@/lib/utils/inventory-app";
 import { formatCurrency } from "@/lib/utils/currency";
-import { formatDate } from "@/lib/utils/date";
+import { formatDate, todayIso } from "@/lib/utils/date";
+import { addDays } from "@/lib/utils/dtr";
 import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 import { ROLES, type Role } from "@/lib/types/common";
 import { doesFinance, hasAnyRole } from "@/lib/rbac/roles";
@@ -62,11 +63,14 @@ export default function DashboardPage() {
   const { rows: expiringLots } = useExpiringLots();
 
   const today = censusHistory[censusHistory.length - 1];
-  const inHouseNow = today?.inHouse ?? 0;
+  // Families checked in now (the stays), not the House Sheet's row count the census held.
+  const inHouseNow = stays.filter(isActiveStay).length || (today?.inHouse ?? 0);
   const pendingApprovals = leaveRequests.filter((a) => a.status === "pending").length;
   const pendingReferrals = referrals.filter((r) => r.status === "submitted").length;
   const expiringSoon = expiringLots.filter((l) => l.days_left >= 0 && l.days_left <= 14).length;
-  const cashIn = cashEntries.filter((e) => e.direction === "inflow").reduce((s, e) => s + e.amount, 0);
+  // This month's cash in, as the card says (it used to add up every year).
+  const thisMonth = todayIso().slice(0, 7);
+  const cashIn = cashEntries.filter((e) => e.direction === "inflow" && e.date.startsWith(thisMonth)).reduce((s, e) => s + e.amount, 0);
 
   // The beds drawn on the floor plan (0047), one admission slot each by default.
   const capacity = houseCapacity(units);
@@ -83,16 +87,17 @@ export default function DashboardPage() {
   const goodStock = [...stockByItem.values()].filter((s) => s === "ok").length;
   const lowStock = [...stockByItem.values()].filter((s) => s === "low").length;
 
+  // The last 30 days, as the card says (it used to be the last 14 days that had a gift).
+  const since30 = addDays(todayIso(), -29);
   const donationChart = donations
-    .slice()
+    .filter((d) => d.date >= since30)
     .sort((a, b) => a.date.localeCompare(b.date))
     .reduce<{ date: string; amount: number }[]>((acc, d) => {
       const existing = acc.find((row) => row.date === d.date);
       if (existing) existing.amount += d.totalValue;
       else acc.push({ date: d.date, amount: d.totalValue });
       return acc;
-    }, [])
-    .slice(-14);
+    }, []);
 
   const recentActivity = [
     ...donations.slice(0, 2).map((d) => ({
@@ -180,7 +185,7 @@ export default function DashboardPage() {
           <KpiCard label="Enrolled Patients" value={patients.length} sublabel="Total" icon={UserCheck} />
         )}
         {has("admin", "office_admin", "finance", "board") && !isHiddenPath("/donors", roles) && (
-          <KpiCard label="Cash Donations" value={formatCurrency(cashIn)} sublabel="This period" icon={Wallet} />
+          <KpiCard label="Cash Donations" value={formatCurrency(cashIn)} sublabel="This month" icon={Wallet} />
         )}
         {doesFinance(roles) && !isHiddenPath("/finance", roles) && (
           <KpiCard label="Pending Approvals" value={pendingApprovals} sublabel="Items" icon={ClipboardList} tone={pendingApprovals > 0 ? "warning" : "default"} />
@@ -223,7 +228,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3 lg:gap-6">
         <div className="flex min-w-0 flex-col gap-5 lg:col-span-2 lg:gap-6">
           {!isHiddenPath("/donors", role) && (
-            <SectionCard title="Donations Trend (This Period)" description="Last 30 days">
+            <SectionCard title="Donations Trend" description="Last 30 days">
               <div className="mb-3 flex items-center gap-1.5 text-theme-xs text-muted-foreground">
                 <span className="size-2 rounded-full bg-chart-1" />
                 Cash Donations (₱)
