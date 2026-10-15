@@ -312,6 +312,15 @@ async function main() {
       last({ sql: `select ops.caf_set_nights(${billId}, '${P1}', array['2001-02-01','2001-02-02']::date[], 'from the House Sheet')` }, { sql: draft },
         { sql: `select cardinality(nights) as n, manual_reason from ops.caf_billing_lines where billing_id = ${billId}` }),
       (r) => r.ok && r.data[0]?.n === 2 && r.data[0]?.manual_reason === "from the House Sheet");
+    // 0099: a hand-set line still gains the nights confirmed after the change.
+    await scenario(ids, "a refresh adds nights confirmed after a hand change", "social_worker",
+      withSeed(async () => {
+        await drafted();
+        await client.query(`insert into ops.bed_nights (night, stay_id, bed_position_id, confirmed_at) values ('2001-02-20', '${CAF_STAY}', 'unit-B1-A', now() + interval '1 minute')`);
+      }),
+      last({ sql: `select ops.caf_set_nights(${billId}, '${P1}', array['2001-02-01','2001-02-02']::date[], 'from the House Sheet')` }, { sql: draft },
+        { sql: `select nights::text as nights from ops.caf_billing_lines where billing_id = ${billId}` }),
+      (r) => r.ok && r.data[0]?.nights === "{2001-02-01,2001-02-02,2001-02-20}");
     await scenario(ids, "a final bill can't change", "social_worker", withSeed(drafted),
       last({ sql: `select ops.caf_set_status(${billId}, 'final')` }, { sql: `select ops.caf_set_nights(${billId}, '${P1}', array['2001-02-01']::date[], 'late fix')` }), denied);
     await scenario(ids, "a bill isn't paid before it is final and sent", "social_worker", withSeed(drafted), q(`select ops.caf_set_status(${billId}, 'paid')`), badInput);
