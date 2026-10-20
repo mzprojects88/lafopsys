@@ -24,6 +24,10 @@ describe("donation totals", () => {
     assert.deepEqual(giftTotals(batches, cash, { query: "0283" }).rows.map((r) => r.reference), ["Booklet 0283"]);
     assert.deepEqual(giftTotals(batches, cash, { query: "inv-12" }).rows.map((r) => r.key), ["cash:c1"]);
   });
+  it("a batch with a photo of the goods can open it (0101); one without can't", () => {
+    const rows = giftTotals([{ ...batches[0], hasPhoto: true }, batches[1]], []).rows;
+    assert.deepEqual(rows.map((r) => r.photoOf), ["r1", undefined]);
+  });
   it("a batch with no AR yet says so", () => {
     assert.equal(giftTotals(batches, []).rows.find((r) => r.key === "gik:r3").reference, "No AR yet");
   });

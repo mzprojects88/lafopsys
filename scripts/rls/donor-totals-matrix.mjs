@@ -214,6 +214,26 @@ async function main() {
     record("0083 scenarios", "SKIP", "0083 not applied (pass it as a pre-flight file)");
   }
 
+  // ---- 0101: the photo of the goods on an Inventory receipt (Inventory 0064) ----
+  const has0101 = (await client.query("select to_regprocedure('ops.gik_goods_photo_key(text)') is not null as ok")).rows[0].ok;
+  if (has0101) {
+    const withPhoto = async (sql) => {
+      await client.query("reset role");
+      await client.query(`insert into inventory.donation_log (id, donor_id, date, valuation_total, item_summary, goods_photo_key)
+                          values ('T-PHOTO', '${D1}', '2001-03-01', 10, '1 pc test', 'goods-photos/T-PHOTO-1.jpg')`);
+      await client.query("set local role authenticated");
+      await client.query("discard plans");
+      return client.query(sql);
+    };
+    await scenario(ids, "Donors totals say the receipt has a photo of the goods", "finance",
+      () => withPhoto(`select has_photo from ops.gik_batches('2001-03-01', '2001-03-01') where receipt_id = 'T-PHOTO'`), (r) => r.ok && r.data?.[0]?.has_photo === true);
+    await scenario(ids, "a Donors viewer gets the photo's key", "finance",
+      () => withPhoto(`select ops.gik_goods_photo_key('T-PHOTO') as k`), (r) => r.ok && r.data?.[0]?.k === "goods-photos/T-PHOTO-1.jpg");
+    await scenario(ids, "the chef (no Donors view) gets no photo", "chef", () => withPhoto(`select ops.gik_goods_photo_key('T-PHOTO') as k`), denied);
+  } else {
+    record("0101 scenarios", "SKIP", "0101 not applied (pass it as a pre-flight file)");
+  }
+
   // ---- 0084: cash gifts from accounting's sheets ----
   const has0084 = (await client.query("select to_regclass('ops.cash_gift_lines') is not null as ok")).rows[0].ok;
   if (has0084) {

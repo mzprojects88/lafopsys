@@ -10,6 +10,8 @@ export interface GikBatch {
   lines: number;
   food: number;
   nonFood: number;
+  /** A photo of the goods was taken in LAF Inventory (0064 / 0101). */
+  hasPhoto?: boolean;
 }
 
 /** One cash gift (ops.donations, kind cash). */
@@ -33,6 +35,8 @@ export interface GiftRow {
   cash: number;
   /** Not in pesos: listed, left out of the peso totals. */
   currency: string;
+  /** The Inventory receipt whose photo of the goods can be opened. */
+  photoOf?: string;
 }
 
 export interface GiftFilter {
@@ -69,6 +73,7 @@ export function giftTotals(batches: readonly GikBatch[], cash: readonly CashGift
         nonFood: b.nonFood,
         cash: 0,
         currency: "PHP",
+        ...(b.hasPhoto ? { photoOf: b.receiptId } : {}),
       })),
     ...cash
       .filter((c) => keep(c.donorId, [c.reference]))

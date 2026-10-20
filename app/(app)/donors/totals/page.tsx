@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { Apple, Banknote, ChevronLeft, ChevronRight, Download, Package, Search, Sigma } from "lucide-react";
+import { Apple, Banknote, Camera, ChevronLeft, ChevronRight, Download, Package, Search, Sigma } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { SectionCard } from "@/components/patterns/section-card";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
@@ -14,7 +15,7 @@ import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { csvLines, downloadCsv } from "@/lib/utils/csv";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate, todayIso } from "@/lib/utils/date";
-import { giftTotals, type GikBatch } from "@/lib/utils/gift-totals";
+import { giftTotals, type GiftRow, type GikBatch } from "@/lib/utils/gift-totals";
 import type { Currency } from "@/lib/types/common";
 import { periodLabel, periodWindow, shiftAnchor, type DayWindow, type PeriodKind } from "@/lib/utils/period";
 
@@ -39,6 +40,7 @@ export default function DonationTotalsPage() {
   const [custom, setCustom] = React.useState<DayWindow>(() => periodWindow("month", todayIso()));
   const [donorId, setDonorId] = React.useState<string>(ALL);
   const [query, setQuery] = React.useState("");
+  const [photo, setPhoto] = React.useState<GiftRow | null>(null);
   // The answer for one range, kept with its range: a new range shows "Loading" until its own arrives.
   const [result, setResult] = React.useState<{ key: string; batches: GikBatch[] | null; error: string | null }>({ key: "", batches: null, error: null });
 
@@ -69,6 +71,7 @@ export default function DonationTotalsPage() {
             lines: Number(r.lines),
             food: Number(r.food_value),
             nonFood: Number(r.nonfood_value),
+            hasPhoto: r.has_photo === true,
           })),
         });
       });
@@ -207,7 +210,14 @@ export default function DonationTotalsPage() {
                   <tr key={r.key}>
                     <td className="px-5 py-2 whitespace-nowrap">{formatDate(r.date)}</td>
                     <td className="px-3 py-2">{nameOf(r.donorId)}</td>
-                    <td className="px-3 py-2 font-mono text-theme-xs whitespace-nowrap">{r.reference}</td>
+                    <td className="px-3 py-2 font-mono text-theme-xs whitespace-nowrap">
+                      {r.reference}
+                      {r.photoOf ? (
+                        <Button type="button" variant="ghost" size="icon-sm" className="ml-1 align-middle" aria-label={`Photo of the goods on ${r.reference}`} onClick={() => setPhoto(r)}>
+                          <Camera />
+                        </Button>
+                      ) : null}
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums">{money(r.food)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{money(r.nonFood)}</td>
                     <td className="px-5 py-2 text-right tabular-nums">{money(r.cash, r.currency)}</td>
@@ -223,6 +233,20 @@ export default function DonationTotalsPage() {
           </div>
         )}
       </SectionCard>
+
+      {photo ? (
+        <Dialog open onOpenChange={(o) => !o && setPhoto(null)}>
+          <DialogContent className="sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Photo of the goods</DialogTitle>
+              <DialogDescription>
+                {photo.reference} · {nameOf(photo.donorId)} · {formatDate(photo.date)}
+              </DialogDescription>
+            </DialogHeader>
+            <img src={`/api/donors/goods-photo/${encodeURIComponent(photo.photoOf!)}`} alt={`The goods received on ${photo.reference}`} className="max-h-[70vh] w-full rounded-lg border border-border bg-muted object-contain" />
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </div>
   );
 }
