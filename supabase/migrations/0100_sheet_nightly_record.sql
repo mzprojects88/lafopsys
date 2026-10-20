@@ -85,6 +85,8 @@ select a.patient_id, a.night, 'app', a.recorded_at, a.bed_position_id, a.carer_n
  where a.night >= (select since from cut)
     or not exists (select 1 from ops.sheet_nights x where x.night = a.night);
 
+-- Read as the viewer: a House Ops-only viewer (driver, house staff) sees no sheet_nights, so the
+-- fallback shows them every app night. Pages that read this view are for Patients viewers.
 grant select on ops.nightly_record to authenticated;
 
 -- ---- 4. NCH billing from the nightly record ----
