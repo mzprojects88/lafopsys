@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { HrSettings } from "@/lib/hooks/use-app-settings";
 import { NAME_DOCUMENTS } from "@/lib/utils/staff-name";
+import { dayKey } from "@/lib/utils/dtr";
 
 export interface UpdateClockInRequirementResult {
   ok: boolean;
@@ -156,6 +157,40 @@ export async function updateHouseSheetSync(enabled: boolean): Promise<UpdateCloc
 
   revalidatePath("/settings");
   revalidatePath("/patients/house-sheet");
+  return { ok: true };
+}
+
+/**
+ * Who stayed each night (0100): the House Sheet (on) until the app is ready to be the record;
+ * off makes the app's own check-ins count from tonight (Manila), earlier nights stay the sheet's.
+ */
+export async function updateSheetIsNightlyRecord(sheetIsRecord: boolean): Promise<UpdateClockInRequirementResult> {
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+
+  if (!caller) {
+    return { ok: false, error: "Not signed in." };
+  }
+
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+
+  if (callerStaff?.role !== "admin") {
+    return { ok: false, error: "Only admins can change this setting." };
+  }
+
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({ nights_from_app_since: sheetIsRecord ? null : dayKey(new Date()), updated_at: new Date().toISOString(), updated_by: caller.id })
+    .eq("id", true);
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/settings");
   return { ok: true };
 }
 

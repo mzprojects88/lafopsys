@@ -38,6 +38,8 @@ export interface AppSettings extends HrSettings {
   /** While true the house's Occupancy Tracker is read every half hour and
    * its names resolved to patients (0046). */
   houseSheetSyncEnabled: boolean;
+  /** Null while the House Sheet is the nightly record (0100); otherwise the first night the app's own check-ins count. */
+  nightsFromAppSince: string | null;
   /** LAF House's pin and the on-site radius for DTR punches (0063); null until an admin sets it. */
   lafHouse: { lat: number | null; lng: number | null; radiusM: number };
   /** When families may be moved between beds, Manila time "HH:MM" (0071): never at night. */
@@ -55,6 +57,7 @@ interface AppSettingsRow {
   overtime_threshold_minutes: number;
   calendar_sheet_sync_enabled: boolean;
   house_sheet_sync_enabled: boolean;
+  nights_from_app_since: string | null;
   payroll_pay_date_rule: PayDateRule | null;
   payroll_contribution_cutoff: ContributionCutoff;
   tardiness_grace_minutes: number;
@@ -99,6 +102,7 @@ const DEFAULTS: AppSettings = {
   overtimeThresholdMinutes: DEFAULT_OVERTIME_THRESHOLD_MINUTES,
   calendarSheetSyncEnabled: true,
   houseSheetSyncEnabled: true,
+  nightsFromAppSince: null,
   lafHouse: { lat: null, lng: null, radiusM: 20 },
   bedMoves: { from: "07:00", until: "20:00" },
   documents: { header: "", orgAddress: "", orgTin: "", signatoryId: null, names: {} },
@@ -107,7 +111,7 @@ const DEFAULTS: AppSettings = {
 };
 
 const SELECT =
-  "require_clock_in_for_inventory_roles, overtime_threshold_minutes, calendar_sheet_sync_enabled, house_sheet_sync_enabled, " +
+  "require_clock_in_for_inventory_roles, overtime_threshold_minutes, calendar_sheet_sync_enabled, house_sheet_sync_enabled, nights_from_app_since, " +
   "payroll_pay_date_rule, payroll_contribution_cutoff, tardiness_grace_minutes, " +
   "leave_vl_days_per_year, leave_sl_days_per_year, leave_vl_convertible, minimum_wage_region, " +
   "compliance_pen_last_digit, compliance_employer_initial, compliance_tracking_from, compliance_lead_days, " +
@@ -128,6 +132,7 @@ export const appSettingsStore = createCollection<AppSettings>({
       overtimeThresholdMinutes: row.overtime_threshold_minutes,
       calendarSheetSyncEnabled: row.calendar_sheet_sync_enabled,
       houseSheetSyncEnabled: row.house_sheet_sync_enabled,
+      nightsFromAppSince: row.nights_from_app_since ?? null,
       payDateRule: row.payroll_pay_date_rule ?? HR_SETTINGS_DEFAULTS.payDateRule,
       contributionCutoff: row.payroll_contribution_cutoff,
       tardinessGraceMinutes: row.tardiness_grace_minutes,

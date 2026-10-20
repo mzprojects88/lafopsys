@@ -42,7 +42,7 @@ const titleCase = (s: string) => s.replace(/_/g, " ").replace(/^./, (c) => c.toU
 
 interface Loaded {
   key: string;
-  nights: { night: string; patientId: string; visitId: string }[];
+  nights: { night: string; patientId: string; visitId: string; visitStart: string }[];
   trips: { date: string; direction: string; passengers: boolean; urgent: boolean; km: number; riders: number }[];
   expenses: { date: string; amount: number; litres: number }[];
   meals: { date: string; meal: string; patientId: string }[];
@@ -97,7 +97,7 @@ function Analytics() {
     caf: holdsPower(roles, "caf_billing_view"),
   };
 
-  const { patients, stays, appointments } = usePatientsData();
+  const { patients, appointments } = usePatientsData();
   const { rows: diagnoses } = useDiagnosesReferenceData();
   const { rows: provinces } = useReferenceTableData("provinces", "prov", "region");
   const { rows: hospitals } = useReferenceTableData("hospitals", "hosp");
@@ -114,8 +114,9 @@ function Analytics() {
     const none = Promise.resolve([] as never[]);
     void Promise.all([
       see.patients
-        ? fetchAll<{ night: string; stays: unknown; stay_id: string }>((f, t) =>
-            ops().from("bed_nights").select("night, stay_id, stays(patient_id, visit_id)").gte("night", from).lte("night", to).order("night").range(f, t)
+        ? fetchAll<{ night: string; patient_id: string; visit_key: string; visit_start: string }>((f, t) =>
+            // Who stayed each night (0100): the House Sheet while it is the record, else the app.
+            ops().from("nightly_record").select("night, patient_id, visit_key, visit_start").gte("night", from).lte("night", to).order("night").order("patient_id").range(f, t)
           )
         : none,
       see.transport
@@ -141,11 +142,7 @@ function Analytics() {
         setError(null);
         setLoaded({
           key: `${from}|${to}`,
-          nights: nights.flatMap((n) => {
-            // A night's stay (many-to-one, so one object).
-            const stay = n.stays as { patient_id: string; visit_id: string | null } | null;
-            return stay ? [{ night: n.night, patientId: stay.patient_id, visitId: stay.visit_id ?? n.stay_id }] : [];
-          }),
+          nights: nights.map((n) => ({ night: n.night, patientId: n.patient_id, visitId: n.visit_key, visitStart: n.visit_start })),
           trips: trips.map((t) => ({
             date: t.date,
             direction: t.direction,
@@ -178,7 +175,7 @@ function Analytics() {
   const span = { from, to, grain };
 
   const nights = (data?.nights ?? []).filter((n) => okPatient(n.patientId));
-  const visitStarts = stays.filter((s) => s.id === (s.visitId ?? s.id) && s.checkInAt >= from && s.checkInAt <= to && okPatient(s.patientId));
+  const visitStarts = [...new Map(nights.filter((n) => n.visitStart >= from && n.visitStart <= to).map((n) => [n.visitId, { checkInAt: n.visitStart }])).values()];
   const served = [...new Set(nights.map((n) => n.patientId))].flatMap((id) => patients.filter((p) => p.id === id));
   const visitsWithNights = new Set(nights.map((n) => n.visitId)).size;
   const checkUps = appointments.filter((a) => a.date >= from && a.date <= to && okPatient(a.patientId));

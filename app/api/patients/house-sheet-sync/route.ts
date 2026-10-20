@@ -14,6 +14,7 @@ import {
   parseTabList,
   reconcileRoster,
   type DbSheetPerson,
+  type RosterRow,
   type PatientIndex,
   type PatientRef,
 } from "@/lib/utils/house-sheet";
@@ -23,6 +24,10 @@ export const maxDuration = 300;
 
 const RUNNING_GUARD_MS = 5 * 60_000;
 const MAX_DAYS = 60;
+/** Past tabs re-read each run for edits (nights only, silently skipped when unchanged). */
+const RECHECK_TABS = 7;
+/** Tabs never saved as nights, read per run, newest first: the history fills in a few hours. */
+const BACKFILL_TABS = 40;
 const AI_CONCURRENCY = 3;
 const AI_BUDGET_MS = 180_000;
 const AI_MAX_ATTEMPTS = 3;
@@ -42,6 +47,13 @@ const SUGGEST_MIN_CONFIDENCE = 0.6;
  * fetches, reads, writes and records. Every tab checked leaves a run row.
  * The day's headcount is also written to ops.census_snapshots, the table
  * the dashboards and the DSWD figures already read.
+ *
+ * Every tab read is also kept as that night's roster in ops.sheet_nights
+ * (0100: the sheet is the nightly record until Settings says otherwise). A
+ * scheduled run reads the newest tab in full, plus -- nights only -- the
+ * past week's tabs when they changed and up to BACKFILL_TABS never saved.
+ * Nights only never reconciles an old tab (that would mark today's families
+ * off-sheet); it adds names never seen, off-sheet, for matching.
  */
 export async function POST(request: Request) {
   let body: { trigger?: unknown; force?: unknown; days?: unknown } = {};
@@ -108,7 +120,56 @@ export async function POST(request: Request) {
     await admin.schema("ops").from("house_sheet_sync_runs").insert({ trigger, triggered_by: triggeredBy, status: "failed", finished_at: new Date().toISOString(), error: message.slice(0, 4000) });
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
-  const chosen = tabs.slice(0, days).reverse(); // oldest first, so a person's day count grows in order
+  // A manual `days` reads every tab in full, as before. Otherwise: nights only for the past week's
+  // tabs and the never-saved ones, then the newest tab in full, last, so it is the latest run.
+  let chosen: { tab: (typeof tabs)[number]; full: boolean }[];
+  if (typeof body.days === "number") {
+    chosen = tabs.slice(0, days).reverse().map((tab) => ({ tab, full: true })); // oldest first, so a person's day count grows in order
+  } else {
+    const unsaved: typeof tabs = [];
+    const older = tabs.slice(1 + RECHECK_TABS);
+    for (let i = 0; i < older.length && unsaved.length < BACKFILL_TABS; i += BACKFILL_TABS) {
+      const chunk = older.slice(i, i + BACKFILL_TABS);
+      const { data: saved } = await admin.schema("ops").from("house_sheet_sync_runs").select("tab_date").in("tab_date", chunk.map((t) => t.date!)).not("nights_saved", "is", null);
+      const savedDays = new Set((saved ?? []).map((r) => r.tab_date as string));
+      unsaved.push(...chunk.filter((t) => !savedDays.has(t.date!)));
+    }
+    chosen = [...tabs.slice(1, 1 + RECHECK_TABS), ...unsaved.slice(0, BACKFILL_TABS)]
+      .reverse()
+      .map((tab) => ({ tab, full: false }))
+      .concat({ tab: tabs[0], full: true });
+  }
+
+  // ---- that night's roster: the sheet's nightly record (0100) ----
+  const saveNights = async (night: string, rows: RosterRow[]) => {
+    const { error } = await admin
+      .schema("ops")
+      .from("sheet_nights")
+      .upsert(
+        rows.map((r) => ({
+          night,
+          name_key: r.nameKey,
+          patient_name: r.patientName,
+          carer_name: r.carerName,
+          relationship: r.relationship,
+          next_appointment_raw: r.nextAppointmentRaw,
+          treatment: r.treatment,
+          address: r.address,
+          phone: r.phone,
+          row_no: r.rowNo,
+          synced_at: new Date().toISOString(),
+        })),
+        { onConflict: "night,name_key" }
+      );
+    if (error) throw new Error(`nights ${night}: ${error.message}`);
+    const keep = new Set(rows.map((r) => r.nameKey));
+    const { data: stored } = await admin.schema("ops").from("sheet_nights").select("name_key").eq("night", night);
+    const gone = (stored ?? []).map((s) => s.name_key as string).filter((k) => !keep.has(k));
+    if (gone.length > 0) {
+      const { error: delError } = await admin.schema("ops").from("sheet_nights").delete().eq("night", night).in("name_key", gone);
+      if (delError) throw new Error(`nights ${night}: ${delError.message}`);
+    }
+  };
 
   let index: PatientIndex | null = null;
   const loadIndex = async () => {
@@ -145,7 +206,133 @@ export async function POST(request: Request) {
   const results: Record<string, unknown>[] = [];
   let anyFailed = false;
 
-  for (const tab of chosen) {
+  // ---- match names to patients: the rules first, then the model's suggestion ----
+  type ToMatch = { id: string; patientName: string; carerName: string | null; relationship: string | null };
+  const matchPeople = async (toMatch: ToMatch[], errors: string[]) => {
+    const counts = { autoMatched: 0, suggested: 0, unmatched: 0, aiCalls: 0 };
+    if (toMatch.length === 0) return counts;
+    const idx = await loadIndex();
+    const aiQueue: (ToMatch & { candidates: PatientRef[] })[] = [];
+    for (const row of toMatch) {
+      const m = matchDeterministic(row.patientName, idx);
+      if (m.kind !== "candidates") {
+        const { error } = await admin
+          .schema("ops")
+          .from("house_sheet_people")
+          .update({ match_status: "auto_matched", matched_patient_id: m.patientId, match_method: m.kind, match_confidence: 1, ai_candidates: null, ai_reason: null, ai_error: null })
+          .eq("id", row.id);
+        if (error) errors.push(`match ${row.id}: ${error.message}`);
+        else counts.autoMatched += 1;
+      } else if (m.candidates.length === 0) {
+        const { error } = await admin
+          .schema("ops")
+          .from("house_sheet_people")
+          .update({ match_status: "unmatched", matched_patient_id: null, match_method: null, match_confidence: null, ai_candidates: [], ai_reason: "No similar name on file.", ai_error: null })
+          .eq("id", row.id);
+        if (error) errors.push(`match ${row.id}: ${error.message}`);
+        else counts.unmatched += 1;
+      } else {
+        aiQueue.push({ ...row, candidates: m.candidates });
+      }
+    }
+
+    const candidateJson = (cs: PatientRef[]) => cs.map((c) => ({ id: c.id, name: `${c.lastName}, ${c.firstName}`.replace(/\s+/g, " ").trim(), patientNumber: c.patientNumber }));
+    const askOne = async (item: (typeof aiQueue)[number]) => {
+      const base = { ai_candidates: candidateJson(item.candidates), matched_patient_id: null, match_method: null, match_confidence: null };
+      if (!openaiConfigured()) {
+        await admin.schema("ops").from("house_sheet_people").update({ ...base, match_status: "unmatched", ai_reason: null, ai_error: "OPENAI_API_KEY is not configured." }).eq("id", item.id);
+        counts.unmatched += 1;
+        return;
+      }
+      if (Date.now() > aiDeadline) {
+        await admin.schema("ops").from("house_sheet_people").update({ ...base, match_status: "unmatched", ai_reason: null, ai_error: "Out of time this run; will retry." }).eq("id", item.id);
+        counts.unmatched += 1;
+        return;
+      }
+      const candidates: MatchCandidate[] = item.candidates.map((c) => ({
+        id: c.id,
+        name: `${c.lastName}, ${c.firstName}`.replace(/\s+/g, " ").trim(),
+        carerNames: c.carerNames,
+        birthYear: c.birthDate ? Number(c.birthDate.slice(0, 4)) : null,
+        province: c.province,
+      }));
+      counts.aiCalls += 1;
+      try {
+        const a = await adjudicatePatientMatch({ sheetName: item.patientName, sheetCarer: item.carerName, sheetRelationship: item.relationship, candidates });
+        const suggest = a.decision === "match" && a.patientId !== null && a.confidence >= SUGGEST_MIN_CONFIDENCE;
+        const { error } = await admin
+          .schema("ops")
+          .from("house_sheet_people")
+          .update({
+            ...base,
+            match_status: suggest ? "suggested" : "unmatched",
+            matched_patient_id: suggest ? a.patientId : null,
+            match_method: suggest ? "ai" : null,
+            match_confidence: Math.round(a.confidence * 100) / 100,
+            ai_reason: a.reason,
+            ai_error: null,
+            ai_attempts: AI_MAX_ATTEMPTS, // answered: no retry
+          })
+          .eq("id", item.id);
+        if (error) errors.push(`ai ${item.id}: ${error.message}`);
+        else if (suggest) counts.suggested += 1;
+        else counts.unmatched += 1;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const { data: cur } = await admin.schema("ops").from("house_sheet_people").select("ai_attempts").eq("id", item.id).maybeSingle();
+        await admin
+          .schema("ops")
+          .from("house_sheet_people")
+          .update({ ...base, match_status: "unmatched", ai_reason: null, ai_error: message.slice(0, 500), ai_attempts: ((cur?.ai_attempts as number | undefined) ?? 0) + 1 })
+          .eq("id", item.id);
+        counts.unmatched += 1;
+        errors.push(`model on "${item.patientName}": ${message}`);
+      }
+    };
+    for (let i = 0; i < aiQueue.length; i += AI_CONCURRENCY) {
+      await Promise.all(aiQueue.slice(i, i + AI_CONCURRENCY).map(askOne));
+    }
+    return counts;
+  };
+
+  for (const { tab, full } of chosen) {
+    let csv: string;
+    try {
+      const response = await fetch(houseSheetCsvUrl(tab.gid), { cache: "no-store", redirect: "follow", headers: { accept: "text/csv" } });
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!response.ok || !contentType.includes("text/csv")) throw new Error(`Google returned ${response.status} ${contentType || "(no content type)"} for tab ${tab.name}.`);
+      csv = await response.text();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await admin.schema("ops").from("house_sheet_sync_runs").insert({ trigger, triggered_by: triggeredBy, tab_date: tab.date, tab_gid: tab.gid, status: "failed", finished_at: new Date().toISOString(), error: message.slice(0, 4000) });
+      anyFailed = true;
+      results.push({ tab: tab.name, status: "failed", error: message });
+      continue;
+    }
+    const hash = createHash("sha256").update(csv).digest("hex");
+
+    // Unchanged since its roster was last saved: the newest tab logs it, a past tab is skipped quietly.
+    const { data: last } = await admin
+      .schema("ops")
+      .from("house_sheet_sync_runs")
+      .select("csv_hash, rows_seen, nights_saved")
+      .eq("tab_date", tab.date)
+      .in("status", ["success", "unchanged"])
+      .not("nights_saved", "is", null)
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!force && last?.csv_hash === hash) {
+      if (full) {
+        await admin
+          .schema("ops")
+          .from("house_sheet_sync_runs")
+          .insert({ trigger, triggered_by: triggeredBy, tab_date: tab.date, tab_gid: tab.gid, status: "unchanged", finished_at: new Date().toISOString(), csv_hash: hash, rows_seen: last.rows_seen ?? 0, nights_saved: last.nights_saved });
+        results.push({ tab: tab.name, status: "unchanged" });
+      }
+      continue;
+    }
+
     const { data: run, error: runError } = await admin
       .schema("ops")
       .from("house_sheet_sync_runs")
@@ -159,34 +346,68 @@ export async function POST(request: Request) {
     };
 
     try {
-      const response = await fetch(houseSheetCsvUrl(tab.gid), { cache: "no-store", redirect: "follow", headers: { accept: "text/csv" } });
-      const contentType = response.headers.get("content-type") ?? "";
-      if (!response.ok || !contentType.includes("text/csv")) throw new Error(`Google returned ${response.status} ${contentType || "(no content type)"} for tab ${tab.name}.`);
-      const csv = await response.text();
-      const hash = createHash("sha256").update(csv).digest("hex");
-
-      const { data: last } = await admin
-        .schema("ops")
-        .from("house_sheet_sync_runs")
-        .select("csv_hash, rows_seen")
-        .eq("tab_date", tab.date)
-        .in("status", ["success", "unchanged"])
-        .neq("id", runId)
-        .order("started_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (!force && last?.csv_hash === hash) {
-        await finish({ status: "unchanged", csv_hash: hash, rows_seen: last.rows_seen ?? 0 });
-        results.push({ tab: tab.name, status: "unchanged" });
-        continue;
-      }
-
       const parsed = parseRosterCsv(csv);
       if (parsed.rows.length === 0 && parsed.problems.length > 0) throw new Error(parsed.problems[0]);
       if (parsed.rows.length === 0) {
-        // Today's tab exists but nobody has filled it in yet: not "the house is empty".
-        await finish({ status: "success", csv_hash: hash, rows_seen: 0 });
+        // Nobody has filled the tab in yet: not "the house is empty", and tonight's saved roster stays.
+        // A past empty tab is marked read so the backfill moves on; the week's re-check still sees an edit.
+        await finish({ status: "success", csv_hash: hash, rows_seen: 0, nights_saved: full ? null : 0 });
         results.push({ tab: tab.name, status: "success", counts: { seen: 0 }, problems: ["The tab has no names yet."] });
+        continue;
+      }
+
+      if (!full) {
+        // Nights only: the roster, and names never seen (off-sheet, no appointment) for matching.
+        const errors: string[] = [...parsed.problems];
+        await saveNights(tab.date!, parsed.rows);
+        const { data: known, error: knownError } = await admin.schema("ops").from("house_sheet_people").select("name_key").in("name_key", parsed.rows.map((r) => r.nameKey));
+        if (knownError) throw new Error(knownError.message);
+        const knownKeys = new Set((known ?? []).map((k) => k.name_key as string));
+        const fresh = parsed.rows
+          .filter((r) => !knownKeys.has(r.nameKey))
+          .map((r) => ({
+            name_key: r.nameKey,
+            patient_name: r.patientName,
+            carer_name: r.carerName,
+            relationship: r.relationship,
+            treatment: r.treatment,
+            address: r.address,
+            laf_flag: r.lafFlag,
+            phone: r.phone,
+            first_seen_on: tab.date,
+            run_started_on: tab.date,
+            last_seen_on: tab.date,
+            days_seen: 1,
+            off_sheet_at: new Date().toISOString(),
+            row_no: r.rowNo,
+          }));
+        let inserted: ToMatch[] = [];
+        if (fresh.length > 0) {
+          const { data, error } = await admin.schema("ops").from("house_sheet_people").insert(fresh).select("id, patient_name, carer_name, relationship");
+          if (error) errors.push(`insert ${fresh.length} row(s): ${error.message}`);
+          inserted = ((data ?? []) as { id: string; patient_name: string; carer_name: string | null; relationship: string | null }[]).map((r) => ({
+            id: r.id,
+            patientName: r.patient_name,
+            carerName: r.carer_name,
+            relationship: r.relationship,
+          }));
+        }
+        const counts = await matchPeople(inserted, errors);
+        const hardErrors = errors.filter((e) => !e.startsWith("model on "));
+        await finish({
+          status: hardErrors.length === 0 ? "success" : "failed",
+          csv_hash: hash,
+          rows_seen: parsed.rows.length,
+          inserted: inserted.length,
+          auto_matched: counts.autoMatched,
+          suggested: counts.suggested,
+          unmatched: counts.unmatched,
+          ai_calls: counts.aiCalls,
+          nights_saved: parsed.rows.length,
+          error: errors.length > 0 ? errors.join("\n").slice(0, 4000) : null,
+        });
+        if (hardErrors.length > 0) anyFailed = true;
+        results.push({ tab: tab.name, status: hardErrors.length === 0 ? "success" : "failed", nightsOnly: true, counts: { seen: parsed.rows.length, inserted: inserted.length, ...counts } });
         continue;
       }
 
@@ -235,7 +456,7 @@ export async function POST(request: Request) {
       const errors: string[] = [...parsed.problems];
 
       // ---- write the sheet's side ----
-      const toMatch: { id: string; patientName: string; carerName: string | null; relationship: string | null }[] = [];
+      const toMatch: ToMatch[] = [];
       if (plan.inserts.length > 0) {
         const { data: inserted, error } = await admin.schema("ops").from("house_sheet_people").insert(plan.inserts).select("id, patient_name, carer_name, relationship");
         if (error) errors.push(`insert ${plan.inserts.length} row(s): ${error.message}`);
@@ -264,93 +485,14 @@ export async function POST(request: Request) {
       for (const r of (retry ?? []) as { id: string; patient_name: string; carer_name: string | null; relationship: string | null }[]) {
         if (!toMatch.some((t) => t.id === r.id)) toMatch.push({ id: r.id, patientName: r.patient_name, carerName: r.carer_name, relationship: r.relationship });
       }
+      const counts = await matchPeople(toMatch, errors);
 
-      const counts = { autoMatched: 0, suggested: 0, unmatched: 0, aiCalls: 0 };
-      if (toMatch.length > 0) {
-        const idx = await loadIndex();
-        const aiQueue: { id: string; patientName: string; carerName: string | null; relationship: string | null; candidates: PatientRef[] }[] = [];
-        for (const row of toMatch) {
-          const m = matchDeterministic(row.patientName, idx);
-          if (m.kind !== "candidates") {
-            const { error } = await admin
-              .schema("ops")
-              .from("house_sheet_people")
-              .update({ match_status: "auto_matched", matched_patient_id: m.patientId, match_method: m.kind, match_confidence: 1, ai_candidates: null, ai_reason: null, ai_error: null })
-              .eq("id", row.id);
-            if (error) errors.push(`match ${row.id}: ${error.message}`);
-            else counts.autoMatched += 1;
-          } else if (m.candidates.length === 0) {
-            const { error } = await admin
-              .schema("ops")
-              .from("house_sheet_people")
-              .update({ match_status: "unmatched", matched_patient_id: null, match_method: null, match_confidence: null, ai_candidates: [], ai_reason: "No similar name on file.", ai_error: null })
-              .eq("id", row.id);
-            if (error) errors.push(`match ${row.id}: ${error.message}`);
-            else counts.unmatched += 1;
-          } else {
-            aiQueue.push({ ...row, candidates: m.candidates });
-          }
-        }
-
-        const candidateJson = (cs: PatientRef[]) => cs.map((c) => ({ id: c.id, name: `${c.lastName}, ${c.firstName}`.replace(/\s+/g, " ").trim(), patientNumber: c.patientNumber }));
-        const askOne = async (item: (typeof aiQueue)[number]) => {
-          const base = { ai_candidates: candidateJson(item.candidates), matched_patient_id: null, match_method: null, match_confidence: null };
-          if (!openaiConfigured()) {
-            await admin.schema("ops").from("house_sheet_people").update({ ...base, match_status: "unmatched", ai_reason: null, ai_error: "OPENAI_API_KEY is not configured." }).eq("id", item.id);
-            counts.unmatched += 1;
-            return;
-          }
-          if (Date.now() > aiDeadline) {
-            await admin.schema("ops").from("house_sheet_people").update({ ...base, match_status: "unmatched", ai_reason: null, ai_error: "Out of time this run; will retry." }).eq("id", item.id);
-            counts.unmatched += 1;
-            return;
-          }
-          const candidates: MatchCandidate[] = item.candidates.map((c) => ({
-            id: c.id,
-            name: `${c.lastName}, ${c.firstName}`.replace(/\s+/g, " ").trim(),
-            carerNames: c.carerNames,
-            birthYear: c.birthDate ? Number(c.birthDate.slice(0, 4)) : null,
-            province: c.province,
-          }));
-          counts.aiCalls += 1;
-          try {
-            const a = await adjudicatePatientMatch({ sheetName: item.patientName, sheetCarer: item.carerName, sheetRelationship: item.relationship, candidates });
-            const suggest = a.decision === "match" && a.patientId !== null && a.confidence >= SUGGEST_MIN_CONFIDENCE;
-            const { error } = await admin
-              .schema("ops")
-              .from("house_sheet_people")
-              .update({
-                ...base,
-                match_status: suggest ? "suggested" : "unmatched",
-                matched_patient_id: suggest ? a.patientId : null,
-                match_method: suggest ? "ai" : null,
-                match_confidence: Math.round(a.confidence * 100) / 100,
-                ai_reason: a.reason,
-                ai_error: null,
-                ai_attempts: AI_MAX_ATTEMPTS, // answered: no retry
-              })
-              .eq("id", item.id);
-            if (error) errors.push(`ai ${item.id}: ${error.message}`);
-            else if (suggest) counts.suggested += 1;
-            else counts.unmatched += 1;
-          } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            const { data: cur } = await admin.schema("ops").from("house_sheet_people").select("ai_attempts").eq("id", item.id).maybeSingle();
-            await admin
-              .schema("ops")
-              .from("house_sheet_people")
-              .update({ ...base, match_status: "unmatched", ai_reason: null, ai_error: message.slice(0, 500), ai_attempts: ((cur?.ai_attempts as number | undefined) ?? 0) + 1 })
-              .eq("id", item.id);
-            counts.unmatched += 1;
-            errors.push(`model on "${item.patientName}": ${message}`);
-          }
-        };
-        for (let i = 0; i < aiQueue.length; i += AI_CONCURRENCY) {
-          await Promise.all(aiQueue.slice(i, i + AI_CONCURRENCY).map(askOne));
-        }
+      // ---- the night's roster, and the day's headcount for the dashboards and DSWD figures ----
+      try {
+        await saveNights(tab.date!, parsed.rows);
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : String(err));
       }
-
-      // ---- the day's headcount, for the dashboards and DSWD figures ----
       {
         const { error } = await admin.schema("ops").from("census_snapshots").upsert({ date: tab.date, in_house: parsed.rows.length }, { onConflict: "date" });
         if (error) errors.push(`census ${tab.date}: ${error.message}`);
@@ -370,6 +512,7 @@ export async function POST(request: Request) {
         suggested: counts.suggested,
         unmatched: counts.unmatched,
         ai_calls: counts.aiCalls,
+        nights_saved: hardErrors.length === 0 ? parsed.rows.length : null,
         error: errors.length > 0 ? errors.join("\n").slice(0, 4000) : null,
       });
       if (hardErrors.length > 0) anyFailed = true;

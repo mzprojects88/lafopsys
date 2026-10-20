@@ -13,21 +13,23 @@ import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { csvLines, downloadCsv } from "@/lib/utils/csv";
 import { formatDate, todayIso } from "@/lib/utils/date";
-import { visitsOf } from "@/lib/utils/visits";
 
 interface NightRow {
   night: string;
-  stayId: string;
-  bedPositionId: string;
+  patientId: string;
+  bedPositionId: string | null;
+  carer: string;
+  visitKey: string;
 }
 
 /**
  * Bed nights (go-live report, 2026-10-13): every night each child slept in the house, from
- * ops.bed_nights -- the record check-in, "Same bed" and the daily re-admission write. By night
- * (beds used per room) and by child (nights and visits in the month), with a CSV.
+ * ops.nightly_record (0100) -- the House Sheet's daily tabs while it is the record, else the app's
+ * check-ins; the bed is the app's where it has one. By night (per room) and by child (nights and
+ * visits in the month), with a CSV.
  */
 export default function BedNightsPage() {
-  const { patients, carers, stays } = usePatientsData();
+  const { patients } = usePatientsData();
   const { rooms, units, bedPositions } = useHouseLayout();
   const [month, setMonth] = React.useState(todayIso().slice(0, 7));
   const [rows, setRows] = React.useState<NightRow[] | null>(null);
@@ -38,22 +40,23 @@ export default function BedNightsPage() {
     const to = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
     createClient()
       .schema("ops")
-      .from("bed_nights")
-      .select("night, stay_id, bed_position_id")
+      .from("nightly_record")
+      .select("night, patient_id, bed_position_id, carer_name, visit_key")
       .gte("night", from)
       .lte("night", to)
       .order("night")
       .then(({ data }) => {
-        if (live) setRows((data ?? []).map((r) => ({ night: r.night as string, stayId: r.stay_id as string, bedPositionId: r.bed_position_id as string })));
+        if (live)
+          setRows(
+            (data ?? []).map((r) => ({ night: r.night as string, patientId: r.patient_id as string, bedPositionId: r.bed_position_id as string | null, carer: (r.carer_name as string | null) ?? "", visitKey: r.visit_key as string }))
+          );
       });
     return () => {
       live = false;
     };
   }, [month]);
 
-  const stayById = new Map(stays.map((s) => [s.id, s]));
   const patientById = new Map(patients.map((p) => [p.id, p]));
-  const carerById = new Map(carers.map((c) => [c.id, c]));
   const unitOfPosition = new Map(bedPositions.map((bp) => [bp.id, units.find((u) => u.id === bp.unitId)]));
   const roomOfUnit = new Map(units.map((u) => [u.id, rooms.find((r) => r.id === u.roomId)]));
   const capacity = units.filter((u) => u.active).reduce((n, u) => n + u.capacity, 0);
@@ -63,23 +66,15 @@ export default function BedNightsPage() {
   const byNight = new Map<string, NightRow[]>();
   for (const n of nights) byNight.set(n.night, [...(byNight.get(n.night) ?? []), n]);
   const byPatient = new Map<string, NightRow[]>();
-  for (const n of nights) {
-    const pid = stayById.get(n.stayId)?.patientId;
-    if (pid) byPatient.set(pid, [...(byPatient.get(pid) ?? []), n]);
-  }
-  const visits = visitsOf(stays);
-  const visitsInMonth = (patientId: string) => {
-    const mine = new Set(byPatient.get(patientId)?.map((n) => stayById.get(n.stayId)?.visitId ?? n.stayId));
-    return visits.filter((v) => v.patientId === patientId && mine.has(v.id)).length;
-  };
+  for (const n of nights) byPatient.set(n.patientId, [...(byPatient.get(n.patientId) ?? []), n]);
+  const visitsInMonth = (patientId: string) => new Set(byPatient.get(patientId)?.map((n) => n.visitKey)).size;
   const nameOf = (patientId: string) => {
     const p = patientById.get(patientId);
     return p ? `${p.lastName}, ${p.firstName}` : "Unknown";
   };
   const labelOf = (n: NightRow) => {
-    const s = stayById.get(n.stayId);
-    const unit = unitOfPosition.get(n.bedPositionId);
-    return { bed: unit?.code ?? "?", room: unit ? (roomOfUnit.get(unit.id)?.name ?? "") : "", patient: s ? nameOf(s.patientId) : "Unknown", carer: s?.carerId ? (carerById.get(s.carerId)?.name ?? "") : "", visit: s?.visitId ?? s?.id ?? "" };
+    const unit = n.bedPositionId ? unitOfPosition.get(n.bedPositionId) : undefined;
+    return { bed: unit?.code ?? "No bed recorded", room: unit ? (roomOfUnit.get(unit.id)?.name ?? "") : "", patient: nameOf(n.patientId), carer: n.carer, visit: n.visitKey };
   };
 
   function exportCsv() {
@@ -97,7 +92,7 @@ export default function BedNightsPage() {
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader
         title="Bed Nights"
-        description="Every night a child slept in the house, as recorded at check-in and each evening's bed assignment."
+        description="Every night a child slept in the house: from the House Sheet's daily tabs while it is the record (Settings), with the bed the app recorded."
         action={
           <div className="flex items-center gap-2">
             <Input type="month" aria-label="Month" className="w-44" value={month} max={todayIso().slice(0, 7)} onChange={(e) => e.target.value && setMonth(e.target.value)} />
@@ -130,10 +125,11 @@ export default function BedNightsPage() {
               <thead className="text-theme-xs text-muted-foreground">
                 <tr>
                   <th className="px-5 py-2 text-left font-medium">Night</th>
-                  <th className="px-2 py-2 text-right font-medium">Beds used / {capacity}</th>
+                  <th className="px-2 py-2 text-right font-medium">Children / {capacity} beds</th>
                   {sortedRooms.map((r) => (
                     <th key={r.id} className="px-2 py-2 text-right font-medium">{r.name}</th>
                   ))}
+                  <th className="px-2 py-2 text-right font-medium">No bed recorded</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -144,6 +140,7 @@ export default function BedNightsPage() {
                     {sortedRooms.map((r) => (
                       <td key={r.id} className="px-2 py-2 text-right tabular-nums">{list.filter((n) => labelOf(n).room === r.name).length}</td>
                     ))}
+                    <td className="px-2 py-2 text-right tabular-nums">{list.filter((n) => !n.bedPositionId).length}</td>
                   </tr>
                 ))}
               </tbody>

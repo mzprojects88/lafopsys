@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Banknote, BedDouble, ChevronLeft, ChevronRight, Download, FileCheck2, FileSpreadsheet, Plus, RefreshCw, Users } from "lucide-react";
+import { Banknote, BedDouble, ChevronLeft, ChevronRight, Download, FileCheck2, Plus, RefreshCw, Users } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { SectionCard } from "@/components/patterns/section-card";
 import { EmptyState } from "@/components/patterns/empty-state";
@@ -56,8 +56,6 @@ export default function CafBillingPage() {
   const [nightsFor, setNightsFor] = React.useState<{ patientId: string | null } | null>(null);
   const [paying, setPaying] = React.useState(false);
   const [reopening, setReopening] = React.useState(false);
-  type SheetResult = { tabsRead: number; tabsFailed: string[]; added: { name: string; nights: string[] }[]; notCaf: number; unmatched: string[]; errors: string[]; before: string | null };
-  const [sheet, setSheet] = React.useState<SheetResult | null>(null);
 
   const bill = bills.find((b) => b.month === firstOf(ym));
   const terms = bill ? { rate: bill.rate, cap: bill.cap, discountPct: bill.discountPct } : null;
@@ -75,26 +73,6 @@ export default function CafBillingPage() {
     if (!r.ok) toast.error(plainError(r.error));
     else toast.success(ok);
     return r.ok;
-  }
-
-  // Nights before the app was used (e.g. 1-12 Oct 2026), from the House Sheet's daily tabs.
-  async function fromSheet() {
-    if (!bill) return;
-    setBusy(true);
-    setSheet(null);
-    try {
-      const res = await fetch("/api/caf/sheet-nights", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ billingId: bill.id }) });
-      const r = (await res.json()) as ({ ok: true } & SheetResult) | { ok: false; error: string };
-      if (!r.ok) toast.error(plainError(r.error));
-      else {
-        setSheet(r);
-        toast.success(r.added.length ? `Nights added for ${r.added.length} child${r.added.length === 1 ? "" : "ren"}` : "No nights to add from the House Sheet");
-      }
-    } catch (e) {
-      toast.error(plainError(e instanceof Error ? e.message : String(e)));
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function download(patientId?: string) {
@@ -130,9 +108,6 @@ export default function CafBillingPage() {
             <>
               <Button variant="outline" disabled={busy} onClick={() => run(() => draft(firstOf(ym)), "Refreshed from the nights at LAF")}>
                 <RefreshCw /> Refresh
-              </Button>
-              <Button variant="outline" disabled={busy} onClick={() => void fromSheet()}>
-                <FileSpreadsheet /> Nights from the House Sheet
               </Button>
               <Button variant="outline" onClick={() => setNightsFor({ patientId: null })}>
                 <Plus /> Add a child
@@ -186,24 +161,6 @@ export default function CafBillingPage() {
             />
           </KpiGrid>
           {bill.reopenReason && bill.status === "draft" && <p className="text-theme-xs text-muted-foreground">Reopened: {bill.reopenReason}</p>}
-          {sheet && (
-            <SectionCard title="From the House Sheet" description={`Read ${sheet.tabsRead} daily tab${sheet.tabsRead === 1 ? "" : "s"}${sheet.before ? ` before ${formatDate(sheet.before)}, when the app became the record` : ""}. Check each child below before making the bill final.`}>
-              <div className="flex flex-col gap-2 text-theme-sm">
-                {sheet.added.length === 0 ? <p className="text-muted-foreground">No new nights for children billed to the Fund.</p> : null}
-                {sheet.added.map((a) => (
-                  <p key={a.name}>
-                    <span className="font-medium">{a.name}</span> · {a.nights.length} night{a.nights.length === 1 ? "" : "s"} added: {a.nights.join(", ")}
-                  </p>
-                ))}
-                {sheet.unmatched.length > 0 && <p className="text-warning">Not matched to a child on file (add by hand if billed): {sheet.unmatched.join("; ")}</p>}
-                {sheet.notCaf > 0 && <p className="text-muted-foreground">{sheet.notCaf} other child{sheet.notCaf === 1 ? " is" : "ren are"} on the tabs but not billed to the Fund.</p>}
-                {sheet.tabsFailed.length > 0 && <p className="text-destructive">Couldn&apos;t read the tabs for {sheet.tabsFailed.map((d) => formatDate(d)).join(", ")}; press again.</p>}
-                {sheet.errors.map((e) => (
-                  <p key={e} className="text-destructive">{e}</p>
-                ))}
-              </div>
-            </SectionCard>
-          )}
 
           <SectionCard title={`${cafMonthLabel(bill.month)} · ${lines.length} child${lines.length === 1 ? "" : "ren"}`} flush>
             {lines.length === 0 ? (

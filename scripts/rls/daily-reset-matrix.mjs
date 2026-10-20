@@ -321,6 +321,42 @@ async function main() {
       last({ sql: `select ops.caf_set_nights(${billId}, '${P1}', array['2001-02-01','2001-02-02']::date[], 'from the House Sheet')` }, { sql: draft },
         { sql: `select nights::text as nights from ops.caf_billing_lines where billing_id = ${billId}` }),
       (r) => r.ok && r.data[0]?.nights === "{2001-02-01,2001-02-02,2001-02-20}");
+
+    // 0100: the House Sheet is the nightly record. App nights 1-16 Feb (above); the sheet lists only
+    // an unmatched name on 10-12 Feb and P1 (auto-matched row A) on 13-20 Feb.
+    if ((await client.query("select to_regclass('ops.sheet_nights') is not null as ok")).rows[0].ok) {
+      const sheetFeb = async () => {
+        await febNights();
+        await client.query(`insert into ops.sheet_nights (night, name_key, patient_name)
+          select d::date, 'rlstest|newkid', 'Newkid, Sheet' from generate_series('2001-02-10'::date, '2001-02-12'::date, '1 day') d
+          union all select d::date, 'rlstest|returnee', 'Returnee, Sheet' from generate_series('2001-02-13'::date, '2001-02-20'::date, '1 day') d`);
+      };
+      const nightsOf = { sql: `select nights::text as nights from ops.caf_billing_lines where billing_id = ${billId} and patient_id = '${P1}'` };
+      const days = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => `2001-02-${String(a + i).padStart(2, "0")}`);
+      const isNights = (...list) => (r) => r.ok && r.data[0]?.nights === `{${list.flat().join(",")}}`;
+      await scenario(ids, "the House Sheet wins: its nights count, the app's only on days the sheet lists nobody", "social_worker", withSeed(sheetFeb),
+        last({ sql: draft }, nightsOf), isNights(days(1, 9), days(13, 20)));
+      await scenario(ids, "a suggested sheet match doesn't count until it is confirmed", "social_worker",
+        withSeed(async () => { await sheetFeb(); await client.query(`update ops.house_sheet_people set match_status = 'suggested' where id = '${ROW_A}'`); }),
+        last({ sql: draft }, nightsOf), isNights(days(1, 9)));
+      await scenario(ids, "switched to the app from 12 Feb: its nights count from then, the sheet's before", "social_worker",
+        withSeed(async () => { await sheetFeb(); await client.query(`update shared.app_settings set nights_from_app_since = '2001-02-12' where id`); }),
+        last({ sql: draft }, nightsOf), isNights(days(1, 9), days(12, 16)));
+      // The hand change is stamped now(); the 21st reaches the sheet a minute later.
+      await scenario(ids, "a night removed by hand stays removed; a night the sheet adds later comes in", "social_worker",
+        withSeed(async () => {
+          await sheetFeb();
+          await client.query(`insert into ops.sheet_nights (night, name_key, patient_name, first_synced_at) values ('2001-02-21', 'rlstest|returnee', 'Returnee, Sheet', now() + interval '1 minute')`);
+        }),
+        last({ sql: draft }, { sql: `select ops.caf_set_nights(${billId}, '${P1}', array(select generate_series('2001-02-01'::date, '2001-02-19'::date, '1 day')::date), 'not the 20th')` },
+          { sql: draft }, nightsOf),
+        isNights(days(1, 19), "2001-02-21"));
+      await scenario(ids, "the social worker reads the sheet's nights", "social_worker", withSeed(sheetFeb), q(`select night from ops.sheet_nights where name_key = 'rlstest|returnee'`), rows(8));
+      await scenario(ids, "the driver (no Patients view) reads none of them", "driver", withSeed(sheetFeb), q(`select night from ops.sheet_nights where name_key = 'rlstest|returnee'`), rows(0));
+      await scenario(ids, "finance reads no nightly record", "finance", withSeed(sheetFeb), q(`select night from ops.nightly_record where patient_id = '${P1}'`), rows(0));
+      await scenario(ids, "nobody writes the sheet's nights by hand", "social_worker", withSeed(),
+        q(`insert into ops.sheet_nights (night, name_key, patient_name) values ('2001-02-01', 'x|y', 'Y, X')`), denied);
+    } else record("0100 scenarios", "SKIP", "0100 not applied (pass it as a pre-flight file)");
     await scenario(ids, "a final bill can't change", "social_worker", withSeed(drafted),
       last({ sql: `select ops.caf_set_status(${billId}, 'final')` }, { sql: `select ops.caf_set_nights(${billId}, '${P1}', array['2001-02-01']::date[], 'late fix')` }), denied);
     await scenario(ids, "a bill isn't paid before it is final and sent", "social_worker", withSeed(drafted), q(`select ops.caf_set_status(${billId}, 'paid')`), badInput);
