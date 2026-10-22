@@ -10,7 +10,7 @@ import { ReasonDialog } from "@/components/patterns/reason-dialog";
 import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { hospitals } from "@/lib/mock-data/hospitals";
+import { useReferenceTableData } from "@/lib/hooks/use-reference-table-collection";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import type { Referral, ReferralStatus } from "@/lib/types/patient";
@@ -35,6 +35,7 @@ const DECISIONS: Record<Decision, { title: string; description: string; confirmL
 };
 
 export default function ReferralsPage() {
+  const { rows: hospitals } = useReferenceTableData("hospitals", "hosp", "code");
   const { referrals, updateReferral } = useReferralsData();
   const canEdit = useModuleAccess().canEdit("patients");
   const [deciding, setDeciding] = React.useState<{ id: string; status: Decision } | null>(null);
@@ -92,7 +93,7 @@ export default function ReferralsPage() {
                 {hospital && (
                   <span className="flex w-fit items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-theme-xs font-medium text-muted-foreground">
                     <Building2 className="size-3" />
-                    {hospital.code}
+                    {hospital.meta ?? hospital.name}
                   </span>
                 )}
                 <div className="flex items-center justify-between gap-2 text-theme-xs text-muted-foreground">

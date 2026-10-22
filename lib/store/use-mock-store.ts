@@ -57,10 +57,3 @@ export function useLocalCollection<T extends { id: string }>(key: string, seed: 
 
   return { items, updateItem, addItem, reset, setItems: persist };
 }
-
-export function resetAllMockData() {
-  Object.keys(window.localStorage)
-    .filter((k) => k.startsWith(PREFIX))
-    .forEach((k) => window.localStorage.removeItem(k));
-  window.location.reload();
-}

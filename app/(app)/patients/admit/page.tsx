@@ -14,8 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel, FieldSeparator } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { diagnoses, treatmentPhases, provinces } from "@/lib/mock-data/reference-data";
-import { hospitals } from "@/lib/mock-data/hospitals";
+import { useDiagnosesReferenceData } from "@/lib/hooks/use-diagnoses-reference-collection";
+import { useReferenceTableData } from "@/lib/hooks/use-reference-table-collection";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
 import { splitName } from "@/lib/utils/house-sheet";
@@ -75,6 +75,11 @@ type FormValues = z.infer<typeof schema>;
 
 function NewReferralForm() {
   const router = useRouter();
+  // The editable Settings lists (Reference Data), not the old built-in ones.
+  const { rows: diagnoses } = useDiagnosesReferenceData();
+  const { rows: treatmentPhases } = useReferenceTableData("treatment_phases", "phase");
+  const { rows: provinces } = useReferenceTableData("provinces", "prov", "region");
+  const { rows: hospitals } = useReferenceTableData("hospitals", "hosp", "code");
   const { user } = useRole();
   const { addReferral } = useReferralsData();
   // ?fromSheet=<row id>: the form opens pre-filled from a name on the house

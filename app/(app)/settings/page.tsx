@@ -1,10 +1,9 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { Database, Users, Bell, RotateCcw, ClipboardCheck, CalendarDays, UserCog, Truck } from "lucide-react";
+import { Database, Users, Bell, ClipboardCheck, CalendarDays, UserCog, Truck } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { IconCircle } from "@/components/patterns/icon-circle";
 import { SectionCard } from "@/components/patterns/section-card";
-import { ResetDemoDataButton } from "@/components/modules/settings/reset-demo-data-button";
 import { ClockInRequirementToggle } from "@/components/modules/settings/clock-in-requirement-toggle";
 import { OvertimeThresholdField } from "@/components/modules/settings/overtime-threshold-field";
 import { LafHouseLocationField } from "@/components/modules/settings/laf-house-location-field";
@@ -22,6 +21,7 @@ const REFERENCE_TABLES = [
   { slug: "provinces", label: "Provinces & Cities" },
   { slug: "diagnoses", label: "Diagnoses" },
   { slug: "treatment-phases", label: "Treatment Phases" },
+  { slug: "hospitals", label: "Hospitals" },
   { slug: "programs", label: "Programs" },
   { slug: "units-of-measure", label: "Units of Measure" },
   { slug: "vehicle-expense-types", label: "Vehicle Expense Types" },
@@ -30,7 +30,7 @@ const REFERENCE_TABLES = [
 export default function SettingsPage() {
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <PageHeader title="Settings" description="Foundation & Access — auth, RBAC, reference data, and demo controls." />
+      <PageHeader title="Settings" description="Foundation & Access — auth, RBAC and reference data." />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <SectionCard title={<CardTitleWithIcon icon={Database}>Reference Data</CardTitleWithIcon>} bodyClassName="flex flex-col gap-1.5">
@@ -88,13 +88,6 @@ export default function SettingsPage() {
 
         <SectionCard className="md:col-span-2" title={<CardTitleWithIcon icon={UserCog}>Pay & Leave Policy</CardTitleWithIcon>}>
           <HrSettingsCard />
-        </SectionCard>
-
-        <SectionCard title={<CardTitleWithIcon icon={RotateCcw}>Demo Data</CardTitleWithIcon>} bodyClassName="flex flex-col gap-2">
-          <p className="text-theme-xs text-muted-foreground">
-            This prototype persists your edits to this browser only. Reset to restore the original seed data.
-          </p>
-          <ResetDemoDataButton />
         </SectionCard>
       </div>
     </div>

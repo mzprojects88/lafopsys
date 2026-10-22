@@ -19,6 +19,8 @@ import { unitsOfMeasure } from "@/lib/mock-data/reference-data";
 const SIMPLE_TABLES: Record<string, { label: string; table: string; idPrefix: string; metaColumn?: string; metaLabel?: string }> = {
   provinces: { label: "Provinces & Cities", table: "provinces", idPrefix: "prov", metaColumn: "region", metaLabel: "Region" },
   "treatment-phases": { label: "Treatment Phases", table: "treatment_phases", idPrefix: "phase" },
+  // The referring hospitals on the Admit form; each needs a short unique code (e.g. NCH).
+  hospitals: { label: "Hospitals", table: "hospitals", idPrefix: "hosp", metaColumn: "code", metaLabel: "Code (required, e.g. NCH)" },
   programs: { label: "Programs", table: "programs", idPrefix: "prog", metaColumn: "description", metaLabel: "Description" },
   // Fuel Monitoring (0077): Fuel itself is fixed; the database refuses removing it or a type in use.
   "vehicle-expense-types": { label: "Vehicle Expense Types", table: "vehicle_expense_kinds", idPrefix: "vexp" },
@@ -183,6 +185,7 @@ const TABLE_LABELS: Record<string, string> = {
   programs: "Programs",
   "units-of-measure": "Units of Measure",
   "vehicle-expense-types": "Vehicle Expense Types",
+  hospitals: "Hospitals",
 };
 
 export default function ReferenceDataTablePage({ params }: { params: Promise<{ table: string }> }) {
@@ -193,7 +196,7 @@ export default function ReferenceDataTablePage({ params }: { params: Promise<{ t
 
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <PageHeader title={label} description="Reference data used across modules — provinces, diagnoses, treatment phases, programs, UoM conversions." />
+      <PageHeader title={label} description="Reference data used across modules — provinces, diagnoses, treatment phases, hospitals, programs, UoM conversions." />
       {table === "diagnoses" ? (
         <DiagnosesTable />
       ) : table === "units-of-measure" ? (
