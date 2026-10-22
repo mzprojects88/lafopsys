@@ -7,7 +7,7 @@ import { Users, Home, Share2, Percent, Car, Utensils, HeartPulse, Sparkles } fro
 import { useCensusData } from "@/lib/hooks/use-census-collection";
 import { useBedOccupancy } from "@/lib/hooks/use-bed-occupancy";
 import { useTripsData } from "@/lib/hooks/use-trips-collection";
-import { useMealServicesData } from "@/lib/hooks/use-meal-services-collection";
+import { useKitchenRecords } from "@/lib/hooks/use-kitchen-records";
 import { todayIso } from "@/lib/utils/date";
 
 const SUB_NAV: ModuleSubNavItem[] = [
@@ -21,12 +21,13 @@ export default function HouseOpsPage() {
   const { history, loading } = useCensusData();
   const beds = useBedOccupancy();
   const { trips } = useTripsData();
-  const { meals } = useMealServicesData();
+  // Today's meals as the kitchen recorded them in LAF Inventory (0102).
+  const { rows: todaysMealRows } = useKitchenRecords("house_meals", todayIso(), todayIso());
 
   const today = history.find((c) => c.date === todayIso()) ?? history[history.length - 1];
   const yesterday = today ? history[history.findIndex((c) => c.date === today.date) - 1] : undefined;
   const todaysTrips = trips.filter((t) => t.date === todayIso()).length;
-  const todaysMeals = meals.filter((m) => m.date === todayIso()).length;
+  const todaysMeals = (todaysMealRows ?? []).reduce((s, m) => s + m.served, 0);
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -52,7 +53,7 @@ export default function HouseOpsPage() {
         <KpiCard label="Beds Shared" value={beds.total ? beds.shared : beds.loading ? "…" : "—"} icon={Share2} />
         <KpiCard label="Utilization" value={beds.utilization !== undefined ? `${beds.utilization}%` : beds.loading ? "…" : "—"} icon={Percent} />
         <KpiCard label="Trips Today" value={todaysTrips} icon={Car} />
-        <KpiCard label="Meal Services Today" value={todaysMeals} icon={Utensils} />
+        <KpiCard label="Meals Served Today" value={todaysMeals} icon={Utensils} />
       </KpiGrid>
     </div>
   );

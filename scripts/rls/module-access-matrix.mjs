@@ -377,6 +377,17 @@ async function main() {
     await scenario(ids, "0093: an unknown role is refused", "admin", null, asPostgres("update shared.staff set role = 'role-nope' where id = $1", [ids.driver]), (r) => !r.ok && r.code === "23503");
   }
 
+  // 0102: House Operations reads LAF Inventory's meals and Care Cart runs, read only.
+  if ((await client.query("select to_regprocedure('ops.house_meals(date,date)') is not null as ok")).rows[0].ok) {
+    const meal = async () => {
+      await client.query(`insert into inventory.meal_services (id, date, meal_type, patients, carers, others, dish) values ('T-MEAL', '2001-01-02', 'lunch', 3, 2, 1, 'Adobo')`);
+    };
+    await scenario(ids, "0102: house staff see the kitchen's meals", "house_staff", { setup: meal },
+      q("select served, dish from ops.house_meals('2001-01-01', '2001-01-31')"), (r) => r.ok && r.data?.[0]?.served === 6 && r.data[0].dish === "Adobo");
+    await scenario(ids, "0102: the driver (House Ops) sees the Care Cart", "driver", null, q("select * from ops.house_care_cart('2001-01-01', '2001-01-31')"), (r) => r.ok);
+    await scenario(ids, "0102: finance (no House Ops) sees no meals", "finance", { setup: meal }, q("select * from ops.house_meals('2001-01-01', '2001-01-31')"), denied);
+  } else record("0102 scenarios", "SKIP", "0102 not applied (pass it as a pre-flight file)");
+
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
 

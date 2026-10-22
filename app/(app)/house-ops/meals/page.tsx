@@ -2,154 +2,68 @@
 
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { toast } from "sonner";
+import { Banknote, ChefHat, Users, Utensils } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Field, FieldLabel } from "@/components/ui/field";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useMealServicesData } from "@/lib/hooks/use-meal-services-collection";
-import { usePatientsData } from "@/lib/hooks/use-patients-collection";
-import type { MealService } from "@/lib/types/house-ops";
-import { formatDate } from "@/lib/utils/date";
-import { useModuleAccess } from "@/lib/hooks/use-module-access";
+import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
+import { Input } from "@/components/ui/input";
+import { useKitchenRecords, type KitchenMeal } from "@/lib/hooks/use-kitchen-records";
+import { formatCurrency } from "@/lib/utils/currency";
+import { formatDate, todayIso } from "@/lib/utils/date";
 
+const peso = (v: number | null) => (v === null ? "—" : formatCurrency(v, "PHP"));
+
+const columns: ColumnDef<KitchenMeal>[] = [
+  { accessorKey: "date", header: "Date", cell: ({ row }) => formatDate(row.original.date) },
+  { accessorKey: "mealType", header: "Meal", cell: ({ row }) => <span className="capitalize">{row.original.mealType}</span> },
+  { accessorKey: "dish", header: "Dish", cell: ({ row }) => row.original.dish ?? <span className="text-muted-foreground">—</span> },
+  { accessorKey: "patients", header: "Patients" },
+  { accessorKey: "carers", header: "Carers" },
+  { accessorKey: "others", header: "Others" },
+  { accessorKey: "served", header: "Served" },
+  { id: "cost", header: "Stock used", cell: ({ row }) => peso(row.original.drawValue) },
+  {
+    id: "perHead",
+    header: "Per person",
+    cell: ({ row }) => (row.original.drawValue !== null && row.original.served > 0 ? peso(Math.round((row.original.drawValue / row.original.served) * 100) / 100) : "—"),
+  },
+];
+
+/**
+ * Meals (0102): what LAF Inventory's kitchen recorded -- each meal's headcount, dish and the stock
+ * drawn for it -- read only. Meals are recorded in LAF Inventory › Meals.
+ */
 export default function MealsPage() {
-  const { meals, addException } = useMealServicesData();
-  // View on this page shows the log without the exception button (0093).
-  const editable = useModuleAccess().canEdit("house_ops");
-  const { patients, stays } = usePatientsData();
-  const [exceptionTarget, setExceptionTarget] = React.useState<MealService | null>(null);
-  const [patientId, setPatientId] = React.useState("");
-  const [reason, setReason] = React.useState("");
-  const [submitting, setSubmitting] = React.useState(false);
-
-  // Staff picks who the exception is actually for -- restricted to currently
-  // in-house patients, replacing the old demo handler's random pick.
-  const inHousePatients = stays
-    .filter((s) => s.status === "in_house" || s.status === "overdue")
-    .map((s) => patients.find((p) => p.id === s.patientId))
-    .filter((p): p is NonNullable<typeof p> => !!p);
-
-  function closeDialog() {
-    setExceptionTarget(null);
-    setPatientId("");
-    setReason("");
-  }
-
-  async function handleConfirm() {
-    if (!exceptionTarget || !patientId || !reason.trim()) return;
-    setSubmitting(true);
-    const result = await addException(exceptionTarget.id, patientId, reason.trim(), exceptionTarget.headcount);
-    setSubmitting(false);
-    if (!result.ok) {
-      toast.error(`Couldn't record the exception: ${result.error}`);
-      return;
-    }
-    toast.success("Exception recorded");
-    closeDialog();
-  }
-
-  const columns: ColumnDef<MealService>[] = [
-    { accessorKey: "date", header: "Date", cell: ({ row }) => formatDate(row.original.date) },
-    { accessorKey: "mealType", header: "Meal", cell: ({ row }) => <span className="capitalize">{row.original.mealType}</span> },
-    { accessorKey: "headcount", header: "Headcount" },
-    {
-      accessorKey: "costPerHead",
-      header: "Cost / Head",
-      cell: ({ row }) => (row.original.costPerHead !== undefined ? `₱${row.original.costPerHead}` : "—"),
-    },
-    {
-      id: "exceptions",
-      header: "Exceptions",
-      cell: ({ row }) =>
-        row.original.exceptions.length === 0 ? (
-          <span className="text-theme-xs text-muted-foreground">None</span>
-        ) : (
-          <div className="flex flex-wrap gap-1">
-            {row.original.exceptions.map((ex, i) => {
-              const p = patients.find((pt) => pt.id === ex.patientId);
-              return (
-                <Badge key={i} variant="secondary">
-                  {p?.firstName ?? "Unknown"} — {ex.reason}
-                </Badge>
-              );
-            })}
-          </div>
-        ),
-    },
-    {
-      id: "actions",
-      header: "",
-      cell: ({ row }) => editable && (
-        <Button
-          size="sm"
-          variant="outline"
-         
-          onClick={(e) => {
-            e.stopPropagation();
-            setExceptionTarget(row.original);
-          }}
-        >
-          Mark Exception
-        </Button>
-      ),
-    },
-  ];
+  const [month, setMonth] = React.useState(todayIso().slice(0, 7));
+  const from = `${month}-01`;
+  const to = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
+  const { rows, error } = useKitchenRecords("house_meals", from, to);
+  const meals = rows ?? [];
+  const served = meals.reduce((s, m) => s + m.served, 0);
+  const linked = meals.filter((m) => m.drawValue !== null);
+  const stock = linked.reduce((s, m) => s + (m.drawValue ?? 0), 0);
+  const linkedServed = linked.reduce((s, m) => s + m.served, 0);
 
   return (
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader
         title="Meals"
-        description="Auto-generated from who is in-house. Staff mark exceptions only, not every meal."
+        description="Meals the kitchen recorded in LAF Inventory, with who was served and the stock used. Read only: meals are recorded in LAF Inventory › Meals."
+        action={<Input type="month" aria-label="Month" className="w-44" value={month} max={todayIso().slice(0, 7)} onChange={(e) => e.target.value && setMonth(e.target.value)} />}
       />
-      <DataTable columns={columns} data={meals} searchPlaceholder="Search by meal type…" pageSize={14} />
-
-      <Dialog open={!!exceptionTarget} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Mark meal exception</DialogTitle>
-            <DialogDescription>e.g. hospital confinement, dietary restriction, out on trip.</DialogDescription>
-          </DialogHeader>
-          <Field>
-            <FieldLabel htmlFor="exceptionPatient">Patient</FieldLabel>
-            <Select value={patientId} onValueChange={setPatientId}>
-              <SelectTrigger id="exceptionPatient" className="w-full">
-                <SelectValue placeholder={inHousePatients.length ? "Select a patient" : "No patients currently in-house"} />
-              </SelectTrigger>
-              <SelectContent>
-                {inHousePatients.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.firstName} {p.lastName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="exceptionReason">Reason</FieldLabel>
-            <Textarea id="exceptionReason" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
-          </Field>
-          <DialogFooter>
-            <Button variant="outline" onClick={closeDialog}>
-              Cancel
-            </Button>
-            <Button disabled={!patientId || !reason.trim() || submitting} onClick={handleConfirm}>
-              {submitting ? "Saving…" : "Save Exception"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <KpiGrid>
+        <KpiCard label="Meals recorded" value={meals.length.toLocaleString()} icon={Utensils} />
+        <KpiCard label="People served" value={served.toLocaleString()} icon={Users} />
+        <KpiCard label="Stock used" value={formatCurrency(stock, "PHP")} icon={Banknote} sublabel={linked.length < meals.length ? `${linked.length} of ${meals.length} meals linked to a draw` : undefined} />
+        <KpiCard label="Stock per person" value={linkedServed ? formatCurrency(Math.round((stock / linkedServed) * 100) / 100, "PHP") : "—"} icon={ChefHat} />
+      </KpiGrid>
+      {error ? (
+        <p className="text-theme-sm text-destructive">{error}</p>
+      ) : rows === null ? (
+        <p className="text-theme-sm text-muted-foreground">Loading meals…</p>
+      ) : (
+        <DataTable columns={columns} data={meals} searchPlaceholder="Search by meal or dish…" pageSize={21} />
+      )}
     </div>
   );
 }
