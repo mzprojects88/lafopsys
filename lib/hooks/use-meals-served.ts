@@ -8,13 +8,17 @@ export const MEALS = ["breakfast", "lunch", "dinner"] as const;
 export type Meal = (typeof MEALS)[number];
 export type MutationResult = { ok: true } | { ok: false; error: string };
 
-/** Today's meals served per patient and carer (0095): "patientId|meal" keys. */
+/** Today's meals served per patient and carer: "patientId|meal" keys, from ops.meal_record (0103) --
+ * the LAF Programs sheet while it is the record, House Today's ticks (0095) after. */
 export const mealsServedStore = createCollection<Set<string>>({
-  key: "ops.meals_served",
+  key: "ops.meal_record",
   empty: new Set(),
-  tables: [{ schema: "ops", table: "meals_served" }],
+  tables: [
+    { schema: "ops", table: "meals_served" },
+    { schema: "ops", table: "sheet_meals" },
+  ],
   fetch: async () => {
-    const { data, error } = await createClient().schema("ops").from("meals_served").select("patient_id, meal").eq("date", todayIso());
+    const { data, error } = await createClient().schema("ops").from("meal_record").select("patient_id, meal").eq("date", todayIso());
     if (error) throw new Error(error.message);
     return new Set((data ?? []).map((r) => `${r.patient_id}|${r.meal}`));
   },

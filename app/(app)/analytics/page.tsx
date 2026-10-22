@@ -130,7 +130,7 @@ function Analytics() {
           )
         : none,
       see.patients
-        ? fetchAll<{ date: string; meal: string; patient_id: string }>((f, t) => ops().from("meals_served").select("date, meal, patient_id").gte("date", from).lte("date", to).order("date").range(f, t))
+        ? fetchAll<{ date: string; meal: string; patient_id: string }>((f, t) => ops().from("meal_record").select("date, meal, patient_id").gte("date", from).lte("date", to).order("date").range(f, t))
         : none,
       see.donors ? ops().rpc("gik_batches", { p_from: from, p_to: to }).then((r) => (r.data ?? []) as { date: string; food_value: number; nonfood_value: number }[]) : none,
       see.hours

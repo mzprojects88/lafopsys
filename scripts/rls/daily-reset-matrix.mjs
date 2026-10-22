@@ -357,6 +357,26 @@ async function main() {
       await scenario(ids, "nobody writes the sheet's nights by hand", "social_worker", withSeed(),
         q(`insert into ops.sheet_nights (night, name_key, patient_name) values ('2001-02-01', 'x|y', 'Y, X')`), denied);
     } else record("0100 scenarios", "SKIP", "0100 not applied (pass it as a pre-flight file)");
+
+    // 0103: meals per patient from the LAF Programs sheet until it is switched off, then the ticks.
+    if ((await client.query("select to_regclass('ops.sheet_meals') is not null as ok")).rows[0].ok) {
+      const sheetMeal = async () => {
+        await client.query(`insert into ops.sheet_meals (date, name_key, patient_name, breakfast, lunch, dinner) values ('2001-03-05', 'rlstest|returnee', 'Returnee, Sheet', 2, 0, 1)`);
+        // A past tick, as if made that day (the trigger allows today only): triggers paused for the insert.
+        await client.query("set local session_replication_role = replica");
+        await client.query(`insert into ops.meals_served (patient_id, date, meal) values ('${P1}', '2001-03-05', 'lunch')`);
+        await client.query("set local session_replication_role = origin");
+      };
+      const mealsOf = q(`select string_agg(meal || ':' || people, ',' order by meal) as m from ops.meal_record where patient_id = '${P1}' and date = '2001-03-05'`);
+      await scenario(ids, "the LAF Programs sheet is the meal record: its breakfast and dinner, not the tick", "social_worker", withSeed(sheetMeal), mealsOf, (r) => r.ok && r.data[0]?.m === "breakfast:2,dinner:1");
+      await scenario(ids, "switched to the app: House Today's tick counts", "social_worker",
+        withSeed(async () => { await sheetMeal(); await client.query(`update shared.app_settings set programs_from_app_since = '2001-03-01' where id`); }),
+        mealsOf, (r) => r.ok && r.data[0]?.m === "lunch:2");
+      await scenario(ids, "house staff read the sheet's meals", "house_staff", withSeed(sheetMeal), q(`select 1 from ops.sheet_meals where date = '2001-03-05'`), rows(1));
+      await scenario(ids, "finance reads none of them", "finance", withSeed(sheetMeal), q(`select 1 from ops.sheet_meals where date = '2001-03-05'`), rows(0));
+      await scenario(ids, "nobody writes the sheet's meals by hand", "social_worker", withSeed(),
+        q(`insert into ops.sheet_meals (date, name_key, patient_name) values ('2001-03-06', 'x|y', 'Y, X')`), denied);
+    } else record("0103 scenarios", "SKIP", "0103 not applied (pass it as a pre-flight file)");
     await scenario(ids, "a final bill can't change", "social_worker", withSeed(drafted),
       last({ sql: `select ops.caf_set_status(${billId}, 'final')` }, { sql: `select ops.caf_set_nights(${billId}, '${P1}', array['2001-02-01']::date[], 'late fix')` }), denied);
     await scenario(ids, "a bill isn't paid before it is final and sent", "social_worker", withSeed(drafted), q(`select ops.caf_set_status(${billId}, 'paid')`), badInput);

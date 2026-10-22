@@ -73,7 +73,9 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const { role } = useRole();
   // Meals are ticked by anyone who edits Patients or House Ops (0095), not only bed editors.
   const access = useModuleAccess();
-  const canTickMeals = access.canEdit("patients") || access.canEdit("house_ops");
+  // While the LAF Programs sheet is the record of meals (0103) its figures show here, read only.
+  const mealsFromSheet = useAppSettings().programsFromAppSince === null;
+  const canTickMeals = !mealsFromSheet && (access.canEdit("patients") || access.canEdit("house_ops"));
   const { patients, stays, carers, loading: patientsLoading } = usePatientsData();
   const { units, bedPositions, loading: layoutLoading } = useHouseLayout();
   const { nights, confirmNight, readmitForTonight } = useBedNights();
@@ -385,7 +387,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                     {tasks.total > 0 && tasks.done < tasks.total ? ` · orientation ${tasks.done}/${tasks.total}` : ""}
                   </span>
                 </div>
-                <MealTicks patientId={s.patientId} name={nameOf(s.patientId)} canTick={canTickMeals} />
+                <MealTicks patientId={s.patientId} name={nameOf(s.patientId)} canTick={canTickMeals} fromSheet={mealsFromSheet} />
                 {canEdit && (
                   <Button size="sm" variant="outline" className="text-destructive" aria-label={`Urgent call: send ${nameOf(s.patientId)} to the hospital`} onClick={() => setUrgent({ stayId: s.id, name: nameOf(s.patientId) })}>
                     <Ambulance /> Urgent

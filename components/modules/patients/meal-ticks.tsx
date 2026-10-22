@@ -11,9 +11,10 @@ const LABEL: Record<Meal, string> = { breakfast: "Breakfast", lunch: "Lunch", di
 
 /**
  * Today's breakfast, lunch and dinner for one family on House Today (0095): a tick means the
- * patient and the carer were served. Read-only for anyone who may not tick.
+ * patient and the carer were served. Read-only for anyone who may not tick, and while the LAF
+ * Programs sheet is the record of meals (0103): then the sheet's figures show.
  */
-export function MealTicks({ patientId, name, canTick }: { patientId: string; name: string; canTick: boolean }) {
+export function MealTicks({ patientId, name, canTick, fromSheet = false }: { patientId: string; name: string; canTick: boolean; fromSheet?: boolean }) {
   const { isServed, toggle } = useMealsServed();
   const [busy, setBusy] = React.useState<Meal | null>(null);
 
@@ -35,7 +36,7 @@ export function MealTicks({ patientId, name, canTick }: { patientId: string; nam
             disabled={!canTick || busy !== null}
             aria-pressed={served}
             aria-label={`${LABEL[meal]} ${served ? "served" : "not served"}`}
-            title={`${LABEL[meal]}${served ? " · served" : ""}`}
+            title={`${LABEL[meal]}${served ? " · served" : ""}${fromSheet ? " · from the LAF Programs sheet" : ""}`}
             onClick={() => void flip(meal)}
             className={cn(
               "flex h-7 items-center gap-1 rounded-lg border px-2 text-theme-xs font-medium transition-colors disabled:cursor-default",

@@ -13,6 +13,7 @@ import { CafBillingSettings } from "@/components/modules/settings/caf-billing-se
 import { AdmissionTimes } from "@/components/modules/settings/admission-times";
 import { CalendarSheetSyncToggle } from "@/components/modules/settings/calendar-sheet-sync-toggle";
 import { HouseSheetSyncToggle } from "@/components/modules/settings/house-sheet-sync-toggle";
+import { ProgramsSheetCard } from "@/components/modules/settings/programs-sheet-card";
 import { BedMoveHours } from "@/components/modules/settings/bed-move-hours";
 import { HrSettingsCard } from "@/components/modules/settings/hr-settings-card";
 import { VehiclesCard } from "@/components/modules/settings/vehicles-card";
@@ -65,6 +66,10 @@ export default function SettingsPage() {
 
         <SectionCard title="House Occupancy Tracker">
           <HouseSheetSyncToggle />
+        </SectionCard>
+
+        <SectionCard title="LAF Programs sheet">
+          <ProgramsSheetCard />
         </SectionCard>
 
         <SectionCard id="document-names" className="scroll-mt-24" title="Documents: staff names">
