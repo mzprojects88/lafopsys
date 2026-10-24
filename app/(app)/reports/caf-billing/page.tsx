@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Banknote, BedDouble, ChevronLeft, ChevronRight, Download, FileCheck2, Plus, RefreshCw, Users } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { SectionCard } from "@/components/patterns/section-card";
+import { CafSheetPanel } from "@/components/modules/reports/caf-sheet-panel";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { Badge } from "@/components/ui/badge";
@@ -213,6 +214,7 @@ export default function CafBillingPage() {
               </div>
             )}
           </SectionCard>
+          {canPrepare && <CafSheetPanel month={ym} lines={bill.lines} nameOf={nameOf} />}
         </>
       )}
 
