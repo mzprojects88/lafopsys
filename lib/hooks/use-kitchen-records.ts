@@ -61,7 +61,7 @@ const MAP = {
   }),
 };
 
-/** One box of House Operations Stocks (ops.house_stock_status, 0106 over Inventory 0066). */
+/** One box of Operations Stocks (ops.house_stock_status, 0106 over Inventory 0066). */
 export interface HouseStockBox {
   groupId: string;
   groupName: string;

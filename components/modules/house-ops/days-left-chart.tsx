@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 
-/** The fields of a House Operations Stocks box the chart needs (Inventory 0066 / OS 0106). Same file in both apps. */
+/** The fields of a Operations Stocks box the chart needs (Inventory 0066 / OS 0106). Same file in both apps. */
 export interface DaysLeftBox {
   lineId: string;
   groupId: string;

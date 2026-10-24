@@ -388,7 +388,7 @@ async function main() {
     await scenario(ids, "0102: finance (no House Ops) sees no meals", "finance", { setup: meal }, q("select * from ops.house_meals('2001-01-01', '2001-01-31')"), denied);
   }
   if ((await client.query("select to_regprocedure('ops.house_stock_status()') is not null as ok")).rows[0].ok) {
-    await scenario(ids, "0106: the driver (House Ops) sees the House Operations Stocks boxes", "driver", null, q("select line_name, status from ops.house_stock_status() where line_id = 'hsl-rice'"), (r) => r.ok && r.data?.[0]?.line_name === "Rice");
+    await scenario(ids, "0106: the driver (House Ops) sees the Operations Stocks boxes", "driver", null, q("select line_name, status from ops.house_stock_status() where line_id = 'hsl-rice'"), (r) => r.ok && r.data?.[0]?.line_name === "Rice");
     await scenario(ids, "0106: finance (no House Ops) sees no stocks", "finance", null, q("select * from ops.house_stock_status()"), denied);
   } else record("0102 scenarios", "SKIP", "0102 not applied (pass it as a pre-flight file)");
 

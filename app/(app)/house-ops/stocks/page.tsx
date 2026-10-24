@@ -12,9 +12,9 @@ const TONE: Record<HouseStockBox["status"], StatusTone> = { out: "negative", low
 const qty = (n: number) => Math.round(n * 100) / 100;
 
 /**
- * House Operations Stocks (0106): the critical items the house must have, as LAF Inventory counts
+ * Operations Stocks (0106): the critical items the house must have, as LAF Inventory counts
  * them -- each box's on hand, a low-stock warning and the projected days of use left. Read only:
- * the boxes and their items are kept in LAF Inventory › House Operations Stocks.
+ * the boxes and their items are kept in LAF Inventory › Operations Stocks.
  */
 export default function HouseStocksPage() {
   const { rows, error } = useHouseStocks();
@@ -25,7 +25,7 @@ export default function HouseStocksPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <PageHeader title="House Operations Stocks" description="A tracking of critical items and their status, from LAF Inventory. Read only: the boxes and the items they count are kept in LAF Inventory › House Operations Stocks." />
+      <PageHeader title="Operations Stocks" description="A tracking of critical items and their status, from LAF Inventory. Read only: the boxes and the items they count are kept in LAF Inventory › Operations Stocks." />
       <KpiGrid>
         <KpiCard label="Boxes tracked" value={String(boxes.length)} icon={Warehouse} />
         <KpiCard label="Running low" value={String(low)} icon={AlertTriangle} tone={low ? "warning" : "default"} />

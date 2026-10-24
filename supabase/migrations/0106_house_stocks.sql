@@ -1,4 +1,4 @@
--- 0106: House Operations Stocks, read-only in arkos (user, 2026-10-24).
+-- 0106: Operations Stocks, read-only in arkos (user, 2026-10-24).
 --
 -- LAF Inventory 0066 keeps the boxes of critical items (Rice, Pork, Paper Cups…) and works out each
 -- one's count, usage rate and projected days left in inventory.house_stock_status(). House Ops
