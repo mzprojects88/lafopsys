@@ -61,6 +61,59 @@ const MAP = {
   }),
 };
 
+/** One box of House Operations Stocks (ops.house_stock_status, 0106 over Inventory 0066). */
+export interface HouseStockBox {
+  groupId: string;
+  groupName: string;
+  lineId: string;
+  name: string;
+  minDays: number;
+  items: number;
+  onHand: number;
+  uom: string | null;
+  mixedUnits: boolean;
+  draws: number;
+  usedPerDay: number;
+  daysLeft: number | null;
+  status: "out" | "low" | "ok" | "no_forecast" | "no_items";
+}
+
+/** The boxes of critical items as LAF Inventory works them out; read only. `rows` is null while loading. */
+export function useHouseStocks() {
+  const [state, setState] = React.useState<{ rows: HouseStockBox[] | null; error: string | null }>({ rows: null, error: null });
+  React.useEffect(() => {
+    let live = true;
+    void createClient()
+      .schema("ops")
+      .rpc("house_stock_status")
+      .then(({ data, error }) => {
+        if (!live) return;
+        const rows = error
+          ? null
+          : ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+              groupId: String(r.group_id),
+              groupName: String(r.group_name),
+              lineId: String(r.line_id),
+              name: String(r.line_name),
+              minDays: Number(r.min_days),
+              items: Number(r.items),
+              onHand: Number(r.on_hand),
+              uom: (r.uom as string | null) ?? null,
+              mixedUnits: r.mixed_units === true,
+              draws: Number(r.draws),
+              usedPerDay: Number(r.used_per_day),
+              daysLeft: num(r.days_left),
+              status: String(r.status) as HouseStockBox["status"],
+            }));
+        setState({ rows, error: error?.message ?? null });
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return state;
+}
+
 type Rows<F extends keyof typeof MAP> = ReturnType<(typeof MAP)[F]>[];
 
 /**
