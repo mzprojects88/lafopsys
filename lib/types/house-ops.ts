@@ -118,6 +118,8 @@ export interface ActivitySession {
   volunteerCount: number;
   facilitator: string;
   hours: number;
+  /** "sheet" = read from the LAF Programs sheet (0107); "app" = entered here. */
+  source?: "app" | "sheet";
 }
 
 export interface CensusSnapshot {

@@ -14,6 +14,7 @@ interface ActivitySessionRow {
   volunteer_count: number;
   facilitator: string | null;
   hours: number;
+  source: "app" | "sheet";
 }
 
 function toActivitySession(row: ActivitySessionRow): ActivitySession {
@@ -25,6 +26,7 @@ function toActivitySession(row: ActivitySessionRow): ActivitySession {
     volunteerCount: row.volunteer_count,
     facilitator: row.facilitator ?? "",
     hours: row.hours,
+    source: row.source,
   };
 }
 

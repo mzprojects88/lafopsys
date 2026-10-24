@@ -7,6 +7,7 @@ import { createSheetMatcher } from "@/lib/server/sheet-people";
 import { parseCsv } from "@/lib/utils/bank-statement";
 import { dayKey } from "@/lib/utils/dtr";
 import { houseSheetCsvUrl, houseSheetHtmlUrl, parseTabList } from "@/lib/utils/house-sheet";
+import { activitySessions, type SheetActivity } from "@/lib/utils/programs-activity";
 import { runsFromSheet, type SheetRow } from "@/lib/utils/programs-care-cart";
 import { headcounts, monthTab, patientMeals, type PatientMeals } from "@/lib/utils/programs-sheet";
 
@@ -29,6 +30,8 @@ const AI_BUDGET_MS = 120_000;
  *    dish, notes and draw links kept).
  *  - Care Cart tab: runs (date + time) with their dishes into inventory.care_cart_runs; a run already
  *    recorded in the app for that date and time is taken over (sheet_key), not doubled.
+ *  - Activity Center tab (0107): one session per day and site (NCH, LAF) with its counts into
+ *    ops.activity_sessions (sheet_key date|site); sessions added in the app are left alone.
  * A tab whose text is unchanged since its last good read is skipped. Only counts are returned.
  */
 export async function POST(request: Request) {
@@ -94,6 +97,7 @@ export async function POST(request: Request) {
     .filter((t) => t.ym <= thisMonth)
     .sort((a, b) => a.ym.localeCompare(b.ym));
   const careCart = tabs.find((t) => t.name.trim().toLowerCase() === "care cart");
+  const activity = tabs.find((t) => t.name.trim().toLowerCase() === "activity center");
 
   const matcher = createSheetMatcher(admin, AI_BUDGET_MS);
   const results: Record<string, unknown>[] = [];
@@ -154,7 +158,32 @@ export async function POST(request: Request) {
     });
   }
 
+  if (activity) {
+    await readTab(activity.name, activity.gid, async (rows) => {
+      const sessions = activitySessions(rows).filter((a) => a.date <= today);
+      return { seen: sessions.length, written: await saveActivity(admin, sessions), errors: [] };
+    });
+  }
+
   return NextResponse.json({ ok: !anyFailed, tabs: results });
+}
+
+/** The sheet's sessions by sheet_key: updated in place, added, or removed when gone from the sheet. */
+async function saveActivity(admin: SupabaseClient, sessions: SheetActivity[]) {
+  const { data: existing, error } = await admin.schema("ops").from("activity_sessions").select("id, sheet_key").eq("source", "sheet");
+  if (error) throw new Error(`activity center: ${error.message}`);
+  const { error: upsertError } = await admin.schema("ops").from("activity_sessions").upsert(
+    sessions.map((a) => ({ sheet_key: a.sheetKey, source: "sheet", date: a.date, title: `Activity Center @ ${a.site}`, participants: a.participants, volunteer_count: a.volunteers, hours: a.hours, facilitator: a.time || null })),
+    { onConflict: "sheet_key" }
+  );
+  if (upsertError) throw new Error(`activity center: ${upsertError.message}`);
+  const keep = new Set(sessions.map((a) => a.sheetKey));
+  const gone = (existing ?? []).filter((e) => e.sheet_key && !keep.has(e.sheet_key as string)).map((e) => e.id as string);
+  if (gone.length) {
+    const { error: deleteError } = await admin.schema("ops").from("activity_sessions").delete().in("id", gone);
+    if (deleteError) throw new Error(`activity center: ${deleteError.message}`);
+  }
+  return sessions.length;
 }
 
 /** A date's rows replace that date's (a date not on the tab is left as it was). */

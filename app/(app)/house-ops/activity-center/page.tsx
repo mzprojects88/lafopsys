@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,7 +26,16 @@ import { useModuleAccess } from "@/lib/hooks/use-module-access";
 
 const columns: ColumnDef<ActivitySession>[] = [
   { accessorKey: "date", header: "Date", cell: ({ row }) => formatDate(row.original.date) },
-  { accessorKey: "title", header: "Session" },
+  {
+    accessorKey: "title",
+    header: "Session",
+    cell: ({ row }) => (
+      <span className="inline-flex flex-wrap items-center gap-1.5">
+        {row.original.title}
+        {row.original.source === "sheet" ? <Badge variant="outline">LAF Programs sheet</Badge> : null}
+      </span>
+    ),
+  },
   { accessorKey: "participants", header: "Participants" },
   { accessorKey: "volunteerCount", header: "Volunteers" },
   { accessorKey: "facilitator", header: "Facilitator" },

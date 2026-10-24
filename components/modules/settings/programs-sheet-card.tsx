@@ -71,7 +71,7 @@ export function ProgramsSheetCard() {
           <span className="text-sm font-medium">The LAF Programs sheet is the record of meals and the Care Cart</span>
           <span className="text-xs text-muted-foreground">
             {sheetIsRecord
-              ? "Every half hour the month tabs (breakfast, lunch and dinner per patient) and the Care Cart tab are read into the app: House Today, House Ops and LAF Inventory show them. Turn off when staff record in the app: House Today's ticks and LAF Inventory's Meals and Care Cart count from that day."
+              ? "Every half hour the month tabs (breakfast, lunch and dinner per patient), the Care Cart tab and the Activity Center tab are read into the app: House Today, House Ops and LAF Inventory show them. Turn off when staff record in the app: House Today's ticks and LAF Inventory's Meals and Care Cart count from that day."
               : `The app's records count from ${formatDate(programsFromAppSince!)}; the sheet is no longer read.`}
           </span>
         </div>

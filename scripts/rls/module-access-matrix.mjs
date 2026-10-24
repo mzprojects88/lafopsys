@@ -391,6 +391,14 @@ async function main() {
     await scenario(ids, "0106: the driver (House Ops) sees the Operations Stocks boxes", "driver", null, q("select line_name, status from ops.house_stock_status() where line_id = 'hsl-rice'"), (r) => r.ok && r.data?.[0]?.line_name === "Rice");
     await scenario(ids, "0106: finance (no House Ops) sees no stocks", "finance", null, q("select * from ops.house_stock_status()"), denied);
   } else record("0102 scenarios", "SKIP", "0102 not applied (pass it as a pre-flight file)");
+  // 0107: Activity Center sessions read from the LAF Programs sheet are ordinary sessions to House Ops viewers.
+  if ((await client.query("select to_regclass('ops.activity_sessions') is not null and exists (select 1 from information_schema.columns where table_schema = 'ops' and table_name = 'activity_sessions' and column_name = 'sheet_key') as ok")).rows[0].ok) {
+    const sheetSession = async () => {
+      await client.query(`insert into ops.activity_sessions (date, title, participants, volunteer_count, hours, source, sheet_key) values ('2001-01-03', 'Activity Center @ NCH', 5, 1, 2, 'sheet', '2001-01-03|NCH')`);
+    };
+    await scenario(ids, "0107: house staff see a sheet session with its source", "house_staff", { setup: sheetSession },
+      q("select participants, source from ops.activity_sessions where sheet_key = '2001-01-03|NCH'"), (r) => r.ok && r.data?.[0]?.participants === 5 && r.data[0].source === "sheet");
+  }
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
