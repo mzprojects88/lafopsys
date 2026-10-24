@@ -13,6 +13,10 @@ const AUTH_TABLES = ["auth.users", "auth.identities"];
 const DEV_AUDIT_OFFSET = 1_000_000_000;
 
 type Table = { name: string; pk: string[]; cols: string[]; identity: boolean };
+/** Supabase owns the auth tables: their triggers can't be paused and they aren't truncated; their
+ * foreign keys aren't deferrable, so users go before identities on inserts and after on deletes. */
+const isAuth = (t: Table) => t.name.startsWith("auth.");
+const ours = (t: Table) => !isAuth(t);
 
 /**
  * The two-way database sync, production wins (0104). Every hour (pg_cron on production, bearer
@@ -103,20 +107,29 @@ export async function POST(request: Request) {
       await dev.query("set constraints all deferred");
       await prod.query("set constraints all deferred");
       const touched = plan.filter(({ d }) => d.toDev.length || d.toProd.length || d.deleteOnDev.length || d.deleteOnProd.length);
-      for (const { t } of touched) {
+      const restoreDev = await liftInvalidKeys(dev, touched.map((x) => x.t));
+      const restoreProd = await liftInvalidKeys(prod, touched.map((x) => x.t));
+      for (const { t } of touched.filter((x) => ours(x.t))) {
         await dev.query(`alter table ${t.name} disable trigger user`);
         await prod.query(`alter table ${t.name} disable trigger user`);
       }
       for (const { t, d } of touched) {
         await copyRows(prod, dev, t, d.toDev);
         await copyRows(dev, prod, t, d.toProd);
+      }
+      for (const { t, d } of [...touched].reverse()) {
         if (d.deleteOnDev.length) await dev.query(`delete from ${t.name} where ${keyExpr(t)} = any($1)`, [d.deleteOnDev]);
         if (d.deleteOnProd.length) await prod.query(`delete from ${t.name} where ${keyExpr(t)} = any($1)`, [d.deleteOnProd]);
       }
-      for (const { t } of touched) {
+      // The deferred foreign-key checks run now (an error here aborts the run); only then can triggers come back.
+      await dev.query("set constraints all immediate");
+      await prod.query("set constraints all immediate");
+      for (const { t } of touched.filter((x) => ours(x.t))) {
         await dev.query(`alter table ${t.name} enable trigger user`);
         await prod.query(`alter table ${t.name} enable trigger user`);
       }
+      await restoreDev();
+      await restoreProd();
       // The agreed state: replaced whole for the tables synced (small: one row per row).
       await prod.query(`delete from sync.row_state where table_name = any($1)`, [tables.map((t) => t.name)]);
       const agreed = plan.flatMap(({ t, d }) => [...d.agreed].map(([pk, hash]) => ({ table_name: t.name, pk, hash })));
@@ -143,6 +156,25 @@ export async function POST(request: Request) {
 }
 
 const ident = (c: string) => `"${c.replace(/"/g, '""')}"`;
+
+/**
+ * A foreign key added NOT VALID (production's fixed_assets -> storage_locations: six old assets point
+ * at locations removed by an early reset) isn't checked for existing rows but is for rows written
+ * fresh, so a faithful copy would be refused. For the write, those keys are taken off the target and
+ * put back as they were, still NOT VALID, before commit. Inside the transaction, so nothing shows.
+ */
+async function liftInvalidKeys(c: Client, tables: Table[]) {
+  const { rows } = await c.query<{ tbl: string; conname: string; def: string }>(
+    `select n.nspname || '.' || t.relname tbl, c.conname, pg_get_constraintdef(c.oid) def
+       from pg_constraint c join pg_class t on t.oid = c.conrelid join pg_namespace n on n.oid = t.relnamespace
+      where c.contype = 'f' and not c.convalidated and n.nspname || '.' || t.relname = any($1)`,
+    [tables.map((t) => t.name)]
+  );
+  for (const r of rows) await c.query(`alter table ${r.tbl} drop constraint ${ident(r.conname)}`);
+  return async () => {
+    for (const r of rows) await c.query(`alter table ${r.tbl} add constraint ${ident(r.conname)} ${r.def.replace(/ NOT VALID$/, "")} not valid`);
+  };
+}
 const keyExpr = (t: Table) => t.pk.map((k) => `${ident(k)}::text`).join(" || '|' || ");
 
 /** Tables on both sides (and their shared, non-generated columns), with the primary key as production has it. */
@@ -158,9 +190,11 @@ async function sharedTables(prod: Client, dev: Client): Promise<Table[]> {
   type Row = { name: string; pk: string[]; cols: string[]; identity: boolean };
   const [p, d] = await Promise.all([prod.query<Row>(sql, [SCHEMAS, AUTH_TABLES]), dev.query<Row>(sql, [SCHEMAS, AUTH_TABLES])]);
   const devCols = new Map(d.rows.map((r) => [r.name, new Set(r.cols)]));
+  const order = (n: string) => (n === "auth.users" ? "auth.0" : n); // users before identities
   return p.rows
     .filter((r) => devCols.has(r.name) && r.pk.length)
-    .map((r) => ({ name: r.name, pk: r.pk, cols: r.cols.filter((c) => devCols.get(r.name)!.has(c)), identity: r.identity }));
+    .map((r) => ({ name: r.name, pk: r.pk, cols: r.cols.filter((c) => devCols.get(r.name)!.has(c)), identity: r.identity }))
+    .sort((a, b) => order(a.name).localeCompare(order(b.name)));
 }
 
 /** key -> md5 of the shared columns, for every table, in one round trip per side. */
@@ -193,8 +227,10 @@ async function copyRows(from: Client, to: Client, t: Table, keys: string[]) {
 async function initialise(prod: Client, dev: Client, tables: Table[]) {
   await dev.query("begin");
   await dev.query("set constraints all deferred");
-  for (const t of tables) await dev.query(`alter table ${t.name} disable trigger user`);
-  await dev.query(`truncate ${tables.map((t) => t.name).join(", ")} cascade`);
+  for (const t of tables.filter(ours)) await dev.query(`alter table ${t.name} disable trigger user`);
+  const restore = await liftInvalidKeys(dev, tables);
+  await dev.query(`truncate ${tables.filter(ours).map((t) => t.name).join(", ")} cascade`);
+  for (const t of [...tables.filter(isAuth)].reverse()) await dev.query(`delete from ${t.name}`);
   for (const t of tables) {
     const cols = t.cols.map(ident).join(", ");
     for (let i = 0; ; i += 2000) {
@@ -204,7 +240,9 @@ async function initialise(prod: Client, dev: Client, tables: Table[]) {
       if (rows.length < 2000) break;
     }
   }
-  for (const t of tables) await dev.query(`alter table ${t.name} enable trigger user`);
+  await dev.query("set constraints all immediate");
+  for (const t of tables.filter(ours)) await dev.query(`alter table ${t.name} enable trigger user`);
+  await restore();
   await dev.query(`select setval('inventory.audit_log_id_seq', greatest((select coalesce(max(id), 0) from inventory.audit_log), 0) + $1)`, [DEV_AUDIT_OFFSET]);
   const prodHashes = await hashes(prod, tables);
   await prod.query("begin");
