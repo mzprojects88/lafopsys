@@ -85,6 +85,9 @@ export function ProgramsSheetCard() {
           <Button size="sm" variant="outline" disabled={checking} onClick={() => void checkNow()}>
             <RefreshCw className={checking ? "animate-spin" : undefined} /> Check now
           </Button>
+          <p className="text-theme-xs text-muted-foreground">
+            LAF&apos;s copy of the sheet is filled from the app every hour once its script is installed (scripts/apps-script/programs-copy-sync.gs): month tabs, Care Cart and Activity Center in the original&apos;s columns.
+          </p>
         </div>
       ) : null}
     </div>
