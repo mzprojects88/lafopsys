@@ -120,9 +120,8 @@ export async function POST(request: Request) {
       if (!read.lines.length) throw new Error("No readable cash rows; nothing changed.");
       const { data, error } = await admin.schema("ops").rpc("receive_cash_lines", { p_source: String(TRACKER_YEAR), p_lines: read.lines, p_problems: read.problems });
       if (error) throw new Error(error.message);
-      const receipts = await issueReceipts(admin);
       const status = (data as { status?: string; posted?: number } | null) ?? {};
-      return { seen: read.lines.length, written: status.status === "received" ? read.lines.length : 0, errors: [...read.problems, ...(receipts.error ? [receipts.error] : [])] };
+      return { seen: read.lines.length, written: status.status === "received" ? read.lines.length : 0, errors: read.problems };
     });
   }
 
@@ -142,9 +141,12 @@ export async function POST(request: Request) {
     await readTab(bank.name, bank.gid, async (csv) => importBankRows(admin, csv, triggeredBy));
   }
 
+  // Every posted cash gift without a receipt gets its LAF-CSH number -- on every run, so names confirmed
+  // on Donors > Cash gifts between reads are receipted by the next run, changed sheet or not.
+  const receipts = await issueReceipts(admin);
   // The unambiguous links gift <-> deposit <-> bank credit (0111); the rest wait on Finance > Approvals.
   const { data: reconciled, error: reconcileError } = await admin.schema("ops").rpc("auto_reconcile_cash");
-  return NextResponse.json({ ok: !anyFailed, tabs: results, reconciled: reconcileError ? { error: reconcileError.message } : reconciled });
+  return NextResponse.json({ ok: !anyFailed, tabs: results, receipts, reconciled: reconcileError ? { error: reconcileError.message } : reconciled });
 }
 
 /** Every posted cash gift without a receipt gets its LAF-CSH number (0110). */
