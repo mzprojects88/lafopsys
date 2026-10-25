@@ -14,6 +14,7 @@ import { AdmissionTimes } from "@/components/modules/settings/admission-times";
 import { CalendarSheetSyncToggle } from "@/components/modules/settings/calendar-sheet-sync-toggle";
 import { HouseSheetSyncToggle } from "@/components/modules/settings/house-sheet-sync-toggle";
 import { ProgramsSheetCard } from "@/components/modules/settings/programs-sheet-card";
+import { DonationTrackerCard } from "@/components/modules/settings/donation-tracker-card";
 import { DbSyncCard } from "@/components/modules/settings/db-sync-card";
 import { BedMoveHours } from "@/components/modules/settings/bed-move-hours";
 import { HrSettingsCard } from "@/components/modules/settings/hr-settings-card";
@@ -71,6 +72,10 @@ export default function SettingsPage() {
 
         <SectionCard title="LAF Programs sheet">
           <ProgramsSheetCard />
+        </SectionCard>
+
+        <SectionCard title="Donation Tracker">
+          <DonationTrackerCard />
         </SectionCard>
 
         <SectionCard title="Database sync">

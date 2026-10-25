@@ -391,6 +391,16 @@ async function main() {
     await scenario(ids, "0106: the driver (House Ops) sees the Operations Stocks boxes", "driver", null, q("select line_name, status from ops.house_stock_status() where line_id = 'hsl-rice'"), (r) => r.ok && r.data?.[0]?.line_name === "Rice");
     await scenario(ids, "0106: finance (no House Ops) sees no stocks", "finance", null, q("select * from ops.house_stock_status()"), denied);
   } else record("0102 scenarios", "SKIP", "0102 not applied (pass it as a pre-flight file)");
+  // 0110: the Donation Tracker's deposits and sync runs are read by Donors / Finance viewers only; nobody writes them from a session.
+  if ((await client.query("select to_regclass('ops.cash_deposits') is not null as ok")).rows[0].ok) {
+    const deposit = async () => {
+      await client.query(`insert into ops.cash_deposits (year, line_key, deposit_date, amount, donor_name, invoice_number) values (2001, 'T-DEP', '2001-01-05', 1500, 'Test Donor', 'SI-T-1')`);
+    };
+    await scenario(ids, "0110: finance reads the tracker's deposits", "finance", { setup: deposit }, q("select amount from ops.cash_deposits where line_key = 'T-DEP'"), rows(1));
+    await scenario(ids, "0110: the chef (no Donors, no Finance) sees no deposits", "chef", { setup: deposit }, q("select amount from ops.cash_deposits where line_key = 'T-DEP'"), rows(0));
+    await scenario(ids, "0110: finance can't write a deposit", "finance", null, q("insert into ops.cash_deposits (year, line_key, deposit_date, amount) values (2001, 'T-DEP2', '2001-01-06', 10)"), denied);
+    await scenario(ids, "0110: a donors viewer can't issue receipts in bulk", "board", null, q("select ops.issue_cash_ars_for_unreceipted()"), denied);
+  }
   // 0107: Activity Center sessions read from the LAF Programs sheet are ordinary sessions to House Ops viewers.
   if ((await client.query("select to_regclass('ops.activity_sessions') is not null and exists (select 1 from information_schema.columns where table_schema = 'ops' and table_name = 'activity_sessions' and column_name = 'sheet_key') as ok")).rows[0].ok) {
     const sheetSession = async () => {

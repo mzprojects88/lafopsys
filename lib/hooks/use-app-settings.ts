@@ -42,6 +42,8 @@ export interface AppSettings extends HrSettings {
   nightsFromAppSince: string | null;
   /** Null while the LAF Programs sheet is the record of meals and the Care Cart (0103); otherwise the day the app took over. */
   programsFromAppSince: string | null;
+  /** Donation Tracker (0110): from this day cash gifts are entered in the app; null = the CASH tab is read. */
+  cashFromAppSince: string | null;
   /** LAF House's pin and the on-site radius for DTR punches (0063); null until an admin sets it. */
   lafHouse: { lat: number | null; lng: number | null; radiusM: number };
   /** When families may be moved between beds, Manila time "HH:MM" (0071): never at night. */
@@ -61,6 +63,7 @@ interface AppSettingsRow {
   house_sheet_sync_enabled: boolean;
   nights_from_app_since: string | null;
   programs_from_app_since: string | null;
+  cash_from_app_since: string | null;
   payroll_pay_date_rule: PayDateRule | null;
   payroll_contribution_cutoff: ContributionCutoff;
   tardiness_grace_minutes: number;
@@ -107,6 +110,7 @@ const DEFAULTS: AppSettings = {
   houseSheetSyncEnabled: true,
   nightsFromAppSince: null,
   programsFromAppSince: null,
+  cashFromAppSince: null,
   lafHouse: { lat: null, lng: null, radiusM: 20 },
   bedMoves: { from: "07:00", until: "20:00" },
   documents: { header: "", orgAddress: "", orgTin: "", signatoryId: null, names: {} },
@@ -115,7 +119,7 @@ const DEFAULTS: AppSettings = {
 };
 
 const SELECT =
-  "require_clock_in_for_inventory_roles, overtime_threshold_minutes, calendar_sheet_sync_enabled, house_sheet_sync_enabled, nights_from_app_since, programs_from_app_since, " +
+  "require_clock_in_for_inventory_roles, overtime_threshold_minutes, calendar_sheet_sync_enabled, house_sheet_sync_enabled, nights_from_app_since, programs_from_app_since, cash_from_app_since, " +
   "payroll_pay_date_rule, payroll_contribution_cutoff, tardiness_grace_minutes, " +
   "leave_vl_days_per_year, leave_sl_days_per_year, leave_vl_convertible, minimum_wage_region, " +
   "compliance_pen_last_digit, compliance_employer_initial, compliance_tracking_from, compliance_lead_days, " +
@@ -138,6 +142,7 @@ export const appSettingsStore = createCollection<AppSettings>({
       houseSheetSyncEnabled: row.house_sheet_sync_enabled,
       nightsFromAppSince: row.nights_from_app_since ?? null,
       programsFromAppSince: row.programs_from_app_since ?? null,
+      cashFromAppSince: row.cash_from_app_since ?? null,
       payDateRule: row.payroll_pay_date_rule ?? HR_SETTINGS_DEFAULTS.payDateRule,
       contributionCutoff: row.payroll_contribution_cutoff,
       tardinessGraceMinutes: row.tardiness_grace_minutes,

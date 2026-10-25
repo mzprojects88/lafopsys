@@ -194,6 +194,37 @@ export async function updateProgramsSheetIsRecord(sheetIsRecord: boolean): Promi
   return { ok: true };
 }
 
+/** Settings > Donation Tracker (0110): the CASH tab is the record of cash gifts until switched off. */
+export async function updateCashFromTracker(trackerIsRecord: boolean): Promise<UpdateClockInRequirementResult> {
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+
+  if (!caller) {
+    return { ok: false, error: "Not signed in." };
+  }
+
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+
+  if (callerStaff?.role !== "admin") {
+    return { ok: false, error: "Only admins can change this setting." };
+  }
+
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({ cash_from_app_since: trackerIsRecord ? null : dayKey(new Date()), updated_at: new Date().toISOString(), updated_by: caller.id })
+    .eq("id", true);
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
 /**
  * Who stayed each night (0100): the House Sheet (on) until the app is ready to be the record;
  * off makes the app's own check-ins count from tonight (Manila), earlier nights stay the sheet's.

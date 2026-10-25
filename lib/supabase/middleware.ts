@@ -5,7 +5,7 @@ import { isAdminOnlyPath } from "@/lib/rbac/hidden";
 
 // /api/calendar/sync, /api/patients/{house,master}-sheet-sync and /api/patients/sheet-export check a bearer secret
 // themselves: their callers (scheduled jobs, the copy sheet's script) have no session, and a redirect to /login would be silent.
-const PUBLIC_PATHS = ["/login", "/portal/login", "/api/calendar/sync", "/api/patients/house-sheet-sync", "/api/patients/master-sheet-sync", "/api/patients/sheet-export", "/api/programs/sheet-export", "/api/programs/sheet-sync", "/api/db-sync"];
+const PUBLIC_PATHS = ["/login", "/portal/login", "/api/calendar/sync", "/api/patients/house-sheet-sync", "/api/patients/master-sheet-sync", "/api/patients/sheet-export", "/api/programs/sheet-export", "/api/donors/tracker-sync", "/api/programs/sheet-sync", "/api/db-sync"];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
