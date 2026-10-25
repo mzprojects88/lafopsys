@@ -3,6 +3,7 @@
 import { toast } from "sonner";
 import { PageHeader } from "@/components/patterns/page-header";
 import { ApprovalQueue, type ApprovalQueueItem } from "@/components/patterns/approval-queue";
+import { ReconcileQueue } from "@/components/modules/finance/reconcile-queue";
 import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
 import { useProgramsData } from "@/lib/hooks/use-programs-collection";
 import { formatCurrency } from "@/lib/utils/currency";
@@ -40,6 +41,7 @@ export default function ApprovalsPage() {
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader title="Approvals" description="Entries above configurable thresholds require approval before posting." />
       <ApprovalQueue items={queueItems} onApprove={handleApprove} onReject={handleReject} />
+      <ReconcileQueue />
     </div>
   );
 }

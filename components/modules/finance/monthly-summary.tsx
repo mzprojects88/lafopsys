@@ -10,7 +10,8 @@ import { EmptyState } from "@/components/patterns/empty-state";
 import { LoadingState } from "@/components/patterns/loading-state";
 import { SectionCard } from "@/components/patterns/section-card";
 import { useBankTransactionsData } from "@/lib/hooks/use-bank-transactions-collection";
-import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
+import { useCashDepositsData } from "@/lib/hooks/use-cash-deposits-collection";
+import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useFinanceMonthNotes } from "@/lib/hooks/use-finance-month-notes-collection";
 import { useNow } from "@/lib/hooks/use-now";
 import { useRole } from "@/lib/rbac/use-role";
@@ -40,7 +41,8 @@ const monthLabel = (m: string) => `${MONTH_NAMES[Number(m.slice(5, 7)) - 1]} ${m
  */
 export function MonthlySummary({ compact = false }: { compact?: boolean }) {
   const { transactions, loading: txnsLoading, error: txnsError } = useBankTransactionsData();
-  const { entries } = useCashEntriesData();
+  const { donors: donorList, donations } = useDonorsData();
+  const { deposits } = useCashDepositsData();
   const { notes, upsertNote } = useFinanceMonthNotes();
   const { roles } = useRole();
   const canWriteNotes = doesFinance(roles);
@@ -54,25 +56,22 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
   const summary = React.useMemo(() => monthlySummary(transactions, shownYear, notes), [transactions, shownYear, notes]);
   const bank = React.useMemo(() => cashInBank(transactions), [transactions]);
 
-  const receipts = React.useMemo(
-    () =>
-      entries.map((e) => ({
-        id: e.id,
-        date: e.date || null,
-        amount: e.amount,
-        direction: e.direction,
-        donorName: e.donorName ?? null,
-        sourceSheet: e.sourceSheet ?? null,
-        approvalStatus: e.approvalStatus,
-        duplicateOfId: e.duplicateOfId ?? null,
-      })),
-    [entries]
-  );
-  const receiptMonths = React.useMemo(() => monthsWithReceipts(receipts), [receipts]);
+  // Posted cash gifts (Donors > Cash gifts, 0084/0110): one row per gift, named through the donor list.
+  const receipts = React.useMemo(() => {
+    const nameOf = new Map(donorList.map((d) => [d.id, d.name]));
+    return donations
+      .filter((d) => d.kind === "cash")
+      .map((d) => ({ id: d.id, date: d.date, amount: d.totalValue, direction: "inflow" as const, donorName: nameOf.get(d.donorId) ?? "Donor on file", sourceSheet: null, approvalStatus: "approved", duplicateOfId: null }));
+  }, [donations, donorList]);
+  // Months with a posted gift or a deposit, newest first.
+  const receiptMonths = React.useMemo(() => [...new Set([...monthsWithReceipts(receipts), ...deposits.map((d) => d.date.slice(0, 7))])].sort().reverse(), [receipts, deposits]);
   const [donorMonth, setDonorMonth] = React.useState<string | null>(null);
   const shownDonorMonth = donorMonth ?? receiptMonths[0] ?? null;
   const donors = React.useMemo(() => (shownDonorMonth ? donorBreakdown(receipts, shownDonorMonth) : []), [receipts, shownDonorMonth]);
   const donorTotal = donors.reduce((s, d) => s + d.amount, 0);
+  const depositTotal = shownDonorMonth ? deposits.filter((d) => d.date.startsWith(shownDonorMonth)).reduce((s, d) => s + d.amount, 0) : 0;
+  const lastStatement = transactions.length ? transactions.reduce((m, t) => (t.postingDate > m ? t.postingDate : m), "") : null;
+  const statementStale = lastStatement !== null && (Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 1, Number(today.slice(8, 10))) - Date.UTC(Number(lastStatement.slice(0, 4)), Number(lastStatement.slice(5, 7)) - 1, Number(lastStatement.slice(8, 10)))) / 86_400_000 > 45;
 
   if (txnsError) return <EmptyState title="Couldn't load the bank record" description={txnsError} />;
 
@@ -84,7 +83,7 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
         flush
         className="overflow-hidden"
         title="Financial support"
-        description="Expenses and donations as they cleared the bank. Interest the bank paid is not counted as a donation."
+        description={`Expenses and donations as they cleared the bank. Interest the bank paid is not counted as a donation.${statementStale ? ` The last imported statement line is ${formatDate(lastStatement!)}: upload the later months under Financial → Bank import.` : ""}`}
         actions={
           <Select value={String(shownYear)} onValueChange={(v) => setYear(Number(v))}>
             <SelectTrigger className="w-28">
@@ -159,7 +158,7 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
           flush
           className="overflow-hidden"
           title="Breakdown of monthly donors"
-          description="Donor-attributed receipts. Gifts logged on more than one sheet are shown once."
+          description={`Cash gifts posted from accounting's Donation Tracker, by the gift's date.${shownDonorMonth ? ` Deposits on the BDO tab this month: ${peso.format(depositTotal)}.` : ""}`}
           actions={
             receiptMonths.length > 0 ? (
               <Select value={shownDonorMonth ?? ""} onValueChange={setDonorMonth}>
@@ -178,7 +177,7 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
           }
         >
           {donors.length === 0 ? (
-            <p className="px-5 py-4 text-theme-sm text-muted-foreground">No donor-attributed receipts for this month.</p>
+            <p className="px-5 py-4 text-theme-sm text-muted-foreground">No cash gifts posted for this month yet (names are confirmed on Donors › Cash gifts).</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[420px] text-theme-sm">

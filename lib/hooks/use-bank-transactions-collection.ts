@@ -22,6 +22,9 @@ export interface BankTransaction {
   category: BankCategory | null;
   needsReview: boolean;
   reviewReason?: string;
+  /** Reconciliation (0110/0111): the cash gift or the deposit this credit is. */
+  donationId: string | null;
+  depositId: string | null;
 }
 
 export interface BankStatementImport {
@@ -42,6 +45,8 @@ export interface BankStatementImport {
 }
 
 interface BankTransactionRow {
+  donation_id?: string | null;
+  deposit_id?: string | null;
   id: string;
   account_id: string;
   import_id: string;
@@ -96,6 +101,8 @@ function toBankTransaction(row: BankTransactionRow): BankTransaction {
     category: row.category,
     needsReview: row.needs_review,
     reviewReason: row.review_reason ?? undefined,
+    donationId: (row.donation_id as string | null | undefined) ?? null,
+    depositId: (row.deposit_id as string | null | undefined) ?? null,
   };
 }
 

@@ -142,7 +142,9 @@ export async function POST(request: Request) {
     await readTab(bank.name, bank.gid, async (csv) => importBankRows(admin, csv, triggeredBy));
   }
 
-  return NextResponse.json({ ok: !anyFailed, tabs: results });
+  // The unambiguous links gift <-> deposit <-> bank credit (0111); the rest wait on Finance > Approvals.
+  const { data: reconciled, error: reconcileError } = await admin.schema("ops").rpc("auto_reconcile_cash");
+  return NextResponse.json({ ok: !anyFailed, tabs: results, reconciled: reconcileError ? { error: reconcileError.message } : reconciled });
 }
 
 /** Every posted cash gift without a receipt gets its LAF-CSH number (0110). */

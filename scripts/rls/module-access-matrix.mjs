@@ -401,6 +401,17 @@ async function main() {
     await scenario(ids, "0110: finance can't write a deposit", "finance", null, q("insert into ops.cash_deposits (year, line_key, deposit_date, amount) values (2001, 'T-DEP2', '2001-01-06', 10)"), denied);
     await scenario(ids, "0110: a donors viewer can't issue receipts in bulk", "board", null, q("select ops.issue_cash_ars_for_unreceipted()"), denied);
   }
+  // 0111: reconciliation is for finance or donors editors; the automatic pass as well.
+  if ((await client.query("select to_regprocedure('ops.reconcile_bank_credit(uuid,uuid,uuid,boolean)') is not null as ok")).rows[0].ok) {
+    const credit = async () => {
+      await client.query(`insert into ops.bank_transactions (id, account_id, import_id, row_seq, posting_date, description, debit, credit, running_balance)
+        values ('00000000-0000-0000-0000-00000000d101', (select id from ops.accounts limit 1), (select id from ops.bank_statement_imports limit 1), 9101, '2001-01-11', 'IBFT test', 0, 500, 1)`);
+    };
+    await scenario(ids, "0111: finance marks a bank credit as not a donation", "finance", { setup: credit },
+      q("select ops.reconcile_bank_credit('00000000-0000-0000-0000-00000000d101', null, null, true); select category, needs_review from ops.bank_transactions where id = '00000000-0000-0000-0000-00000000d101'"), (r) => r.ok);
+    await scenario(ids, "0111: the chef can't reconcile", "chef", { setup: credit }, q("select ops.reconcile_bank_credit('00000000-0000-0000-0000-00000000d101', null, null, true)"), denied);
+    await scenario(ids, "0111: a board member can't run the automatic pass", "board", null, q("select ops.auto_reconcile_cash()"), denied);
+  }
   // 0107: Activity Center sessions read from the LAF Programs sheet are ordinary sessions to House Ops viewers.
   if ((await client.query("select to_regclass('ops.activity_sessions') is not null and exists (select 1 from information_schema.columns where table_schema = 'ops' and table_name = 'activity_sessions' and column_name = 'sheet_key') as ok")).rows[0].ok) {
     const sheetSession = async () => {
