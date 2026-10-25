@@ -268,7 +268,7 @@ async function main() {
   await scenario(ids, "with Office Admin added they edit finance", "chef", asOfficeAdmin(), q("select shared.module_level('finance') as l"), value("l", "edit"));
   await scenario(ids, "with Office Admin added they edit donors", "chef", asOfficeAdmin(), q("select shared.module_level('donors') as l"), value("l", "edit"));
   await scenario(ids, "the Office Admin does not open Settings", "chef", asOfficeAdmin(), q("select shared.module_level('settings') as l"), value("l", "none"));
-  await scenario(ids, "the Office Admin does not open Reports", "chef", asOfficeAdmin(), q("select shared.module_level('reports') as l"), value("l", "none"));
+  await scenario(ids, "the Office Admin prepares Reports (0108 roll-out)", "chef", asOfficeAdmin(), q("select shared.module_level('reports') as l"), value("l", "edit"));
   await scenario(ids, "the Office Admin does not open Transport", "chef", asOfficeAdmin(), q("select shared.module_level('transport') as l"), value("l", "none"));
   await scenario(ids, "the Office Admin cannot change the grid", "chef", asOfficeAdmin(),
     q("update shared.module_access set level = 'edit' where role = 'office_admin' and module = 'reports'"), rows(0));
