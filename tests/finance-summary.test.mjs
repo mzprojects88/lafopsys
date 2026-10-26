@@ -4,7 +4,28 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { availableYears, cashInBank, donorBreakdown, monthlySummary, monthsWithReceipts } from "../lib/utils/finance-summary.ts";
+import { availableYears, cashInBank, donorBreakdown, monthlySummary, monthsCovered, monthsWithReceipts, noteStatus } from "../lib/utils/finance-summary.ts";
+
+describe("noteStatus (0113)", () => {
+  const note = (o) => ({ month: "2026-01", drivers: "", draft: null, draftAt: null, confirmedBy: null, confirmedAt: null, ...o });
+  it("tells a confirmed month from a pending draft", () => {
+    assert.equal(noteStatus(undefined), "none");
+    assert.equal(noteStatus(note({})), "none");
+    assert.equal(noteStatus(note({ draft: "Steady.", draftAt: "2026-02-01T00:00:00Z" })), "needs_confirmation");
+    assert.equal(noteStatus(note({ drivers: "Steady.", confirmedAt: "2026-02-02T00:00:00Z" })), "confirmed");
+    // The confirmed text came from the draft: nothing pending.
+    assert.equal(noteStatus(note({ drivers: "Steady.", draft: "Steady.", draftAt: "2026-02-01T00:00:00Z", confirmedAt: "2026-02-02T00:00:00Z" })), "confirmed");
+    // A later, different draft is a new suggestion.
+    assert.equal(noteStatus(note({ drivers: "Steady.", draft: "Up 10%.", draftAt: "2026-02-03T00:00:00Z", confirmedAt: "2026-02-02T00:00:00Z" })), "new_suggestion");
+    // An older draft than the confirmation was already judged.
+    assert.equal(noteStatus(note({ drivers: "Steady.", draft: "Up 10%.", draftAt: "2026-02-01T00:00:00Z", confirmedAt: "2026-02-02T00:00:00Z" })), "confirmed");
+  });
+  it("lists the months a statement covers, capped", () => {
+    assert.deepEqual(monthsCovered("2026-07-01", "2026-07-31"), ["2026-07"]);
+    assert.deepEqual(monthsCovered("2026-11-15", "2027-01-05"), ["2026-11", "2026-12", "2027-01"]);
+    assert.deepEqual(monthsCovered("2026-01-01", "2026-12-31"), ["2026-01", "2026-02", "2026-03"]);
+  });
+});
 
 let seq = 0;
 const txn = (postingDate, debit, credit, runningBalance, category = null) => ({ postingDate, rowSeq: ++seq, debit, credit, runningBalance, category });

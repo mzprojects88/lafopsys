@@ -420,6 +420,14 @@ async function main() {
     await scenario(ids, "0112: the driver can't type prior years", "driver", null, q("insert into ops.program_history (year, line, value) values (2024, 'meals', 10)"), denied);
     await scenario(ids, "0112: nobody calls the website figures from a session", "finance", null, q("select ops.website_dashboard()"), denied);
   }
+  // 0113: the Executive summary's drivers are confirmed by the CEO, finance or the Super Admin; the month's facts are theirs to read.
+  if ((await client.query("select to_regprocedure('ops.confirm_month_drivers(text,text)') is not null as ok")).rows[0].ok) {
+    await scenario(ids, "0113: the CEO confirms a month's drivers", "ceo", null, q("select ops.confirm_month_drivers('2001-01', 'Quiet month.')"), rows(1));
+    await scenario(ids, "0113: finance confirms a month's drivers", "finance", null, q("select ops.confirm_month_drivers('2001-02', 'Quiet month.')"), rows(1));
+    await scenario(ids, "0113: the chef can't confirm", "chef", null, q("select ops.confirm_month_drivers('2001-03', 'Quiet month.')"), denied);
+    await scenario(ids, "0113: the CEO reads the month's facts", "ceo", null, q("select (ops.month_driver_facts('2026-01') ? 'totals') as ok"), value("ok", true));
+    await scenario(ids, "0113: the driver can't read the month's facts", "driver", null, q("select ops.month_driver_facts('2026-01')"), denied);
+  }
   // 0107: Activity Center sessions read from the LAF Programs sheet are ordinary sessions to House Ops viewers.
   if ((await client.query("select to_regclass('ops.activity_sessions') is not null and exists (select 1 from information_schema.columns where table_schema = 'ops' and table_name = 'activity_sessions' and column_name = 'sheet_key') as ok")).rows[0].ok) {
     const sheetSession = async () => {

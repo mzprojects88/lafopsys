@@ -484,3 +484,35 @@ export async function judgeDonorPairs(pairs: DonorPair[]): Promise<DonorPairAnsw
     clearTimeout(timer);
   }
 }
+
+const DRIVERS_TIMEOUT_MS = 90_000;
+const driversSchema = z.object({ drivers: z.string().max(800) });
+
+/**
+ * The Executive summary's "Key monthly drivers" paragraph (0113), from the month's facts as
+ * ops.month_driver_facts gives them: bank totals and the largest lines in the bank's own words,
+ * gifts by donor type, payroll and vehicle totals, the house's activity. No person's name goes
+ * out, and the model is told never to write one.
+ */
+export async function draftMonthDrivers(facts: Record<string, unknown>, examples: readonly string[]): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DRIVERS_TIMEOUT_MS);
+  try {
+    const { object } = await generateObject({
+      model: model(),
+      schema: driversSchema,
+      system:
+        "You write the 'Key monthly drivers' note on the monthly financial summary of a Philippine children's charity (a halfway house for child cancer patients and their carers). The Executive Director reads it against the bank statement. " +
+        "Write 2 or 3 plain sentences, under 70 words, no headings or bullets. Cover: how donations went (versus the previous month when given; the largest gift and, only when the facts say so, the kind of donor -- individual, company, foundation, government -- never a name); " +
+        "what drove expenses (the largest debits as the bank describes them; payroll and vehicle costs when given); and the result (net positive, or expenses exceeding donations, with the percent of donations spent). " +
+        "Every amount in pesos, rounded, with the sign: ₱146K, ₱1.19M; never centavos, never more than two amounts in one sentence; dates as 'Feb 18'. Use only the facts given: never invent a cause, a payee or an event the facts do not show. A fact that is not in the JSON is simply not mentioned -- never write 'not specified', 'nil' or 'unknown'. " +
+        "If covers_full_month is false, say the statement runs only through that date. Leave the house's activity out unless a cost line is plainly about it. No filler sentences. Never write a person's name, even if a bank line contains one.",
+      prompt: `Facts (JSON):\n${JSON.stringify(facts)}\n\n${examples.length ? `Voice to match (earlier months, written by staff):\n${examples.map((e) => `- ${e}`).join("\n")}\n\n` : ""}Write the note.`,
+      abortSignal: controller.signal,
+      providerOptions: { openai: { reasoningEffort: "medium" } },
+    });
+    return object.drivers.trim();
+  } finally {
+    clearTimeout(timer);
+  }
+}

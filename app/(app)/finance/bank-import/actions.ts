@@ -1,6 +1,9 @@
 "use server";
 
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { draftAfterImport } from "@/lib/finance/month-drivers";
 import { categorize, checkContinuity, naturalKey, summarizeBatch, type BankRow } from "@/lib/utils/bank-statement";
 import { callerHolds } from "@/lib/rbac/server-powers";
 
@@ -123,5 +126,7 @@ export async function importBankRows(input: ImportBankRowsInput): Promise<Import
     }
   }
 
+  // The months this statement touched get a fresh draft of their Key monthly drivers (0113), after the reply.
+  if (fresh.length) after(() => draftAfterImport(createAdminClient(), summary.coversFrom, summary.coversTo));
   return { ok: true, importId: batch.id, inserted: fresh.length, skipped: rows.length - fresh.length, warnings: warnings.length, coversFrom: summary.coversFrom, coversTo: summary.coversTo };
 }

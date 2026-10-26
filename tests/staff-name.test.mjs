@@ -67,5 +67,8 @@ describe("pages and powers (0093)", () => {
     assert.equal(holdsPower("ceo", "caf_billing"), false);
     assert.equal(holdsPower("ceo", "caf_billing_view"), true);
     assert.equal(holdsPower("finance", "caf_billing_view"), false);
+    assert.equal(holdsPower("ceo", "confirm_summary"), true);
+    assert.equal(holdsPower("finance", "confirm_summary"), true);
+    assert.equal(holdsPower("driver", "confirm_summary"), false);
   });
 });

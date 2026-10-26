@@ -30,6 +30,7 @@ export const POWERS: { key: Power; title: string; note: string }[] = [
   { key: "clinical_detail", title: "Sees clinical detail", note: "Diagnosis and treatment notes on patient records." },
   { key: "caf_billing", title: "Prepares NCH billing", note: "The monthly Cancer Assistance Fund bill: nights, final, sent, paid." },
   { key: "caf_billing_view", title: "Sees NCH billing", note: "Reads the monthly bills and downloads them." },
+  { key: "confirm_summary", title: "Confirms the executive summary", note: "Approves the app's draft of each month's Key monthly drivers on the Executive page (the Super Admin always can)." },
 ];
 
 const p = (module: ModuleKey, key: string, path: string, title: string, power?: Power): PageDef => ({ key: `${module}.${key}`, module, path, title, power });

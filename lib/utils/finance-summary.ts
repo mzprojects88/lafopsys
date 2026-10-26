@@ -37,6 +37,49 @@ export interface MonthRow {
   drivers: string;
 }
 
+/** One month's note (0033, 0113): the confirmed text and the app's latest suggestion. */
+export interface MonthNote {
+  month: string;
+  drivers: string;
+  draft: string | null;
+  draftAt: string | null;
+  confirmedBy: string | null;
+  confirmedAt: string | null;
+}
+
+export type NoteStatus = "confirmed" | "needs_confirmation" | "new_suggestion" | "none";
+
+/**
+ * What the row shows: confirmed text; a draft nobody has approved yet; a draft newer than
+ * the confirmed text and different from it (a new suggestion); or nothing.
+ */
+export function noteStatus(note: MonthNote | undefined): NoteStatus {
+  if (!note) return "none";
+  const pending = !!note.draft && note.draft.trim() !== note.drivers.trim();
+  if (!note.drivers) return pending ? "needs_confirmation" : "none";
+  if (pending && (!note.confirmedAt || (note.draftAt ?? "") > note.confirmedAt)) return "new_suggestion";
+  return "confirmed";
+}
+
+/** Months `yyyy-MM` from one date to another, oldest first, at most `cap` of them. */
+export function monthsCovered(from: string, to: string, cap = 3): string[] {
+  const out: string[] = [];
+  let y = Number(from.slice(0, 4));
+  let m = Number(from.slice(5, 7));
+  const end = to.slice(0, 7);
+  while (out.length < cap) {
+    const key = `${y}-${String(m).padStart(2, "0")}`;
+    out.push(key);
+    if (key >= end) break;
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  return out;
+}
+
 export interface YearSummary {
   year: number;
   rows: MonthRow[];

@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Landmark, Pencil } from "lucide-react";
+import { Landmark, Pencil, Sparkles } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { LoadingState } from "@/components/patterns/loading-state";
@@ -13,13 +14,15 @@ import { useBankTransactionsData } from "@/lib/hooks/use-bank-transactions-colle
 import { useCashDepositsData } from "@/lib/hooks/use-cash-deposits-collection";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useFinanceMonthNotes } from "@/lib/hooks/use-finance-month-notes-collection";
+import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { useNow } from "@/lib/hooks/use-now";
 import { useRole } from "@/lib/rbac/use-role";
 import { dayKey } from "@/lib/utils/dtr";
 import { formatDate } from "@/lib/utils/date";
-import { availableYears, cashInBank, donorBreakdown, monthlySummary, monthsWithReceipts, type MonthRow } from "@/lib/utils/finance-summary";
+import { availableYears, cashInBank, donorBreakdown, monthlySummary, monthsWithReceipts, noteStatus, type MonthNote, type MonthRow, type NoteStatus } from "@/lib/utils/finance-summary";
 import { cn } from "@/lib/utils";
-import { doesFinance } from "@/lib/rbac/roles";
+import { holdsPower } from "@/lib/rbac/roles";
+import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -43,9 +46,18 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
   const { transactions, loading: txnsLoading, error: txnsError } = useBankTransactionsData();
   const { donors: donorList, donations } = useDonorsData();
   const { deposits } = useCashDepositsData();
-  const { notes, upsertNote } = useFinanceMonthNotes();
+  const { notes, drivers, confirm, suggest } = useFinanceMonthNotes();
+  const { staff: roster } = useStaffRoster();
   const { roles } = useRole();
-  const canWriteNotes = doesFinance(roles);
+  // The CEO, finance, the Office Admin and the Super Admin approve the app's draft (0113).
+  const canConfirm = holdsPower(roles, "confirm_summary");
+  const nameOf = React.useCallback(
+    (id: string) => {
+      const s = roster.find((r) => r.id === id);
+      return s ? `${s.firstName} ${s.lastName}`.trim() : null;
+    },
+    [roster]
+  );
   const today = dayKey(useNow());
   const currentYear = Number(today.slice(0, 4));
 
@@ -53,7 +65,7 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
   const [year, setYear] = React.useState<number | null>(null);
   const shownYear = year ?? (years.includes(currentYear) && transactions.some((t) => t.postingDate.startsWith(String(currentYear))) ? currentYear : years[0]);
 
-  const summary = React.useMemo(() => monthlySummary(transactions, shownYear, notes), [transactions, shownYear, notes]);
+  const summary = React.useMemo(() => monthlySummary(transactions, shownYear, drivers), [transactions, shownYear, drivers]);
   const bank = React.useMemo(() => cashInBank(transactions), [transactions]);
 
   // Posted cash gifts (Donors > Cash gifts, 0084/0110): one row per gift, named through the donor list.
@@ -125,7 +137,7 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
               </thead>
               <tbody>
                 {visibleRows.map((row) => (
-                  <SummaryRow key={row.month} row={row} canWriteNotes={canWriteNotes} onSave={(text) => upsertNote(row.month, text)} />
+                  <SummaryRow key={row.month} row={row} note={notes[row.month]} canConfirm={canConfirm} nameOf={nameOf} onConfirm={(text) => confirm(row.month, text)} onSuggest={() => suggest(row.month)} />
                 ))}
                 <tr className="bg-muted/40 font-semibold">
                   <td className="px-5 py-3">Total</td>
@@ -220,71 +232,122 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function SummaryRow({ row, canWriteNotes, onSave }: { row: MonthRow; canWriteNotes: boolean; onSave: (text: string) => Promise<{ ok: true } | { ok: false; error: string }> }) {
-  const [editing, setEditing] = React.useState(false);
-  const [draft, setDraft] = React.useState(row.drivers);
-  const [saving, setSaving] = React.useState(false);
+const STATUS_LABEL: Record<Exclude<NoteStatus, "none">, { label: string; tone: "positive" | "warning" }> = {
+  confirmed: { label: "Confirmed", tone: "positive" },
+  needs_confirmation: { label: "Needs confirmation", tone: "warning" },
+  new_suggestion: { label: "New suggestion", tone: "warning" },
+};
 
-  async function save() {
-    if (draft.trim() === row.drivers.trim()) {
-      setEditing(false);
+type Result = { ok: true } | { ok: false; error: string };
+
+/**
+ * One month's row. The figures are the bank's; the drivers column is the app's draft until a
+ * confirmer approves it (0113): confirmers see the draft boxed with Confirm / Edit / Regenerate,
+ * everyone else sees the confirmed text, or that one is awaited.
+ */
+function SummaryRow({ row, note, canConfirm, nameOf, onConfirm, onSuggest }: { row: MonthRow; note: MonthNote | undefined; canConfirm: boolean; nameOf: (id: string) => string | null; onConfirm: (text: string) => Promise<Result>; onSuggest: () => Promise<Result> }) {
+  const month = MONTH_NAMES[row.monthNumber - 1];
+  const status = noteStatus(note);
+  const pending = note?.draft && status !== "confirmed" && status !== "none" ? note.draft : null;
+  const [editing, setEditing] = React.useState(false);
+  const [text, setText] = React.useState("");
+  const [busy, setBusy] = React.useState<"confirm" | "suggest" | null>(null);
+
+  function startEdit(initial: string) {
+    setText(initial);
+    setEditing(true);
+  }
+  async function confirmText(value: string) {
+    if (!value.trim()) {
+      toast.error("Write the summary first.");
       return;
     }
-    setSaving(true);
-    const result = await onSave(draft);
-    setSaving(false);
+    setBusy("confirm");
+    const result = await onConfirm(value);
+    setBusy(null);
     if (!result.ok) {
       toast.error(result.error);
       return;
     }
     setEditing(false);
+    toast.success(`${month} confirmed.`);
   }
+  async function suggestDraft() {
+    setBusy("suggest");
+    const result = await onSuggest();
+    setBusy(null);
+    if (!result.ok) toast.error(result.error);
+  }
+
+  const confirmedName = note?.confirmedBy ? nameOf(note.confirmedBy) : null;
+  const confirmedMeta = note?.confirmedAt && note.drivers ? `Confirmed${confirmedName ? ` by ${confirmedName}` : ""} · ${formatDate(note.confirmedAt.slice(0, 10), "MMM d")}` : null;
 
   return (
     <tr className={cn("border-b border-border align-top hover:bg-muted/60", !row.hasData && "text-muted-foreground")}>
-      <td className="px-5 py-3 whitespace-nowrap font-medium">{MONTH_NAMES[row.monthNumber - 1]}</td>
+      <td className="px-5 py-3 whitespace-nowrap font-medium">{month}</td>
       <td className="px-5 py-3 text-right tabular-nums">{money(row.expenses)}</td>
       <td className="px-5 py-3 text-right tabular-nums">{money(row.donation)}</td>
       <td className={cn("px-5 py-3 text-right tabular-nums", row.net !== null && row.net < 0 && "text-destructive")}>{money(row.net)}</td>
       <td className={cn("px-5 py-3 text-right tabular-nums", row.pctSpent !== null && row.pctSpent > 1 && "text-destructive")}>{pct(row.pctSpent)}</td>
       <td className="px-5 py-3 text-theme-xs">
-        {editing ? (
-          <div className="flex flex-col gap-1.5">
-            <Textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              rows={4}
-              autoFocus
-              disabled={saving}
-              placeholder="What drove this month's numbers — the big gifts, the one-off costs, what was advanced and settled later."
-            />
-            <div className="flex gap-1.5">
-              <Button size="sm" onClick={save} disabled={saving}>
-                {saving ? "Saving…" : "Save"}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={saving}
-                onClick={() => {
-                  setDraft(row.drivers);
-                  setEditing(false);
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="group flex items-start gap-1.5">
-            <span className={cn("max-w-prose", !row.drivers && "italic text-muted-foreground")}>{row.drivers || (row.hasData ? "No summary written yet." : "")}</span>
-            {canWriteNotes && row.hasData ? (
-              <Button variant="ghost" size="icon-sm" className="shrink-0 opacity-60 group-hover:opacity-100" aria-label={`Edit ${MONTH_NAMES[row.monthNumber - 1]} summary`} onClick={() => setEditing(true)}>
-                <Pencil className="size-3.5" />
-              </Button>
-            ) : null}
-          </div>
-        )}
+        <div className="flex flex-col gap-1.5">
+          {row.hasData && status !== "none" ? (
+            <Badge className={cn("w-fit", STATUS_TONE_CLASSES[STATUS_LABEL[status].tone])}>{STATUS_LABEL[status].label}</Badge>
+          ) : null}
+          {editing ? (
+            <>
+              <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} autoFocus disabled={busy !== null} placeholder="What drove this month's numbers — the big gifts, the one-off costs, what was advanced and settled later." />
+              <div className="flex gap-1.5">
+                <Button size="sm" onClick={() => confirmText(text)} disabled={busy !== null}>
+                  {busy === "confirm" ? "Confirming…" : "Save and confirm"}
+                </Button>
+                <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => setEditing(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              {note?.drivers ? (
+                <div className="group flex items-start gap-1.5">
+                  <span className="max-w-prose">{note.drivers}</span>
+                  {canConfirm ? (
+                    <Button variant="ghost" size="icon-sm" className="shrink-0 opacity-60 group-hover:opacity-100" aria-label={`Edit ${month} summary`} onClick={() => startEdit(note.drivers)}>
+                      <Pencil className="size-3.5" />
+                    </Button>
+                  ) : null}
+                </div>
+              ) : row.hasData && !(canConfirm && pending) ? (
+                <span className="italic text-muted-foreground">{pending ? "Awaiting confirmation." : "No summary yet."}</span>
+              ) : null}
+              {confirmedMeta ? <span className="text-muted-foreground">{confirmedMeta}</span> : null}
+              {canConfirm && pending ? (
+                <div className="rounded-lg border border-warning/40 bg-warning/5 p-2.5">
+                  <p className="mb-1 font-medium">{status === "new_suggestion" ? "New suggestion from this month's records" : "Suggested from this month's records"}</p>
+                  <p className="max-w-prose">{pending}</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <Button size="sm" disabled={busy !== null} onClick={() => confirmText(pending)}>
+                      {busy === "confirm" ? "Confirming…" : "Confirm"}
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => startEdit(pending)}>
+                      Edit
+                    </Button>
+                    <Button size="sm" variant="ghost" disabled={busy !== null} onClick={suggestDraft}>
+                      {busy === "suggest" ? "Drafting…" : "Regenerate"}
+                    </Button>
+                  </div>
+                </div>
+              ) : canConfirm && row.hasData ? (
+                <div>
+                  <Button size="sm" variant="outline" className="h-7 gap-1.5" disabled={busy !== null} onClick={suggestDraft}>
+                    <Sparkles className="size-3.5" />
+                    {busy === "suggest" ? "Drafting…" : note?.drivers ? "Regenerate" : "Suggest"}
+                  </Button>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
       </td>
     </tr>
   );

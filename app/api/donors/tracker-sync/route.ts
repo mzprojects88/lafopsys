@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { draftAfterImport } from "@/lib/finance/month-drivers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { categorize, checkContinuity, naturalKey, parseBankCsv, parseCsv, summarizeBatch } from "@/lib/utils/bank-statement";
@@ -218,5 +219,7 @@ async function importBankRows(admin: SupabaseClient, csv: string, importedBy: st
     const { error } = await admin.schema("ops").from("bank_transactions").insert(payload.slice(i, i + CHUNK));
     if (error) throw new Error(`Imported ${i} of ${payload.length} new rows, then: ${error.message}`);
   }
+  // The months these lines touched get a fresh draft of their Key monthly drivers (0113), after the reply.
+  after(() => draftAfterImport(admin, summary.coversFrom, summary.coversTo));
   return { seen: parsed.rows.length, written: fresh.length, errors };
 }
