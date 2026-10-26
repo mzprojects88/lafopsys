@@ -82,6 +82,7 @@ interface StayRow {
   arrival_ride_id: string | null;
   arrival_trip_id: string | null;
   visit_id: string | null;
+  people_with_child?: number | null;
 }
 
 interface AppointmentRow {
@@ -237,6 +238,7 @@ function toStay(row: StayRow): Stay {
     arrivalRideId: row.arrival_ride_id ?? undefined,
     arrivalTripId: row.arrival_trip_id ?? undefined,
     visitId: row.visit_id ?? undefined,
+    peopleWithChild: Number(row.people_with_child ?? 1),
   };
 }
 
@@ -259,6 +261,7 @@ function fromStay(s: Stay) {
 function stayPatchToRow(patch: Partial<Stay>) {
   const row: Record<string, unknown> = {};
   if ("checkOutAt" in patch) row.check_out_at = patch.checkOutAt ?? null;
+  if ("peopleWithChild" in patch) row.people_with_child = patch.peopleWithChild;
   if ("checkOutReason" in patch) row.check_out_reason = patch.checkOutReason ?? null;
   if ("destination" in patch) row.destination = patch.destination ?? null;
   if ("followUpDate" in patch) row.follow_up_date = patch.followUpDate ?? null;

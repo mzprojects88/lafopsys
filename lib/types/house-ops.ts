@@ -120,6 +120,8 @@ export interface ActivitySession {
   hours: number;
   /** "sheet" = read from the LAF Programs sheet (0107); "app" = entered here. */
   source?: "app" | "sheet";
+  /** NCH = the LAF Center at the hospital; LAF = activities at LAF House (0112). */
+  site?: "NCH" | "LAF";
 }
 
 export interface CensusSnapshot {

@@ -30,6 +30,7 @@ import { useRole } from "@/context/role-provider";
 import { DischargeDialog } from "@/components/modules/patients/discharge-dialog";
 import { BedPlanDialog, type PlanArrival } from "@/components/modules/patients/bed-plan-dialog";
 import { MealTicks } from "@/components/modules/patients/meal-ticks";
+import { PeopleWithChild } from "@/components/modules/patients/people-with-child";
 import { BedMovesToday } from "@/components/modules/patients/bed-moves-today";
 import { UrgentTripDialog } from "@/components/modules/patients/urgent-trip-dialog";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
@@ -76,7 +77,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   // While the LAF Programs sheet is the record of meals (0103) its figures show here, read only.
   const mealsFromSheet = useAppSettings().programsFromAppSince === null;
   const canTickMeals = !mealsFromSheet && (access.canEdit("patients") || access.canEdit("house_ops"));
-  const { patients, stays, carers, loading: patientsLoading } = usePatientsData();
+  const { patients, stays, carers, loading: patientsLoading, updateStay } = usePatientsData();
   const { units, bedPositions, loading: layoutLoading } = useHouseLayout();
   const { nights, confirmNight, readmitForTonight } = useBedNights();
   // The admission resets every morning (0089): the reset log and the finalize time.
@@ -387,6 +388,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                     {tasks.total > 0 && tasks.done < tasks.total ? ` · orientation ${tasks.done}/${tasks.total}` : ""}
                   </span>
                 </div>
+                <PeopleWithChild value={s.peopleWithChild ?? 1} name={nameOf(s.patientId)} canEdit={canEdit} onChange={(next) => updateStay(s.id, { peopleWithChild: next })} />
                 <MealTicks patientId={s.patientId} name={nameOf(s.patientId)} canTick={canTickMeals} fromSheet={mealsFromSheet} />
                 {canEdit && (
                   <Button size="sm" variant="outline" className="text-destructive" aria-label={`Urgent call: send ${nameOf(s.patientId)} to the hospital`} onClick={() => setUrgent({ stayId: s.id, name: nameOf(s.patientId) })}>

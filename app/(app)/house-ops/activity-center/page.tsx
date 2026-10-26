@@ -19,6 +19,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useActivitySessionsData } from "@/lib/hooks/use-activity-sessions-collection";
 import type { ActivitySession } from "@/lib/types/house-ops";
 import { formatDate, todayIso } from "@/lib/utils/date";
@@ -36,6 +37,7 @@ const columns: ColumnDef<ActivitySession>[] = [
       </span>
     ),
   },
+  { accessorKey: "site", header: "Site", cell: ({ row }) => (row.original.site === "LAF" ? "LAF House" : "NCH") },
   { accessorKey: "participants", header: "Participants" },
   { accessorKey: "volunteerCount", header: "Volunteers" },
   { accessorKey: "facilitator", header: "Facilitator" },
@@ -51,6 +53,7 @@ export default function ActivityCenterPage() {
   const [volunteerCount, setVolunteerCount] = React.useState("");
   const [facilitator, setFacilitator] = React.useState("");
   const [hours, setHours] = React.useState("");
+  const [site, setSite] = React.useState<"NCH" | "LAF">("NCH");
   const [submitting, setSubmitting] = React.useState(false);
 
   function reset() {
@@ -71,6 +74,7 @@ export default function ActivityCenterPage() {
       volunteerCount: Number(volunteerCount) || 0,
       facilitator: facilitator.trim(),
       hours: Number(hours) || 0,
+      site,
     });
     setSubmitting(false);
     if (!result.ok) {
@@ -85,8 +89,8 @@ export default function ActivityCenterPage() {
   return (
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader
-        title="Activity Center @ NCH"
-        description="Session log: participants, hours, volunteers, facilitator."
+        title="Activity Center"
+        description="Session log for the LAF Center @ NCH and activities at LAF House: participants, hours, volunteers, facilitator."
         action={
           editable && <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -101,6 +105,18 @@ export default function ActivityCenterPage() {
                 <Field>
                   <FieldLabel htmlFor="title">Session Title</FieldLabel>
                   <Input id="title" placeholder="e.g. Art & Craft" value={title} onChange={(e) => setTitle(e.target.value)} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="site">Where</FieldLabel>
+                  <Select value={site} onValueChange={(v) => setSite(v as "NCH" | "LAF")}>
+                    <SelectTrigger id="site" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NCH">LAF Center @ NCH</SelectItem>
+                      <SelectItem value="LAF">Activities @ LAF House</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </Field>
                 <div className="grid grid-cols-2 gap-3">
                   <Field>

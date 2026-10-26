@@ -169,6 +169,8 @@ export interface Stay {
   arrivalTripId?: string;
   /** The nights of one visit share the first night's stay id (0089). */
   visitId?: string;
+  /** Carers and companions staying with the child this night (0112): a night counts 1 + this many people. */
+  peopleWithChild?: number;
 }
 
 export interface Appointment {

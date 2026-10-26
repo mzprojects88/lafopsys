@@ -412,6 +412,14 @@ async function main() {
     await scenario(ids, "0111: the chef can't reconcile", "chef", { setup: credit }, q("select ops.reconcile_bank_credit('00000000-0000-0000-0000-00000000d101', null, null, true)"), denied);
     await scenario(ids, "0111: a board member can't run the automatic pass", "board", null, q("select ops.auto_reconcile_cash()"), denied);
   }
+  // 0112: the Programs report is for Reports viewers; prior-year totals are typed by finance work or admin.
+  if ((await client.query("select to_regprocedure('ops.program_impact(integer)') is not null as ok")).rows[0].ok) {
+    await scenario(ids, "0112: a board member (Reports view) reads the Programs report", "board", null, q("select count(*)::int as n from ops.program_impact(2026)"), value("n", 180));
+    await scenario(ids, "0112: the chef (no Reports) can't read the Programs report", "chef", null, q("select * from ops.program_impact(2026)"), denied);
+    await scenario(ids, "0112: finance (finance work) types a prior-year total", "finance", null, q("insert into ops.program_history (year, line, value) values (2024, 'housing', 10) returning value"), rows(1));
+    await scenario(ids, "0112: the driver can't type prior years", "driver", null, q("insert into ops.program_history (year, line, value) values (2024, 'meals', 10)"), denied);
+    await scenario(ids, "0112: nobody calls the website figures from a session", "finance", null, q("select ops.website_dashboard()"), denied);
+  }
   // 0107: Activity Center sessions read from the LAF Programs sheet are ordinary sessions to House Ops viewers.
   if ((await client.query("select to_regclass('ops.activity_sessions') is not null and exists (select 1 from information_schema.columns where table_schema = 'ops' and table_name = 'activity_sessions' and column_name = 'sheet_key') as ok")).rows[0].ok) {
     const sheetSession = async () => {

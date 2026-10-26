@@ -15,6 +15,7 @@ interface ActivitySessionRow {
   facilitator: string | null;
   hours: number;
   source: "app" | "sheet";
+  site?: "NCH" | "LAF";
 }
 
 function toActivitySession(row: ActivitySessionRow): ActivitySession {
@@ -27,6 +28,7 @@ function toActivitySession(row: ActivitySessionRow): ActivitySession {
     facilitator: row.facilitator ?? "",
     hours: row.hours,
     source: row.source,
+    site: row.site,
   };
 }
 
@@ -55,6 +57,7 @@ export function useActivitySessionsData() {
       volunteer_count: session.volunteerCount,
       facilitator: session.facilitator || null,
       hours: session.hours,
+      site: session.site ?? "NCH",
     });
     if (error) return { ok: false, error: error.message };
     await activitySessionsStore.refetch();

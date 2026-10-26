@@ -40,6 +40,7 @@ const REPORTS: ReportLink[] = [
   { href: "/hr/timesheets", label: "Timesheets", what: "Per pay period: days, absences, late, undertime, overtime and night minutes, approved by HR.", out: "Screen · CSV", icon: FileText, module: "hr" },
   { href: "/finance/registers", label: "AR & Donee Certificate Registers", what: "Every receipt and certificate number, with gaps flagged.", out: "Screen", icon: Receipt, module: "finance" },
   { href: "/reports/caf-billing", label: "NCH Billing (Cancer Assistance Fund)", what: "The month's bill to NCH from the nights at LAF: Billing Statement, Statements of Account and Endorsement Letters.", out: "Screen · PDF", icon: Receipt, module: "reports", power: "caf_billing_view" },
+  { href: "/reports/programs", label: "Programs report", what: "Housing, transportation, meals, Care Cart, LAF Center and CAF by month and year to date, from the app's records, with the sheet's figure beside each until a source is switched off.", out: "Screen · CSV", icon: FileSpreadsheet, module: "reports" },
   { href: "/compliance", label: "DSWD Annex E & G", what: "The yearly DSWD report, printed from the records.", out: "Print / PDF", icon: Printer, module: "compliance" },
 ];
 
