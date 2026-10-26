@@ -24,6 +24,12 @@ export async function GET(request: Request) {
   const { data } = await supabase.schema("ops").from("time_punch_photos").select("object_key").eq("punch_id", punchId).maybeSingle();
   if (!data) return NextResponse.json({ ok: false, error: "No photo you can see for this punch." }, { status: 404 });
 
-  const url = await presignGet(data.object_key as string, `punch-${punchId}.jpg`, "image/jpeg", true);
-  return NextResponse.json({ ok: true, url }, { headers: { "cache-control": "no-store" } });
+  try {
+    const url = await presignGet(data.object_key as string, `punch-${punchId}.jpg`, "image/jpeg", true);
+    return NextResponse.json({ ok: true, url }, { headers: { "cache-control": "no-store" } });
+  } catch (err) {
+    // The B2 variables are missing on this hosting (arkos, 26 Oct): say so instead of a bare 500.
+    const missing = err instanceof Error && /^Missing B2_/.test(err.message);
+    return NextResponse.json({ ok: false, error: missing ? "Photo storage is not set up on this site: the Backblaze (B2_*) variables are missing on the hosting." : "The photo link could not be signed." }, { status: 503 });
+  }
 }
