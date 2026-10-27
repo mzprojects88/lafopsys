@@ -474,6 +474,20 @@ async function main() {
       q("select participants, source from ops.activity_sessions where sheet_key = '2001-01-03|NCH'"), (r) => r.ok && r.data?.[0]?.participants === 5 && r.data[0].source === "sheet");
   }
 
+  // 0117: a month closes only when its records are complete; a closed month is locked; only the Super Admin reopens.
+  if ((await client.query("select to_regprocedure('ops.close_month(text)') is not null as ok")).rows[0].ok) {
+    const power = () => client.query("insert into shared.role_powers (role, power) values ('finance', 'confirm_summary') on conflict do nothing");
+    await scenario(ids, "0117: a month with no statement can't be closed", "finance", { setup: power }, q("select ops.close_month('2001-03')"), (r) => !r.ok && r.code === "23514");
+    await scenario(ids, "0117: the driver can't close a month", "driver", null, q("select ops.close_month('2001-03')"), denied);
+    await scenario(ids, "0117: a closed month's summary note is locked", "finance",
+      { setup: async () => { await power(); await client.query("insert into ops.month_closes (month, closed, closed_at) values ('2001-04', true, now())"); } },
+      q("select ops.confirm_month_drivers('2001-04', 'Late change.')"), denied);
+    await scenario(ids, "0117: finance can't reopen a month", "finance",
+      { setup: () => client.query("insert into ops.month_closes (month, closed, closed_at) values ('2001-05', true, now())") },
+      q("select ops.reopen_month('2001-05', 'Bank fixed a line')"), denied);
+    await scenario(ids, "0117: the chef can't read the close checklist", "chef", null, q("select ops.month_close_checklist('2026-07')"), denied);
+  }
+
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
 
