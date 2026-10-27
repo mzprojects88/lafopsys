@@ -6,6 +6,9 @@ import type { BankCategory } from "@/lib/utils/bank-statement";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
 
+/** The purpose that settles costs advanced in an earlier month (0114); the only one that takes a month. */
+export const REIMBURSEMENT = "Reimbursement of advances";
+
 export interface BankTransaction {
   id: string;
   accountId: string;
@@ -25,6 +28,11 @@ export interface BankTransaction {
   /** Reconciliation (0110/0111): the cash gift or the deposit this credit is. */
   donationId: string | null;
   depositId: string | null;
+  /** What a debit paid for (0114): suggested by the app until confirmed by finance. */
+  purpose: string | null;
+  purposeConfirmed: boolean;
+  /** For a reimbursement of advances: the month the costs were advanced. */
+  settlesMonth: string | null;
 }
 
 export interface BankStatementImport {
@@ -62,6 +70,9 @@ interface BankTransactionRow {
   category: BankCategory | null;
   needs_review: boolean;
   review_reason: string | null;
+  purpose?: string | null;
+  purpose_confirmed?: boolean;
+  settles_month?: string | null;
 }
 
 interface BankStatementImportRow {
@@ -103,6 +114,9 @@ function toBankTransaction(row: BankTransactionRow): BankTransaction {
     reviewReason: row.review_reason ?? undefined,
     donationId: (row.donation_id as string | null | undefined) ?? null,
     depositId: (row.deposit_id as string | null | undefined) ?? null,
+    purpose: row.purpose ?? null,
+    purposeConfirmed: row.purpose_confirmed ?? false,
+    settlesMonth: row.settles_month ?? null,
   };
 }
 
@@ -174,7 +188,19 @@ export function useBankTransactionsData() {
     return { ok: true };
   }
 
-  return { transactions, loading, error, setCategory, refetch: bankTransactionsStore.refetch };
+  /** Finance confirms (or changes) what debits paid for (0114); several at once for "Confirm all". */
+  async function setPurpose(ids: string[], purpose: string, settlesMonth: string | null): Promise<MutationResult> {
+    const { error } = await createClient()
+      .schema("ops")
+      .from("bank_transactions")
+      .update({ purpose, purpose_confirmed: true, settles_month: purpose === REIMBURSEMENT ? settlesMonth : null })
+      .in("id", ids);
+    if (error) return { ok: false, error: error.message };
+    await bankTransactionsStore.refetch();
+    return { ok: true };
+  }
+
+  return { transactions, loading, error, setCategory, setPurpose, refetch: bankTransactionsStore.refetch };
 }
 
 export function useBankStatementImportsData() {

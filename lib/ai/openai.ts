@@ -485,16 +485,23 @@ export async function judgeDonorPairs(pairs: DonorPair[]): Promise<DonorPairAnsw
   }
 }
 
-const DRIVERS_TIMEOUT_MS = 90_000;
+const DRIVERS_TIMEOUT_MS = 120_000;
 const driversSchema = z.object({ drivers: z.string().max(800) });
 
+/** An earlier month's facts and the note a person confirmed for it: the model learns the mapping. */
+export interface DriversExample {
+  facts: Record<string, unknown>;
+  note: string;
+}
+
 /**
- * The Executive summary's "Key monthly drivers" paragraph (0113), from the month's facts as
- * ops.month_driver_facts gives them: bank totals and the largest lines in the bank's own words,
- * gifts by donor type, payroll and vehicle totals, the house's activity. No person's name goes
- * out, and the model is told never to write one.
+ * The Executive summary's "Key monthly drivers" (0113, 0114): the month's analysis in the shape
+ * of the CEO's own notes -- one sentence on donations and who drove them, one on what the money
+ * was spent on and why. Facts come from ops.month_driver_facts: donors are already named or not
+ * by the foundation's rule; children's and staff names are never in them, and the model is told
+ * not to take a person's name from a bank line.
  */
-export async function draftMonthDrivers(facts: Record<string, unknown>, examples: readonly string[]): Promise<string> {
+export async function draftMonthDrivers(facts: Record<string, unknown>, examples: readonly DriversExample[]): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DRIVERS_TIMEOUT_MS);
   try {
@@ -503,15 +510,61 @@ export async function draftMonthDrivers(facts: Record<string, unknown>, examples
       schema: driversSchema,
       system:
         "You write the 'Key monthly drivers' note on the monthly financial summary of a Philippine children's charity (a halfway house for child cancer patients and their carers). The Executive Director reads it against the bank statement. " +
-        "Write 2 or 3 plain sentences, under 70 words, no headings or bullets. Cover: how donations went (versus the previous month when given; the largest gift and, only when the facts say so, the kind of donor -- individual, company, foundation, government -- never a name); " +
-        "what drove expenses (the largest debits as the bank describes them; payroll and vehicle costs when given); and the result (net positive, or expenses exceeding donations, with the percent of donations spent). " +
-        "Every amount in pesos, rounded, with the sign: ₱146K, ₱1.19M; never centavos, never more than two amounts in one sentence; dates as 'Feb 18'. Use only the facts given: never invent a cause, a payee or an event the facts do not show. A fact that is not in the JSON is simply not mentioned -- never write 'not specified', 'nil' or 'unknown'. " +
-        "If covers_full_month is false, say the statement runs only through that date. Leave the house's activity out unless a cost line is plainly about it. No filler sentences. Never write a person's name, even if a bank line contains one.",
-      prompt: `Facts (JSON):\n${JSON.stringify(facts)}\n\n${examples.length ? `Voice to match (earlier months, written by staff):\n${examples.map((e) => `- ${e}`).join("\n")}\n\n` : ""}Write the note.`,
+        "It is your analysis of the month, in exactly two sentences, 25 to 50 words in all, plain prose, no headings or bullets. " +
+        "Sentence 1 -- donations: how they went (a record high, steady, up or down against the previous month or the six-month average) and what drove them: the largest givers by the name given in the facts (a company, a foundation, NCH, a named person), the size of the gifts (e.g. 'several ₱20K–₱50K gifts'), in-kind gifts when large. " +
+        "Sentence 2 -- expenses: what drove them, by purpose (payroll, utilities, construction, permits, transport...), one-off costs, costs advanced in an earlier month and settled in this one, staff changes (a separation means final pay), and the month's activities only where they explain spending or giving (events hosted at the house, new families, the number of people housed). " +
+        "The largest_credits are what the bank received: a large credit with no donor is 'a ₱467K deposit'; posted gifts (cash_gifts_by_donor) say who gave. " +
+        "Never comment on what the facts lack ('no donor named', 'pending tagging', 'not identified'): leave it out. Never reuse a phrase or a cause from the earlier months' notes. " +
+        "Purposes come only from THIS month's expenses_by_purpose; the earlier months' notes show the voice, never this month's causes. When most spending is 'not yet tagged', say only how expenses compare (up, down, against donations) and name a debit only by its bank_text when that text says what it was (e.g. Meralco); never say 'not yet tagged'. Never list bare amounts. " +
+        "In-kind gifts (in_kind) are goods, not cash: say 'in-kind gifts worth ₱193K', never call an in-kind giver a cash donor. " +
+        "Every amount in pesos, rounded, with the sign: ₱146K, ₱1.19M; never centavos. Activity with its unit: '614 people-nights', '1,200 meals'. Use only the facts given: never invent a cause, a payee or an event. A fact absent from the JSON is not mentioned. " +
+        "If covers_full_month is false, end with the date the statement runs to. Name a donor only as the facts name it, written in normal capitals (Title Case, acronyms kept: 'Makati Lady Eagles Club', 'NCH'); 'an individual donor' stays unnamed. Never write a person's name taken from a bank line, and never name a patient or a staff member.",
+      prompt:
+        (examples.length
+          ? `Earlier months, as confirmed by the Executive Director -- match this voice and length:\n${examples.map((e) => `Facts: ${JSON.stringify(e.facts)}\nNote: ${e.note}`).join("\n\n")}\n\n`
+          : "") + `This month's facts: ${JSON.stringify(facts)}\n\nWrite the note.`,
       abortSignal: controller.signal,
       providerOptions: { openai: { reasoningEffort: "medium" } },
     });
     return object.drivers.trim();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const PURPOSE_TIMEOUT_MS = 60_000;
+
+export interface DebitItem {
+  /** Server-side handle; the model sees only a number. */
+  id: string;
+  date: string;
+  amount: number;
+  bankText: string;
+}
+
+/**
+ * What a bank debit paid for (0114), chosen from the foundation's own list in Settings. The model
+ * sees the date, the amount and the bank's line text -- nothing else. Finance confirms the large
+ * ones on Bank import, so a wrong guess is a suggestion, not a record.
+ */
+export async function suggestExpensePurposes(items: readonly DebitItem[], purposes: readonly string[]): Promise<{ id: string; purpose: string }[]> {
+  if (items.length === 0 || purposes.length === 0) return [];
+  const schema = z.object({ items: z.array(z.object({ n: z.number().int(), purpose: z.enum(purposes as [string, ...string[]]) })) });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PURPOSE_TIMEOUT_MS);
+  try {
+    const { object } = await generateObject({
+      model: model(),
+      schema,
+      system:
+        "You classify the debits on a Philippine charity's BDO bank statement (a halfway house for child cancer patients). For each numbered line choose the purpose from the given list only. " +
+        "Hints: SSS, PhilHealth, Pag-IBIG and salary transfers on the 15th/30th are Payroll; Meralco, Maynilad, Manila Water, PLDT, Globe, Converge are Utilities; BIR and city hall are Permits and fees; " +
+        "'SERVICE CHARGE', 'W/HOLDING TAX' on interest and similar are Bank charges; generic online transfers with no clue are Other. Never guess beyond the bank text.",
+      prompt: `Purposes: ${purposes.join(" | ")}\n\nDebits:\n${items.map((it, i) => `${i + 1}. ${it.date} ₱${it.amount.toFixed(2)} ${it.bankText}`).join("\n")}\n\nAnswer every number.`,
+      abortSignal: controller.signal,
+      providerOptions: { openai: { reasoningEffort: "low" } },
+    });
+    return object.items.filter((a) => a.n >= 1 && a.n <= items.length).map((a) => ({ id: items[a.n - 1].id, purpose: a.purpose }));
   } finally {
     clearTimeout(timer);
   }

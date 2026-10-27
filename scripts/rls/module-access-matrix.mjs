@@ -423,10 +423,21 @@ async function main() {
   // 0113: the Executive summary's drivers are confirmed by the CEO, finance or the Super Admin; the month's facts are theirs to read.
   if ((await client.query("select to_regprocedure('ops.confirm_month_drivers(text,text)') is not null as ok")).rows[0].ok) {
     await scenario(ids, "0113: the CEO confirms a month's drivers", "ceo", null, q("select ops.confirm_month_drivers('2001-01', 'Quiet month.')"), rows(1));
-    await scenario(ids, "0113: finance confirms a month's drivers", "finance", null, q("select ops.confirm_month_drivers('2001-02', 'Quiet month.')"), rows(1));
+    // The power row is seeded in the scenario's own transaction: on dev the live rows are kept off until prod has 0113.
+    await scenario(ids, "0113: finance confirms a month's drivers", "finance", { setup: () => client.query("insert into shared.role_powers (role, power) values ('finance', 'confirm_summary') on conflict do nothing") },
+      q("select ops.confirm_month_drivers('2001-02', 'Quiet month.')"), rows(1));
     await scenario(ids, "0113: the chef can't confirm", "chef", null, q("select ops.confirm_month_drivers('2001-03', 'Quiet month.')"), denied);
     await scenario(ids, "0113: the CEO reads the month's facts", "ceo", null, q("select (ops.month_driver_facts('2026-01') ? 'totals') as ok"), value("ok", true));
     await scenario(ids, "0113: the driver can't read the month's facts", "driver", null, q("select ops.month_driver_facts('2026-01')"), denied);
+  }
+  // 0114: finance tags what a debit paid for; the monthly note is read by finance and executive viewers only.
+  if ((await client.query("select exists (select 1 from information_schema.columns where table_schema = 'ops' and table_name = 'bank_transactions' and column_name = 'purpose') as ok")).rows[0].ok) {
+    await scenario(ids, "0114: finance confirms a debit's purpose", "finance", null,
+      q("update ops.bank_transactions set purpose = 'Utilities', purpose_confirmed = true where id = (select id from ops.bank_transactions where debit > 0 order by posting_date limit 1) returning id"), rows(1));
+    await scenario(ids, "0114: the driver can't tag a debit", "driver", null,
+      q("update ops.bank_transactions set purpose = 'Other' where debit > 0 returning id"), (r) => denied(r) || (r.ok && r.rows === 0));
+    await scenario(ids, "0114: the board reads the monthly notes", "board", null, q("select count(*)::int as n from ops.finance_month_notes"), (r) => r.ok && r.data[0].n > 0);
+    await scenario(ids, "0114: the chef no longer reads the monthly notes", "chef", null, q("select count(*)::int as n from ops.finance_month_notes"), value("n", 0));
   }
   // 0107: Activity Center sessions read from the LAF Programs sheet are ordinary sessions to House Ops viewers.
   if ((await client.query("select to_regclass('ops.activity_sessions') is not null and exists (select 1 from information_schema.columns where table_schema = 'ops' and table_name = 'activity_sessions' and column_name = 'sheet_key') as ok")).rows[0].ok) {

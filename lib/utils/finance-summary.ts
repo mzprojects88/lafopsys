@@ -61,6 +61,51 @@ export function noteStatus(note: MonthNote | undefined): NoteStatus {
   return "confirmed";
 }
 
+const SMALL_WORDS = new Set(["of", "and", "the", "for", "de", "dela", "del", "delos", "la", "ng", "sa"]);
+
+/**
+ * A donor name typed in capitals ("MAKATI LADY EAGLES CLUB", "WORKERS OF CHRIST") written the
+ * way the note writes it: Title Case, small words lower-case inside, and words without a vowel
+ * kept as acronyms (NCH, BDO). Names already in mixed case are left exactly as they are.
+ */
+export function tidyName(name: string): string {
+  if (name !== name.toUpperCase() || !/[A-Z]/.test(name)) return name;
+  return name
+    .split(/(\s+|&|-)/)
+    .map((w, i) => {
+      if (!/[A-Z]/.test(w)) return w;
+      if (!/[AEIOUY]/.test(w)) return w;
+      const lower = w.toLowerCase();
+      if (i > 0 && SMALL_WORDS.has(lower)) return lower;
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join("");
+}
+
+/**
+ * Bank text with staff names replaced by "staff" before it leaves for the model. A word is a
+ * name when it is a staff name or the start of one ("Des" for Desiree, "Cath" for Cathlyn), or
+ * the capitalised word finance types before Salary / Advance / PCF ("Marge Salary").
+ * Words under 3 letters are left (too many false hits).
+ */
+export function maskNames(text: string, names: readonly string[]): string {
+  const known = [...new Set(names.flatMap((n) => n.toLowerCase().split(/\s+/)).filter((w) => w.length >= 3))];
+  // A capitalised word may be a nickname (the start of a name); a lower-case one only counts when it is a whole name.
+  const isName = (w: string) => (/^[a-z]/.test(w) ? known.includes(w) : known.some((k) => k.startsWith(w.toLowerCase())));
+  return text
+    .replace(/\b(?!Cash\b|Salary\b)[A-Z][a-z]+(?=\s+(?:Salary|Cash Advance|Salary Advance|Advance|PCF)\b)/g, "staff")
+    .replace(/\b[A-Za-z]{3,}\b/g, (w) => (isName(w) ? "staff" : w));
+}
+
+/** True when two texts share a run of `n` words (case and punctuation ignored): a draft that copied an example. */
+export function sharesPhrase(a: string, b: string, n = 6): boolean {
+  const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9₱\s]/g, " ").split(/\s+/).filter(Boolean);
+  const wb = words(b);
+  const grams = new Set(wb.slice(0, Math.max(0, wb.length - n + 1)).map((_, i) => wb.slice(i, i + n).join(" ")));
+  const wa = words(a);
+  return wa.some((_, i) => i + n <= wa.length && grams.has(wa.slice(i, i + n).join(" ")));
+}
+
 /** Months `yyyy-MM` from one date to another, oldest first, at most `cap` of them. */
 export function monthsCovered(from: string, to: string, cap = 3): string[] {
   const out: string[] = [];

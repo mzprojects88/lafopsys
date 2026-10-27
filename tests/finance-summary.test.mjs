@@ -4,7 +4,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { availableYears, cashInBank, donorBreakdown, monthlySummary, monthsCovered, monthsWithReceipts, noteStatus } from "../lib/utils/finance-summary.ts";
+import { availableYears, cashInBank, donorBreakdown, monthlySummary, maskNames, monthsCovered, monthsWithReceipts, noteStatus, sharesPhrase, tidyName } from "../lib/utils/finance-summary.ts";
 
 describe("noteStatus (0113)", () => {
   const note = (o) => ({ month: "2026-01", drivers: "", draft: null, draftAt: null, confirmedBy: null, confirmedAt: null, ...o });
@@ -19,6 +19,28 @@ describe("noteStatus (0113)", () => {
     assert.equal(noteStatus(note({ drivers: "Steady.", draft: "Up 10%.", draftAt: "2026-02-03T00:00:00Z", confirmedAt: "2026-02-02T00:00:00Z" })), "new_suggestion");
     // An older draft than the confirmation was already judged.
     assert.equal(noteStatus(note({ drivers: "Steady.", draft: "Up 10%.", draftAt: "2026-02-01T00:00:00Z", confirmedAt: "2026-02-02T00:00:00Z" })), "confirmed");
+  });
+  it("writes capitalised donor names the way the note does", () => {
+    assert.equal(tidyName("MAKATI LADY EAGLES CLUB"), "Makati Lady Eagles Club");
+    assert.equal(tidyName("WORKERS OF CHRIST"), "Workers of Christ");
+    assert.equal(tidyName("NCH"), "NCH");
+    assert.equal(tidyName("ELCEE DUQUE & FRIENDS"), "Elcee Duque & Friends");
+    assert.equal(tidyName("JUAN DELA CRUZ"), "Juan dela Cruz");
+    assert.equal(tidyName("Makati Lady Eagles Club"), "Makati Lady Eagles Club");
+    assert.equal(tidyName("an individual donor"), "an individual donor");
+  });
+  it("masks staff names in bank text", () => {
+    const staff = ["Desiree", "Loquinario", "Cathlyn", "Jeffrey", "Olfato"];
+    assert.equal(maskNames("BOB IBFT OPR-0719 · Des Salary", staff), "BOB IBFT OPR-0719 · staff Salary");
+    assert.equal(maskNames("ONLINE TRANSFER BOB TO 4709 · Cath Salary", staff), "ONLINE TRANSFER BOB TO 4709 · staff Salary");
+    assert.equal(maskNames("ONLINE TRANSFER · Jeff", staff), "ONLINE TRANSFER · staff");
+    assert.equal(maskNames("BOB IBFT · Marge Cash Advance", staff), "BOB IBFT · staff Cash Advance");
+    assert.equal(maskNames("ONLINE PAYMENT BOB TO MERALCO · repair of office sliding door", staff), "ONLINE PAYMENT BOB TO MERALCO · repair of office sliding door");
+  });
+  it("spots a draft that copied an earlier note", () => {
+    const april = "Expenses rose with payroll and utilities, while some permit, facility, patient-support, software, and transport costs were advanced and settled in June.";
+    assert.equal(sharesPhrase("Expenses rose with payroll and utilities, while some permit costs were settled.", april), true);
+    assert.equal(sharesPhrase("Expenses were led by reimbursements of advances and payroll.", april), false);
   });
   it("lists the months a statement covers, capped", () => {
     assert.deepEqual(monthsCovered("2026-07-01", "2026-07-31"), ["2026-07"]);

@@ -11,6 +11,7 @@ import { SectionCard } from "@/components/patterns/section-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BankImportHistory } from "@/components/modules/finance/bank-import-history";
+import { ExpensePurposes } from "@/components/modules/finance/expense-purposes";
 import { useBankTransactionsData, bankStatementImportsStore, bankTransactionsStore } from "@/lib/hooks/use-bank-transactions-collection";
 import { useRole } from "@/lib/rbac/use-role";
 import { formatDate } from "@/lib/utils/date";
@@ -234,6 +235,8 @@ export default function BankImportPage() {
       ) : (
         <Note tone="info">Admins and finance import statements. You can see what has been imported below.</Note>
       )}
+
+      <ExpensePurposes canEdit={canImport} />
 
       <section className="flex flex-col gap-3">
         <h2 className="text-base font-medium text-foreground">Import history</h2>

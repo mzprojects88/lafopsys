@@ -1,14 +1,17 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { draftMonthDrivers } from "@/lib/ai/openai";
+import { draftMonthDrivers, suggestExpensePurposes, type DriversExample } from "@/lib/ai/openai";
 import { openaiConfigured } from "@/lib/ai/env";
-import { monthsCovered } from "@/lib/utils/finance-summary";
+import { maskNames, monthsCovered, sharesPhrase, tidyName } from "@/lib/utils/finance-summary";
 
 export type DraftResult = { ok: true; drivers: string; saved: boolean } | { ok: false; error: string };
+export type PurposesResult = { ok: true; suggested: number } | { ok: false; error: string };
+
+const NOT_SET_UP = "AI drafting is not set up on this site: OPENAI_API_KEY is missing on the hosting.";
 
 /** Null, an empty list or object, or an object whose numbers are all zero (no payroll, no vehicle costs, no activity). */
 function isEmptyFact(v: unknown): boolean {
-  if (v === null || v === undefined) return true;
+  if (v === null || v === undefined || v === 0 || v === "0") return true;
   if (Array.isArray(v)) return v.length === 0;
   if (typeof v === "object") {
     const values = Object.values(v as Record<string, unknown>);
@@ -17,32 +20,64 @@ function isEmptyFact(v: unknown): boolean {
   return false;
 }
 
+/** Every staff member's first and last name: masked out of bank text before it reaches the model. */
+async function staffNames(admin: SupabaseClient): Promise<string[]> {
+  const { data } = await admin.schema("shared").from("staff").select("first_name, last_name");
+  return (data ?? []).flatMap((r) => [r.first_name as string, r.last_name as string]).filter(Boolean);
+}
+
+/** The month's facts with the empty ones dropped, or null when no statement covers it. */
+async function factsFor(admin: SupabaseClient, month: string): Promise<Record<string, unknown> | null> {
+  const { data, error } = await admin.schema("ops").rpc("month_driver_facts", { p_month: month });
+  if (error) throw new Error(error.message);
+  const f = data as Record<string, unknown> | null;
+  if (!f?.totals) return null;
+  for (const key of Object.keys(f)) if (isEmptyFact(f[key])) delete f[key];
+  // Donor names as the note writes them, not as the tracker typed them.
+  const tidyList = (list: unknown) => {
+    if (Array.isArray(list)) for (const g of list as { donor?: unknown }[]) if (typeof g?.donor === "string") g.donor = tidyName(g.donor);
+  };
+  tidyList(f.cash_gifts_by_donor);
+  tidyList(f.largest_credits);
+  tidyList((f.in_kind as { top_donors?: unknown } | undefined)?.top_donors);
+  const names = await staffNames(admin);
+  if (Array.isArray(f.largest_debits)) for (const d of f.largest_debits as { bank_text?: unknown }[]) if (typeof d.bank_text === "string") d.bank_text = maskNames(d.bank_text, names);
+  return f;
+}
+
 /**
- * The month's facts -> the model -> the row's draft (0113). Runs as the service role: the
- * caller's right to ask is checked by whoever calls this (the route checks the power; the
- * imports run for finance). `save: false` returns the text without touching the table.
+ * The month's facts -> the model -> the row's draft (0113, 0114). Runs as the service role: the
+ * caller's right to ask is checked by whoever calls this. `save: false` returns the text only.
  */
 export async function draftDriversFor(admin: SupabaseClient, month: string, { save }: { save: boolean }): Promise<DraftResult> {
-  if (!openaiConfigured()) return { ok: false, error: "AI drafting is not set up on this site: OPENAI_API_KEY is missing on the hosting." };
-  const { data: facts, error } = await admin.schema("ops").rpc("month_driver_facts", { p_month: month });
-  if (error) return { ok: false, error: error.message };
-  const f = facts as Record<string, unknown> | null;
-  if (!f?.totals) return { ok: false, error: "No bank statement covers this month yet. Upload it under Financial → Bank import." };
-  // A fact that is zero or empty is left out, so the model has nothing to say "nil" about.
-  for (const key of Object.keys(f)) if (isEmptyFact(f[key])) delete f[key];
-  // The two latest confirmed paragraphs before this month set the voice.
-  const { data: earlier } = await admin
-    .schema("ops")
-    .from("finance_month_notes")
-    .select("drivers")
-    .not("confirmed_at", "is", null)
-    .neq("drivers", "")
-    .lt("month", month)
-    .order("month", { ascending: false })
-    .limit(2);
+  if (!openaiConfigured()) return { ok: false, error: NOT_SET_UP };
+  // A saved draft explains spending by purpose: the month's untagged debits get their suggestion first.
+  if (save) await suggestPurposesFor(admin, month).catch(() => undefined);
+  let facts: Record<string, unknown> | null;
+  try {
+    facts = await factsFor(admin, month);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+  if (!facts) return { ok: false, error: "No bank statement covers this month yet. Upload it under Financial → Bank import." };
+
+  // The two confirmed months nearest this one, with their facts: the model learns the CEO's mapping from data to note.
+  const { data: confirmed } = await admin.schema("ops").from("finance_month_notes").select("month, drivers").not("confirmed_at", "is", null).neq("drivers", "").neq("month", month);
+  const nearest = (confirmed ?? [])
+    .map((r) => ({ month: r.month as string, note: r.drivers as string }))
+    .sort((a, b) => Math.abs(monthIndex(a.month) - monthIndex(month)) - Math.abs(monthIndex(b.month) - monthIndex(month)))
+    .slice(0, 2);
+  const examples: DriversExample[] = [];
+  for (const n of nearest) {
+    const f = await factsFor(admin, n.month).catch(() => null);
+    if (f) examples.push({ facts: f, note: n.note });
+  }
+
   let drivers: string;
   try {
-    drivers = await draftMonthDrivers(f, (earlier ?? []).map((r) => r.drivers as string));
+    drivers = await draftMonthDrivers(facts, examples);
+    // A draft that lifts a phrase from an earlier month's note has copied its causes: draft again without the examples.
+    if (examples.some((e) => sharesPhrase(drivers, e.note))) drivers = await draftMonthDrivers(facts, []);
   } catch (e) {
     return { ok: false, error: `The model did not answer: ${e instanceof Error ? e.message : String(e)}` };
   }
@@ -54,7 +89,37 @@ export async function draftDriversFor(admin: SupabaseClient, month: string, { sa
   return { ok: true, drivers, saved: save };
 }
 
-/** After a statement import: a draft for every month it touched (the first three), best effort. */
+const monthIndex = (m: string) => Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7));
+
+/** A suggested purpose for every debit of the month that has none yet (0114); confirmed ones are never touched. */
+export async function suggestPurposesFor(admin: SupabaseClient, month: string): Promise<PurposesResult> {
+  if (!openaiConfigured()) return { ok: false, error: NOT_SET_UP };
+  const start = `${month}-01`;
+  const next = monthIndex(month) % 12 === 0 ? `${Number(month.slice(0, 4)) + 1}-01-01` : `${month.slice(0, 4)}-${String(Number(month.slice(5, 7)) + 1).padStart(2, "0")}-01`;
+  const [{ data: rows, error }, { data: settings }] = await Promise.all([
+    admin.schema("ops").from("bank_transactions").select("id, posting_date, debit, description, memo").gt("debit", 0).is("purpose", null).gte("posting_date", start).lt("posting_date", next),
+    admin.schema("shared").from("app_settings").select("exec_summary").eq("id", true).maybeSingle(),
+  ]);
+  if (error) return { ok: false, error: error.message };
+  const purposes = ((settings?.exec_summary as { purposes?: string[] } | null)?.purposes ?? []).filter((p) => typeof p === "string" && p.trim());
+  if (!rows?.length) return { ok: true, suggested: 0 };
+  const names = await staffNames(admin);
+  let answers: { id: string; purpose: string }[];
+  try {
+    answers = await suggestExpensePurposes(
+      rows.map((r) => ({ id: r.id as string, date: r.posting_date as string, amount: Number(r.debit), bankText: maskNames([r.description, r.memo].filter(Boolean).join(" · "), names).slice(0, 120) })),
+      purposes
+    );
+  } catch (e) {
+    return { ok: false, error: `The model did not answer: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  for (const a of answers) {
+    await admin.schema("ops").from("bank_transactions").update({ purpose: a.purpose }).eq("id", a.id).is("purpose", null);
+  }
+  return { ok: true, suggested: answers.length };
+}
+
+/** After a statement import: purposes for the new debits, then a draft, for every month it touched (the first three). Best effort. */
 export async function draftAfterImport(admin: SupabaseClient, coversFrom: string, coversTo: string): Promise<void> {
   for (const month of monthsCovered(coversFrom, coversTo)) {
     await draftDriversFor(admin, month, { save: true }).catch(() => undefined);

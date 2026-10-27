@@ -528,3 +528,36 @@ export async function updateCafSettings(input: CafSettingsInput): Promise<Update
   revalidatePath("/settings");
   return { ok: true };
 }
+
+export interface ExecSummarySettingsInput {
+  purposes: string[];
+  confirm_from: number;
+  name_from: number;
+}
+
+/** Settings > Executive summary (0114): the purposes a debit can have, from what amount finance
+ * must confirm one, and from what monthly total a person is named in the note. Super Admin only. */
+export async function updateExecSummarySettings(input: ExecSummarySettingsInput): Promise<UpdateClockInRequirementResult> {
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+  if (!caller) return { ok: false, error: "Not signed in." };
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") return { ok: false, error: "Only the Super Admin can change these figures." };
+  const amount = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 10_000_000 ? Math.round(v) : null);
+  const purposes = [...new Set((Array.isArray(input.purposes) ? input.purposes : []).map((p) => (typeof p === "string" ? p.trim().slice(0, 60) : "")).filter(Boolean))].slice(0, 40);
+  const confirmFrom = amount(input.confirm_from);
+  const nameFrom = amount(input.name_from);
+  if (purposes.length < 2) return { ok: false, error: "List at least two purposes, one per line." };
+  if (!purposes.includes("Reimbursement of advances")) purposes.push("Reimbursement of advances");
+  if (confirmFrom === null || nameFrom === null) return { ok: false, error: "Check the two amounts." };
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({ exec_summary: { purposes, confirm_from: confirmFrom, name_from: nameFrom }, updated_at: new Date().toISOString(), updated_by: caller.id })
+    .eq("id", true);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/settings");
+  return { ok: true };
+}
