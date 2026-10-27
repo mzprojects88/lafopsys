@@ -4,7 +4,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { availableYears, cashInBank, donorBreakdown, monthlySummary, maskNames, monthsCovered, monthsWithReceipts, noteStatus, sharesPhrase, tidyName } from "../lib/utils/finance-summary.ts";
+import { availableYears, budgetVsActual, cashInBank, donorBreakdown, monthlySummary, maskNames, monthsCovered, monthsWithReceipts, noteStatus, sharesPhrase, tidyName } from "../lib/utils/finance-summary.ts";
 
 describe("noteStatus (0113)", () => {
   const note = (o) => ({ month: "2026-01", drivers: "", draft: null, draftAt: null, confirmedBy: null, confirmedAt: null, ...o });
@@ -175,5 +175,25 @@ describe("donorBreakdown", () => {
   it("knows which months have receipts", () => {
     const rows = [receipt("2026-05-02", 1, "A", "CASH"), receipt("2026-07-02", 1, "B", "BDO_CASH DONATIONS"), receipt("2026-06-02", 1, "x", "Bank Statement")];
     assert.deepEqual(monthsWithReceipts(rows), ["2026-07", "2026-05"]);
+  });
+});
+
+describe("budgetVsActual (0115)", () => {
+  const debits = [
+    { postingDate: "2026-07-03", debit: 1000, purpose: "Payroll" },
+    { postingDate: "2026-07-20", debit: 500, purpose: "Payroll" },
+    { postingDate: "2026-07-21", debit: 300, purpose: null },
+    { postingDate: "2026-07-22", debit: 9999, purpose: "Transfer between accounts" },
+    { postingDate: "2026-07-23", debit: 40, purpose: "Repairs" },
+    { postingDate: "2026-06-30", debit: 777, purpose: "Payroll" },
+  ];
+  it("adds the month's debits by purpose against the budget", () => {
+    const rows = budgetVsActual(["Payroll", "Utilities", "Transfer between accounts"], [{ purpose: "Payroll", month: "2026-07", budgeted: 2000 }], debits, "2026-07");
+    assert.deepEqual(rows, [
+      { purpose: "Payroll", budgeted: 2000, actual: 1500 },
+      { purpose: "Utilities", budgeted: null, actual: 0 },
+      { purpose: "Repairs", budgeted: null, actual: 40 },
+      { purpose: "Not yet tagged", budgeted: null, actual: 300 },
+    ]);
   });
 });

@@ -303,3 +303,41 @@ export function monthsWithReceipts(receipts: readonly ReceiptLike[]): string[] {
   }
   return [...months].sort().reverse();
 }
+
+// ---------------------------------------------------------------------------
+// Budget vs actual (0115)
+// ---------------------------------------------------------------------------
+
+export interface BudgetRow {
+  purpose: string;
+  budgeted: number | null;
+  actual: number;
+}
+
+/**
+ * One row per purpose for a month: the budget typed for it and what the bank paid out with that
+ * purpose. Purposes from Settings come first in their order; a purpose only the debits carry
+ * follows; untagged debits are their own row so the total still matches the bank.
+ * Transfers between the foundation's own accounts are not spending and are left out.
+ */
+export function budgetVsActual(
+  purposes: readonly string[],
+  budgets: readonly { purpose: string | null; month: string; budgeted: number }[],
+  debits: readonly { postingDate: string; debit: number; purpose: string | null }[],
+  month: string
+): BudgetRow[] {
+  const isTransfer = (p: string) => /transfer between/i.test(p);
+  const actual = new Map<string, number>();
+  for (const d of debits) {
+    if (!d.postingDate.startsWith(month) || d.debit <= 0) continue;
+    const key = d.purpose ?? "";
+    if (isTransfer(key)) continue;
+    actual.set(key, round2((actual.get(key) ?? 0) + d.debit));
+  }
+  const budget = new Map(budgets.filter((b) => b.month === month && b.purpose).map((b) => [b.purpose as string, b.budgeted]));
+  const order = [...purposes.filter((p) => !isTransfer(p))];
+  for (const k of [...budget.keys(), ...actual.keys()]) if (k && !order.includes(k)) order.push(k);
+  const rows: BudgetRow[] = order.map((purpose) => ({ purpose, budgeted: budget.get(purpose) ?? null, actual: actual.get(purpose) ?? 0 }));
+  if (actual.has("")) rows.push({ purpose: "Not yet tagged", budgeted: null, actual: actual.get("") ?? 0 });
+  return rows;
+}

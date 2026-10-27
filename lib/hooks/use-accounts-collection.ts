@@ -13,6 +13,7 @@ interface AccountRow {
   currency: Account["currency"];
   balance: number | null;
   type: Account["type"];
+  balance_as_of: string | null;
 }
 
 function toAccount(row: AccountRow): Account {
@@ -21,8 +22,9 @@ function toAccount(row: AccountRow): Account {
     name: row.name,
     entity: row.entity,
     currency: row.currency,
-    balance: row.balance ?? 0,
+    balance: Number(row.balance ?? 0),
     type: row.type,
+    balanceAsOf: row.balance_as_of,
   };
 }
 
@@ -52,11 +54,31 @@ export function useAccountsData() {
       currency: account.currency,
       balance: account.balance,
       type: account.type,
+      balance_as_of: account.balanceAsOf ?? null,
     });
     if (error) return { ok: false, error: error.message };
     await accountsStore.refetch();
     return { ok: true };
   }
 
-  return { accounts, loading, addAccount, refetch: accountsStore.refetch };
+  async function updateAccount(id: string, account: Omit<Account, "id">): Promise<MutationResult> {
+    const { error } = await createClient()
+      .schema("ops")
+      .from("accounts")
+      .update({ name: account.name, entity: account.entity, currency: account.currency, balance: account.balance, type: account.type, balance_as_of: account.balanceAsOf ?? null })
+      .eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await accountsStore.refetch();
+    return { ok: true };
+  }
+
+  /** Only an account no statement line points at can go (the bank lines keep their account). */
+  async function deleteAccount(id: string): Promise<MutationResult> {
+    const { error } = await createClient().schema("ops").from("accounts").delete().eq("id", id);
+    if (error) return { ok: false, error: /foreign key/i.test(error.message) ? "This account has imported statement lines, so it stays." : error.message };
+    await accountsStore.refetch();
+    return { ok: true };
+  }
+
+  return { accounts, loading, addAccount, updateAccount, deleteAccount, refetch: accountsStore.refetch };
 }

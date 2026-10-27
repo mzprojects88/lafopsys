@@ -439,6 +439,16 @@ async function main() {
     await scenario(ids, "0114: the board reads the monthly notes", "board", null, q("select count(*)::int as n from ops.finance_month_notes"), (r) => r.ok && r.data[0].n > 0);
     await scenario(ids, "0114: the chef no longer reads the monthly notes", "chef", null, q("select count(*)::int as n from ops.finance_month_notes"), value("n", 0));
   }
+  // 0115: finance keeps the accounts and the budget by purpose; cost per outcome is for finance viewers.
+  if ((await client.query("select to_regprocedure('ops.cost_per_outcome(integer)') is not null as ok")).rows[0].ok) {
+    await scenario(ids, "0115: finance adds a cash-on-hand account", "finance", null,
+      q("insert into ops.accounts (name, entity, currency, balance, type, balance_as_of) values ('Matrix petty cash', 'PH_SEC', 'PHP', 500, 'cash_on_hand', current_date) returning id"), rows(1));
+    await scenario(ids, "0115: finance budgets a purpose for a month", "finance", null,
+      q("insert into ops.budget_lines (purpose, month, budgeted) values ('Utilities', '2001-01', 1000) on conflict (purpose, month) do update set budgeted = excluded.budgeted returning id"), rows(1));
+    await scenario(ids, "0115: the driver can't budget", "driver", null, q("insert into ops.budget_lines (purpose, month, budgeted) values ('Utilities', '2001-01', 1000)"), denied);
+    await scenario(ids, "0115: the board reads cost per outcome", "board", null, q("select count(*)::int as n from ops.cost_per_outcome(2026)"), value("n", 12));
+    await scenario(ids, "0115: the chef can't read cost per outcome", "chef", null, q("select * from ops.cost_per_outcome(2026)"), denied);
+  }
   // 0107: Activity Center sessions read from the LAF Programs sheet are ordinary sessions to House Ops viewers.
   if ((await client.query("select to_regclass('ops.activity_sessions') is not null and exists (select 1 from information_schema.columns where table_schema = 'ops' and table_name = 'activity_sessions' and column_name = 'sheet_key') as ok")).rows[0].ok) {
     const sheetSession = async () => {

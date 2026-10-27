@@ -50,12 +50,16 @@ export interface Account {
   currency: Currency;
   balance: number;
   type: "bank" | "cash_on_hand";
+  /** Cash on hand: the day the typed balance was counted (0115). A bank account's balance comes from its statement. */
+  balanceAsOf?: string | null;
 }
 
 export interface BudgetLine {
   id: string;
-  programId: string;
+  /** Budgets before 0115 were per program; from 0115 per expense purpose. */
+  programId: string | null;
+  purpose: string | null;
+  /** yyyy-MM */
   month: string;
   budgeted: number;
-  actual: number;
 }

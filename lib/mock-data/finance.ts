@@ -1,4 +1,4 @@
-import type { Account, BudgetLine, CashEntry, CashEntrySource } from "@/lib/types/finance";
+import type { Account, CashEntry, CashEntrySource } from "@/lib/types/finance";
 import { makeRng } from "@/lib/utils/seeded-random";
 import { programs } from "@/lib/mock-data/reference-data";
 import realCashEntries from "@/lib/mock-data/real/cash-entries.json";
@@ -50,15 +50,3 @@ export const accounts: Account[] = [
   { id: "acct-us-chase", name: "Chase Checking (US)", entity: "US_501C3", currency: "USD", balance: 58900, type: "bank" },
 ];
 
-export const budgetLines: BudgetLine[] = programs.flatMap((p) =>
-  Array.from({ length: 6 }).map((_, m) => {
-    const budgeted = rng.int(30000, 180000);
-    return {
-      id: `budget-${p.id}-${m}`,
-      programId: p.id,
-      month: `2026-${String(m + 1).padStart(2, "0")}`,
-      budgeted,
-      actual: Math.round(budgeted * rng.random() * 0.4 + budgeted * 0.7),
-    };
-  })
-);
