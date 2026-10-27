@@ -93,3 +93,15 @@ test("an in-kind certificate lists the items and runs onto more pages", () => {
   assert.ok(pages[1].ops.join("\n").includes("Page 2 of 2"));
   fits(pages);
 });
+
+test("volunteer service certificate (0116): a one-page PDF naming the hours and the period", async () => {
+    const { buildVolunteerCert, layoutVolunteerCert } = await import("../lib/pdf/volunteer-cert.ts");
+    const data = { volunteerName: "Test Volunteer", from: "2026-01-01", to: "2026-10-27", totalHours: 12.5, sessions: 5, byActivity: [{ activity: "Care Cart", hours: 10 }, { activity: "Events", hours: 2.5 }], issuedOn: "2026-10-27", signatoryName: "Signer", signatoryPosition: "Executive Director" };
+    assert.equal(layoutVolunteerCert(data).length, 1);
+    const pdf = buildVolunteerCert(data);
+    assert.equal(pdf.subarray(0, 5).toString(), "%PDF-");
+    const words = drawn(layoutVolunteerCert(data)).join(" ");
+    assert.match(words, /12.5 hours/);
+    assert.match(words, /Test Volunteer/);
+    fits(layoutVolunteerCert(data));
+});

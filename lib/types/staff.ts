@@ -73,12 +73,29 @@ export interface TimePunch {
   siteDistanceM?: number;
 }
 
+export const VOLUNTEER_ACTIVITIES = ["Care Cart", "Activity Center", "Transport", "Events", "Other"] as const;
+export type VolunteerActivity = (typeof VOLUNTEER_ACTIVITIES)[number];
+
 export interface Volunteer {
   id: string;
   firstName: string;
   lastName: string;
-  focusArea: "Care Cart" | "Activity Center" | "Transport" | "Events";
+  focusArea: VolunteerActivity;
+  /** Kept by the database from the hours log (0116). */
   totalHours: number;
   lastSessionDate: string;
   certificatesIssued: number;
+  phone: string;
+  email: string;
+  active: boolean;
+}
+
+/** One session a volunteer served (0116). */
+export interface VolunteerHours {
+  id: string;
+  volunteerId: string;
+  date: string;
+  hours: number;
+  activity: VolunteerActivity;
+  note: string;
 }

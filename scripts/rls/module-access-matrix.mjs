@@ -449,6 +449,22 @@ async function main() {
     await scenario(ids, "0115: the board reads cost per outcome", "board", null, q("select count(*)::int as n from ops.cost_per_outcome(2026)"), value("n", 12));
     await scenario(ids, "0115: the chef can't read cost per outcome", "chef", null, q("select * from ops.cost_per_outcome(2026)"), denied);
   }
+  // 0116: House Ops editors add volunteers and log hours; totals follow the log.
+  if ((await client.query("select to_regclass('ops.volunteer_hours') is not null as ok")).rows[0].ok) {
+    const volunteer = async () => {
+      await client.query(`insert into ops.volunteers (id, first_name, last_name, focus_area) values ('00000000-0000-4000-8000-0000000000a1', 'Matrix', 'Volunteer', 'Care Cart')`);
+    };
+    await scenario(ids, "0116: the social worker adds a volunteer", "social_worker", null,
+      q("insert into ops.volunteers (first_name, last_name, focus_area) values ('Matrix', 'Helper', 'Events') returning id"), rows(1));
+    await scenario(ids, "0116: the social worker logs hours and the total follows", "social_worker", { setup: volunteer },
+      last(
+        { sql: "insert into ops.volunteer_hours (volunteer_id, date, hours, activity) values ('00000000-0000-4000-8000-0000000000a1', current_date - 1, 2, 'Care Cart'), ('00000000-0000-4000-8000-0000000000a1', current_date, 1.5, 'Events')" },
+        { sql: "select total_hours::float as total, last_session_date = current_date as latest from ops.volunteers where id = '00000000-0000-4000-8000-0000000000a1'" }
+      ),
+      (r) => r.ok && r.data[0]?.total === 3.5 && r.data[0]?.latest === true);
+    await scenario(ids, "0116: the chef can't log volunteer hours", "chef", { setup: volunteer },
+      q("insert into ops.volunteer_hours (volunteer_id, date, hours, activity) values ('00000000-0000-4000-8000-0000000000a1', current_date, 1, 'Care Cart')"), denied);
+  }
   // 0107: Activity Center sessions read from the LAF Programs sheet are ordinary sessions to House Ops viewers.
   if ((await client.query("select to_regclass('ops.activity_sessions') is not null and exists (select 1 from information_schema.columns where table_schema = 'ops' and table_name = 'activity_sessions' and column_name = 'sheet_key') as ok")).rows[0].ok) {
     const sheetSession = async () => {
