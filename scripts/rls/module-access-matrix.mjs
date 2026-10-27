@@ -488,6 +488,17 @@ async function main() {
     await scenario(ids, "0117: the chef can't read the close checklist", "chef", null, q("select ops.month_close_checklist('2026-07')"), denied);
   }
 
+  // 0118: deliveries are kept by the Super Admin and finance; the outbox is the Super Admin's.
+  if ((await client.query("select to_regclass('ops.report_schedules') is not null as ok")).rows[0].ok) {
+    const sched = (to) => q(`insert into ops.report_schedules (name, report, recipients, frequency, day) values ('Matrix delivery', 'programs', array['${to}'], 'monthly', 5) returning id`);
+    await scenario(ids, "0118: finance adds a scheduled delivery", "finance", null, sched("ceo@example.org"), rows(1));
+    await scenario(ids, "0118: a delivery to a bad address is refused", "finance", null, sched("not-an-email"), (r) => !r.ok && r.code === "23514");
+    await scenario(ids, "0118: the driver can't add a delivery", "driver", null, sched("ceo@example.org"), denied);
+    await scenario(ids, "0118: finance can't read the outbox", "finance",
+      { setup: () => client.query("insert into ops.outbox (to_address, subject, body_html) values ('ceo@example.org', 'Test', '<p>x</p>')") },
+      q("select count(*)::int as n from ops.outbox"), value("n", 0));
+  }
+
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
 

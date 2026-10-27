@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BedDouble, Bell, CloudOff, Fuel, MapPin, Wrench, type LucideIcon } from "lucide-react";
+import { BedDouble, Bell, CloudOff, Fuel, Mail, MapPin, Wrench, type LucideIcon } from "lucide-react";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
 import { houseSheetPatientId } from "@/lib/types/house-sheet";
@@ -21,6 +21,7 @@ import { TRACKER_STALE_MS } from "@/lib/utils/cash-gifts";
 import { formatRelative } from "@/lib/utils/date";
 import { formatTime12 } from "@/lib/utils/time12";
 import { formatKm } from "@/lib/utils/odometer";
+import { useOutboxIssues } from "@/lib/hooks/use-outbox-issues";
 
 /** Something an admin still has to set up. Worked out from the settings, so it
  * can't be dismissed: it goes away once the thing is done. */
@@ -38,6 +39,17 @@ export function NotificationCenter() {
   const { role, roles } = useRole();
   const settings = useAppSettings();
   const reminders: Reminder[] = [];
+  // Email (0118): reports waiting for the Resend key, or that failed, for the Super Admin.
+  const outbox = useOutboxIssues(role === "admin");
+  if (outbox.held + outbox.failed > 0) {
+    reminders.push({
+      id: "email-outbox",
+      title: outbox.held ? `${outbox.held} email${outbox.held === 1 ? "" : "s"} waiting for the email setup` : `${outbox.failed} email${outbox.failed === 1 ? "" : "s"} failed to send`,
+      body: outbox.held ? "Scheduled reports are queued until the Resend key is set on the hosting." : "See the outbox on Reports › Scheduled Delivery.",
+      href: "/reports/schedule",
+      icon: Mail,
+    });
+  }
   // DTR (0063): without the pin, clock-ins can't be checked against the 20 m radius.
   if (role === "admin" && !settings.loading && (settings.lafHouse.lat == null || settings.lafHouse.lng == null)) {
     reminders.push({
