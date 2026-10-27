@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { accreditationLine } from "@/lib/pdf/accreditation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildCashAr } from "@/lib/pdf/cash-ar";
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
   if (!donation) return NextResponse.json({ error: "Donation not found" }, { status: 404 });
   const [{ data: issuer }, { data: settings }] = await Promise.all([
     receipt.issued_by ? admin.schema("shared").from("staff").select("first_name, last_name, position").eq("id", receipt.issued_by).maybeSingle() : Promise.resolve({ data: null }),
-    admin.schema("shared").from("app_settings").select("report_header, document_names").eq("id", true).maybeSingle(),
+    admin.schema("shared").from("app_settings").select("report_header, document_names, dswd_label, dswd_number").eq("id", true).maybeSingle(),
   ]);
   const donor = donation.donors as unknown as { name: string } | null;
   const campaign = donation.campaigns as unknown as { name: string } | null;
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
     receivedBy: issuer ? `${issuer.first_name} ${issuer.last_name}` : undefined,
     receivedByPosition: titleFor(nameFormat(settings?.document_names, "cash_ar"), issuer?.position) ?? undefined,
     header: settings?.report_header || undefined,
+    accreditation: accreditationLine(settings),
   });
 
   return new NextResponse(new Uint8Array(pdf), {

@@ -49,8 +49,19 @@ export function DocumentSettingsField() {
       <div className="flex flex-col gap-1">
         <Label htmlFor="docHeader">Registration line</Label>
         <Input id="docHeader" value={form.header} disabled={loading || !canEdit} maxLength={300} onChange={(e) => setForm({ ...form, header: e.target.value })} />
-        <span className="text-xs text-muted-foreground">Printed under the foundation&apos;s name on every receipt and certificate (SEC, BIR, DSWD numbers).</span>
+        <span className="text-xs text-muted-foreground">Printed under the foundation&apos;s name on every receipt and certificate (SEC and BIR numbers).</span>
       </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[220px_1fr]">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="docDswdLabel">DSWD label</Label>
+          <Input id="docDswdLabel" value={form.dswdLabel} disabled={loading || !canEdit} maxLength={60} onChange={(e) => setForm({ ...form, dswdLabel: e.target.value })} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="docDswdNumber">DSWD number</Label>
+          <Input id="docDswdNumber" value={form.dswdNumber} disabled={loading || !canEdit} maxLength={60} onChange={(e) => setForm({ ...form, dswdNumber: e.target.value })} />
+        </div>
+      </div>
+      <span className="-mt-1 text-xs text-muted-foreground">Printed on every acknowledgment receipt, in both apps: under the foundation&apos;s name and at the foot of each page.</span>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_180px]">
         <div className="flex flex-col gap-1">
           <Label htmlFor="docAddress">Foundation address</Label>

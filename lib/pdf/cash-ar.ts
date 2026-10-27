@@ -26,6 +26,8 @@ export interface CashArData {
   receivedByPosition?: string;
   /** The registration line (SEC, BIR, DSWD) from Settings. */
   header?: string;
+  /** "DSWD Accreditation No. ..." (0119): under the letterhead and in the footer. */
+  accreditation?: string;
 }
 
 const MARGIN = 48;
@@ -45,7 +47,7 @@ export function longDate(iso: string): string {
 export const PAYMENT_LABEL: Record<string, string> = { cash: "Cash", check: "Check", bank_transfer: "Bank transfer", gcash: "GCash", instapay: "InstaPay", other: "Other" };
 
 /** The foundation's name and registration line at the top left; shared with the certificate. */
-export function drawLetterhead(page: PdfPage, y: number, header?: string) {
+export function drawLetterhead(page: PdfPage, y: number, header?: string, accreditation?: string) {
   const logoWidth = 170;
   page.image(logo, MARGIN, y, logoWidth, (logoWidth * logo.height) / logo.width);
   page.text(MARGIN, y + 40, 9, "Little Ark Foundation, Inc.", { gray: 0.35 });
@@ -57,13 +59,18 @@ export function drawLetterhead(page: PdfPage, y: number, header?: string) {
     page.text(MARGIN, y + 52, 7.5, first, { gray: 0.45 });
     if (words.length) page.text(MARGIN, y + 62, 7.5, wrap(words.join(" "), width, 7.5)[0] ?? "", { gray: 0.45 });
   }
+  // An AR's "DSWD Accreditation No. ..." (0119), on its own line under the registration line.
+  if (accreditation) {
+    const lines = !header ? 0 : textWidth(header, 7.5) <= INNER / 2 + 20 ? 1 : 2;
+    page.text(MARGIN, y + 52 + lines * 9, 8, accreditation, { bold: true, gray: 0.2 });
+  }
 }
 
 /** One page, laid out; separate from buildCashAr so the layout can be tested. */
 export function layoutCashAr(data: CashArData): PdfPage[] {
   const page = new PdfPage();
   let y = MARGIN;
-  drawLetterhead(page, y, data.header);
+  drawLetterhead(page, y, data.header, data.accreditation);
   page.text(MARGIN + INNER, y, 14, "ACKNOWLEDGEMENT RECEIPT", { bold: true, align: "right" });
   page.text(MARGIN + INNER, y + 18, 10, "Cash donation", { gray: 0.35, align: "right" });
   page.text(MARGIN + INNER, y + 36, 11, `AR No. ${data.arNumber}`, { bold: true, align: "right" });
@@ -117,6 +124,7 @@ export function layoutCashAr(data: CashArData): PdfPage[] {
   page.text(MARGIN, captionY, 8.5, "Received for Little Ark Foundation, Inc.", { gray: 0.35 });
   page.fillRect(MARGIN + half + 40, signY, half, 0.75, 0.3);
   page.text(MARGIN + half + 40, signY + 6, 8.5, "Donor or representative", { gray: 0.35 });
+  if (data.accreditation) page.text(A4.width / 2, A4.height - MARGIN + 1, 7.5, data.accreditation, { gray: 0.35, align: "center" });
   page.text(A4.width / 2, A4.height - MARGIN + 12, 8, `${data.arNumber} - Page 1 of 1`, { gray: 0.5, align: "center" });
   return [page];
 }

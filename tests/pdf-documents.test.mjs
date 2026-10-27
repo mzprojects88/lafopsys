@@ -105,3 +105,13 @@ test("volunteer service certificate (0116): a one-page PDF naming the hours and 
     assert.match(words, /Test Volunteer/);
     fits(layoutVolunteerCert(data));
 });
+
+test("cash AR carries the DSWD line under the letterhead and in the footer (0119)", async () => {
+  const { accreditationLine } = await import("../lib/pdf/accreditation.ts");
+  const line = accreditationLine({ dswd_label: "DSWD Accreditation No.", dswd_number: "DSWD-SB-RL-2026-000131" });
+  assert.equal(line, "DSWD Accreditation No. DSWD-SB-RL-2026-000131");
+  assert.equal(accreditationLine({ dswd_label: "DSWD Accreditation No.", dswd_number: null }), undefined);
+  const pages = layoutCashAr({ arNumber: "LAF-CSH-2026-0001", date: "2026-10-27", donorName: "Test donor", amount: 1000, currency: "PHP", header: "SEC 2021070019208-08 · BIR TIN 601-322-056-00000", accreditation: line });
+  assert.equal(drawn(pages).filter((t) => t === line).length, 2);
+  fits(pages);
+});
