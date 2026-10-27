@@ -1,5 +1,5 @@
 // Relative, with extensions, so node --test can load the layout without a bundler.
-import { A4, PdfPage, buildPdf, textWidth, wrap, type PdfImage } from "./writer.ts";
+import { A4, PdfPage, buildPdf, fitSize, textWidth, wrap, type PdfImage } from "./writer.ts";
 import { LAF_LOGO_JPEG } from "./laf-logo.ts";
 import { amountInWords } from "../utils/amount-words.ts";
 
@@ -122,6 +122,13 @@ export function layoutCashAr(data: CashArData): PdfPage[] {
     captionY += 11;
   }
   page.text(MARGIN, captionY, 8.5, "Received for Little Ark Foundation, Inc.", { gray: 0.35 });
+  // The donor's name over their line too, as the receiver's is over LAF's; an anonymous gift leaves it blank.
+  if (!/^anonymous( donor)?$/i.test(data.donorName.trim())) {
+    const size = fitSize(data.donorName, half, 10, false, 7);
+    let name = data.donorName;
+    while (name.length > 1 && textWidth(name, size) > half) name = `${name.slice(0, -4).trimEnd()}...`;
+    page.text(MARGIN + half + 40, signY - 16, size, name);
+  }
   page.fillRect(MARGIN + half + 40, signY, half, 0.75, 0.3);
   page.text(MARGIN + half + 40, signY + 6, 8.5, "Donor or representative", { gray: 0.35 });
   if (data.accreditation) page.text(A4.width / 2, A4.height - MARGIN + 1, 7.5, data.accreditation, { gray: 0.35, align: "center" });

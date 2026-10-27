@@ -115,3 +115,10 @@ test("cash AR carries the DSWD line under the letterhead and in the footer (0119
   assert.equal(drawn(pages).filter((t) => t === line).length, 2);
   fits(pages);
 });
+
+test("cash AR prints the donor's name over the donor's signature line, not for an anonymous gift", () => {
+  const base = { arNumber: "LAF-CSH-2026-0002", date: "2026-10-27", donorName: "Sample Donor Corp.", amount: 500, currency: "PHP" };
+  assert.equal(drawn(layoutCashAr(base)).filter((t) => t === "Sample Donor Corp.").length, 2);
+  assert.equal(drawn(layoutCashAr({ ...base, donorName: "Anonymous donor" })).filter((t) => t === "Anonymous donor").length, 1);
+  fits(layoutCashAr(base));
+});
