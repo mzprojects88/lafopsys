@@ -52,6 +52,45 @@ describe("noteStatus (0113)", () => {
 let seq = 0;
 const txn = (postingDate, debit, credit, runningBalance, category = null) => ({ postingDate, rowSeq: ++seq, debit, credit, runningBalance, category });
 
+describe("monthlySummary before the statement (0121)", () => {
+  // Statement lines end 31 Jul; the tracker has deposits for August and October; today is 28 Oct.
+  const txns = [txn("2026-07-02", 100, 500, 1000), txn("2026-07-31", 50, 0, 950)];
+  const deposits = [
+    { date: "2026-08-05", amount: 100000 },
+    { date: "2026-08-20", amount: 56495.77 },
+    { date: "2026-10-10", amount: 300000 },
+  ];
+  const { rows, total } = monthlySummary(txns, 2026, {}, { deposits, today: "2026-10-28" });
+  const at = (m) => rows.find((r) => r.month === `2026-${m}`);
+  it("a month with a full statement is final", () => {
+    assert.equal(at("07").provisional, false);
+    assert.equal(at("07").expenses, 150);
+  });
+  it("a month with only tracker deposits shows them as Donation, provisional, with no expenses", () => {
+    assert.equal(at("08").hasData, false);
+    assert.equal(at("08").provisional, true);
+    assert.equal(at("08").trackerDonation, 156495.77);
+    assert.equal(at("08").expenses, null);
+  });
+  it("the running month always shows; a past month with nothing does not; future months never", () => {
+    assert.equal(at("10").provisional, true);
+    assert.equal(at("09").provisional, false);
+    assert.equal(at("11").provisional, false);
+  });
+  it("a statement that stops short of the month's end stays provisional", () => {
+    const short = monthlySummary([txn("2026-09-10", 10, 0, 100)], 2026, {}, { deposits: [], today: "2026-10-28" }).rows[8];
+    assert.equal(short.hasData, true);
+    assert.equal(short.provisional, true);
+  });
+  it("totals stay the bank's", () => {
+    assert.equal(total.monthsWithData, 1);
+    assert.equal(total.donation, 500);
+  });
+  it("without the tracker nothing is provisional (the DSWD annex and report emails)", () => {
+    assert.ok(monthlySummary(txns, 2026, {}).rows.every((r) => !r.provisional && r.trackerDonation === null));
+  });
+});
+
 describe("monthlySummary", () => {
   it("expenses are all debits, donation is credits minus the bank's interest", () => {
     const txns = [

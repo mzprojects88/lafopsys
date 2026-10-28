@@ -513,6 +513,14 @@ async function main() {
     await scenario(ids, "0120: the driver can't read the week's facts", "driver", null, q("select inventory.menu_week_facts('2031-01-06')"), denied);
   }
 
+  // 0121: a month before its statement is a draft; the facts can be cut at a day; the driver still can't read them.
+  if ((await client.query("select to_regprocedure('ops.month_driver_facts(text,date)') is not null as ok")).rows[0].ok) {
+    const financeConfirms = { setup: () => client.query("insert into shared.role_powers (role, power) values ('finance', 'confirm_summary') on conflict do nothing") };
+    await scenario(ids, "0121: finance can't confirm a month without its bank statement", "finance", financeConfirms, q("select ops.confirm_month_drivers('2031-01', 'Quiet month.')"), checkFailed);
+    await scenario(ids, "0121: finance reads a month's facts cut at a day", "finance", financeConfirms, q("select (ops.month_driver_facts('2026-10', '2026-10-15') ->> 'data_through') as through"), value("through", "2026-10-15"));
+    await scenario(ids, "0121: the driver can't read the facts", "driver", null, q("select ops.month_driver_facts('2026-10', '2026-10-15')"), denied);
+  }
+
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
 

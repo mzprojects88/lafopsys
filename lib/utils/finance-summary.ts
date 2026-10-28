@@ -35,6 +35,20 @@ export interface MonthRow {
   /** expenses / donation, or null when there was no donation. */
   pctSpent: number | null;
   drivers: string;
+  /**
+   * Not final yet (0121): no statement covers the month, or it stops short of the month's end, or
+   * the month is still running. Only set when the summary is given the tracker's deposits.
+   */
+  provisional: boolean;
+  /** The Donation Tracker's BDO deposits for the month: the Donation figure before the statement is in. */
+  trackerDonation: number | null;
+}
+
+/** A BDO deposit as the Donation Tracker lists it (0110). */
+export interface DepositLike {
+  /** `yyyy-MM-dd`. */
+  date: string;
+  amount: number;
 }
 
 /** One month's note (0033, 0113): the confirmed text and the app's latest suggestion. */
@@ -146,8 +160,16 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
  * few pesos, the hand slipped (its June and July left out two withholding
  * lines), and these are what the bank says.
  */
-export function monthlySummary(txns: readonly BankTxnLike[], year: number, notes: Readonly<Record<string, string>>): YearSummary {
+export function monthlySummary(
+  txns: readonly BankTxnLike[],
+  year: number,
+  notes: Readonly<Record<string, string>>,
+  /** The Executive page passes these (0121): months up to today show from the tracker until their statement is in. */
+  tracker?: { deposits: readonly DepositLike[]; today: string }
+): YearSummary {
   const rows: MonthRow[] = [];
+  const lastLine = txns.reduce((m, t) => (t.postingDate > m ? t.postingDate : m), "");
+  const thisMonth = tracker?.today.slice(0, 7) ?? "";
   const total = { expenses: 0, donation: 0, net: 0, pctSpent: null as number | null, monthsWithData: 0 };
 
   for (let m = 1; m <= 12; m++) {
@@ -155,9 +177,11 @@ export function monthlySummary(txns: readonly BankTxnLike[], year: number, notes
     let expenses = 0;
     let donation = 0;
     let hasData = false;
+    let monthLast = "";
     for (const t of txns) {
       if (!t.postingDate.startsWith(month)) continue;
       hasData = true;
+      if (t.postingDate > monthLast) monthLast = t.postingDate;
       expenses += t.debit;
       if (t.category !== "interest") donation += t.credit;
     }
@@ -173,7 +197,17 @@ export function monthlySummary(txns: readonly BankTxnLike[], year: number, notes
       net: hasData ? net : null,
       pctSpent: hasData && donation > 0 ? expenses / donation : null,
       drivers: notes[month] ?? "",
+      provisional: false,
+      trackerDonation: null,
     };
+    if (tracker && month <= thisMonth) {
+      const inMonth = tracker.deposits.filter((d) => d.date.startsWith(month));
+      const lastDay = new Date(Date.UTC(year, m, 0)).getUTCDate();
+      // Complete as in ops.confirm_month_drivers: the month has ended and its statement reaches the last banking days (or a later month is in).
+      const complete = month < thisMonth && hasData && (monthLast >= `${month}-${String(lastDay - 3).padStart(2, "0")}` || lastLine > `${month}-31`);
+      row.provisional = !complete && (hasData || inMonth.length > 0 || month === thisMonth);
+      row.trackerDonation = inMonth.length ? round2(inMonth.reduce((sum, d) => sum + d.amount, 0)) : null;
+    }
     rows.push(row);
     if (hasData) {
       total.expenses = round2(total.expenses + expenses);

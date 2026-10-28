@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { draftMonthDrivers, suggestExpensePurposes, type DriversExample } from "@/lib/ai/openai";
 import { openaiConfigured } from "@/lib/ai/env";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 import { maskNames, monthsCovered, sharesPhrase, tidyName } from "@/lib/utils/finance-summary";
 
 export type DraftResult = { ok: true; drivers: string; saved: boolean } | { ok: false; error: string };
@@ -26,9 +27,9 @@ async function staffNames(admin: SupabaseClient): Promise<string[]> {
   return (data ?? []).flatMap((r) => [r.first_name as string, r.last_name as string]).filter(Boolean);
 }
 
-/** The month's facts with the empty ones dropped, or null when no statement covers it. */
-async function factsFor(admin: SupabaseClient, month: string): Promise<Record<string, unknown> | null> {
-  const { data, error } = await admin.schema("ops").rpc("month_driver_facts", { p_month: month });
+/** The month's facts with the empty ones dropped (cut at the end of `through` when given), or null when neither a statement nor a tracker deposit covers it. */
+async function factsFor(admin: SupabaseClient, month: string, through?: string): Promise<Record<string, unknown> | null> {
+  const { data, error } = await admin.schema("ops").rpc("month_driver_facts", { p_month: month, ...(through ? { p_through: through } : {}) });
   if (error) throw new Error(error.message);
   const f = data as Record<string, unknown> | null;
   if (!f?.totals) return null;
@@ -49,17 +50,17 @@ async function factsFor(admin: SupabaseClient, month: string): Promise<Record<st
  * The month's facts -> the model -> the row's draft (0113, 0114). Runs as the service role: the
  * caller's right to ask is checked by whoever calls this. `save: false` returns the text only.
  */
-export async function draftDriversFor(admin: SupabaseClient, month: string, { save }: { save: boolean }): Promise<DraftResult> {
+export async function draftDriversFor(admin: SupabaseClient, month: string, { save, through }: { save: boolean; through?: string }): Promise<DraftResult> {
   if (!openaiConfigured()) return { ok: false, error: NOT_SET_UP };
   // A saved draft explains spending by purpose: the month's untagged debits get their suggestion first.
   if (save) await suggestPurposesFor(admin, month).catch(() => undefined);
   let facts: Record<string, unknown> | null;
   try {
-    facts = await factsFor(admin, month);
+    facts = await factsFor(admin, month, through);
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
-  if (!facts) return { ok: false, error: "No bank statement covers this month yet. Upload it under Financial → Bank import." };
+  if (!facts) return { ok: false, error: "Nothing covers this month yet: no bank statement and no deposit on the Donation Tracker." };
 
   // The two confirmed months nearest this one, with their facts: the model learns the CEO's mapping from data to note.
   const { data: confirmed } = await admin.schema("ops").from("finance_month_notes").select("month, drivers").not("confirmed_at", "is", null).neq("drivers", "").neq("month", month);
@@ -117,6 +118,34 @@ export async function suggestPurposesFor(admin: SupabaseClient, month: string): 
     await admin.schema("ops").from("bank_transactions").update({ purpose: a.purpose }).eq("id", a.id).is("purpose", null);
   }
   return { ok: true, suggested: answers.length };
+}
+
+/**
+ * The nightly note (0121, pg_cron at 1:00 AM Manila): yesterday's month is drafted again on the
+ * facts up to the end of yesterday, so the running month's note is the month to date and the
+ * 1st of the month closes the month before. Earlier months of the last year that have figures but
+ * no note at all get their first draft too (at most three a night). Best effort per month.
+ */
+export async function draftNightly(admin: SupabaseClient, now = new Date()): Promise<{ month: string; results: Record<string, string> }> {
+  const yesterday = new Date(now.getTime() + 8 * 3_600_000 - 86_400_000).toISOString().slice(0, 10); // Manila (UTC+8), a day back
+  const month = yesterday.slice(0, 7);
+  const results: Record<string, string> = {};
+  const first = await draftDriversFor(admin, month, { save: true, through: yesterday });
+  results[month] = first.ok ? "drafted" : first.error;
+
+  const from = `${Number(month.slice(0, 4)) - 1}${month.slice(4)}`;
+  const [{ data: notes }, bank, deposits] = await Promise.all([
+    admin.schema("ops").from("finance_month_notes").select("month, drivers, draft").gte("month", from),
+    fetchAll<{ posting_date: string }>((a, b) => admin.schema("ops").from("bank_transactions").select("posting_date").gte("posting_date", `${from}-01`).lt("posting_date", `${month}-01`).order("id").range(a, b)),
+    fetchAll<{ deposit_date: string }>((a, b) => admin.schema("ops").from("cash_deposits").select("deposit_date").gte("deposit_date", `${from}-01`).lt("deposit_date", `${month}-01`).order("id").range(a, b)),
+  ]);
+  const noted = new Set((notes ?? []).filter((n) => n.drivers || n.draft).map((n) => n.month as string));
+  const withFigures = new Set([...bank.map((r) => r.posting_date.slice(0, 7)), ...deposits.map((r) => r.deposit_date.slice(0, 7))]);
+  for (const m of [...withFigures].filter((m) => !noted.has(m)).sort().reverse().slice(0, 3)) {
+    const r = await draftDriversFor(admin, m, { save: true });
+    results[m] = r.ok ? "drafted" : r.error;
+  }
+  return { month, results };
 }
 
 /** After a statement import: purposes for the new debits, then a draft, for every month it touched (the first three). Best effort. */

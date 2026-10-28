@@ -65,7 +65,8 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
   const [year, setYear] = React.useState<number | null>(null);
   const shownYear = year ?? (years.includes(currentYear) && transactions.some((t) => t.postingDate.startsWith(String(currentYear))) ? currentYear : years[0]);
 
-  const summary = React.useMemo(() => monthlySummary(transactions, shownYear, drivers), [transactions, shownYear, drivers]);
+  // Months before their statement show the tracker's deposits as Donation, provisional (0121).
+  const summary = React.useMemo(() => monthlySummary(transactions, shownYear, drivers, { deposits, today }), [transactions, shownYear, drivers, deposits, today]);
   const bank = React.useMemo(() => cashInBank(transactions), [transactions]);
 
   // Posted cash gifts (Donors > Cash gifts, 0084/0110): one row per gift, named through the donor list.
@@ -87,7 +88,8 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
 
   if (txnsError) return <EmptyState title="Couldn't load the bank record" description={txnsError} />;
 
-  const visibleRows = compact ? summary.rows.filter((r) => r.hasData) : summary.rows;
+  const visibleRows = compact ? summary.rows.filter((r) => r.hasData || r.provisional) : summary.rows;
+  const awaiting = summary.rows.filter((r) => r.provisional && !r.hasData).length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -115,7 +117,7 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
           <div className="p-5">
             <LoadingState />
           </div>
-        ) : summary.total.monthsWithData === 0 ? (
+        ) : summary.total.monthsWithData === 0 && awaiting === 0 ? (
           <EmptyState
             icon={Landmark}
             title={`No bank statement covers ${shownYear} yet`}
@@ -147,6 +149,7 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
                   <td className="px-5 py-3 text-right tabular-nums">{pct(summary.total.pctSpent)}</td>
                   <td className="px-5 py-3 text-theme-xs font-normal text-muted-foreground">
                     {summary.total.monthsWithData} of 12 months have a statement
+                    {awaiting ? `; the ${awaiting} awaiting one ${awaiting === 1 ? "is" : "are"} not in the total` : ""}
                   </td>
                 </tr>
               </tbody>
@@ -279,19 +282,32 @@ function SummaryRow({ row, note, canConfirm, nameOf, onConfirm, onSuggest }: { r
     if (!result.ok) toast.error(result.error);
   }
 
+  // Shown from the tracker, or a statement that stops short: the note stays a draft until the month is complete (0121).
+  const shown = row.hasData || row.provisional;
+  const draftOnly = row.provisional;
   const confirmedName = note?.confirmedBy ? nameOf(note.confirmedBy) : null;
   const confirmedMeta = note?.confirmedAt && note.drivers ? `Confirmed${confirmedName ? ` by ${confirmedName}` : ""} · ${formatDate(note.confirmedAt.slice(0, 10), "MMM d")}` : null;
 
   return (
-    <tr className={cn("border-b border-border align-top hover:bg-muted/60", !row.hasData && "text-muted-foreground")}>
-      <td className="px-5 py-3 whitespace-nowrap font-medium">{month}</td>
+    <tr className={cn("border-b border-border align-top hover:bg-muted/60", !shown && "text-muted-foreground")}>
+      <td className="px-5 py-3 whitespace-nowrap font-medium">
+        {month}
+        {row.provisional ? (
+          <Badge
+            className={cn("mt-1 block w-fit font-normal", STATUS_TONE_CLASSES.warning)}
+            title={row.hasData ? "The bank statement stops short of the month's end." : "Donation is the Donation Tracker's BDO deposits; expenses come with the bank statement."}
+          >
+            {row.hasData ? "Statement incomplete" : "Statement pending"}
+          </Badge>
+        ) : null}
+      </td>
       <td className="px-5 py-3 text-right tabular-nums">{money(row.expenses)}</td>
-      <td className="px-5 py-3 text-right tabular-nums">{money(row.donation)}</td>
+      <td className="px-5 py-3 text-right tabular-nums">{money(row.hasData ? row.donation : row.trackerDonation)}</td>
       <td className={cn("px-5 py-3 text-right tabular-nums", row.net !== null && row.net < 0 && "text-destructive")}>{money(row.net)}</td>
       <td className={cn("px-5 py-3 text-right tabular-nums", row.pctSpent !== null && row.pctSpent > 1 && "text-destructive")}>{pct(row.pctSpent)}</td>
       <td className="px-5 py-3 text-theme-xs">
         <div className="flex flex-col gap-1.5">
-          {row.hasData && status !== "none" ? (
+          {shown && status !== "none" ? (
             <Badge className={cn("w-fit", STATUS_TONE_CLASSES[STATUS_LABEL[status].tone])}>{STATUS_LABEL[status].label}</Badge>
           ) : null}
           {editing ? (
@@ -311,17 +327,29 @@ function SummaryRow({ row, note, canConfirm, nameOf, onConfirm, onSuggest }: { r
               {note?.drivers ? (
                 <div className="group flex items-start gap-1.5">
                   <span className="max-w-prose">{note.drivers}</span>
-                  {canConfirm ? (
+                  {canConfirm && !draftOnly ? (
                     <Button variant="ghost" size="icon-sm" className="shrink-0 opacity-60 group-hover:opacity-100" aria-label={`Edit ${month} summary`} onClick={() => startEdit(note.drivers)}>
                       <Pencil className="size-3.5" />
                     </Button>
                   ) : null}
                 </div>
-              ) : row.hasData && !(canConfirm && pending) ? (
+              ) : shown && draftOnly && pending ? (
+                <span className="max-w-prose">{pending}</span>
+              ) : shown && !(canConfirm && pending) ? (
                 <span className="italic text-muted-foreground">{pending ? "Awaiting confirmation." : "No summary yet."}</span>
               ) : null}
               {confirmedMeta ? <span className="text-muted-foreground">{confirmedMeta}</span> : null}
-              {canConfirm && pending ? (
+              {draftOnly && shown ? (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-muted-foreground">Draft: confirmed once the month has ended and its bank statement is in. Refreshed every night at 1:00 AM.</span>
+                  {canConfirm ? (
+                    <Button size="sm" variant="outline" className="h-7 w-fit gap-1.5" disabled={busy !== null} onClick={suggestDraft}>
+                      <Sparkles className="size-3.5" />
+                      {busy === "suggest" ? "Drafting…" : pending ? "Regenerate" : "Suggest"}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : canConfirm && pending ? (
                 <div className="rounded-lg border border-warning/40 bg-warning/5 p-2.5">
                   <p className="mb-1 font-medium">{status === "new_suggestion" ? "New suggestion from this month's records" : "Suggested from this month's records"}</p>
                   <p className="max-w-prose">{pending}</p>
@@ -337,7 +365,7 @@ function SummaryRow({ row, note, canConfirm, nameOf, onConfirm, onSuggest }: { r
                     </Button>
                   </div>
                 </div>
-              ) : canConfirm && row.hasData ? (
+              ) : canConfirm && shown ? (
                 <div>
                   <Button size="sm" variant="outline" className="h-7 gap-1.5" disabled={busy !== null} onClick={suggestDraft}>
                     <Sparkles className="size-3.5" />
