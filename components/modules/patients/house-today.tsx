@@ -31,6 +31,7 @@ import { DischargeDialog } from "@/components/modules/patients/discharge-dialog"
 import { BedPlanDialog, type PlanArrival } from "@/components/modules/patients/bed-plan-dialog";
 import { MealTicks } from "@/components/modules/patients/meal-ticks";
 import { PeopleWithChild } from "@/components/modules/patients/people-with-child";
+import { DietChip } from "@/components/modules/patients/diet-instructions";
 import { BedMovesToday } from "@/components/modules/patients/bed-moves-today";
 import { UrgentTripDialog } from "@/components/modules/patients/urgent-trip-dialog";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
@@ -390,6 +391,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                 </div>
                 <PeopleWithChild value={s.peopleWithChild ?? 1} name={nameOf(s.patientId)} canEdit={canEdit} onChange={(next) => updateStay(s.id, { peopleWithChild: next })} />
                 <MealTicks patientId={s.patientId} name={nameOf(s.patientId)} canTick={canTickMeals} fromSheet={mealsFromSheet} />
+                <DietChip patientId={s.patientId} />
                 {canEdit && (
                   <Button size="sm" variant="outline" className="text-destructive" aria-label={`Urgent call: send ${nameOf(s.patientId)} to the hospital`} onClick={() => setUrgent({ stayId: s.id, name: nameOf(s.patientId) })}>
                     <Ambulance /> Urgent

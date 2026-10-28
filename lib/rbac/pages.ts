@@ -74,6 +74,7 @@ export const PAGES: PageDef[] = [
   p("house_ops", "care_cart", "/house-ops/care-cart", "Care Cart"),
   p("house_ops", "activity_center", "/house-ops/activity-center", "Activity Center"),
   p("house_ops", "stocks", "/house-ops/stocks", "Operations Stocks"),
+  p("house_ops", "menu", "/house-ops/menu", "Weekly Menu"),
   p("donors", "list", "/donors", "Donors"),
   p("donors", "receipts", "/donors/receipts", "Acknowledgment Receipts"),
   p("donors", "donee_certs", "/donors/donee-certs", "Donee Certificates"),

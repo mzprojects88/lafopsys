@@ -27,6 +27,7 @@ import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import Link from "next/link";
 import { Home } from "lucide-react";
 import { AdmissionChecklist } from "@/components/modules/patients/admission-checklist";
+import { DietInstructionsCard } from "@/components/modules/patients/diet-instructions";
 import { DischargeDialog } from "@/components/modules/patients/discharge-dialog";
 import { AppointmentDialog } from "@/components/modules/patients/appointment-dialog";
 import { formatTime12 } from "@/lib/utils/time12";
@@ -179,6 +180,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
         </TabsList>
 
         <TabsContent value="overview" className="pt-4">
+          {canSeeClinical ? <DietInstructionsCard patientId={patient.id} canEdit={canEdit} carers={patientCarers.map((c) => c.name)} /> : null}
           {!canSeeClinical && (
             <div className="mb-3 flex items-center gap-2 rounded-2xl bg-muted px-4 py-3 text-theme-xs text-muted-foreground">
               <ShieldAlert className="size-3.5 shrink-0" />

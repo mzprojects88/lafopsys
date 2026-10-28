@@ -25,7 +25,7 @@ const client = new Client({
   connectionString: pgUrl(password),
 });
 
-const ROLES = ["admin", "social_worker", "house_staff", "driver", "finance", "board", "volunteer", "chef"];
+const ROLES = ["admin", "social_worker", "house_staff", "driver", "finance", "board", "volunteer", "chef", "nutritionist"];
 const results = [];
 const record = (name, verdict, detail = "") =>
   results.push({ scenario: name, result: verdict, detail: String(detail).replace(/\s+/g, " ").slice(0, 80) });
@@ -499,6 +499,20 @@ async function main() {
       q("select count(*)::int as n from ops.outbox"), value("n", 0));
   }
 
+  // 0120: a doctor's food instructions are the Social Worker's to write; the house (clinical detail + House Ops) reads them.
+  if ((await client.query("select to_regclass('ops.diet_instructions') is not null as ok")).rows[0].ok) {
+    const insertDiet = `insert into ops.diet_instructions (patient_id, applies_to, instruction) values ('${PT}', 'patient', 'Soft diet, no dairy') returning id`;
+    const readDiet = `select instruction from ops.diet_instructions where patient_id = '${PT}'`;
+    await scenario(ids, "0120: the social worker writes a food instruction", "social_worker", withPatient(), q(insertDiet), rows(1));
+    await scenario(ids, "0120: the chef can't write a food instruction", "chef", withPatient(), q(insertDiet), denied);
+    await scenario(ids, "0120: house staff read the food instructions", "house_staff", withPatient(() => client.query(insertDiet)), q(readDiet), rows(1));
+    // The chef is an Inventory role: clinical detail, but no House Ops or Patients here; the kitchen sees the week through LAF Inventory.
+    await scenario(ids, "0120: the chef (no House Ops) sees no food instructions here", "chef", withPatient(() => client.query(insertDiet)), q(readDiet), rows(0));
+    await scenario(ids, "0120: finance (no clinical detail) sees no food instructions", "finance", withPatient(() => client.query(insertDiet)), q(readDiet), rows(0));
+    await scenario(ids, "0120: the nutritionist reads the week's menu facts", "nutritionist", null, q("select (inventory.menu_week_facts('2031-01-06') ? 'instructions') as ok"), value("ok", true));
+    await scenario(ids, "0120: the driver can't read the week's facts", "driver", null, q("select inventory.menu_week_facts('2031-01-06')"), denied);
+  }
+
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
 
@@ -510,7 +524,7 @@ async function main() {
 }
 
 main().catch(async (e) => {
-  console.error(e.message);
+  console.error(e);
   try {
     await client.end();
   } catch {}
