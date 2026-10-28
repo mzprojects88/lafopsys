@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 import { createCollection, createCollectionFamily, useCollection } from "@/lib/data/collection-store";
 import type { OrientationTopic, StayOrientationCheck } from "@/lib/types/patient";
 
@@ -62,9 +63,12 @@ export const allOrientationChecksStore = createCollection<StayOrientationCheck[]
   empty: [],
   tables: [{ schema: "ops", table: "stay_orientation_checks" }],
   fetch: async () => {
-    const { data, error } = await createClient().schema("ops").from("stay_orientation_checks").select("stay_id, topic_id, covered_at, covered_by_staff_id");
-    if (error) throw new Error(error.message);
-    return ((data ?? []) as CheckRow[]).map((r) => ({
+    // Past 1,000 rows since Oct 2026; one request stops there, so read it in pages.
+    const supabase = createClient();
+    const data = await fetchAll<CheckRow>((from, to) =>
+      supabase.schema("ops").from("stay_orientation_checks").select("stay_id, topic_id, covered_at, covered_by_staff_id").order("stay_id").order("topic_id").range(from, to)
+    );
+    return data.map((r) => ({
       stayId: r.stay_id,
       topicId: r.topic_id,
       coveredAt: r.covered_at,

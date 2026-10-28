@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { CashEntry, ApprovalStatus } from "@/lib/types/finance";
 
@@ -50,9 +51,11 @@ export const cashEntriesStore = createCollection<CashEntry[]>({
   tables: [{ schema: "ops", table: "cash_entries" }],
   fetch: async () => {
     const supabase = createClient();
-    const { data, error } = await supabase.schema("ops").from("cash_entries").select("*").order("date", { ascending: false, nullsFirst: false });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map(toCashEntry);
+    // Read in pages: a single request stops at 1,000 rows.
+    const data = await fetchAll<Parameters<typeof toCashEntry>[0]>((from, to) =>
+      supabase.schema("ops").from("cash_entries").select("*").order("date", { ascending: false, nullsFirst: false }).order("id").range(from, to)
+    );
+    return data.map(toCashEntry);
   },
 });
 
