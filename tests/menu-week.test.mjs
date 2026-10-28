@@ -2,7 +2,7 @@
 // Weekly Menu reads alike in both apps.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dietLabel, stockStatus, weekStatus, weekStock } from "../lib/utils/menu-week-ui.ts";
 import { mondayOf, weekDates } from "../lib/ai/menu-week.ts";
 
@@ -33,7 +33,9 @@ describe("the weekly menu", () => {
     assert.equal(mondayOf("2026-10-26"), "2026-10-26");
     assert.deepEqual(weekDates("2026-10-26").slice(-1), ["2026-11-01"]);
   });
-  it("is the same file in both apps", () => {
+  it("is the same file in both apps", (t) => {
+    // Only where laf-inventory sits beside this repo (the development machine), not on a lone checkout.
+    if (!existsSync(new URL("../../laf-inventory/lib/ai/menu-week.ts", import.meta.url))) return t.skip("laf-inventory is not beside this repo");
     for (const f of ["lib/utils/menu-week-ui.ts", "lib/ai/menu-week.ts"]) {
       assert.equal(readFileSync(new URL(`../${f}`, import.meta.url), "utf8").replace(/\r\n/g, "\n"), readFileSync(new URL(`../../laf-inventory/${f}`, import.meta.url), "utf8").replace(/\r\n/g, "\n"), `${f} differs`);
     }
