@@ -21,7 +21,7 @@ export default function WaitlistPage() {
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader
         title="Waitlist"
-        description="Bed availability forecast against expected check-outs — currently invisible without this board."
+        description="Referred children waiting for a bed, longest wait first. Approve one when a bed frees up; check them in from Referrals when they arrive."
       />
 
       {waitlisted.length === 0 ? (
