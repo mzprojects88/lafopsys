@@ -569,3 +569,35 @@ export async function suggestExpensePurposes(items: readonly DebitItem[], purpos
     clearTimeout(timer);
   }
 }
+
+const CHECKS_TIMEOUT_MS = 60_000;
+
+/**
+ * One line per data check (0122): what the finding probably is and what Accounting should do
+ * about it, for the Approvals page. Findings carry no donor names. Empty on any failure.
+ */
+export async function suggestDataChecks(findings: readonly { key: string; title: string; details: Record<string, unknown> }[]): Promise<{ key: string; suggestion: string }[]> {
+  if (findings.length === 0) return [];
+  const schema = z.object({ items: z.array(z.object({ n: z.number().int(), suggestion: z.string().max(240) })) });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CHECKS_TIMEOUT_MS);
+  try {
+    const { object } = await generateObject({
+      model: model(),
+      schema,
+      system:
+        "You help the accounting staff of a Philippine children's charity keep its Donation Tracker (a Google Sheet) and its bank statements consistent. " +
+        "Each numbered finding is one inconsistency the sync found: an unreadable row, a paper receipt number that is missing, not a number, used on several rows, or skipped in the series, or a bank statement that stops before a month's end. " +
+        "For each, write ONE plain sentence (at most 35 words): the most likely explanation and the one action to take (fix the cell on the sheet, confirm it is correct, or explain it). " +
+        "A number on several rows is often one receipt covering several payments; skipped numbers are often cancelled or unrecorded receipts; a letter code like PV or CV is usually a voucher reference typed in the wrong column. Never invent a donor or an amount.",
+      prompt: findings.map((f, i) => `${i + 1}. ${f.title} ${JSON.stringify(f.details)}`).join("\n"),
+      abortSignal: controller.signal,
+      providerOptions: { openai: { reasoningEffort: "low" } },
+    });
+    return object.items.filter((a) => a.n >= 1 && a.n <= findings.length).map((a) => ({ key: findings[a.n - 1]!.key, suggestion: a.suggestion.trim() }));
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}

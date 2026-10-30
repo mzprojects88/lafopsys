@@ -62,6 +62,17 @@ export function DocumentSettingsField() {
         </div>
       </div>
       <span className="-mt-1 text-xs text-muted-foreground">Printed on every acknowledgment receipt, in both apps: under the foundation&apos;s name and at the foot of each page.</span>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[260px_1fr]">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="docCashTitle">Cash gift document title</Label>
+          <Input id="docCashTitle" value={form.cashReceiptTitle} disabled={loading || !canEdit} maxLength={60} onChange={(e) => setForm({ ...form, cashReceiptTitle: e.target.value })} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="docCashPurpose">Purpose of the donation</Label>
+          <Input id="docCashPurpose" value={form.cashReceiptPurpose} disabled={loading || !canEdit} maxLength={300} onChange={(e) => setForm({ ...form, cashReceiptPurpose: e.target.value })} placeholder="For the care of children with cancer and their carers housed by the foundation" />
+        </div>
+      </div>
+      <span className="-mt-1 text-xs text-muted-foreground">BIR RMC 77-2024: a donation is acknowledged with a receipt (not an invoice) that names the donor, the date, what was given and its intended purpose. The title is what the accountant registered the booklet as.</span>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_180px]">
         <div className="flex flex-col gap-1">
           <Label htmlFor="docAddress">Foundation address</Label>

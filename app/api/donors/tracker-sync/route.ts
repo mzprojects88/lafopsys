@@ -7,6 +7,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { categorize, checkContinuity, naturalKey, parseBankCsv, parseCsv, summarizeBatch } from "@/lib/utils/bank-statement";
 import { houseSheetCsvUrl, houseSheetHtmlUrl, parseTabList } from "@/lib/utils/house-sheet";
 import { TRACKER_SHEET_ID, TRACKER_YEAR, cashLinesFromTab, depositsFromTab } from "@/lib/utils/tracker-cash";
+import { checkCashTab, checkStatement, type DataCheckFinding } from "@/lib/utils/data-checks";
+import { suggestDataChecks } from "@/lib/ai/openai";
+import { openaiConfigured } from "@/lib/ai/env";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -20,7 +23,8 @@ const CHUNK = 200;
  *  - CASH tab -> ops.receive_cash_lines('2026') (0084: replace-whole, posts gifts of confirmed names),
  *    then every posted gift without a receipt gets its LAF-CSH AR -- until Settings sets
  *    cash_from_app_since, from when gifts are entered in Donors > New cash gift instead.
- *  - BDO_CASH DONATIONS tab -> ops.cash_deposits (this year's deposits, with the slip links).
+ *  - Each account's deposits tab (ops.accounts.tracker_tab: BDO_CASH DONATIONS, BPI_CASH DONATIONS, ...) -> ops.cash_deposits
+ *    for that account (0122), with the slip links.
  *  - Bank Statement tab -> Finance > Bank Import's tables, rows not imported yet only (an upload of
  *    the same statement wins: same natural key = skipped).
  * A tab whose text is unchanged since its last good read is skipped. Only counts are returned.
@@ -126,12 +130,15 @@ export async function POST(request: Request) {
     });
   }
 
-  const bdo = tabNamed("bdo_cash donations");
-  if (bdo) {
-    await readTab(bdo.name, bdo.gid, async (csv) => {
+  // One deposits tab per bank account (0122); an account whose tab is not on the tracker yet is skipped.
+  const { data: accounts } = await admin.schema("ops").from("accounts").select("id, bank_code, tracker_tab").not("tracker_tab", "is", null);
+  for (const account of accounts ?? []) {
+    const tab = tabNamed(String(account.tracker_tab).replace(/s+/g, " ").trim().toLowerCase());
+    if (!tab) continue;
+    await readTab(tab.name, tab.gid, async (csv) => {
       const read = depositsFromTab(parseCsv(csv, true), today);
       if (!read.lines.length) throw new Error("No readable deposits; nothing changed.");
-      const { error } = await admin.schema("ops").rpc("receive_cash_deposits", { p_year: TRACKER_YEAR, p_lines: read.lines });
+      const { error } = await admin.schema("ops").rpc("receive_cash_deposits", { p_year: TRACKER_YEAR, p_lines: read.lines, p_account: account.id });
       if (error) throw new Error(error.message);
       return { seen: read.lines.length, written: read.lines.length, errors: read.problems };
     });
@@ -147,7 +154,44 @@ export async function POST(request: Request) {
   const receipts = await issueReceipts(admin);
   // The unambiguous links gift <-> deposit <-> bank credit (0111); the rest wait on Finance > Approvals.
   const { data: reconciled, error: reconcileError } = await admin.schema("ops").rpc("auto_reconcile_cash");
-  return NextResponse.json({ ok: !anyFailed, tabs: results, receipts, reconciled: reconcileError ? { error: reconcileError.message } : reconciled });
+  // The data checks (0122): what does not add up, for Accounting to decide; the AI explains the new ones after the reply.
+  const checks = await recordDataChecks(admin, today).catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }));
+  return NextResponse.json({ ok: !anyFailed, tabs: results, receipts, reconciled: reconcileError ? { error: reconcileError.message } : reconciled, checks });
+}
+
+/**
+ * The findings (0122) from what the database holds after this read -- the cash lines, the last CASH
+ * read's unreadable rows, each account's last statement line -- recorded with their decisions kept.
+ */
+async function recordDataChecks(admin: SupabaseClient, today: string): Promise<{ seen: number; cleared: number; explained: number }> {
+  const [{ data: lines }, { data: lastCashRun }, { data: accounts }] = await Promise.all([
+    admin.schema("ops").from("cash_gift_lines").select("sheet_row, date, amount, invoice_number").eq("source", String(TRACKER_YEAR)).eq("kind", "cash").order("sheet_row"),
+    admin.schema("ops").from("tracker_sync_runs").select("error").eq("tab", "CASH").eq("status", "success").order("started_at", { ascending: false }).limit(1).maybeSingle(),
+    admin.schema("ops").from("accounts").select("id, bank_code, name"),
+  ]);
+  const problems = (lastCashRun?.error ?? "").split("\n").filter((p: string) => /^Row \d+:/.test(p));
+  const findings: DataCheckFinding[] = checkCashTab("CASH", (lines ?? []).map((l) => ({ sheet_row: Number(l.sheet_row), date: String(l.date), amount: Number(l.amount), invoice_number: (l.invoice_number as string | null) ?? null })), problems);
+  for (const a of accounts ?? []) {
+    const { data: last } = await admin.schema("ops").from("bank_transactions").select("posting_date").eq("account_id", a.id).order("posting_date", { ascending: false }).limit(1).maybeSingle();
+    // An account with no statement at all is not behind: it has not started (LandBank until it is encoded).
+    if (last) findings.push(...checkStatement(String(a.bank_code ?? a.name), String(last.posting_date), today));
+  }
+  const { data: recorded, error } = await admin.schema("ops").rpc("record_data_checks", { p_findings: findings });
+  if (error) throw new Error(error.message);
+  // New findings get the AI's one-line suggestion, after the reply; a failure leaves them without one.
+  let explained = 0;
+  if (openaiConfigured()) {
+    const { data: fresh } = await admin.schema("ops").from("data_checks").select("id, key, title, details").is("suggestion", null).eq("status", "open").limit(40);
+    if (fresh?.length) {
+      after(async () => {
+        const answers = await suggestDataChecks(fresh.map((f) => ({ key: String(f.key), title: String(f.title), details: (f.details as Record<string, unknown>) ?? {} })));
+        for (const a of answers) await admin.schema("ops").from("data_checks").update({ suggestion: a.suggestion }).eq("key", a.key).is("suggestion", null);
+      });
+      explained = fresh.length;
+    }
+  }
+  const r = (recorded as { seen?: number; cleared?: number } | null) ?? {};
+  return { seen: Number(r.seen ?? 0), cleared: Number(r.cleared ?? 0), explained };
 }
 
 /** Every posted cash gift without a receipt gets its LAF-CSH number (0110). */

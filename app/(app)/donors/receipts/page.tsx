@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Download, Stamp } from "lucide-react";
+import { Download, Pencil, Stamp } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { LifecycleStepper } from "@/components/patterns/lifecycle-stepper";
 import { EmptyState } from "@/components/patterns/empty-state";
@@ -26,7 +26,7 @@ const STAGE_LABELS = ["Draft", "Issued", "Sent", "Acknowledged"];
  */
 export default function ReceiptsPage() {
   const { donations, donors } = useDonorsData();
-  const { receipts, issueCashAr, advanceStatus } = useAcknowledgmentReceiptsData();
+  const { receipts, issueCashAr, advanceStatus, setPaperNumber } = useAcknowledgmentReceiptsData();
   const { canEdit } = useModuleAccess();
   const editor = canEdit("donors");
   const [busy, setBusy] = useState<string | null>(null);
@@ -47,6 +47,16 @@ export default function ReceiptsPage() {
     setBusy(null);
     if (!result.ok) return void toast.error(`Couldn't issue the receipt: ${result.error}`);
     toast.success(`Acknowledgment receipt ${result.number} issued`);
+  }
+
+  async function editPaper(ar: AcknowledgmentReceipt) {
+    const value = window.prompt("Paper receipt number from accounting's booklet (blank to clear):", ar.bookletNumber ?? "");
+    if (value === null) return;
+    setBusy(ar.id);
+    const result = await setPaperNumber(ar.id, value.trim());
+    setBusy(null);
+    if (!result.ok) return void toast.error(`Couldn't set the paper receipt number: ${result.error}`);
+    toast.success(value.trim() ? `Paper receipt No. ${value.trim()} saved` : "Paper receipt number cleared");
   }
 
   async function download(ar: AcknowledgmentReceipt) {
@@ -80,12 +90,17 @@ export default function ReceiptsPage() {
                       <span className="text-theme-sm font-medium">{ar.sequenceNumber} — {donor?.name ?? "Unknown donor"}</span>
                       <span className="text-theme-xs text-muted-foreground">
                         {donation ? `${formatDate(donation.date)} · ${formatCurrency(ar.amount ?? donation.totalValue, ar.currency ?? donation.currency)}` : ""}
-                        {ar.bookletNumber ? ` · booklet AR ${ar.bookletNumber}` : ""}
+                        {ar.bookletNumber ? ` · paper receipt No. ${ar.bookletNumber}` : " · no paper receipt No."}
                         {" · "}
                         {ar.entity === "US_501C3" ? "US 501(c)(3)" : "PH SEC"}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
+                      {editor ? (
+                        <Button size="sm" variant="ghost" disabled={busy === ar.id} title="Set or correct the paper receipt number" onClick={() => editPaper(ar)}>
+                          <Pencil /> Paper No.
+                        </Button>
+                      ) : null}
                       <Badge variant="outline">{STAGE_LABELS[stageIdx]}</Badge>
                       {ar.status !== "draft" ? (
                         <Button size="sm" variant="outline" disabled={busy === ar.id} onClick={() => download(ar)}>
@@ -113,18 +128,19 @@ export default function ReceiptsPage() {
               <div className="flex flex-col divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
                 {cashWithoutAr.slice(0, 20).map((d) => {
                   const donor = donors.find((dn) => dn.id === d.donorId);
-                  const anonymous = !donor || donor.type === "anonymous";
+                  // 0122: an anonymous gift is receipted too, as "Anonymous donor" -- the paper booklet numbers them.
+                  const noDonor = !donor;
                   return (
                     <div key={d.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm hover:bg-muted/60">
                       <div className="flex flex-col">
                         <span className="font-medium">{donor?.name ?? "Unknown donor"}</span>
                         <span className="text-theme-xs text-muted-foreground">
                           {formatDate(d.date)} · {formatCurrency(d.totalValue, d.currency)}
-                          {d.invoiceNumber ? ` · booklet AR ${d.invoiceNumber}` : ""}
+                          {d.invoiceNumber ? ` · paper receipt No. ${d.invoiceNumber}` : ""}
                         </span>
                       </div>
                       {editor ? (
-                        <Button size="sm" variant="outline" disabled={anonymous || busy === d.id} title={anonymous ? "Set the donor first" : undefined} onClick={() => issue(d.id)}>
+                        <Button size="sm" variant="outline" disabled={noDonor || busy === d.id} title={noDonor ? "Set the donor first" : undefined} onClick={() => issue(d.id)}>
                           <Stamp /> {busy === d.id ? "Issuing…" : "Issue LAF AR"}
                         </Button>
                       ) : null}

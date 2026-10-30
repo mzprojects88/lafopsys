@@ -14,7 +14,7 @@ import { registerGaps } from "@/lib/utils/register-gaps";
 function buildArColumns(donations: Donation[], donors: Donor[]): ColumnDef<AcknowledgmentReceipt>[] {
   return [
     { accessorKey: "sequenceNumber", header: "AR No." },
-    { accessorKey: "bookletNumber", header: "Booklet AR", cell: ({ row }) => row.original.bookletNumber ?? "—" },
+    { accessorKey: "bookletNumber", header: "Paper receipt", cell: ({ row }) => row.original.bookletNumber ?? "—" },
     {
       id: "donor",
       header: "Donor",

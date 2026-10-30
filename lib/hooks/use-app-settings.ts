@@ -50,7 +50,7 @@ export interface AppSettings extends HrSettings {
   bedMoves: { from: string; until: string };
   /** What prints on receipts and donee certificates (0085): the registration line, the
    * foundation's address and TIN, and who signs certificates (a staff id). */
-  documents: { header: string; orgAddress: string; orgTin: string; signatoryId: string | null; names: Record<string, string>; dswdLabel: string; dswdNumber: string };
+  documents: { header: string; orgAddress: string; orgTin: string; signatoryId: string | null; names: Record<string, string>; dswdLabel: string; dswdNumber: string; cashReceiptTitle: string; cashReceiptPurpose: string };
   /** The daily admission reset (0089), Manila "HH:MM": when the morning check-out runs and by
    * when tonight's beds must be assigned. */
   admissions: { resetAt: string; finalizeBy: string };
@@ -87,6 +87,8 @@ interface AppSettingsRow {
   document_names?: Record<string, string> | null;
   dswd_label?: string | null;
   dswd_number?: string | null;
+  cash_receipt_title?: string | null;
+  cash_receipt_purpose?: string | null;
   admission_reset_at: string | null;
   admission_finalize_by: string | null;
 }
@@ -115,7 +117,7 @@ const DEFAULTS: AppSettings = {
   cashFromAppSince: null,
   lafHouse: { lat: null, lng: null, radiusM: 20 },
   bedMoves: { from: "07:00", until: "20:00" },
-  documents: { header: "", orgAddress: "", orgTin: "", signatoryId: null, names: {}, dswdLabel: "DSWD Accreditation No.", dswdNumber: "" },
+  documents: { header: "", orgAddress: "", orgTin: "", signatoryId: null, names: {}, dswdLabel: "DSWD Accreditation No.", dswdNumber: "", cashReceiptTitle: "Acknowledgement Receipt", cashReceiptPurpose: "" },
   admissions: { resetAt: "06:00", finalizeBy: "18:00" },
   ...HR_SETTINGS_DEFAULTS,
 };
@@ -162,7 +164,7 @@ export const appSettingsStore = createCollection<AppSettings>({
         radiusM: row.laf_house_radius_m ?? 20,
       },
       bedMoves: { from: (row.bed_moves_from ?? "07:00").slice(0, 5), until: (row.bed_moves_until ?? "20:00").slice(0, 5) },
-      documents: { header: row.report_header ?? "", orgAddress: row.org_address ?? "", orgTin: row.org_tin ?? "", signatoryId: row.certificate_signatory_id ?? null, names: row.document_names ?? {}, dswdLabel: row.dswd_label ?? "DSWD Accreditation No.", dswdNumber: row.dswd_number ?? "" },
+      documents: { header: row.report_header ?? "", orgAddress: row.org_address ?? "", orgTin: row.org_tin ?? "", signatoryId: row.certificate_signatory_id ?? null, names: row.document_names ?? {}, dswdLabel: row.dswd_label ?? "DSWD Accreditation No.", dswdNumber: row.dswd_number ?? "", cashReceiptTitle: row.cash_receipt_title ?? "Acknowledgement Receipt", cashReceiptPurpose: row.cash_receipt_purpose ?? "" },
       admissions: { resetAt: (row.admission_reset_at ?? "06:00").slice(0, 5), finalizeBy: (row.admission_finalize_by ?? "18:00").slice(0, 5) },
     };
   },

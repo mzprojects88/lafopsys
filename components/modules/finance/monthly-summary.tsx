@@ -173,7 +173,7 @@ export function MonthlySummary({ compact = false }: { compact?: boolean }) {
           flush
           className="overflow-hidden"
           title="Breakdown of monthly donors"
-          description={`Cash gifts posted from accounting's Donation Tracker, by the gift's date.${shownDonorMonth ? ` Deposits on the BDO tab this month: ${peso.format(depositTotal)}.` : ""}`}
+          description={`Cash gifts posted from accounting's Donation Tracker, by the gift's date.${shownDonorMonth ? ` Deposits on the tracker this month: ${peso.format(depositTotal)}.` : ""}`}
           actions={
             receiptMonths.length > 0 ? (
               <Select value={shownDonorMonth ?? ""} onValueChange={setDonorMonth}>

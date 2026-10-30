@@ -9,10 +9,12 @@ import { DataTable } from "@/components/patterns/data-table";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/patterns/section-card";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { BankImportHistory } from "@/components/modules/finance/bank-import-history";
 import { ExpensePurposes } from "@/components/modules/finance/expense-purposes";
 import { useBankTransactionsData, bankStatementImportsStore, bankTransactionsStore } from "@/lib/hooks/use-bank-transactions-collection";
+import { useAccountsData } from "@/lib/hooks/use-accounts-collection";
 import { useRole } from "@/lib/rbac/use-role";
 import { formatDate } from "@/lib/utils/date";
 import { checkContinuity, naturalKey, parseBankCsv, summarizeBatch, type BankRow, type ContinuityWarning } from "@/lib/utils/bank-statement";
@@ -39,6 +41,10 @@ export default function BankImportPage() {
   const { roles } = useRole();
   const canImport = doesFinance(roles);
   const { transactions } = useBankTransactionsData();
+  // 0122: BDO, BPI and LandBank each have their own statements; the picker says which one this file is.
+  const { accounts } = useAccountsData();
+  const bankAccounts = React.useMemo(() => accounts.filter((a) => a.type === "bank"), [accounts]);
+  const [accountId, setAccountId] = React.useState(BDO_ACCOUNT_ID);
 
   const [fileName, setFileName] = React.useState("");
   const [sourceFile, setSourceFile] = React.useState<File | null>(null);
@@ -50,21 +56,21 @@ export default function BankImportPage() {
   const lastStored = React.useMemo(() => {
     let last: (typeof transactions)[number] | null = null;
     for (const t of transactions) {
-      if (t.accountId !== BDO_ACCOUNT_ID) continue;
+      if (t.accountId !== accountId) continue;
       if (!last || t.postingDate > last.postingDate || (t.postingDate === last.postingDate && t.rowSeq > last.rowSeq)) last = t;
     }
     return last;
-  }, [transactions]);
+  }, [transactions, accountId]);
 
-  const existingKeys = React.useMemo(() => new Set(transactions.filter((t) => t.accountId === BDO_ACCOUNT_ID).map((t) => naturalKey(t, BDO_ACCOUNT_ID))), [transactions]);
+  const existingKeys = React.useMemo(() => new Set(transactions.filter((t) => t.accountId === accountId).map((t) => naturalKey(t, accountId))), [transactions, accountId]);
 
   const preview: PreviewRow[] = React.useMemo(
     () =>
       rows.map((r) => ({
         ...r,
-        status: existingKeys.has(naturalKey(r, BDO_ACCOUNT_ID)) ? "existing" : r.debit === 0 && r.credit === 0 ? "review" : "new",
+        status: existingKeys.has(naturalKey(r, accountId)) ? "existing" : r.debit === 0 && r.credit === 0 ? "review" : "new",
       })),
-    [rows, existingKeys]
+    [rows, existingKeys, accountId]
   );
   const summary = React.useMemo(() => summarizeBatch(rows), [rows]);
   const warnings: ContinuityWarning[] = React.useMemo(() => {
@@ -89,7 +95,7 @@ export default function BankImportPage() {
   async function handleImport() {
     if (!summary) return;
     setImporting(true);
-    const result = await importBankRows({ accountId: BDO_ACCOUNT_ID, fileName, rows });
+    const result = await importBankRows({ accountId, fileName, rows });
     setImporting(false);
     if (!result.ok) {
       toast.error(result.error);
@@ -159,7 +165,20 @@ export default function BankImportPage() {
             bodyClassName="flex flex-col gap-4"
           >
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="statement-file">CSV export from BDO online banking</Label>
+              <Label htmlFor="statement-account">Bank account</Label>
+              <Select value={accountId} onValueChange={setAccountId}>
+                <SelectTrigger id="statement-account" className="max-w-md">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {bankAccounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Label htmlFor="statement-file">CSV export from the bank&apos;s online banking</Label>
               <Input id="statement-file" type="file" accept=".csv,text/csv" onChange={(e) => handleFile(e.target.files?.[0])} className="max-w-md" />
               <p className="text-theme-xs text-muted-foreground">
                 Columns: Posting Date, Branch, Description, Debit, Credit, Running Balance, Check Number — in any order. An extra unlabelled column is read as the memo.

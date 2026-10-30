@@ -521,6 +521,30 @@ async function main() {
     await scenario(ids, "0121: the driver can't read the facts", "driver", null, q("select ops.month_driver_facts('2026-10', '2026-10-15')"), denied);
   }
 
+  // 0122: anonymous gifts are receipted too; editors set the paper receipt number; Accounting decides the data checks.
+  if ((await client.query("select to_regprocedure('ops.set_receipt_paper_number(uuid,text)') is not null as ok")).rows[0].ok) {
+    const DONOR = "00000000-0000-4000-8000-0000000000d9", GIFT = "00000000-0000-4000-8000-0000000000e1", RCPT = "00000000-0000-4000-8000-0000000000e2", CHECK = "00000000-0000-4000-8000-0000000000e3";
+    const anonymousGift = async () => {
+      await client.query(`insert into ops.donors (id, name, type, tax_jurisdiction) values ('${DONOR}', 'Anonymous', 'anonymous', 'PH')`);
+      await client.query(`insert into ops.donations (id, donor_id, date, receiving_entity, kind, total_value, currency, status, payment_method, invoice_number) values ('${GIFT}', '${DONOR}', '2026-10-16', 'PH_SEC', 'cash', 1000, 'PHP', 'finalized', 'bank_transfer', '0538')`);
+    };
+    const receipted = async () => {
+      await anonymousGift();
+      await client.query(`insert into ops.acknowledgment_receipts (id, donation_id, sequence_number, entity, status, issued_at, booklet_number, amount, currency) values ('${RCPT}', '${GIFT}', 'LAF-CSH-2031-0001', 'PH_SEC', 'issued', now(), '0538', 1000, 'PHP')`);
+    };
+    const financeEditsDonors = () => setLevel("finance", "donors", "edit");
+    const aCheck = () => client.query(`insert into ops.data_checks (id, key, kind, severity, title) values ('${CHECK}', 'cash.paper_reused:0350', 'paper_reused', 'warning', 'CASH: paper receipt 0350 is on 4 rows')`);
+    await scenario(ids, "0122: a donors editor receipts an anonymous gift", "finance", { setup: async () => { await financeEditsDonors(); await anonymousGift(); } }, q(`select ops.issue_cash_ar('${GIFT}') as n`), (r) => r.ok && /^LAF-CSH-2026-\d{4}$/.test(String(r.data[0].n)));
+    await scenario(ids, "0122: a donors editor sets the paper receipt number", "finance", { setup: async () => { await financeEditsDonors(); await receipted(); } }, q(`select ops.set_receipt_paper_number('${RCPT}', '0539')`), rows(1));
+    await scenario(ids, "0122: the driver can't set the paper receipt number", "driver", { setup: receipted }, q(`select ops.set_receipt_paper_number('${RCPT}', '0539')`), denied);
+    await scenario(ids, "0122: finance decides a data check", "finance", { setup: aCheck }, q(`select ops.decide_data_check('${CHECK}', 'explained', 'One receipt for four payments')`), rows(1));
+    await scenario(ids, "0122: an explanation needs a note", "finance", { setup: aCheck }, q(`select ops.decide_data_check('${CHECK}', 'explained', '')`), checkFailed);
+    await scenario(ids, "0122: the driver can't decide a data check", "driver", { setup: aCheck }, q(`select ops.decide_data_check('${CHECK}', 'correct')`), denied);
+    await scenario(ids, "0122: finance reads the data checks", "finance", { setup: aCheck }, q("select id from ops.data_checks"), atLeast(1));
+    await scenario(ids, "0122: the driver reads no data checks", "driver", { setup: aCheck }, q("select id from ops.data_checks"), rows(0));
+    await scenario(ids, "0122: a signed-in user can't record data checks", "finance", null, q("select ops.record_data_checks('[]'::jsonb)"), denied);
+  }
+
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
 

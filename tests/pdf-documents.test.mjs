@@ -33,8 +33,9 @@ test("the cash AR prints the number, booklet reference, amount in words and figu
   const pages = layoutCashAr(AR);
   assert.equal(pages.length, 1);
   const text = drawn(pages);
-  assert.ok(text.includes("AR No. LAF-CSH-2026-0001"));
-  assert.ok(text.includes("Booklet AR No. 0457"));
+  assert.ok(text.includes("No. LAF-CSH-2026-0001"));
+  assert.ok(text.includes("ACKNOWLEDGEMENT RECEIPT"));
+  assert.ok(text.includes("Paper receipt No. 0457"));
   assert.ok(text.some((t) => t.startsWith("Twelve thousand five hundred pesos and 50/100")));
   assert.ok(text.includes("PHP 12,500.50"));
   assert.ok(text.includes("Bank transfer"));
@@ -45,7 +46,12 @@ test("the cash AR prints the number, booklet reference, amount in words and figu
   assert.equal(pdf.subarray(0, 5).toString(), "%PDF-");
   assert.ok(pdf.length < 100_000);
   // Without a booklet number the line is simply absent.
-  assert.ok(!drawn(layoutCashAr({ ...AR, bookletNumber: undefined })).some((t) => t.startsWith("Booklet")));
+  assert.ok(!drawn(layoutCashAr({ ...AR, bookletNumber: undefined })).some((t) => t.startsWith("Paper receipt")));
+  // 0122: the title and the purpose line come from Settings.
+  const titled = drawn(layoutCashAr({ ...AR, title: "Donation Receipt", purpose: "For the care of children with cancer housed by the foundation" })).join("\n");
+  assert.ok(titled.includes("DONATION RECEIPT"));
+  assert.ok(titled.includes("Purpose"));
+  assert.ok(titled.includes("For the care of children with cancer"));
 });
 
 const CERT = {

@@ -61,6 +61,7 @@ export interface AcknowledgmentReceipt {
   acknowledgedAt?: string;
   issuedBy?: string;
   /** Accounting's paper AR / service invoice number, printed as reference. */
+  /** The paper receipt number from accounting's booklet (the sheet's invoice column). */
   bookletNumber?: string;
   amount?: number;
   currency?: Currency;

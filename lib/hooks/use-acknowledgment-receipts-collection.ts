@@ -69,5 +69,13 @@ export function useAcknowledgmentReceiptsData() {
     return { ok: true, status: data as ArStatus };
   }
 
-  return { receipts, loading, issueCashAr, advanceStatus, refetch: acknowledgmentReceiptsStore.refetch };
+  /** The paper receipt number from accounting's booklet (0122): set or corrected by a donors editor. */
+  async function setPaperNumber(id: string, number: string): Promise<MutationResult> {
+    const { error } = await createClient().schema("ops").rpc("set_receipt_paper_number", { p_id: id, p_number: number });
+    if (error) return { ok: false, error: error.message };
+    await acknowledgmentReceiptsStore.refetch();
+    return { ok: true };
+  }
+
+  return { receipts, loading, issueCashAr, advanceStatus, setPaperNumber, refetch: acknowledgmentReceiptsStore.refetch };
 }

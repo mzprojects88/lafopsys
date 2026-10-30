@@ -11,8 +11,12 @@ import { amountInWords } from "../utils/amount-words.ts";
  */
 export interface CashArData {
   arNumber: string;
-  /** Accounting's paper AR / service invoice number, printed as reference when known. */
+  /** The paper receipt number from accounting's booklet, printed as reference when known. */
   bookletNumber?: string;
+  /** The document's title from Settings (0122): what the accountant registered the booklet as. */
+  title?: string;
+  /** The intended purpose of the donation (BIR RMC 77-2024), from Settings. */
+  purpose?: string;
   /** yyyy-mm-dd */
   date: string;
   donorName: string;
@@ -71,11 +75,12 @@ export function layoutCashAr(data: CashArData): PdfPage[] {
   const page = new PdfPage();
   let y = MARGIN;
   drawLetterhead(page, y, data.header, data.accreditation);
-  page.text(MARGIN + INNER, y, 14, "ACKNOWLEDGEMENT RECEIPT", { bold: true, align: "right" });
+  const title = (data.title?.trim() || "Acknowledgement Receipt").toUpperCase();
+  page.text(MARGIN + INNER, y, fitSize(title, INNER / 2, 14, true, 9), title, { bold: true, align: "right" });
   page.text(MARGIN + INNER, y + 18, 10, "Cash donation", { gray: 0.35, align: "right" });
-  page.text(MARGIN + INNER, y + 36, 11, `AR No. ${data.arNumber}`, { bold: true, align: "right" });
+  page.text(MARGIN + INNER, y + 36, 11, `No. ${data.arNumber}`, { bold: true, align: "right" });
   if (data.bookletNumber) {
-    page.text(MARGIN + INNER, y + 51, 9, `Booklet AR No. ${data.bookletNumber}`, { align: "right" });
+    page.text(MARGIN + INNER, y + 51, 9, `Paper receipt No. ${data.bookletNumber}`, { align: "right" });
     page.text(MARGIN + INNER, y + 63, 10, longDate(data.date), { gray: 0.35, align: "right" });
   } else {
     page.text(MARGIN + INNER, y + 52, 10, longDate(data.date), { gray: 0.35, align: "right" });
@@ -101,6 +106,13 @@ export function layoutCashAr(data: CashArData): PdfPage[] {
   };
   row("Paid by", data.paymentMethod ? (PAYMENT_LABEL[data.paymentMethod] ?? data.paymentMethod) : "—");
   if (data.campaign) row("Campaign", data.campaign);
+  if (data.purpose) {
+    // "The intended purpose of the donation" (BIR RMC 77-2024), wrapped beside its label.
+    const lines = wrap(data.purpose, INNER - 110, 10);
+    page.text(MARGIN, y, 9, "Purpose", { gray: 0.35 });
+    lines.forEach((line, i) => page.text(MARGIN + 110, y + i * 13, 10, line));
+    y += Math.max(16, 13 * lines.length + 3);
+  }
   if (data.notes) {
     const lines = wrap(`Notes: ${data.notes}`, INNER, 9);
     lines.forEach((line) => {
