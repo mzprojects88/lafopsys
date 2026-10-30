@@ -16,6 +16,7 @@ import type { Vehicle } from "@/lib/hooks/use-vehicles-collection";
 import { isActiveStay } from "@/lib/utils/beds";
 import { todayIso } from "@/lib/utils/date";
 import { holdsPower } from "@/lib/rbac/roles";
+import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { DEFAULT_HOSPITAL, tripWords } from "@/lib/utils/trip-direction";
 import { plainError } from "@/lib/utils/plain-error";
 import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
@@ -55,6 +56,7 @@ export interface TripStart {
 
 export function NewTripDialog({ vehicles, start, onClose }: { vehicles: Vehicle[]; start?: TripStart; onClose: () => void }) {
   const { createTrip } = usePickups();
+  const { transportPlaces } = useAppSettings();
   const { staff } = useStaffRoster();
   const { patients } = usePatientsData();
   const [direction, setDirection] = React.useState<"from_hospital" | "to_hospital">(start?.direction ?? "from_hospital");
@@ -147,7 +149,13 @@ export function NewTripDialog({ vehicles, start, onClose }: { vehicles: Vehicle[
         {!pickup && (
           <Field>
             <FieldLabel htmlFor="tripDestination">Hospital</FieldLabel>
-            <Input id="tripDestination" value={destination} maxLength={160} onChange={(e) => setDestination(e.target.value)} />
+            <Input id="tripDestination" list="tripHospitals" value={destination} maxLength={160} onChange={(e) => setDestination(e.target.value)} />
+            {/* Saved places (0123): picking one gives the trip its pin and directions. */}
+            <datalist id="tripHospitals">
+              {transportPlaces.map((p) => (
+                <option key={p.name} value={p.name} />
+              ))}
+            </datalist>
           </Field>
         )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

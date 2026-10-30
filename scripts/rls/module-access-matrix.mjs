@@ -545,6 +545,15 @@ async function main() {
     await scenario(ids, "0122: a signed-in user can't record data checks", "finance", null, q("select ops.record_data_checks('[]'::jsonb)"), denied);
   }
 
+  // 0123: saved transport places are read by every signed-in staff member and written by admins only.
+  if ((await client.query("select exists (select 1 from information_schema.columns where table_schema = 'shared' and table_name = 'app_settings' and column_name = 'transport_places') as ok")).rows[0].ok) {
+    const setPlaces = q("update shared.app_settings set transport_places = '[{\"name\":\"Test\",\"lat\":14.6,\"lng\":121}]'::jsonb where id returning id");
+    await scenario(ids, "0123: the driver reads the saved places", "driver", null, q("select transport_places from shared.app_settings where id"), rows(1));
+    await scenario(ids, "0123: the admin saves the places", "admin", null, setPlaces, rows(1));
+    await scenario(ids, "0123: the social worker can't change the places", "social_worker", null, setPlaces, (r) => (r.ok && r.rows === 0) || denied(r));
+    await scenario(ids, "0123: the places must be a list", "admin", null, q("update shared.app_settings set transport_places = '{}'::jsonb where id"), checkFailed);
+  }
+
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
 

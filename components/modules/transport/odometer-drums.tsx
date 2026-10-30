@@ -150,6 +150,7 @@ export function OdometerDialog({
   lowest,
   tripStart,
   usual,
+  estimate,
   confirmLabel,
   onConfirm,
   onClose,
@@ -167,6 +168,8 @@ export function OdometerDialog({
   tripStart?: number | null;
   /** On arrival: the route's usual km, learned from past trips. */
   usual?: { medianKm: number; trips: number } | null;
+  /** The by-map km for this trip (0123), shown while the route has fewer than 3 logged trips. */
+  estimate?: { km: number; route: string } | null;
   confirmLabel: string;
   onConfirm: (km: number, photoId: string | null) => Promise<{ ok: boolean; error?: string }>;
   onClose: () => void;
@@ -217,7 +220,7 @@ export function OdometerDialog({
             Tap the drums to change them.
             {lowest != null ? ` Last reading ${formatKm(lowest)}.` : ""}
             {tripKm != null && tripKm >= 0 ? ` This trip: ${formatKm(tripKm)}.` : ""}
-            {trusted ? ` Usually about ${formatKm(Math.round(trusted.medianKm))} (${trusted.trips} trips).` : ""}
+            {trusted ? ` Usually about ${formatKm(Math.round(trusted.medianKm))} (${trusted.trips} trips).` : estimate ? ` By map, about ${formatKm(estimate.km)} (${estimate.route}).` : ""}
           </p>
           {km != null && problem && <p className="text-center text-theme-xs text-destructive">{problem}</p>}
           {odd && !problem && (

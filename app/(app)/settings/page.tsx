@@ -1,12 +1,13 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { Database, Users, Bell, ClipboardCheck, CalendarDays, UserCog, Truck } from "lucide-react";
+import { Database, Users, Bell, ClipboardCheck, CalendarDays, UserCog, Truck, MapPinned } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { IconCircle } from "@/components/patterns/icon-circle";
 import { SectionCard } from "@/components/patterns/section-card";
 import { ClockInRequirementToggle } from "@/components/modules/settings/clock-in-requirement-toggle";
 import { OvertimeThresholdField } from "@/components/modules/settings/overtime-threshold-field";
 import { LafHouseLocationField } from "@/components/modules/settings/laf-house-location-field";
+import { TransportPlacesField } from "@/components/modules/settings/transport-places-field";
 import { DocumentSettingsField } from "@/components/modules/settings/document-settings-field";
 import { DocumentNames } from "@/components/modules/settings/document-names";
 import { CafBillingSettings } from "@/components/modules/settings/caf-billing-settings";
@@ -104,6 +105,10 @@ export default function SettingsPage() {
 
         <SectionCard id="vehicles" className="scroll-mt-24" title={<CardTitleWithIcon icon={Truck}>Vehicles</CardTitleWithIcon>}>
           <VehiclesCard />
+        </SectionCard>
+
+        <SectionCard id="transport-places" className="scroll-mt-24 md:col-span-2" title={<CardTitleWithIcon icon={MapPinned}>Transport places</CardTitleWithIcon>}>
+          <TransportPlacesField />
         </SectionCard>
 
         <SectionCard className="md:col-span-2" title={<CardTitleWithIcon icon={UserCog}>Pay & Leave Policy</CardTitleWithIcon>}>

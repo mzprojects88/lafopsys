@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { placesFromSettings, type Place } from "@/lib/utils/places";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
 import { DEFAULT_OVERTIME_THRESHOLD_MINUTES } from "@/lib/utils/dtr";
 
@@ -46,6 +47,8 @@ export interface AppSettings extends HrSettings {
   cashFromAppSince: string | null;
   /** LAF House's pin and the on-site radius for DTR punches (0063); null until an admin sets it. */
   lafHouse: { lat: number | null; lng: number | null; radiusM: number };
+  /** Places trips go to, with their pins (0123); a trip's destination is matched to one by name. */
+  transportPlaces: Place[];
   /** When families may be moved between beds, Manila time "HH:MM" (0071): never at night. */
   bedMoves: { from: string; until: string };
   /** What prints on receipts and donee certificates (0085): the registration line, the
@@ -78,6 +81,7 @@ interface AppSettingsRow {
   laf_house_latitude: number | string | null;
   laf_house_longitude: number | string | null;
   laf_house_radius_m: number;
+  transport_places?: unknown;
   bed_moves_from: string;
   bed_moves_until: string;
   report_header: string | null;
@@ -116,6 +120,7 @@ const DEFAULTS: AppSettings = {
   programsFromAppSince: null,
   cashFromAppSince: null,
   lafHouse: { lat: null, lng: null, radiusM: 20 },
+  transportPlaces: [],
   bedMoves: { from: "07:00", until: "20:00" },
   documents: { header: "", orgAddress: "", orgTin: "", signatoryId: null, names: {}, dswdLabel: "DSWD Accreditation No.", dswdNumber: "", cashReceiptTitle: "Acknowledgement Receipt", cashReceiptPurpose: "" },
   admissions: { resetAt: "06:00", finalizeBy: "18:00" },
@@ -127,7 +132,7 @@ const SELECT =
   "payroll_pay_date_rule, payroll_contribution_cutoff, tardiness_grace_minutes, " +
   "leave_vl_days_per_year, leave_sl_days_per_year, leave_vl_convertible, minimum_wage_region, " +
   "compliance_pen_last_digit, compliance_employer_initial, compliance_tracking_from, compliance_lead_days, " +
-  "laf_house_latitude, laf_house_longitude, laf_house_radius_m, bed_moves_from, bed_moves_until, " +
+  "laf_house_latitude, laf_house_longitude, laf_house_radius_m, transport_places, bed_moves_from, bed_moves_until, " +
   "report_header, org_address, org_tin, certificate_signatory_id, admission_reset_at, admission_finalize_by, document_names, dswd_label, dswd_number";
 
 export const appSettingsStore = createCollection<AppSettings>({
@@ -163,6 +168,7 @@ export const appSettingsStore = createCollection<AppSettings>({
         lng: row.laf_house_longitude == null ? null : Number(row.laf_house_longitude),
         radiusM: row.laf_house_radius_m ?? 20,
       },
+      transportPlaces: placesFromSettings(row.transport_places),
       bedMoves: { from: (row.bed_moves_from ?? "07:00").slice(0, 5), until: (row.bed_moves_until ?? "20:00").slice(0, 5) },
       documents: { header: row.report_header ?? "", orgAddress: row.org_address ?? "", orgTin: row.org_tin ?? "", signatoryId: row.certificate_signatory_id ?? null, names: row.document_names ?? {}, dswdLabel: row.dswd_label ?? "DSWD Accreditation No.", dswdNumber: row.dswd_number ?? "", cashReceiptTitle: row.cash_receipt_title ?? "Acknowledgement Receipt", cashReceiptPurpose: row.cash_receipt_purpose ?? "" },
       admissions: { resetAt: (row.admission_reset_at ?? "06:00").slice(0, 5), finalizeBy: (row.admission_finalize_by ?? "18:00").slice(0, 5) },

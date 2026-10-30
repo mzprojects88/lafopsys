@@ -6,7 +6,9 @@ import { formatDate } from "@/lib/utils/date";
 import { formatTime12 } from "@/lib/utils/time12";
 import { PrintButton } from "@/app/(print)/hr/payslips/[id]/print/print-button";
 import { nameFormat, titleFor } from "@/lib/utils/staff-name";
-import { tripWords } from "@/lib/utils/trip-direction";
+import { DEFAULT_HOSPITAL, tripWords } from "@/lib/utils/trip-direction";
+import { directionsUrl, estimateRoadKm, findPlace, placesFromSettings } from "@/lib/utils/places";
+import { ManifestMap } from "./manifest-map";
 
 /**
  * A LAF HOPE pick-up's manifest on paper (go-live, 2026-10-13): who was listed, who boarded,
@@ -29,7 +31,10 @@ export default async function ManifestPrintPage({ params }: { params: Promise<{ 
     trip.vehicle_id ? supabase.schema("ops").from("vehicles").select("name, plate_no").eq("id", trip.vehicle_id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
   // Settings > Documents (0094): the driver's job title under the line, or the name alone.
-  const { data: docSettings } = await supabase.schema("shared").from("app_settings").select("document_names").maybeSingle();
+  const { data: docSettings } = await supabase.schema("shared").from("app_settings").select("document_names, transport_places, laf_house_latitude, laf_house_longitude").maybeSingle();
+  // The destination's pin (0123): a pick-up goes to the default hospital.
+  const place = findPlace(placesFromSettings(docSettings?.transport_places), trip.destination ?? (trip.direction === "from_hospital" ? DEFAULT_HOSPITAL : null));
+  const home = docSettings?.laf_house_latitude != null && docSettings?.laf_house_longitude != null ? { lat: Number(docSettings.laf_house_latitude), lng: Number(docSettings.laf_house_longitude) } : null;
   const driverTitle = titleFor(nameFormat(docSettings?.document_names, "manifest"), driver?.position);
   const manifest = ((trip.trip_manifest ?? []) as { id: string; name: string; carer_name: string | null; note: string | null; boarded_at: string | null }[]).sort((a, b) => a.name.localeCompare(b.name));
   const boarded = manifest.filter((m) => m.boarded_at).length;
@@ -58,6 +63,19 @@ export default async function ManifestPrintPage({ params }: { params: Promise<{ 
             {trip.odometer_start != null ? <p>Odometer {trip.odometer_start}{trip.odometer_end != null ? ` → ${trip.odometer_end} (${Number(trip.odometer_end) - Number(trip.odometer_start)} km)` : ""}</p> : null}
           </div>
         </header>
+        {place ? (
+          <section className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_220px] print:grid-cols-[1fr_220px]">
+            <ManifestMap points={[...(home ? [{ ...home, label: "LAF House", kind: "home" as const }] : []), { ...place, label: place.name, kind: "place" as const }]} />
+            <div className="text-xs text-neutral-700">
+              <p className="font-semibold text-neutral-900">{place.name}</p>
+              <p>{place.lat}, {place.lng}</p>
+              {home ? <p>By map about {estimateRoadKm(home, place)} km from LAF House, one way.</p> : null}
+              <p className="mt-1 break-all print:hidden">
+                <a href={directionsUrl(place, home)} target="_blank" rel="noopener noreferrer" className="underline">Directions in Google Maps</a>
+              </p>
+            </div>
+          </section>
+        ) : null}
         <table className="mt-4 w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-neutral-400 text-left text-xs text-neutral-600">

@@ -338,6 +338,30 @@ export async function updateHrSettings(input: HrSettings): Promise<UpdateClockIn
 }
 
 /**
+ * Places trips go to, with their pins (0123): a name and coordinates each, 100 at most. Admins
+ * only, like the rest of this file; the column CHECK bounds the list.
+ */
+export async function updateTransportPlaces(input: { name: string; lat: number; lng: number }[]): Promise<UpdateClockInRequirementResult> {
+  if (!Array.isArray(input) || input.length > 100) return { ok: false, error: "At most 100 places." };
+  const places = input.map((p) => ({ name: String(p?.name ?? "").replace(/s+/g, " ").trim().slice(0, 80), lat: Math.round(Number(p?.lat) * 1e6) / 1e6, lng: Math.round(Number(p?.lng) * 1e6) / 1e6 }));
+  if (places.some((p) => !p.name || !Number.isFinite(p.lat) || !Number.isFinite(p.lng) || Math.abs(p.lat) > 90 || Math.abs(p.lng) > 180)) return { ok: false, error: "Every place needs a name and a pin (latitude between -90 and 90, longitude between -180 and 180)." };
+  if (new Set(places.map((p) => p.name.toLowerCase())).size !== places.length) return { ok: false, error: "Two places have the same name." };
+
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+  if (!caller) return { ok: false, error: "Not signed in." };
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") return { ok: false, error: "Only admins can change this setting." };
+
+  const { error } = await supabase.schema("shared").from("app_settings").update({ transport_places: places, updated_at: new Date().toISOString(), updated_by: caller.id }).eq("id", true);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
+/**
  * LAF House's pin and the on-site radius for DTR punches (0063). Admins
  * only, like the rest of this file; the column CHECKs bound the values.
  * Clearing the pin (both null) turns the on-site check off.

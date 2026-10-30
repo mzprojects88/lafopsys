@@ -20,6 +20,9 @@ import type { TripDirection } from "@/lib/types/house-ops";
 import { OdometerDrums, OdometerPhotoButton, PhotoReadNote } from "./odometer-drums";
 import { holdsPower } from "@/lib/rbac/roles";
 import { TripControls, TripReadings } from "./trip-controls";
+import { TripPlace, useTripPlace } from "./trip-place";
+import { useAppSettings } from "@/lib/hooks/use-app-settings";
+import { useRouteKm } from "@/lib/hooks/use-vehicles-collection";
 
 export const PURPOSE_LABEL: Record<Exclude<TripDirection, "from_hospital">, string> = {
   errand: "Errand",
@@ -35,6 +38,8 @@ export function errandTitle(e: Errand): string {
 }
 
 export function ErrandCard({ errand: e, vehicle, mine, driverName, canEdit }: { errand: Errand; vehicle: Vehicle | undefined; mine: boolean; driverName: string; canEdit: boolean }) {
+  const tripPlace = useTripPlace(e.direction, e.destination);
+  const routes = useRouteKm();
   return (
     <Card className={mine ? "border-primary/50" : undefined}>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
@@ -54,7 +59,8 @@ export function ErrandCard({ errand: e, vehicle, mine, driverName, canEdit }: { 
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
         <TripReadings trip={e} />
-        <TripControls trip={e} vehicle={vehicle} canEdit={canEdit} departLabel="Depart" arriveLabel="Trip done" route={routeKey(e.direction, e.destination)} />
+        <TripPlace direction={e.direction} destination={e.destination} usualTrips={routes.get(routeKey(e.direction, e.destination))?.trips ?? 0} />
+        <TripControls trip={e} vehicle={vehicle} canEdit={canEdit} departLabel="Depart" arriveLabel="Trip done" route={routeKey(e.direction, e.destination)} estimate={tripPlace.estimate} />
       </CardContent>
     </Card>
   );
@@ -78,7 +84,9 @@ export function StartTripDialog({ vehicles, onClose }: { vehicles: Vehicle[]; on
   const [saving, setSaving] = React.useState(false);
   // The day's first departure needs a photo of the odometer (0078).
   const needsPhoto = tracked && !vehicle?.photoToday && !read;
-  const places = [...new Set(errands.map((e) => e.destination).filter((d): d is string => !!d))].sort();
+  // Saved places (0123) first, then where earlier errands went.
+  const { transportPlaces } = useAppSettings();
+  const places = [...new Set([...transportPlaces.map((p) => p.name), ...errands.map((e) => e.destination).filter((d): d is string => !!d)])].sort();
   const odometerProblem = tracked ? readingProblem(km, vehicle?.lastReading ?? null) : null;
 
   async function save() {

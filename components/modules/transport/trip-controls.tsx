@@ -41,11 +41,14 @@ export function TripControls({
   departLabel,
   arriveLabel,
   route,
+  estimate,
 }: {
   trip: MovableTrip;
   vehicle: Vehicle | undefined;
   /** routeKey() of the trip, for the usual km on arrival (0078). */
   route: string;
+  /** The by-map km (0123), for the arrival step while the route has no history. */
+  estimate?: { km: number; route: string } | null;
   canEdit: boolean;
   canDepart?: boolean;
   departLabel: React.ReactNode;
@@ -121,6 +124,7 @@ export function TripControls({
           lowest={trip.odometerStart}
           tripStart={trip.odometerStart}
           usual={routes.get(route) ?? null}
+          estimate={estimate ?? null}
           confirmLabel="Confirm and arrive"
           onConfirm={async (km, photoId) => {
             const r = await moveTrip(trip.id, "completed", { end: km, endPhotoId: photoId });

@@ -19,7 +19,8 @@ import { useRole } from "@/context/role-provider";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { usePickups, type ManifestEntry, type Pickup } from "@/lib/hooks/use-pickups-collection";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
-import { useErrands, useVehicles, type Vehicle } from "@/lib/hooks/use-vehicles-collection";
+import { useErrands, useRouteKm, useVehicles, type Vehicle } from "@/lib/hooks/use-vehicles-collection";
+import { TripPlace, useTripPlace } from "@/components/modules/transport/trip-place";
 import { OdometerDrums } from "@/components/modules/transport/odometer-drums";
 import { TripControls, TripReadings } from "@/components/modules/transport/trip-controls";
 import { ErrandCard, StartTripDialog, errandTitle } from "@/components/modules/transport/errands";
@@ -215,6 +216,9 @@ function VehicleOdometer({ vehicle: v, isSuperAdmin, onLog }: { vehicle: Vehicle
 function PickupCard({ pickup: p, vehicle, mine, driverName, canEdit, canBuild }: { pickup: Pickup; vehicle: Vehicle | undefined; mine: boolean; driverName: string; canEdit: boolean; canBuild: boolean }) {
   const { setBoarded, removeFromManifest, addToManifest } = usePickups();
   const candidates = useManifestCandidates(p.date);
+  // The destination's pin and by-map km (0123); the usual km once the route has trips (0078).
+  const tripPlace = useTripPlace(p.direction, p.destination);
+  const routes = useRouteKm();
   const [busy, setBusy] = React.useState<string | null>(null);
   // A passenger added or corrected by the driver or the social worker (0096); null = closed.
   const [passenger, setPassenger] = React.useState<ManifestEntry | "new" | null>(null);
@@ -320,6 +324,7 @@ function PickupCard({ pickup: p, vehicle, mine, driverName, canEdit, canBuild }:
         )}
 
         <TripReadings trip={p} />
+        <TripPlace direction={p.direction} destination={p.destination} usualTrips={routes.get(routeKey(p.direction, p.destination))?.trips ?? 0} />
         <Link href={`/transport/manifest/${p.id}`} target="_blank" className="text-theme-xs text-primary hover:underline">
           Print manifest
         </Link>
@@ -331,6 +336,7 @@ function PickupCard({ pickup: p, vehicle, mine, driverName, canEdit, canBuild }:
           departLabel={`Depart with ${boarded}`}
           arriveLabel={words.arrived}
           route={routeKey(p.direction, p.destination)}
+          estimate={tripPlace.estimate}
         />
         {p.status === "completed" && pickup && (
           <p className="text-theme-xs text-muted-foreground">
