@@ -568,6 +568,18 @@ async function main() {
       },
     });
     const rec = "'00000000-0000-4000-8000-0000000c0124'";
+    // A case paper on record and its file in the bucket, so the denials below see something to hide.
+    const casePaper = {
+      setup: async () => {
+        await client.query("update shared.staff set active = true, role = 'social_worker' where id = $1", [ids.social_worker]);
+        await client.query("select set_config('request.jwt.claims', $1, true)", [claims(ids.social_worker)]);
+        await client.query(`insert into ops.case_documents (patient_id, kind, storage_path, file_name, content_type, size_bytes)
+          select id, 'intake_sheet', id::text || '/matrix-test.pdf', 'matrix-test.pdf', 'application/pdf', 10 from ops.patients order by created_at limit 1`);
+        await client.query(`insert into storage.objects (bucket_id, name) select 'case-files', id::text || '/matrix-test.pdf' from ops.patients order by created_at limit 1`);
+      },
+    };
+    const papers = q("select (select count(*) from storage.objects where bucket_id = 'case-files' and name like '%/matrix-test.pdf')::int as files, (select count(*) from ops.case_documents where file_name = 'matrix-test.pdf')::int as rows");
+    await scenario(ids, "0124: the social worker sees the case paper and its file", "social_worker", casePaper, papers, (r) => r.ok && r.data[0].files === 1 && r.data[0].rows === 1);
     await scenario(ids, "0124: the social worker writes a casework draft", "social_worker", null, q(`insert into ops.case_records (patient_id, form, held_on, data) values (${pt}, 'casework', current_date, '{"summary":"x"}') returning prepared_by`), rows(1));
     await scenario(ids, "0124: the social worker reads an approved record", "social_worker", approvedRecord(), q(`select approved_by from ops.case_records where id = ${rec}`), rows(1));
     await scenario(ids, "0124: an approved record is locked", "social_worker", approvedRecord(), q(`update ops.case_records set data = '{"focus":"changed"}' where id = ${rec}`), checkFailed);
@@ -576,7 +588,7 @@ async function main() {
     for (const actor of ["admin", "finance", "house_staff", "driver", "board"]) {
       await scenario(ids, `0124: ${actor} can't read case records`, actor, approvedRecord(), q("select id from ops.case_records"), rows(0));
       await scenario(ids, `0124: ${actor} can't write a case record`, actor, null, q(`insert into ops.case_records (patient_id, form, held_on) values (${pt}, 'casework', current_date)`), denied);
-      await scenario(ids, `0124: ${actor} can't see case papers`, actor, null, q("select id from storage.objects where bucket_id = 'case-files' union all select id from ops.case_documents"), rows(0));
+      await scenario(ids, `0124: ${actor} can't see case papers`, actor, casePaper, papers, (r) => r.ok && r.data[0].files === 0 && r.data[0].rows === 0);
     }
     await scenario(ids, "0124: the CEO sees what waits for a signature, without content", "admin", approvedRecord("update shared.staff set extra_roles = array['ceo'] where role = 'admin' and active"), q("select * from ops.case_records_to_sign()"), (r) => r.ok && r.rows >= 1 && Object.keys(r.data[0]).join(",") === "form,case_number,approved_at");
     await scenario(ids, "0124: the CEO still can't open the record", "admin", approvedRecord("update shared.staff set extra_roles = array['ceo'] where role = 'admin' and active"), q(`select data from ops.case_records where id = ${rec}`), rows(0));
