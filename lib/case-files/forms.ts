@@ -1,0 +1,444 @@
+/**
+ * The social worker's case forms (0124), written once from LAF's paper case folder ("NEW LAF Case
+ * Management Forms", the P139 folder set). One definition drives the form on screen and its PDF.
+ * The child's name, birth date, sex, address and diagnosis come from the patient record; a form
+ * holds only what the paper adds. Wording of the checklists is the paper's.
+ */
+
+export type FormId = "intake" | "progress_note" | "casework" | "counseling" | "home_visit" | "monitoring";
+
+export type Field =
+  | { key: string; label: string; type: "section" }
+  | { key: string; label: string; type: "text" | "textarea" | "date" | "time" | "number"; hint?: string; prefill?: string }
+  | { key: string; label: string; type: "choice"; options: readonly string[] }
+  | { key: string; label: string; type: "checks"; options: readonly string[] }
+  | { key: string; label: string; type: "table"; columns: readonly { key: string; label: string }[]; rows?: readonly string[] }
+  | { key: string; label: string; type: "ratings"; rows: readonly string[]; options: readonly string[] };
+
+export interface CaseForm {
+  id: FormId;
+  title: string;
+  /** A session with the child and carer: it can be booked ahead, and has a venue. */
+  session: boolean;
+  /** The parent or carer signs the paper ("Conforme"). */
+  conforme: boolean;
+  /** A date field that proposes the next session. */
+  nextSessionKey?: string;
+  fields: readonly Field[];
+}
+
+const sec = (key: string, label: string): Field => ({ key, label, type: "section" });
+const text = (key: string, label: string, extra: { hint?: string; prefill?: string } = {}): Field => ({ key, label, type: "text", ...extra });
+const area = (key: string, label: string, extra: { hint?: string; prefill?: string } = {}): Field => ({ key, label, type: "textarea", ...extra });
+const choice = (key: string, label: string, options: readonly string[]): Field => ({ key, label, type: "choice", options });
+const checks = (key: string, label: string, options: readonly string[]): Field => ({ key, label, type: "checks", options });
+
+const FAMILY_COLUMNS = [
+  { key: "name", label: "Name" },
+  { key: "age_sex", label: "Age/Sex" },
+  { key: "relationship", label: "Relationship to Client" },
+  { key: "civil_status", label: "Civil Status" },
+  { key: "education", label: "Educational Attainment" },
+  { key: "occupation", label: "Occupation" },
+  { key: "income", label: "Income" },
+] as const;
+
+export const FORMS: Record<FormId, CaseForm> = {
+  intake: {
+    id: "intake",
+    title: "Client Intake Sheet",
+    session: false,
+    conforme: true,
+    fields: [
+      text("referred_by", "Referred by", { prefill: "National Children's Hospital" }),
+      { key: "referral_date", label: "Date of Referral", type: "date" },
+      sec("a", "A. Client's identifying information"),
+      text("religion", "Religion", { prefill: "religion" }),
+      text("place_of_birth", "Place of Birth", { prefill: "placeOfBirth" }),
+      sec("b", "B. Carer's identifying information"),
+      choice("carer_civil_status", "Civil Status", ["Single", "Married", "Widowed", "Separated", "Live-in"]),
+      text("carer_education", "Educational Attainment", { prefill: "parentEducation" }),
+      text("carer_occupation", "Occupation & Status (Regular, Irregular, Contractual, Jobless)", { prefill: "parentOccupation" }),
+      text("carer_income", "Estimated Monthly Income", { prefill: "householdIncome" }),
+      sec("c", "C. Problem presented"),
+      area("problem_presented", "Problem presented", { prefill: "reasonForReferral" }),
+      checks("services_requested", "Services requested", ["Housing Accommodation", "Transportation Support", "Meal Assistance", "Financial Assistance", "Psychosocial Support"]),
+      text("services_other", "Others"),
+      sec("d", "D. Medical information"),
+      text("treatment_phase", "Treatment Phase"),
+      text("attending_physician", "Attending Physician", { prefill: "attendingPhysician" }),
+      choice("medical_priority", "Client Medical Prioritization", ["Priority A: Chemotherapy", "Priority B: Blood Transfusion", "Priority C: Scheduled Procedure", "Priority D: Follow-up Consultation"]),
+      sec("e", "E. Family composition"),
+      { key: "family", label: "Family members", type: "table", columns: FAMILY_COLUMNS },
+      choice("housing_type", "Type of Housing", ["Owned", "Rented", "Temporary", "Caretaker"]),
+      choice("light_source", "Source of Light", ["Electric", "Lamp/Candle"]),
+      text("light_cost", "Monthly cost of light"),
+      choice("water_source", "Source of Water", ["Nawasa", "Deep Well", "Spring", "Maynilad"]),
+      sec("f", "F. Social worker psychosocial assessment"),
+      checks("emotional_status", "Emotional Status", ["Calm", "Hopeful", "Anxious", "Fearful", "Sad or withdrawn", "Irritable"]),
+      checks("support_system", "Support System", ["Strong family support", "Support from relatives or friends", "Community or organizational support", "Limited support system", "Family conflict", "Caregiver stress or fatigue"]),
+      checks("coping", "Coping and Functioning", ["Coping adequately", "Cooperative with treatment", "Difficulty adjusting to illness or treatment", "Requires psychosocial support", "Requires close monitoring"]),
+      area("narrative", "Brief narrative assessment"),
+      sec("g", "G. Recommendation"),
+      area("recommendation", "Recommendation"),
+      { key: "consent_signed_on", label: "Carer signed the consent on", type: "date" },
+    ],
+  },
+
+  progress_note: {
+    id: "progress_note",
+    title: "Client Progress Note",
+    session: false,
+    conforme: false,
+    fields: [area("concern", "Concern"), area("services_rendered", "Activities / services rendered")],
+  },
+
+  casework: {
+    id: "casework",
+    title: "Casework Activity Report",
+    session: true,
+    conforme: false,
+    fields: [
+      text("facilitated_by", "Facilitated by"),
+      area("purpose", "Purpose of the Session", {
+        prefill:
+          "The casework session was conducted to orient the beneficiary and parent/caregiver regarding the beneficiary's situation, identified needs, available services, and responsibilities. It also aimed to identify the beneficiary's strengths, difficulties, coping capacity, and support system to assist in the development of appropriate interventions.",
+      }),
+      area("summary", "Summary of Discussion", {
+        prefill: "The beneficiary's medical condition, family situation, financial concerns, treatment-related needs, and other circumstances affecting his/her well-being and social functioning were discussed.",
+      }),
+      checks("concerns", "Key concerns identified", [
+        "Temporary accommodation near the hospital",
+        "Transportation to and from the hospital",
+        "Food and daily meal needs",
+        "Medical or treatment-related expenses",
+        "Financial difficulty or insufficient family income",
+        "Emotional distress, fear, or anxiety",
+        "Difficulty coping with illness or treatment",
+        "Disruption in schooling or education",
+        "Limited family or caregiver support",
+        "Difficulty accessing medicines, laboratory tests, or medical services",
+        "Family relationship or caregiving concerns",
+        "Need for referral to another agency or service provider",
+      ]),
+      checks("strengths", "Strengths and available support", [
+        "Beneficiary is cooperative and responsive",
+        "Beneficiary demonstrates a positive attitude toward treatment",
+        "Beneficiary is able to express feelings and concerns",
+        "Beneficiary has appropriate coping skills",
+        "Parent/caregiver is attentive and supportive",
+        "Family is committed to continuing treatment",
+        "Extended family members provide support",
+        "Family has support from relatives, friends, or the community",
+        "Beneficiary has access to hospital-based assistance",
+        "Beneficiary receives assistance from government agencies or NGOs",
+        "Beneficiary shows interest in educational, recreational, or creative activities",
+        "Family is willing to participate in the intervention plan",
+      ]),
+      checks("interventions", "Interventions or assistance discussed/provided", [
+        "Orientation on Little Ark Foundation services and house rules",
+        "Intake interview and assessment",
+        "Temporary accommodation",
+        "Meal assistance",
+        "Transportation assistance",
+        "Transportation fare reimbursement",
+        "Psychosocial support or supportive counseling",
+        "Child-friendly recreational or developmental activities",
+        "Spiritual care or prayer support",
+        "Coordination with the National Children's Hospital",
+        "Assistance in accessing medicines, tests, or treatment",
+        "Referral to government agencies, NGOs, or other service providers",
+        "Financial or material assistance",
+        "Family or caregiver guidance",
+        "Development or review of the intervention plan",
+        "Follow-up monitoring and case management",
+      ]),
+      checks("attached", "Supporting documents attached", ["Intake and Assessment Form", "Admission Slip", "Initial Intervention Plan"]),
+    ],
+  },
+
+  counseling: {
+    id: "counseling",
+    title: "Counseling Process Recording",
+    session: true,
+    conforme: false,
+    nextSessionKey: "next_session",
+    fields: [
+      text("session_no", "Session No."),
+      text("duration", "Duration"),
+      checks("purpose", "I. Purpose of the Session", ["Initial Counseling", "Follow-up Counseling", "Individual Counseling", "Family Counseling", "Supportive Counseling", "Crisis Intervention"]),
+      checks("concern", "II. Presenting Concern", [
+        "Medical condition or treatment", "Emotional distress", "Anxiety or fear", "Sadness or grief", "Family concern or conflict", "Financial difficulty",
+        "Housing or accommodation concern", "Transportation difficulty", "School-related concern", "Caregiving difficulty", "Adjustment to illness or treatment", "Treatment compliance",
+      ]),
+      sec("process", "III. Counseling Process"),
+      area("focus", "Focus of discussion"),
+      area("statements", "Client's statements / behavior"),
+      area("response", "Social worker's response / intervention"),
+      area("observations", "Observations"),
+      checks("assessment", "IV. Assessment: emotional condition and response during the session", [
+        "Calm", "Cooperative", "Hopeful", "Anxious", "Fearful", "Sad or tearful", "Withdrawn", "Irritable", "Confused", "Reluctant to communicate",
+        "Engaged and responsive", "Expressed thoughts and feelings", "Became calmer", "Showed improved understanding", "Identified possible solutions",
+        "Agreed with the recommended plan", "Remained distressed", "Was hesitant or minimally responsive", "Required further assessment",
+      ]),
+      area("assessment_note", "Social worker's assessment"),
+      checks("plan", "V. Plan / Next Steps", [
+        "Continue counseling as necessary", "Schedule a follow-up session", "Monitor emotional and behavioral condition", "Coordinate with the caregiver or family",
+        "Coordinate with the medical team", "Refer to an appropriate agency or professional", "Provide financial or resource assistance",
+        "Review progress during the next session", "Close counseling intervention",
+      ]),
+      { key: "next_session", label: "Next Session Date, if applicable", type: "date" },
+    ],
+  },
+
+  home_visit: {
+    id: "home_visit",
+    title: "Home Visit Monitoring Form",
+    session: true,
+    conforme: true,
+    nextSessionKey: "next_follow_up",
+    fields: [
+      sec("i", "I. Visit information"),
+      { key: "time_started", label: "Time Started", type: "time" },
+      { key: "time_ended", label: "Time Ended", type: "time" },
+      text("others_present", "Other Person/s Present"),
+      checks("visit_type", "Type of Visit", ["Initial Follow-up", "Regular Monitoring", "Aftercare Monitoring", "Crisis/Emergency Visit", "Case Closure Preparation", "Verification Visit"]),
+      checks("visit_purpose", "Purpose of Visit", [
+        "Monitor medical treatment", "Assess beneficiary's current condition", "Monitor family and caregiving situation", "Assess home and environmental conditions",
+        "Verify information or documents", "Follow up referrals and interventions", "Address an identified concern",
+      ]),
+      sec("ii", "II. Beneficiary's current condition"),
+      choice("treatment_status", "Treatment status", ["Ongoing treatment", "Maintenance", "Follow-up monitoring", "Treatment completed", "Treatment temporarily interrupted", "Treatment discontinued"]),
+      choice("appointment_compliance", "Compliance with hospital appointments", ["Consistent", "Occasionally missed", "Frequently missed", "Unable to verify"]),
+      choice("medication_compliance", "Compliance with medication", ["Consistent", "Occasionally missed", "Frequently missed", "No current medication", "Unable to verify"]),
+      checks("missed_reasons", "Reason for missed treatment or medication, if applicable", ["Financial difficulty", "Transportation problem", "Distance from hospital", "Lack of caregiver", "Beneficiary's refusal or fear", "Family emergency"]),
+      text("next_appointment", "Next hospital appointment"),
+      checks("appeared", "During the visit, the beneficiary appeared", ["Calm", "Cheerful", "Cooperative", "Anxious", "Sad", "Withdrawn", "Fearful", "Irritable", "Distressed", "Unable to assess"]),
+      choice("school_status", "Current school status", ["Attending regularly", "Home-based/modular learning", "Temporarily absent", "Not enrolled", "Dropped out", "Not applicable"]),
+      choice("play", "Participation in play, learning, or age-appropriate activities", ["Regular", "Occasional", "Limited", "None", "Unable to assess"]),
+      sec("iii", "III. Family and caregiving situation"),
+      text("primary_caregiver", "Primary caregiver"),
+      text("household_change", "Any change in household composition? (specify)"),
+      checks("caregiver_condition", "Caregiver's current condition", ["Coping adequately", "Experiencing stress", "Physically exhausted", "Emotionally distressed", "Needs additional support", "Unable to assess"]),
+      choice("family_functioning", "Family relationship and functioning", ["Supportive and cooperative", "Generally stable", "Experiencing occasional conflict", "Frequently conflictual", "Limited family support"]),
+      sec("iv", "IV. Financial and basic needs"),
+      text("income_sources", "Current source/s of income"),
+      text("monthly_income", "Estimated monthly household income"),
+      choice("financial_condition", "Current financial condition", ["Income is sufficient", "Income is barely sufficient", "Income is insufficient", "No regular income", "Dependent on assistance"]),
+      checks("unmet_needs", "Current unmet needs", ["Food", "Transportation", "Medication", "Hospital expenses", "Housing", "Utilities", "Education", "Livelihood"]),
+      sec("v", "V. Home and environmental condition"),
+      choice("housing_status", "Housing status", ["Owned", "Rented", "Rent-free", "Shared with relatives", "Temporary shelter", "Informal housing"]),
+      {
+        key: "home_areas",
+        label: "Areas assessed",
+        type: "ratings",
+        rows: ["General cleanliness", "Ventilation and lighting", "Water supply", "Toilet and sanitation", "Cooking and food storage", "Sleeping arrangement", "Electrical and fire safety", "Accessibility of the home"],
+        options: ["Satisfactory", "Needs Improvement", "Serious Concern"],
+      },
+      sec("vi", "VI. Community and service access"),
+      text("usual_transport", "Usual transportation to the hospital"),
+      text("travel_time", "Estimated travel time"),
+      text("transport_cost", "Estimated transportation cost per visit"),
+      checks("community_support", "Available community support", ["Barangay assistance", "Health center", "MSWDO/CSWDO", "DSWD assistance", "School support", "Church or faith-based support", "Relatives or neighbors", "NGO/Foundation", "None"]),
+      text("current_assistance", "Current assistance received"),
+      text("barriers", "Barriers in accessing services"),
+      sec("vii", "VII. Safety and protection screening"),
+      checks("protection", "Observed, reported, or suspected", [
+        "Physical abuse", "Emotional or psychological abuse", "Sexual abuse", "Neglect", "Abandonment", "Exploitation", "Domestic violence",
+        "Unsafe caregiving arrangement", "Substance abuse in the household", "Self-harm or suicidal behavior", "Serious family conflict", "No identified protection concern",
+      ]),
+      choice("risk_level", "Risk Level", ["No apparent risk", "Low", "Moderate", "High", "Immediate danger"]),
+      area("immediate_action", "Immediate action or referral made"),
+      sec("viii", "VIII. Summary of findings"),
+      choice("changes", "Significant changes since the previous assessment", ["Improved", "Stable", "Declined", "New concern identified", "Unable to determine"]),
+      checks("strengths", "Strengths and available resources", ["Supportive caregiver", "Cooperative family", "Support from relatives", "Community support", "Stable housing", "Regular income", "Treatment compliance", "Positive coping skills"]),
+      sec("ix", "IX. Social worker's assessment"),
+      choice("case_risk", "Overall Case Risk Classification", ["Low", "Moderate", "High", "Critical"]),
+      choice("case_priority", "Case Priority", ["Routine", "Priority", "Urgent", "Emergency"]),
+      sec("x", "X. Follow-up intervention plan"),
+      {
+        key: "follow_up",
+        label: "Follow-up actions",
+        type: "table",
+        columns: [
+          { key: "need", label: "Identified Need or Concern" },
+          { key: "action", label: "Intervention/Action Needed" },
+          { key: "responsible", label: "Responsible Person/Agency" },
+          { key: "target", label: "Target Date" },
+        ],
+      },
+      checks("referrals", "Referrals recommended", [
+        "Medical assistance", "Transportation assistance", "Food assistance", "Housing support", "Psychosocial intervention", "Educational assistance",
+        "Livelihood assistance", "Child protection services", "MSWDO/CSWDO", "DSWD", "Hospital social service",
+      ]),
+      area("recommendations", "Specific recommendations"),
+      { key: "next_follow_up", label: "Next follow-up date", type: "date" },
+      area("agreements", "Agreements made with the beneficiary/family"),
+    ],
+  },
+
+  monitoring: {
+    id: "monitoring",
+    title: "Case Monitoring & Evaluation Form",
+    session: true,
+    conforme: true,
+    fields: [
+      checks("purpose", "Purpose of monitoring", [
+        "Regular case evaluation", "Review of intervention plan", "Extended-stay assessment", "Preparation for discharge/termination", "Aftercare or follow-up", "Response to an identified concern",
+      ]),
+      checks("sources", "Sources of information", [
+        "Beneficiary interview", "Parent/caregiver interview", "Direct observation", "Medical or hospital record", "LAF service records", "Home visit", "Coordination with partner agency",
+      ]),
+      {
+        key: "services",
+        label: "III. Services received (Status: NS Not Started, O Ongoing, C Completed, D Delayed, M Modified, DC Discontinued; Progress: 4 Goal Achieved, 3 Substantial, 2 Partial, 1 No Progress, N/A)",
+        type: "table",
+        columns: [
+          { key: "service", label: "Services" },
+          { key: "activities", label: "Activities/Interventions Implemented" },
+          { key: "status", label: "Status" },
+          { key: "rating", label: "Progress Rating" },
+        ],
+        rows: ["Housing", "Everyday Meals", "Transportation", "Spiritual Care", "Community Resources"],
+      },
+      sec("iv_a", "IV-A. Health and treatment"),
+      choice("hospital_visits", "Attendance in scheduled hospital visits", ["Regular", "Irregular", "Not applicable"]),
+      choice("treatment_compliance", "Compliance with chemotherapy, transfusion, medication, or other treatment", ["Compliant", "Partially compliant", "Non-compliant"]),
+      choice("complications", "Medical complications or change in condition", ["None reported", "Present"]),
+      choice("access_concern", "Transportation or accommodation affecting treatment", ["No concern", "With concern"]),
+      choice("nch_coordination", "Coordination with National Children's Hospital or medical provider", ["Completed", "Ongoing", "Needed"]),
+      area("health_remarks", "Remarks / action needed (health)"),
+      sec("iv_b", "IV-B. Psychosocial and emotional condition"),
+      choice("emotional", "Emotional condition", ["Stable", "Mild concern", "Moderate concern", "Serious concern"]),
+      choice("participation", "Participation in play and activities", ["Active", "Partial", "Minimal", "Unable to participate"]),
+      choice("interaction", "Interaction with caregiver and peers", ["Positive", "Improving", "With concern"]),
+      choice("behavior", "Behavior and coping", ["Appropriate", "Needs support", "Requires referral"]),
+      choice("caregiver_support", "Caregiver support and cooperation", ["Good", "Fair", "Needs improvement"]),
+      area("psychosocial_remarks", "Remarks / action needed (psychosocial)"),
+      area("assessment", "V. Social Worker's Assessment"),
+      area("recommendation", "VI. Recommendation"),
+    ],
+  },
+};
+
+export const FORM_IDS = Object.keys(FORMS) as FormId[];
+export const SESSION_FORMS = FORM_IDS.filter((f) => FORMS[f].session);
+
+/** The folder's papers (DSWD checklist order), for uploads and the "what's missing" list. */
+export const DOCUMENT_KINDS = {
+  admission_slip: "Admission slip",
+  intake_sheet: "Intake sheet",
+  case_study: "Social case study report",
+  birth_certificate: "Birth certificate",
+  photo: "Photo (on admission / discharge)",
+  pwd_id: "Child's PWD ID",
+  parent_id: "Parent's ID",
+  intervention_plan: "Intervention plan and contract",
+  medical_record: "Health / medical and dental records",
+  progress_report: "Progress report / running records",
+  monitoring: "Monitoring and evaluation report",
+  referral_letter: "Referral letter",
+  case_conference: "Case conference records, meetings",
+  psych_evaluation: "Psychological / psychiatric evaluation",
+  legal_record: "Legal or court records",
+  home_visit: "Home visit form",
+  casework_report: "Casework activity report",
+  counseling_record: "Counseling process recording",
+  discharge: "Discharge / closing papers",
+  school_module: "School modules",
+  signed_copy: "Signed copy of an app record",
+  other: "Other",
+} as const;
+export type DocumentKind = keyof typeof DOCUMENT_KINDS;
+/** The checklist's required papers (folder items 1-9); the rest are as needed. */
+export const REQUIRED_KINDS: readonly DocumentKind[] = ["admission_slip", "intake_sheet", "case_study", "birth_certificate", "photo", "intervention_plan", "medical_record", "progress_report", "monitoring"];
+
+export type FormData = Record<string, unknown>;
+
+/** A record's fields filled from the patient record (keys named in `prefill`), or the paper's own
+ * standard wording; never overwrites what is already there. */
+export function prefillData(form: FormId, patient: Record<string, unknown>, data: FormData = {}): FormData {
+  const out: FormData = { ...data };
+  for (const f of FORMS[form].fields) {
+    if (!("prefill" in f) || !f.prefill || out[f.key] != null) continue;
+    const fromPatient = patient[f.prefill];
+    if (typeof fromPatient === "string" && fromPatient.trim()) out[f.key] = fromPatient.trim();
+    else if (!/^[a-z][A-Za-z]+$/.test(f.prefill)) out[f.key] = f.prefill;
+  }
+  return out;
+}
+
+/** Keeps only what the form defines, in the shape each field takes. Used on save and on what the
+ * AI proposes, so nothing else is ever stored in a record. */
+export function cleanData(form: FormId, raw: unknown): FormData {
+  const src = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const str = (v: unknown, max = 5000) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined);
+  const out: FormData = {};
+  for (const f of FORMS[form].fields) {
+    const v = src[f.key];
+    if (f.type === "section") continue;
+    if (f.type === "checks") {
+      const picked = Array.isArray(v) ? f.options.filter((o) => v.includes(o)) : [];
+      if (picked.length) out[f.key] = picked;
+    } else if (f.type === "choice") {
+      if (typeof v === "string" && f.options.includes(v)) out[f.key] = v;
+    } else if (f.type === "date") {
+      if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) out[f.key] = v;
+    } else if (f.type === "time") {
+      if (typeof v === "string" && /^\d{2}:\d{2}$/.test(v)) out[f.key] = v;
+    } else if (f.type === "table") {
+      const rows = Array.isArray(v) ? v.slice(0, 30) : [];
+      const kept = rows
+        .map((r) => Object.fromEntries(f.columns.flatMap((c) => (str((r as Record<string, unknown>)?.[c.key], 300) ? [[c.key, str((r as Record<string, unknown>)[c.key], 300)]] : []))))
+        .filter((r) => Object.keys(r).length);
+      if (kept.length) out[f.key] = kept;
+    } else if (f.type === "ratings") {
+      const obj = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+      const kept = Object.fromEntries(f.rows.flatMap((r) => (typeof obj[r] === "string" && f.options.includes(obj[r] as string) ? [[r, obj[r]]] : [])));
+      if (Object.keys(kept).length) out[f.key] = kept;
+    } else {
+      const s = str(v, f.type === "textarea" ? 5000 : 300);
+      if (s) out[f.key] = s;
+    }
+  }
+  return out;
+}
+
+/** The case number a PDF carries: the app's LFCN by default, the paper folder's on request. */
+export function caseNumberFor(patient: { caseNumber?: string | null; legacyCode?: string | null }, useOriginal: boolean): string {
+  return (useOriginal && patient.legacyCode) || patient.caseNumber || "";
+}
+
+/** What the AI read off a paper, as key/value pairs (a strict schema can't hold free shapes):
+ * checklists come back joined by " | ", tables and ratings as JSON. cleanData then keeps only
+ * what the form defines. */
+export function dataFromPairs(form: FormId, pairs: readonly { key: string; value: string }[]): FormData {
+  const raw: Record<string, unknown> = {};
+  for (const { key, value } of pairs) {
+    const f = FORMS[form].fields.find((x) => x.key === key);
+    if (!f || !value) continue;
+    if (f.type === "checks") raw[key] = value.split("|").map((s) => s.trim());
+    else if (f.type === "table" || f.type === "ratings") {
+      try {
+        raw[key] = JSON.parse(value);
+      } catch {
+        // unreadable structure: left out
+      }
+    } else raw[key] = value;
+  }
+  return cleanData(form, raw);
+}
+
+/** The forms described for the AI: each field's key, kind, label and allowed options. */
+export function formsForAi(): string {
+  return FORM_IDS.map((id) => {
+    const lines = FORMS[id].fields
+      .filter((f) => f.type !== "section")
+      .map((f) => {
+        const opts = "options" in f ? ` options: ${f.options.join(" | ")}` : "";
+        const extra = f.type === "table" ? ` JSON array of objects with keys ${f.columns.map((c) => c.key).join(", ")}` : f.type === "ratings" ? ` JSON object {row: option}, rows: ${f.rows.join(" | ")}; options: ${f.options.join(" | ")}` : "";
+        return `  ${f.key} (${f.type}) ${f.label}.${opts}${extra}`;
+      });
+    return `FORM ${id}: ${FORMS[id].title}\n${lines.join("\n")}`;
+  }).join("\n\n");
+}

@@ -554,6 +554,36 @@ async function main() {
     await scenario(ids, "0123: the places must be a list", "admin", null, q("update shared.app_settings set transport_places = '{}'::jsonb where id"), checkFailed);
   }
 
+  // 0124: case files are the social worker's alone; the CEO is told only what waits for a signature.
+  if ((await client.query("select to_regclass('ops.case_records') is not null as ok")).rows[0].ok) {
+    const pt = "(select id from ops.patients order by created_at limit 1)";
+    // An approved record made as the social worker (approval is stamped from the session).
+    const approvedRecord = (extra = "") => ({
+      setup: async () => {
+        await client.query("update shared.staff set active = true, role = 'social_worker' where id = $1", [ids.social_worker]);
+        await client.query("select set_config('request.jwt.claims', $1, true)", [claims(ids.social_worker)]);
+        await client.query(`insert into ops.case_records (id, patient_id, form, held_on, data) values ('00000000-0000-4000-8000-0000000c0124', ${pt}, 'counseling', current_date, '{"focus":"x"}')`);
+        await client.query("update ops.case_records set status = 'approved' where id = '00000000-0000-4000-8000-0000000c0124'");
+        if (extra) await client.query(extra);
+      },
+    });
+    const rec = "'00000000-0000-4000-8000-0000000c0124'";
+    await scenario(ids, "0124: the social worker writes a casework draft", "social_worker", null, q(`insert into ops.case_records (patient_id, form, held_on, data) values (${pt}, 'casework', current_date, '{"summary":"x"}') returning prepared_by`), rows(1));
+    await scenario(ids, "0124: the social worker reads an approved record", "social_worker", approvedRecord(), q(`select approved_by from ops.case_records where id = ${rec}`), rows(1));
+    await scenario(ids, "0124: an approved record is locked", "social_worker", approvedRecord(), q(`update ops.case_records set data = '{"focus":"changed"}' where id = ${rec}`), checkFailed);
+    await scenario(ids, "0124: an approved record is never deleted", "social_worker", approvedRecord(), q(`delete from ops.case_records where id = ${rec}`), rows(0));
+    await scenario(ids, "0124: the social worker records the CEO's signing date", "social_worker", approvedRecord(), q(`update ops.case_records set ceo_signed_on = current_date where id = ${rec}`), rows(1));
+    for (const actor of ["admin", "finance", "house_staff", "driver", "board"]) {
+      await scenario(ids, `0124: ${actor} can't read case records`, actor, approvedRecord(), q("select id from ops.case_records"), rows(0));
+      await scenario(ids, `0124: ${actor} can't write a case record`, actor, null, q(`insert into ops.case_records (patient_id, form, held_on) values (${pt}, 'casework', current_date)`), denied);
+      await scenario(ids, `0124: ${actor} can't see case papers`, actor, null, q("select id from storage.objects where bucket_id = 'case-files' union all select id from ops.case_documents"), rows(0));
+    }
+    await scenario(ids, "0124: the CEO sees what waits for a signature, without content", "admin", approvedRecord("update shared.staff set extra_roles = array['ceo'] where role = 'admin' and active"), q("select * from ops.case_records_to_sign()"), (r) => r.ok && r.rows >= 1 && Object.keys(r.data[0]).join(",") === "form,case_number,approved_at");
+    await scenario(ids, "0124: the CEO still can't open the record", "admin", approvedRecord("update shared.staff set extra_roles = array['ceo'] where role = 'admin' and active"), q(`select data from ops.case_records where id = ${rec}`), rows(0));
+    await scenario(ids, "0124: the social worker gets no CEO list", "social_worker", approvedRecord(), q("select * from ops.case_records_to_sign()"), rows(0));
+    await scenario(ids, "0124: the social worker gets the Case sessions page", "social_worker", null, q("select level from shared.role_page_access where role = 'social_worker' and page = 'patients.sessions'"), (r) => r.ok && r.rows === 1 && r.data[0].level === "edit");
+  }
+
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();
 

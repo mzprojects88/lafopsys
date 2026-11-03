@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { BedDouble, Bell, CloudOff, Fuel, Mail, MapPin, Wrench, type LucideIcon } from "lucide-react";
+import { BedDouble, Bell, ClipboardList, CloudOff, Fuel, Mail, MapPin, PenLine, Wrench, type LucideIcon } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
+import { useOpenCaseRecords } from "@/lib/hooks/use-case-files";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
 import { houseSheetPatientId } from "@/lib/types/house-sheet";
@@ -67,7 +70,10 @@ export function NotificationCenter() {
   const tracker = roles.includes("admin") || roles.includes("finance");
   // Daily admission reset (0089): tonight's beds must be finalized by the set time, for those who assign them.
   const admissions = roles.includes("admin") || roles.includes("social_worker") || roles.includes("inventory_lead");
-  const bell = (more: Reminder[]) => <BellPopover reminders={[...reminders, ...more]} />;
+  // Case files (0124): the social worker's sessions, and the CEO's records to sign.
+  const caseRole = roles.includes("social_worker") || roles.includes("ceo");
+  const bell = (more: Reminder[]) =>
+    caseRole ? <CaseReminders>{(c) => <BellPopover reminders={[...reminders, ...more, ...c]} />}</CaseReminders> : <BellPopover reminders={[...reminders, ...more]} />;
   const rest = (a: Reminder[]) => {
     const withA = (more: Reminder[]) => bell([...a, ...more]);
     if (fleet && tracker) return <TrackerReminder>{(t) => <FleetReminders>{(f) => withA([...t, ...f])}</FleetReminders>}</TrackerReminder>;
@@ -77,6 +83,43 @@ export function NotificationCenter() {
   };
   if (admissions) return <AdmissionReminder>{rest}</AdmissionReminder>;
   return rest([]);
+}
+
+/** What the CEO is told about case records: how many approved ones wait for a signature (no content, 0124). */
+const toSignStore = createCollection<{ form: string; approved_at: string }[]>({
+  key: "ops.case_records_to_sign",
+  empty: [],
+  tables: [],
+  staleMs: 5 * 60_000,
+  fetch: async () => {
+    const { data, error } = await createClient().schema("ops").rpc("case_records_to_sign");
+    if (error) throw new Error(error.message);
+    return (data ?? []) as { form: string; approved_at: string }[];
+  },
+});
+
+const manilaDay = (iso: string) => new Date(new Date(iso).getTime() + 8 * 3600_000).toISOString().slice(0, 10);
+
+function CaseReminders({ children }: { children: (reminders: Reminder[]) => React.ReactNode }) {
+  const { roles } = useRole();
+  const sw = roles.includes("social_worker");
+  const { open } = useOpenCaseRecords(sw);
+  const { data: toSign } = useCollection(roles.includes("ceo") ? toSignStore : null);
+  const now = useNow();
+  const out: Reminder[] = [];
+  if (sw) {
+    const today = manilaDay(now.toISOString());
+    const booked = open.filter((r) => r.status === "scheduled" && r.scheduledAt);
+    const todays = booked.filter((r) => manilaDay(r.scheduledAt!) === today).sort((a, b) => a.scheduledAt!.localeCompare(b.scheduledAt!));
+    const late = booked.filter((r) => new Date(r.scheduledAt!).getTime() < now.getTime() - 3600_000);
+    if (todays.length)
+      out.push({ id: "case-sessions-today", title: `${todays.length} case session${todays.length === 1 ? "" : "s"} today`, body: `The next at ${formatTime12(new Date(new Date(todays[0].scheduledAt!).getTime() + 8 * 3600_000).toISOString().slice(11, 16))}.`, href: "/patients/sessions", icon: ClipboardList });
+    if (late.length)
+      out.push({ id: "case-sessions-write-up", title: `${late.length} session${late.length === 1 ? "" : "s"} to write up`, body: "They took place: fill in the form and approve it.", href: "/patients/sessions", icon: ClipboardList });
+  }
+  if (toSign.length)
+    out.push({ id: "case-records-to-sign", title: `${toSign.length} case record${toSign.length === 1 ? "" : "s"} to sign`, body: "Approved by the social worker. Ask for the printed PDF to sign; the social worker records the date.", href: "/", icon: PenLine });
+  return <>{children(out)}</>;
 }
 
 /** From an hour before the finalize time until every name on today's NCH list has tonight's bed (0089). */

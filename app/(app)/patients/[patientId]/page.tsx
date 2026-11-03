@@ -1,8 +1,8 @@
 "use client";
 
-import { use, useState } from "react";
-import { notFound } from "next/navigation";
-import { ShieldAlert, LogOut, CalendarClock, ArrowRightLeft, BedDouble, PencilLine } from "lucide-react";
+import { use, useState, useSyncExternalStore } from "react";
+import { notFound, useSearchParams } from "next/navigation";
+import { ShieldAlert, LogOut, CalendarClock, ArrowRightLeft, BedDouble, PencilLine, Eye, EyeOff } from "lucide-react";
 import { EntityDetailHeader } from "@/components/patterns/entity-detail-header";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { EmptyState } from "@/components/patterns/empty-state";
@@ -19,7 +19,7 @@ import { computeAge } from "@/lib/utils/age";
 import { formatDate } from "@/lib/utils/date";
 import { useRole } from "@/lib/rbac/use-role";
 import { canSeeClinicalDetail } from "@/lib/rbac/roles";
-import { FileLibrary } from "@/components/patterns/file-library";
+import { CaseFileTab } from "@/components/modules/patients/case-file/case-file-tab";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
 import { houseSheetPatientId } from "@/lib/types/house-sheet";
@@ -45,6 +45,8 @@ import type { Patient, Stay } from "@/lib/types/patient";
 
 export default function PatientDetailPage({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = use(params);
+  // ?tab=case-file opens a tab directly (the Case sessions page links there).
+  const initialTab = useSearchParams().get("tab") ?? "overview";
   const { patients, carers, stays, appointments, loading, refetch } = usePatientsData();
   const { units, bedPositions } = useHouseLayout();
   const patient = patients.find((p) => p.id === patientId);
@@ -71,6 +73,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   }
 
   const canSeeClinical = canSeeClinicalDetail(roles);
+  // Case files (0124): the social worker only; the database refuses everyone else too.
+  const isSocialWorker = roles.includes("social_worker");
   const patientCarers = carers.filter((c) => c.patientId === patient.id);
   const patientStays = stays.filter((s) => s.patientId === patient.id);
   const patientAppointments = appointments.filter((a) => a.patientId === patient.id).sort((a, b) => b.date.localeCompare(a.date));
@@ -170,13 +174,14 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
         </Link>
       ) : null}
 
-      <Tabs defaultValue="overview">
+      <Tabs defaultValue={initialTab}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="stays">Stays ({patientStays.length})</TabsTrigger>
           <TabsTrigger value="appointments">Appointments ({patientAppointments.length})</TabsTrigger>
           <TabsTrigger value="carers">Carers ({patientCarers.length})</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
+          {isSocialWorker ? <TabsTrigger value="case-file">Case file</TabsTrigger> : null}
         </TabsList>
 
         <TabsContent value="overview" className="pt-4">
@@ -195,7 +200,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
             />
             <InfoTile label="Non-Pedia" value={patient.status === "non_pedia" ? "Yes" : "No"} />
             {patient.distanceKm !== undefined && canSeeClinical && <InfoTile label="Distance from Home" value={`${patient.distanceKm} km`} />}
-            {patient.legacyCode && <InfoTile label="Old Code" value={patient.legacyCode} />}
+            {patient.legacyCode && <OriginalNumberTile value={patient.legacyCode} />}
             {patient.religion && <InfoTile label="Religion" value={patient.religion} />}
             {patient.lengthOfStay && <InfoTile label="Length of Stay" value={patient.lengthOfStay} />}
             {patient.sectorCaseCategory && canSeeClinical && (
@@ -329,17 +334,13 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
 
         <TabsContent value="documents" className="flex flex-col gap-6 pt-4">
           <AdmissionChecklist patientId={patient.id} canEdit={canEdit} stay={latestStay} firstStay={latestStay ? isFirstStay(latestStay, stays) : true} />
-          {canSeeClinical ? (
-            <FileLibrary
-              recordType="patient"
-              recordId={patient.id}
-              canUpload={canEdit}
-              canDelete={canEdit}
-              title="Case files"
-              description={`Case management forms, referrals and other scans, kept under Patients / ${patient.lastName}, ${patient.firstName} (${patient.sheetCn ?? patient.patientNumber}).`}
-            />
-          ) : null}
         </TabsContent>
+
+        {isSocialWorker ? (
+          <TabsContent value="case-file" className="pt-4">
+            <CaseFileTab patient={patient} stays={patientStays} appointments={patientAppointments} />
+          </TabsContent>
+        ) : null}
       </Tabs>
 
       <EditDetailsDialog
@@ -381,6 +382,41 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
         onOpenChange={(open) => !open && setTransferTarget(null)}
         onTransferred={refetch}
       />
+    </div>
+  );
+}
+
+const SHOW_ORIGINAL = "laf-show-original-case-no";
+const readShowOriginal = () => {
+  try {
+    return window.localStorage.getItem(SHOW_ORIGINAL) === "1";
+  } catch {
+    return false;
+  }
+};
+const onShowOriginalChange = (fn: () => void) => {
+  window.addEventListener(SHOW_ORIGINAL, fn);
+  return () => window.removeEventListener(SHOW_ORIGINAL, fn);
+};
+
+/** The paper folder's own number (0124), linked to the LFCN case number: hidden until asked for, remembered on this device. */
+function OriginalNumberTile({ value }: { value: string }) {
+  const shown = useSyncExternalStore(onShowOriginalChange, readShowOriginal, () => false);
+  const toggle = () => {
+    try {
+      window.localStorage.setItem(SHOW_ORIGINAL, shown ? "0" : "1");
+    } catch {}
+    window.dispatchEvent(new Event(SHOW_ORIGINAL));
+  };
+  return (
+    <div className="flex flex-col gap-0.5 rounded-xl border border-border bg-card p-3">
+      <span className="flex items-center justify-between gap-2 text-theme-xs text-muted-foreground">
+        Original case number
+        <button type="button" className="rounded p-0.5 hover:bg-muted" aria-label={shown ? "Hide the original case number" : "Show the original case number"} onClick={toggle}>
+          {shown ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+        </button>
+      </span>
+      <span className="text-theme-sm font-medium">{shown ? value : "Hidden"}</span>
     </div>
   );
 }

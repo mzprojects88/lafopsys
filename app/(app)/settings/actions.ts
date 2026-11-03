@@ -341,6 +341,25 @@ export async function updateHrSettings(input: HrSettings): Promise<UpdateClockIn
  * Places trips go to, with their pins (0123): a name and coordinates each, 100 at most. Admins
  * only, like the rest of this file; the column CHECK bounds the list.
  */
+/** Case files (0124): whether uploaded case documents go to the AI to be read. The Super Admin decides; off by default. */
+export async function updateCaseAiReading(enabled: boolean): Promise<UpdateClockInRequirementResult> {
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+  if (!caller) return { ok: false, error: "Not signed in." };
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") return { ok: false, error: "Only admins can change this setting." };
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({ case_ai_reading: enabled === true, updated_at: new Date().toISOString(), updated_by: caller.id })
+    .eq("id", true);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
 export async function updateTransportPlaces(input: { name: string; lat: number; lng: number }[]): Promise<UpdateClockInRequirementResult> {
   if (!Array.isArray(input) || input.length > 100) return { ok: false, error: "At most 100 places." };
   const places = input.map((p) => ({ name: String(p?.name ?? "").replace(/s+/g, " ").trim().slice(0, 80), lat: Math.round(Number(p?.lat) * 1e6) / 1e6, lng: Math.round(Number(p?.lng) * 1e6) / 1e6 }));

@@ -601,3 +601,69 @@ export async function suggestDataChecks(findings: readonly { key: string; title:
     clearTimeout(timer);
   }
 }
+
+const CASE_DOC_TIMEOUT_MS = 120_000;
+
+export interface CaseDocumentRead {
+  kind: string;
+  summary: string;
+  originalCaseNumber: string | null;
+  records: { form: string; heldOn: string | null; venue: string | null; fields: { key: string; value: string }[] }[];
+}
+
+const caseDocumentSchema = z.object({
+  kind: z.string().describe("The paper's type: one id from the list of paper types"),
+  summary: z.string().max(400).describe("Two sentences: what the paper is and what it records, without names"),
+  original_case_number: z.string().max(40).nullable().describe("The case number written on the paper (e.g. LAF-2026-139-B), or null"),
+  records: z
+    .array(
+      z.object({
+        form: z.string().describe("The form id this part of the paper matches"),
+        held_on: z.string().nullable().describe("The date of the session or record as yyyy-MM-dd, or null"),
+        venue: z.string().max(200).nullable(),
+        fields: z.array(z.object({ key: z.string(), value: z.string().max(5000) })),
+      })
+    )
+    .max(20),
+});
+
+/**
+ * A scanned or photographed case paper (0124), read so the social worker does not retype it: the
+ * paper's type, a short summary, and the matching app forms filled in as drafts that the social
+ * worker checks and approves. Sent only when Settings › Case files allows it (consent first).
+ */
+export async function readCaseDocument(file: Uint8Array, mediaType: string, paperTypes: Record<string, string>, forms: string): Promise<CaseDocumentRead> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CASE_DOC_TIMEOUT_MS);
+  try {
+    const { object } = await generateObject({
+      model: model(),
+      schema: caseDocumentSchema,
+      instructions:
+        "You read the case papers of a Philippine children's charity's social worker (Little Ark Foundation): admission slips, intake sheets, casework activity reports, counseling recordings, home visit and monitoring forms, IDs, certificates, school modules. " +
+        "Name the paper's type from the list. Write a two-sentence summary of what it is and what it records, using no names. " +
+        "If part of the paper is one of the app's forms, fill that form: use only the field keys given, copy what is written or ticked exactly (a ticked box is a chosen option; give options exactly as listed), " +
+        "checklists as the chosen options joined by ' | ', tables and ratings as JSON as described, dates as yyyy-MM-dd. Leave out anything blank, unreadable or not on the paper; never guess or invent. " +
+        "A paper with several dated entries (progress notes) gives one record per entry. IDs, certificates, photos and modules fill no form: return no records for them.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: `Paper types (id: name):\n${Object.entries(paperTypes).map(([k, v]) => `${k}: ${v}`).join("\n")}\n\nThe app's forms:\n${forms}\n\nRead this paper.` },
+            { type: "file", data: file, mediaType },
+          ],
+        },
+      ],
+      abortSignal: controller.signal,
+      providerOptions: { openai: { reasoningEffort: "medium" } },
+    });
+    return {
+      kind: object.kind,
+      summary: object.summary,
+      originalCaseNumber: object.original_case_number,
+      records: object.records.map((r) => ({ form: r.form, heldOn: r.held_on, venue: r.venue, fields: r.fields })),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}

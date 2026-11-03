@@ -15,6 +15,7 @@ import { ExecSummarySettings } from "@/components/modules/settings/exec-summary-
 import { AdmissionTimes } from "@/components/modules/settings/admission-times";
 import { CalendarSheetSyncToggle } from "@/components/modules/settings/calendar-sheet-sync-toggle";
 import { HouseSheetSyncToggle } from "@/components/modules/settings/house-sheet-sync-toggle";
+import { CaseAiReadingToggle } from "@/components/modules/settings/case-ai-reading-toggle";
 import { ProgramsSheetCard } from "@/components/modules/settings/programs-sheet-card";
 import { DonationTrackerCard } from "@/components/modules/settings/donation-tracker-card";
 import { DbSyncCard } from "@/components/modules/settings/db-sync-card";
@@ -70,6 +71,10 @@ export default function SettingsPage() {
 
         <SectionCard title="House Occupancy Tracker">
           <HouseSheetSyncToggle />
+        </SectionCard>
+
+        <SectionCard id="case-files" className="scroll-mt-24" title="Case files">
+          <CaseAiReadingToggle />
         </SectionCard>
 
         <SectionCard title="LAF Programs sheet">

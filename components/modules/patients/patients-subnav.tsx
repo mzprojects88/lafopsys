@@ -1,6 +1,6 @@
 "use client";
 
-import { BedDouble, Bus, CalendarClock, Car, Home, KanbanSquare, LayoutGrid, ListOrdered, MoonStar, Share2, Users } from "lucide-react";
+import { BedDouble, Bus, CalendarClock, Car, ClipboardList, Home, KanbanSquare, LayoutGrid, ListOrdered, MoonStar, Share2, Users } from "lucide-react";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { useSheetChanges } from "@/lib/hooks/use-sheet-changes";
 
@@ -21,6 +21,7 @@ export const PATIENTS_SUB_NAV: ModuleSubNavItem[] = [
   { href: "/patients/bed-nights", label: "Bed Nights", icon: MoonStar },
   { href: "/patients/waitlist", label: "Waitlist", icon: ListOrdered },
   { href: "/patients/referrals", label: "Referrals", icon: Share2 },
+  { href: "/patients/sessions", label: "Case sessions", icon: ClipboardList },
 ];
 
 /** Every patients page carries it, so a phone never has to go back to jump. */
