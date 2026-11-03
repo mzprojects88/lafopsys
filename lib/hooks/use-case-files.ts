@@ -5,11 +5,15 @@ import { createCollection, createCollectionFamily, useCollection } from "@/lib/d
 import { cleanData, type DocumentKind, type FormData, type FormId } from "@/lib/case-files/forms";
 
 /**
- * Case files (0124): a child's case records and folder papers. Only the social worker can read or
- * write them -- the database refuses everyone else -- so callers pass `enabled` from the role and
- * nobody else's browser even asks.
+ * Case files (0124): a child's case records and folder papers. The social worker reads and writes;
+ * the Super Admin and the CEO read only; the database refuses everyone else. Callers pass `enabled`
+ * from the role (see canReadCaseFiles), so nobody else's browser even asks.
  */
 export type CaseStatus = "scheduled" | "draft" | "approved";
+
+/** Who sees case files (0124): the social worker, the Super Admin and the CEO. Only the social worker writes. */
+export const canReadCaseFiles = (roles: readonly string[]) => roles.some((r) => r === "social_worker" || r === "admin" || r === "ceo");
+export const canWriteCaseFiles = (roles: readonly string[]) => roles.includes("social_worker");
 
 export interface CaseRecord {
   id: string;
@@ -100,13 +104,14 @@ const documents = createCollectionFamily<CaseDocument[]>({
   },
 });
 
-/** Every session booked or record not yet approved, across children: the Sessions page and the bell. */
+/** Every session booked, record not yet approved, or approved record still waiting for the CEO's
+ * signature, across children: the Case sessions page and the bell. */
 export const openCaseRecordsStore = createCollection<CaseRecord[]>({
   key: "ops.case_records.open",
   empty: [],
   tables: [{ schema: "ops", table: "case_records" }],
   fetch: async () => {
-    const { data, error } = await db().from("case_records").select("*").neq("status", "approved").order("scheduled_at", { ascending: true, nullsFirst: false });
+    const { data, error } = await db().from("case_records").select("*").or("status.neq.approved,ceo_signed_on.is.null").order("scheduled_at", { ascending: true, nullsFirst: false });
     if (error) throw new Error(error.message);
     return (data ?? []).map(toRecord);
   },

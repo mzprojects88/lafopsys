@@ -20,6 +20,7 @@ import { formatDate } from "@/lib/utils/date";
 import { useRole } from "@/lib/rbac/use-role";
 import { canSeeClinicalDetail } from "@/lib/rbac/roles";
 import { CaseFileTab } from "@/components/modules/patients/case-file/case-file-tab";
+import { canReadCaseFiles, canWriteCaseFiles } from "@/lib/hooks/use-case-files";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
 import { houseSheetPatientId } from "@/lib/types/house-sheet";
@@ -73,8 +74,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
   }
 
   const canSeeClinical = canSeeClinicalDetail(roles);
-  // Case files (0124): the social worker only; the database refuses everyone else too.
-  const isSocialWorker = roles.includes("social_worker");
+  // Case files (0124): the social worker writes; the Super Admin and the CEO read; the database enforces both.
+  const seesCaseFile = canReadCaseFiles(roles);
   const patientCarers = carers.filter((c) => c.patientId === patient.id);
   const patientStays = stays.filter((s) => s.patientId === patient.id);
   const patientAppointments = appointments.filter((a) => a.patientId === patient.id).sort((a, b) => b.date.localeCompare(a.date));
@@ -181,7 +182,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
           <TabsTrigger value="appointments">Appointments ({patientAppointments.length})</TabsTrigger>
           <TabsTrigger value="carers">Carers ({patientCarers.length})</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
-          {isSocialWorker ? <TabsTrigger value="case-file">Case file</TabsTrigger> : null}
+          {seesCaseFile ? <TabsTrigger value="case-file">Case file</TabsTrigger> : null}
         </TabsList>
 
         <TabsContent value="overview" className="pt-4">
@@ -336,9 +337,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
           <AdmissionChecklist patientId={patient.id} canEdit={canEdit} stay={latestStay} firstStay={latestStay ? isFirstStay(latestStay, stays) : true} />
         </TabsContent>
 
-        {isSocialWorker ? (
+        {seesCaseFile ? (
           <TabsContent value="case-file" className="pt-4">
-            <CaseFileTab patient={patient} stays={patientStays} appointments={patientAppointments} />
+            <CaseFileTab patient={patient} stays={patientStays} appointments={patientAppointments} canEdit={canWriteCaseFiles(roles)} />
           </TabsContent>
         ) : null}
       </Tabs>

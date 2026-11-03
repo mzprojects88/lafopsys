@@ -45,9 +45,10 @@ const STATUS_LABEL: Record<CaseRecord["status"], string> = { scheduled: "Booked"
 
 /**
  * The social worker's case file for one child (0124): the journey through LAF, the case records
- * and the folder's papers. Shown only to the social worker; the database keeps everyone else out.
+ * and the folder's papers. The social worker works it; the Super Admin and the CEO see it read-only
+ * (`canEdit` false); the database keeps everyone else out.
  */
-export function CaseFileTab({ patient, stays, appointments }: { patient: Patient; stays: Stay[]; appointments: Appointment[] }) {
+export function CaseFileTab({ patient, stays, appointments, canEdit }: { patient: Patient; stays: Stay[]; appointments: Appointment[]; canEdit: boolean }) {
   const cf = useCaseFile(patient.id, true);
   const { caseAiReading } = useAppSettings();
   const { referrals } = useReferralsData();
@@ -109,6 +110,7 @@ export function CaseFileTab({ patient, stays, appointments }: { patient: Patient
       <Card>
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
           <CardTitle className="text-base">Case records</CardTitle>
+          {canEdit ? (
           <div className="flex flex-wrap gap-1.5">
             {FORM_IDS.map((f) => (
               <Button key={f} size="sm" variant="outline" onClick={() => setDraft({ form: f })}>
@@ -119,6 +121,9 @@ export function CaseFileTab({ patient, stays, appointments }: { patient: Patient
               <CalendarPlus /> Book a session
             </Button>
           </div>
+          ) : (
+            <span className="text-theme-xs text-muted-foreground">View only: the social worker writes and approves.</span>
+          )}
         </CardHeader>
         <CardContent className="flex flex-col divide-y divide-border p-0">
           {cf.records.length === 0 ? <p className="px-5 py-4 text-theme-sm text-muted-foreground">No case records yet. Start with the intake sheet.</p> : null}
@@ -140,6 +145,7 @@ export function CaseFileTab({ patient, stays, appointments }: { patient: Patient
       <Card>
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
           <CardTitle className="text-base">Folder papers</CardTitle>
+          {canEdit ? (
           <div className="flex flex-wrap items-center gap-2">
             <select aria-label="Which paper" className="h-8 rounded-md border border-input bg-background px-2 text-theme-sm" value={kind} onChange={(e) => setKind(e.target.value as DocumentKind)}>
               {Object.entries(DOCUMENT_KINDS).map(([k, label]) => (
@@ -153,11 +159,12 @@ export function CaseFileTab({ patient, stays, appointments }: { patient: Patient
               {uploading ? <Loader2 className="animate-spin" /> : <Upload />} Upload a scan or photo
             </Button>
           </div>
+          ) : null}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-theme-xs text-muted-foreground">
             {missing.length ? `Still missing from the folder: ${missing.map((k) => DOCUMENT_KINDS[k]).join(", ")}.` : "Every required paper is in the folder."}
-            {caseAiReading ? " New uploads are read by the AI and drafted for you to check." : ""}
+            {canEdit && caseAiReading ? " New uploads are read by the AI and drafted for you to check." : ""}
           </p>
           {cf.documents.map((d) => (
             <div key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border px-3 py-2 text-theme-sm">
@@ -165,7 +172,7 @@ export function CaseFileTab({ patient, stays, appointments }: { patient: Patient
               <span className="truncate text-muted-foreground">{d.fileName}</span>
               <span className="text-theme-xs text-muted-foreground">{formatDate(d.uploadedAt)}</span>
               <div className="ml-auto flex items-center gap-1">
-                {caseAiReading && d.aiStatus !== "read" ? (
+                {canEdit && caseAiReading && d.aiStatus !== "read" ? (
                   <Button size="sm" variant="ghost" disabled={reading === d.id} onClick={() => read(d.id)}>
                     {reading === d.id ? <Loader2 className="animate-spin" /> : <Sparkles />} {d.aiStatus === "failed" ? "Read again" : "Read with AI"}
                   </Button>
@@ -173,9 +180,9 @@ export function CaseFileTab({ patient, stays, appointments }: { patient: Patient
                 <Button size="sm" variant="ghost" onClick={() => view(d)}>
                   <Eye /> View
                 </Button>
-                <Button size="icon-sm" variant="ghost" aria-label="Remove this paper" onClick={async () => { const r = await cf.removeDocument(d); if (!r.ok) toast.error(plainError(r.error)); }}>
+                {canEdit ? <Button size="icon-sm" variant="ghost" aria-label="Remove this paper" onClick={async () => { const r = await cf.removeDocument(d); if (!r.ok) toast.error(plainError(r.error)); }}>
                   <Trash2 />
-                </Button>
+                </Button> : null}
               </div>
               {d.aiSummary ? <p className="w-full text-theme-xs text-muted-foreground">{d.aiSummary}</p> : null}
               {d.aiStatus === "failed" && d.aiError ? <p className="w-full text-theme-xs text-destructive">{d.aiError}</p> : null}
@@ -209,6 +216,7 @@ export function CaseFileTab({ patient, stays, appointments }: { patient: Patient
           key={`${draft.form}-${draft.record?.id ?? "new"}-${draft.book ? "b" : ""}`}
           draft={draft}
           patient={patient}
+          readOnly={!canEdit}
           onClose={() => setDraft(null)}
           onSave={cf.save}
           onApprove={cf.approve}

@@ -8,7 +8,7 @@ import { PatientsSubNav } from "@/components/modules/patients/patients-subnav";
 import { Badge } from "@/components/ui/badge";
 import { useRole } from "@/lib/rbac/use-role";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
-import { useOpenCaseRecords, type CaseRecord } from "@/lib/hooks/use-case-files";
+import { canReadCaseFiles, useOpenCaseRecords, type CaseRecord } from "@/lib/hooks/use-case-files";
 import { FORMS } from "@/lib/case-files/forms";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { useNow } from "@/lib/hooks/use-now";
@@ -19,12 +19,13 @@ const manilaDay = (iso: string) => new Date(new Date(iso).getTime() + 8 * 3600_0
 /**
  * The social worker's sessions (0124): booked casework, counseling, home visits and monitoring --
  * today's, the ones coming, and the ones that took place but aren't written up -- plus drafts
- * waiting for approval. Each opens the child's Case file.
+ * waiting for approval and approved records waiting for the CEO's signature. Each opens the child's
+ * Case file. The Super Admin and the CEO see it read-only.
  */
 export default function CaseSessionsPage() {
   const { roles } = useRole();
-  const isSocialWorker = roles.includes("social_worker");
-  const { open, loading } = useOpenCaseRecords(isSocialWorker);
+  const canSee = canReadCaseFiles(roles);
+  const { open, loading } = useOpenCaseRecords(canSee);
   const { patients } = usePatientsData();
   const now = useNow();
   const today = todayIso();
@@ -33,11 +34,11 @@ export default function CaseSessionsPage() {
     return p ? `${p.firstName} ${p.lastName}` : "A child";
   };
 
-  if (!isSocialWorker) {
+  if (!canSee) {
     return (
       <div className="flex flex-1 flex-col gap-6">
         <PatientsSubNav except="/patients/sessions" />
-        <EmptyState icon={ShieldAlert} title="Case files are for the social worker" description="Only the social worker can see case sessions and records." />
+        <EmptyState icon={ShieldAlert} title="Case files are for the social worker" description="Only the social worker, the Super Admin and the CEO can see case sessions and records." />
       </div>
     );
   }
@@ -47,7 +48,8 @@ export default function CaseSessionsPage() {
     { title: "Today", items: booked.filter((r) => manilaDay(r.scheduledAt!) === today) },
     { title: "Coming up", items: booked.filter((r) => manilaDay(r.scheduledAt!) > today) },
     { title: "Took place, not written up", items: booked.filter((r) => manilaDay(r.scheduledAt!) < today || (manilaDay(r.scheduledAt!) === today && new Date(r.scheduledAt!).getTime() < now.getTime() - 3600_000)) },
-    { title: "Drafts waiting for your approval", items: open.filter((r) => r.status === "draft") },
+    { title: "Drafts waiting for approval", items: open.filter((r) => r.status === "draft") },
+    { title: "Approved, waiting for the CEO's signature", items: open.filter((r) => r.status === "approved" && !r.ceoSignedOn) },
   ];
 
   return (
@@ -58,7 +60,7 @@ export default function CaseSessionsPage() {
       {groups
         .filter((g) => g.items.length)
         .map((g) => (
-          <section key={g.title} className="flex flex-col gap-2">
+          <section key={g.title} id={g.title.startsWith("Approved") ? "to-sign" : undefined} className="flex scroll-mt-24 flex-col gap-2">
             <h2 className="text-theme-sm font-semibold">
               {g.title} ({g.items.length})
             </h2>
@@ -71,7 +73,7 @@ export default function CaseSessionsPage() {
                     {r.status === "scheduled" && r.scheduledAt ? `${formatDate(r.scheduledAt, "EEE, MMM d · h:mm a")}${r.venue ? ` · ${r.venue}` : ""}` : r.heldOn ? formatDate(r.heldOn) : "No date yet"}
                   </span>
                   <Badge variant="outline" className="ml-auto">
-                    {r.status === "scheduled" ? "Booked" : "Draft"}
+                    {r.status === "scheduled" ? "Booked" : r.status === "draft" ? "Draft" : "To sign"}
                   </Badge>
                 </Link>
               ))}

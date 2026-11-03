@@ -4,8 +4,9 @@
 -- reports, counseling recordings, home visits and monitoring, each a dated record of one form
 -- (lib/case-files/forms.ts holds the fields), plus the scanned papers of the folder.
 --
--- Who: ONLY the social worker reads or writes any of it -- not the Super Admin, not the CEO
--- (decision 3). The CEO is told how many approved records wait for a signature, nothing more.
+-- Who: the social worker reads and writes; the Super Admin and the CEO read everything, read-only
+-- (decision 3, revised 3 Nov). Nobody else sees any of it. The CEO signs the printed PDF; the social
+-- worker records the signing date.
 -- The social worker reviews and approves every record (decision 2); an approved record is locked,
 -- and reopening it keeps the approved version in its history.
 
@@ -108,67 +109,60 @@ drop trigger if exists set_updated_at on ops.case_records;
 create trigger set_updated_at before update on ops.case_records
   for each row execute function shared.set_updated_at();
 
--- 4. The social worker only, for every command. Approved records are never deleted.
+-- 4. Read: the social worker, the Super Admin and the CEO. Write: the social worker only.
+-- Approved records are never deleted.
 alter table ops.case_records enable row level security;
 alter table ops.case_documents enable row level security;
 drop policy if exists "social worker reads" on ops.case_records;
+drop policy if exists "social worker, super admin and ceo read" on ops.case_records;
 drop policy if exists "social worker adds" on ops.case_records;
 drop policy if exists "social worker changes" on ops.case_records;
 drop policy if exists "social worker removes drafts" on ops.case_records;
-create policy "social worker reads" on ops.case_records for select to authenticated using ((select shared.has_role('social_worker')));
+create policy "social worker, super admin and ceo read" on ops.case_records for select to authenticated using ((select shared.has_role('social_worker', 'admin', 'ceo')));
 create policy "social worker adds" on ops.case_records for insert to authenticated with check ((select shared.has_role('social_worker')));
 create policy "social worker changes" on ops.case_records for update to authenticated
   using ((select shared.has_role('social_worker'))) with check ((select shared.has_role('social_worker')));
 create policy "social worker removes drafts" on ops.case_records for delete to authenticated
   using ((select shared.has_role('social_worker')) and status <> 'approved');
 drop policy if exists "social worker reads" on ops.case_documents;
+drop policy if exists "social worker, super admin and ceo read" on ops.case_documents;
 drop policy if exists "social worker adds" on ops.case_documents;
 drop policy if exists "social worker changes" on ops.case_documents;
 drop policy if exists "social worker removes" on ops.case_documents;
-create policy "social worker reads" on ops.case_documents for select to authenticated using ((select shared.has_role('social_worker')));
+create policy "social worker, super admin and ceo read" on ops.case_documents for select to authenticated using ((select shared.has_role('social_worker', 'admin', 'ceo')));
 create policy "social worker adds" on ops.case_documents for insert to authenticated with check ((select shared.has_role('social_worker')));
 create policy "social worker changes" on ops.case_documents for update to authenticated
   using ((select shared.has_role('social_worker'))) with check ((select shared.has_role('social_worker')));
 create policy "social worker removes" on ops.case_documents for delete to authenticated using ((select shared.has_role('social_worker')));
 grant select, insert, update, delete on ops.case_records, ops.case_documents to authenticated;
 
--- 5. The files: a private bucket, the social worker only.
+-- 5. The files: a private bucket; read as the records are, written by the social worker only.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('case-files', 'case-files', false, 15728640, array['application/pdf', 'image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
 drop policy if exists "social worker reads case files" on storage.objects;
+drop policy if exists "case file readers read case files" on storage.objects;
 drop policy if exists "social worker adds case files" on storage.objects;
 drop policy if exists "social worker removes case files" on storage.objects;
-create policy "social worker reads case files" on storage.objects for select to authenticated
-  using (bucket_id = 'case-files' and (select shared.has_role('social_worker')));
+create policy "case file readers read case files" on storage.objects for select to authenticated
+  using (bucket_id = 'case-files' and (select shared.has_role('social_worker', 'admin', 'ceo')));
 create policy "social worker adds case files" on storage.objects for insert to authenticated
   with check (bucket_id = 'case-files' and (select shared.has_role('social_worker')));
 create policy "social worker removes case files" on storage.objects for delete to authenticated
   using (bucket_id = 'case-files' and (select shared.has_role('social_worker')));
 
--- 6. The CEO's reminder: what waits for a signature -- the form, the case number and the day it was
--- approved. No names, no content.
-create or replace function ops.case_records_to_sign()
-returns table (form text, case_number text, approved_at timestamptz)
-language sql stable security definer set search_path = ops, shared, pg_temp as $$
-  select r.form, p.case_number, r.approved_at
-  from ops.case_records r join ops.patients p on p.id = r.patient_id
-  where r.status = 'approved' and r.ceo_signed_on is null and shared.has_role('ceo')
-  order by r.approved_at;
-$$;
-revoke all on function ops.case_records_to_sign() from public;
-grant execute on function ops.case_records_to_sign() to authenticated;
+-- 6. (The CEO reads approved records directly, so no separate signing list is needed.)
 
 -- 7. Reading uploaded papers with AI: off until the consent wording covers it (decision 5).
 alter table shared.app_settings add column if not exists case_ai_reading boolean not null default false;
 comment on column shared.app_settings.case_ai_reading is 'Send uploaded case documents to the AI to read and draft records (0124). Off by default: the intake consent must cover sharing with the AI provider first.';
 
--- 8. The social worker's Case sessions page (Patients › Case sessions); nobody else gets it.
+-- 8. Patients › Case sessions: the social worker works it, the CEO views it (the Super Admin sees every page).
 insert into shared.role_page_access (role, page, level)
-select 'social_worker', p.page, 'edit' from (values ('patients.sessions')) p(page)
+select r.role, p.page, r.level from (values ('patients.sessions')) p(page) cross join (values ('social_worker', 'edit'), ('ceo', 'view')) r(role, level)
 on conflict do nothing;
 
--- 9. Live updates for the social worker's screens (RLS still decides who receives them).
+-- 9. Live updates for the case file screens (RLS still decides who receives them).
 do $$ begin
   alter publication supabase_realtime add table ops.case_records, ops.case_documents;
 exception when duplicate_object then null; end $$;

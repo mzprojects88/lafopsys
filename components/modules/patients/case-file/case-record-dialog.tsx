@@ -36,6 +36,7 @@ export interface CaseRecordDraft {
  * One case form (0124), new or existing, drawn from lib/case-files/forms.ts. A session form can be
  * booked ahead (date, time, venue) or written up once held; the social worker saves a draft or
  * approves. An approved record opens read-only with Reopen, the PDF and the CEO's signing date.
+ * `readOnly` (the Super Admin and the CEO): every field locked, no writes; the PDF stays.
  */
 export function CaseRecordDialog({
   draft,
@@ -47,7 +48,9 @@ export function CaseRecordDialog({
   onRemove,
   onCeoSigned,
   onBookNext,
+  readOnly = false,
 }: {
+  readOnly?: boolean;
   draft: CaseRecordDraft;
   patient: Patient;
   onClose: () => void;
@@ -61,6 +64,7 @@ export function CaseRecordDialog({
   const def = FORMS[draft.form];
   const rec = draft.record;
   const approved = rec?.status === "approved";
+  const locked = approved || readOnly;
   const booking = draft.book || rec?.status === "scheduled";
   const when = manilaParts(rec?.scheduledAt ?? (draft.bookOn ? manilaAt(draft.bookOn, "09:00") : null));
   const [data, setData] = React.useState<FormData>(() => rec?.data ?? prefillData(draft.form, patient as unknown as Record<string, unknown>));
@@ -138,7 +142,7 @@ export function CaseRecordDialog({
 
         {def.session ? (
           <div className="flex flex-col gap-3 rounded-xl border border-border p-3">
-            {!approved && booking ? (
+            {!locked && booking ? (
               <div className="flex gap-2">
                 <Button type="button" size="sm" variant={held ? "outline" : "default"} onClick={() => setHeld(false)}>
                   Booked
@@ -152,45 +156,48 @@ export function CaseRecordDialog({
               {held ? (
                 <Field>
                   <FieldLabel htmlFor="caseHeld">Date of session</FieldLabel>
-                  <Input id="caseHeld" type="date" value={heldOn} max={todayIso()} disabled={approved} onChange={(e) => setHeldOn(e.target.value)} />
+                  <Input id="caseHeld" type="date" value={heldOn} max={todayIso()} disabled={locked} onChange={(e) => setHeldOn(e.target.value)} />
                 </Field>
               ) : (
                 <>
                   <Field>
                     <FieldLabel htmlFor="caseDay">Day</FieldLabel>
-                    <Input id="caseDay" type="date" value={day} onChange={(e) => setDay(e.target.value)} />
+                    <Input id="caseDay" type="date" value={day} disabled={locked} onChange={(e) => setDay(e.target.value)} />
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="caseTime">Time</FieldLabel>
-                    <Input id="caseTime" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+                    <Input id="caseTime" type="time" value={time} disabled={locked} onChange={(e) => setTime(e.target.value)} />
                   </Field>
                 </>
               )}
               <Field className={held ? "sm:col-span-2" : ""}>
                 <FieldLabel htmlFor="caseVenue">Venue</FieldLabel>
-                <Input id="caseVenue" value={venue} maxLength={200} disabled={approved} onChange={(e) => setVenue(e.target.value)} />
+                <Input id="caseVenue" value={venue} maxLength={200} disabled={locked} onChange={(e) => setVenue(e.target.value)} />
               </Field>
             </div>
           </div>
         ) : (
           <Field className="max-w-xs">
             <FieldLabel htmlFor="caseHeld">Date</FieldLabel>
-            <Input id="caseHeld" type="date" value={heldOn} max={todayIso()} disabled={approved} onChange={(e) => setHeldOn(e.target.value)} />
+            <Input id="caseHeld" type="date" value={heldOn} max={todayIso()} disabled={locked} onChange={(e) => setHeldOn(e.target.value)} />
           </Field>
         )}
 
         {held ? (
           <div className="flex flex-col gap-4">
             {def.fields.map((f) => (
-              <FieldView key={f.key} field={f} value={data[f.key]} disabled={approved} onChange={(v) => set(f.key, v)} />
+              <FieldView key={f.key} field={f} value={data[f.key]} disabled={locked} onChange={(v) => set(f.key, v)} />
             ))}
           </div>
         ) : (
-          <p className="text-theme-sm text-muted-foreground">Book the session now; write it up here once it has taken place.</p>
+          <p className="text-theme-sm text-muted-foreground">{readOnly ? "A booked session: the social worker writes it up once it has taken place." : "Book the session now; write it up here once it has taken place."}</p>
         )}
 
         {approved ? (
           <div className="flex flex-col gap-3 rounded-xl border border-border p-3">
+            {readOnly ? (
+              <p className="text-theme-sm">{rec!.ceoSignedOn ? `The CEO signed the PDF on ${formatDate(rec!.ceoSignedOn)}.` : "Waiting for the CEO's signature on the printed PDF."}</p>
+            ) : (
             <div className="flex flex-wrap items-end gap-3">
               <Field className="w-44">
                 <FieldLabel htmlFor="ceoSigned">The CEO signed the PDF on</FieldLabel>
@@ -200,6 +207,7 @@ export function CaseRecordDialog({
                 Save signing date
               </Button>
             </div>
+            )}
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-theme-xs text-muted-foreground">Case number on the PDF:</span>
               <Button type="button" size="sm" variant={pdfOriginal ? "outline" : "default"} onClick={() => setPdfOriginal(false)}>
@@ -212,6 +220,17 @@ export function CaseRecordDialog({
           </div>
         ) : null}
 
+        {readOnly ? (
+          <DialogFooter>
+            {approved ? (
+              <Button type="button" disabled={busy} onClick={downloadPdf}>
+                <FileDown /> PDF
+              </Button>
+            ) : (
+              <span className="text-theme-xs text-muted-foreground">Only an approved record is printed.</span>
+            )}
+          </DialogFooter>
+        ) : (
         <DialogFooter className="flex-wrap gap-2 sm:justify-between">
           <div className="flex gap-2">
             {rec && !approved ? (
@@ -251,6 +270,7 @@ export function CaseRecordDialog({
             )}
           </div>
         </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );

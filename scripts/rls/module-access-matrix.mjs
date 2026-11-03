@@ -554,7 +554,7 @@ async function main() {
     await scenario(ids, "0123: the places must be a list", "admin", null, q("update shared.app_settings set transport_places = '{}'::jsonb where id"), checkFailed);
   }
 
-  // 0124: case files are the social worker's alone; the CEO is told only what waits for a signature.
+  // 0124: case files: the social worker writes; the Super Admin and the CEO read only; nobody else.
   if ((await client.query("select to_regclass('ops.case_records') is not null as ok")).rows[0].ok) {
     const pt = "(select id from ops.patients order by created_at limit 1)";
     // An approved record made as the social worker (approval is stamped from the session).
@@ -585,15 +585,24 @@ async function main() {
     await scenario(ids, "0124: an approved record is locked", "social_worker", approvedRecord(), q(`update ops.case_records set data = '{"focus":"changed"}' where id = ${rec}`), checkFailed);
     await scenario(ids, "0124: an approved record is never deleted", "social_worker", approvedRecord(), q(`delete from ops.case_records where id = ${rec}`), rows(0));
     await scenario(ids, "0124: the social worker records the CEO's signing date", "social_worker", approvedRecord(), q(`update ops.case_records set ceo_signed_on = current_date where id = ${rec}`), rows(1));
-    for (const actor of ["admin", "finance", "house_staff", "driver", "board"]) {
+    const asCeo = "update shared.staff set extra_roles = array['ceo'] where role = 'admin' and active";
+    const noWrite = (r) => (r.ok && r.rows === 0) || denied(r);
+    await scenario(ids, "0124: the Super Admin reads the approved record", "admin", approvedRecord(), q(`select data from ops.case_records where id = ${rec}`), rows(1));
+    await scenario(ids, "0124: the Super Admin sees the case paper and its file", "admin", casePaper, papers, (r) => r.ok && r.data[0].files === 1 && r.data[0].rows === 1);
+    await scenario(ids, "0124: the CEO reads the approved record", "admin", approvedRecord(asCeo), q(`select data from ops.case_records where id = ${rec}`), rows(1));
+    await scenario(ids, "0124: the CEO sees the case paper and its file", "admin", { setup: async () => { await casePaper.setup(); await client.query(asCeo); } }, papers, (r) => r.ok && r.data[0].files === 1 && r.data[0].rows === 1);
+    await scenario(ids, "0124: the Super Admin can't write a case record", "admin", null, q(`insert into ops.case_records (patient_id, form, held_on) values (${pt}, 'casework', current_date)`), denied);
+    await scenario(ids, "0124: the Super Admin can't reopen an approved record", "admin", approvedRecord(), q(`update ops.case_records set status = 'draft' where id = ${rec}`), noWrite);
+    await scenario(ids, "0124: the CEO can't record the signing date", "admin", approvedRecord(asCeo), q(`update ops.case_records set ceo_signed_on = current_date where id = ${rec}`), noWrite);
+    await scenario(ids, "0124: the CEO can't delete a record", "admin", approvedRecord(asCeo), q(`delete from ops.case_records where id = ${rec}`), noWrite);
+    await scenario(ids, "0124: the Super Admin can't add a case paper", "admin", null, q(`insert into ops.case_documents (patient_id, kind, storage_path, file_name, content_type, size_bytes) select id, 'other', id::text || '/x.pdf', 'x.pdf', 'application/pdf', 10 from ops.patients order by created_at limit 1`), denied);
+    await scenario(ids, "0124: the Super Admin can't upload a case file", "admin", null, q(`insert into storage.objects (bucket_id, name) values ('case-files', 'x/y.pdf')`), denied);
+    for (const actor of ["finance", "house_staff", "driver", "board"]) {
       await scenario(ids, `0124: ${actor} can't read case records`, actor, approvedRecord(), q("select id from ops.case_records"), rows(0));
       await scenario(ids, `0124: ${actor} can't write a case record`, actor, null, q(`insert into ops.case_records (patient_id, form, held_on) values (${pt}, 'casework', current_date)`), denied);
       await scenario(ids, `0124: ${actor} can't see case papers`, actor, casePaper, papers, (r) => r.ok && r.data[0].files === 0 && r.data[0].rows === 0);
     }
-    await scenario(ids, "0124: the CEO sees what waits for a signature, without content", "admin", approvedRecord("update shared.staff set extra_roles = array['ceo'] where role = 'admin' and active"), q("select * from ops.case_records_to_sign()"), (r) => r.ok && r.rows >= 1 && Object.keys(r.data[0]).join(",") === "form,case_number,approved_at");
-    await scenario(ids, "0124: the CEO still can't open the record", "admin", approvedRecord("update shared.staff set extra_roles = array['ceo'] where role = 'admin' and active"), q(`select data from ops.case_records where id = ${rec}`), rows(0));
-    await scenario(ids, "0124: the social worker gets no CEO list", "social_worker", approvedRecord(), q("select * from ops.case_records_to_sign()"), rows(0));
-    await scenario(ids, "0124: the social worker gets the Case sessions page", "social_worker", null, q("select level from shared.role_page_access where role = 'social_worker' and page = 'patients.sessions'"), (r) => r.ok && r.rows === 1 && r.data[0].level === "edit");
+    await scenario(ids, "0124: Case sessions: the social worker works it, the CEO views it", "social_worker", null, q("select string_agg(role || '=' || level, ',' order by role) as levels from shared.role_page_access where page = 'patients.sessions'"), (r) => r.ok && r.data[0].levels === "ceo=view,social_worker=edit");
   }
 
   if (PREFLIGHT.length) await client.query("rollback");

@@ -21,6 +21,8 @@ const dbUrl = pgUrl(password);
 const dryRun = process.argv.includes("--dry-run");
 const args = ["supabase", "db", "push", "--db-url", dbUrl];
 if (dryRun) args.push("--dry-run");
+// The Supabase CLI asks before changing a hosted database; --yes is passed only when the user has said yes.
+if (process.argv.includes("--yes")) args.push("--yes");
 
 const result = spawnSync("npx", args, { stdio: "inherit", shell: true });
 process.exit(result.status ?? 1);

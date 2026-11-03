@@ -26,6 +26,12 @@ export async function POST(req: Request) {
   const { data: settings } = await supabase.schema("shared").from("app_settings").select("case_ai_reading").eq("id", true).maybeSingle();
   if (settings?.case_ai_reading !== true) return NextResponse.json({ error: "Reading case papers with AI is turned off in Settings." }, { status: 403 });
 
+  // Reading drafts records: the social worker's job alone (the Super Admin and the CEO only view).
+  const { data: me } = await supabase.schema("shared").from("staff").select("role, extra_roles").eq("id", userData.user.id).maybeSingle();
+  if (me?.role !== "social_worker" && !(me?.extra_roles as string[] | null)?.includes("social_worker")) {
+    return NextResponse.json({ error: "Only the social worker reads case papers with AI." }, { status: 403 });
+  }
+
   const ops = supabase.schema("ops");
   const { data: doc } = await ops.from("case_documents").select("id, patient_id, storage_path, content_type").eq("id", documentId).maybeSingle();
   if (!doc) return NextResponse.json({ error: "Only the social worker can read case papers." }, { status: 404 });

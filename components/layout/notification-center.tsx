@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import { BedDouble, Bell, ClipboardList, CloudOff, Fuel, Mail, MapPin, PenLine, Wrench, type LucideIcon } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
-import { createCollection, useCollection } from "@/lib/data/collection-store";
 import { useOpenCaseRecords } from "@/lib/hooks/use-case-files";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
@@ -85,26 +83,14 @@ export function NotificationCenter() {
   return rest([]);
 }
 
-/** What the CEO is told about case records: how many approved ones wait for a signature (no content, 0124). */
-const toSignStore = createCollection<{ form: string; approved_at: string }[]>({
-  key: "ops.case_records_to_sign",
-  empty: [],
-  tables: [],
-  staleMs: 5 * 60_000,
-  fetch: async () => {
-    const { data, error } = await createClient().schema("ops").rpc("case_records_to_sign");
-    if (error) throw new Error(error.message);
-    return (data ?? []) as { form: string; approved_at: string }[];
-  },
-});
-
 const manilaDay = (iso: string) => new Date(new Date(iso).getTime() + 8 * 3600_000).toISOString().slice(0, 10);
 
 function CaseReminders({ children }: { children: (reminders: Reminder[]) => React.ReactNode }) {
   const { roles } = useRole();
   const sw = roles.includes("social_worker");
-  const { open } = useOpenCaseRecords(sw);
-  const { data: toSign } = useCollection(roles.includes("ceo") ? toSignStore : null);
+  const ceo = roles.includes("ceo");
+  const { open } = useOpenCaseRecords(sw || ceo);
+  const toSign = ceo ? open.filter((r) => r.status === "approved" && !r.ceoSignedOn) : [];
   const now = useNow();
   const out: Reminder[] = [];
   if (sw) {
@@ -118,7 +104,7 @@ function CaseReminders({ children }: { children: (reminders: Reminder[]) => Reac
       out.push({ id: "case-sessions-write-up", title: `${late.length} session${late.length === 1 ? "" : "s"} to write up`, body: "They took place: fill in the form and approve it.", href: "/patients/sessions", icon: ClipboardList });
   }
   if (toSign.length)
-    out.push({ id: "case-records-to-sign", title: `${toSign.length} case record${toSign.length === 1 ? "" : "s"} to sign`, body: "Approved by the social worker. Ask for the printed PDF to sign; the social worker records the date.", href: "/", icon: PenLine });
+    out.push({ id: "case-records-to-sign", title: `${toSign.length} case record${toSign.length === 1 ? "" : "s"} to sign`, body: "Approved by the social worker. Read them, then sign the printed PDFs; the social worker records the date.", href: "/patients/sessions#to-sign", icon: PenLine });
   return <>{children(out)}</>;
 }
 

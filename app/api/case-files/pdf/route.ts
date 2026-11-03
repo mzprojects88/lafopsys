@@ -11,7 +11,8 @@ const fullName = (s: { first_name?: string | null; last_name?: string | null } |
 
 /**
  * An approved case record (0124) as its paper form, for signing. Read with the caller's own session:
- * the database lets only the social worker see case records, so nobody else gets a PDF. The case
+ * the database lets only the social worker, the Super Admin and the CEO see case records, so nobody
+ * else gets a PDF. The case
  * number is the app's LFCN unless `original` asks for the paper folder's number.
  */
 export async function POST(req: Request) {
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
   if (!recordId) return NextResponse.json({ error: "Choose a record." }, { status: 400 });
 
   const { data: rec } = await supabase.schema("ops").from("case_records").select("*").eq("id", recordId).maybeSingle();
-  if (!rec) return NextResponse.json({ error: "Only the social worker can print case records." }, { status: 404 });
+  if (!rec) return NextResponse.json({ error: "Only the social worker, the Super Admin and the CEO can open case records." }, { status: 404 });
   if (rec.status !== "approved") return NextResponse.json({ error: "Approve the record first: only an approved record is printed for signing." }, { status: 422 });
 
   const [{ data: patient }, { data: dx }, { data: carer }] = await Promise.all([
