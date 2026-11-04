@@ -2,13 +2,13 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { CalendarPlus, Eye, FilePlus2, Loader2, Sparkles, Trash2, Upload } from "lucide-react";
+import { CalendarPlus, Eye, FileDown, FilePlus2, Loader2, Sparkles, Trash2, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
 import { createCollectionFamily, useCollection } from "@/lib/data/collection-store";
-import { DOCUMENT_KINDS, FORMS, FORM_GROUPS, REQUIRED_KINDS, SESSION_FORMS, type DocumentKind, type FormId } from "@/lib/case-files/forms";
+import { DOCUMENT_KINDS, FORMS, FORM_GROUPS, SESSION_FORMS, folderStatus, type DocumentKind, type FormId } from "@/lib/case-files/forms";
 import { useCaseFile, type CaseRecord } from "@/lib/hooks/use-case-files";
 import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
@@ -19,7 +19,7 @@ import type { Appointment, Patient, Stay } from "@/lib/types/patient";
 import { formatDate } from "@/lib/utils/date";
 import { formatTime12 } from "@/lib/utils/time12";
 import { plainError } from "@/lib/utils/plain-error";
-import { CaseRecordDialog, type CaseRecordDraft } from "./case-record-dialog";
+import { CaseRecordDialog, downloadCasePdf, type CaseRecordDraft } from "./case-record-dialog";
 
 /** Items handed to the family from LAF Inventory (GIK distribution names the child, 0055). */
 const itemsGiven = createCollectionFamily<{ date: string; quantity: number; name: string }[]>({
@@ -78,7 +78,14 @@ export function CaseFileTab({ patient, stays, appointments, canEdit }: { patient
     return out.sort((a, b) => b.on.localeCompare(a.on));
   }, [referrals, stays, rides, appointments, trips, items, cf.records, cf.documents, patient.id]);
 
-  const missing = REQUIRED_KINDS.filter((k) => !cf.documents.some((d) => d.kind === k));
+  // An item is in the folder as an approved app record or an uploaded paper.
+  const missing = folderStatus(cf.records, cf.documents).filter((c) => c.required && !c.have);
+  const [folderBusy, setFolderBusy] = React.useState(false);
+  async function folderPdf(original: boolean) {
+    setFolderBusy(true);
+    await downloadCasePdf({ patientId: patient.id, original }, `Case folder - ${original ? patient.legacyCode : patient.patientNumber}`);
+    setFolderBusy(false);
+  }
 
   async function onFile(file: File | undefined) {
     if (!file) return;
@@ -182,9 +189,21 @@ export function CaseFileTab({ patient, stays, appointments, canEdit }: { patient
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-theme-xs text-muted-foreground">
-            {missing.length ? `Still missing from the folder: ${missing.map((k) => DOCUMENT_KINDS[k]).join(", ")}.` : "Every required paper is in the folder."}
+            {missing.length ? `Still missing from the folder: ${missing.map((c) => c.label).join(", ")}.` : "Every required paper is in the folder."}
             {canEdit && caseAiReading ? " New uploads are read by the AI and drafted for you to check." : ""}
           </p>
+          {cf.records.some((r) => r.status === "approved") && (
+            <div className="flex flex-wrap gap-1.5">
+              <Button size="sm" variant="outline" disabled={folderBusy} onClick={() => folderPdf(false)}>
+                {folderBusy ? <Loader2 className="animate-spin" /> : <FileDown />} Whole folder PDF
+              </Button>
+              {patient.legacyCode && (
+                <Button size="sm" variant="ghost" disabled={folderBusy} onClick={() => folderPdf(true)}>
+                  With the original number ({patient.legacyCode})
+                </Button>
+              )}
+            </div>
+          )}
           {cf.documents.map((d) => (
             <div key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border px-3 py-2 text-theme-sm">
               <span className="font-medium">{DOCUMENT_KINDS[d.kind]}</span>

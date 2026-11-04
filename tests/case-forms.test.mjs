@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FORMS, FORM_IDS, SESSION_FORMS, cleanData, prefillData, caseNumberFor, DOCUMENT_KINDS, REQUIRED_KINDS } from "../lib/case-files/forms.ts";
+import { FORMS, FORM_IDS, SESSION_FORMS, cleanData, prefillData, caseNumberFor, DOCUMENT_KINDS, FOLDER_CHECKLIST, folderStatus, folderOrder } from "../lib/case-files/forms.ts";
 
 test("every form has unique field keys and options", () => {
   for (const id of FORM_IDS) {
@@ -10,7 +10,10 @@ test("every form has unique field keys and options", () => {
     if (FORMS[id].nextSessionKey) assert.ok(keys.includes(FORMS[id].nextSessionKey), `${id} next-session key missing`);
   }
   assert.deepEqual(SESSION_FORMS, ["casework", "counseling", "home_visit", "monitoring"]);
-  for (const k of REQUIRED_KINDS) assert.ok(k in DOCUMENT_KINDS);
+  for (const c of FOLDER_CHECKLIST) {
+    for (const k of c.kinds) assert.ok(k in DOCUMENT_KINDS, `${c.label}: ${k}`);
+    for (const f of c.forms) assert.ok(f in FORMS, `${c.label}: ${f}`);
+  }
 });
 
 test("cleanData keeps only what the form defines, in its shape", () => {
@@ -105,4 +108,49 @@ test("the New record menu lists every form once", async () => {
   const listed = FORM_GROUPS.flatMap((g) => g.forms);
   assert.deepEqual([...listed].sort(), [...FORM_IDS].sort());
   assert.equal(new Set(listed).size, listed.length);
+});
+
+test("the folder checklist counts an approved record or an uploaded paper, and orders the folder", () => {
+  const status = folderStatus([{ form: "intake", status: "approved" }, { form: "case_study", status: "draft" }], [{ kind: "birth_certificate" }]);
+  const has = (label) => status.find((c) => c.label === label).have;
+  assert.equal(has("Intake sheet"), true);
+  assert.equal(has("Social case study report"), false, "a draft does not count");
+  assert.equal(has("Birth certificate"), true);
+  const order = folderOrder([
+    { form: "closing_summary", heldOn: "2026-11-01" },
+    { form: "casework", heldOn: "2026-10-02" },
+    { form: "intake", heldOn: "2026-09-01" },
+    { form: "progress_note", heldOn: "2026-09-15" },
+  ]).map((r) => r.form);
+  assert.deepEqual(order, ["intake", "progress_note", "casework", "closing_summary"]);
+});
+
+test("the whole folder prints a cover, then every record; a long contents list breaks onto a second page", async () => {
+  const { buildCaseFolderPdf } = await import("../lib/pdf/case-record.ts");
+  const rec = (form, heldOn) => ({ form, caseNumber: "LFCN-2026-0012", childName: "Child, Test", ageSex: "9 y/o / Female", heldOn, data: {}, preparedBy: "SW", approvedBy: "SW", approvedOn: heldOn });
+  const records = [rec("intake", "2026-09-01"), ...Array.from({ length: 60 }, (_, i) => rec("progress_note", `2026-10-${String((i % 28) + 1).padStart(2, "0")}`))];
+  const pdf = buildCaseFolderPdf(records, { checklist: folderStatus(records.map((r) => ({ ...r, status: "approved" })), []), uploads: 0 }).toString("latin1");
+  const pages = (pdf.match(/\/Type\s*\/Page\b/g) ?? []).length;
+  const recordPages = records.length; // each short record fits on one page
+  assert.ok(pages >= recordPages + 2, `cover spans 2+ pages (got ${pages} for ${recordPages} records)`);
+});
+
+test("the period report lists children by sex, referrals and approved records", async () => {
+  const { periodReportRows } = await import("../lib/case-files/forms.ts");
+  const rows = periodReportRows({ records: { casework: 3, closing_summary: 1 }, drafts: 2, children_seen: 4, referrals: { admitted: 2, declined: 1 }, housed: { F: 18, M: 19 }, first_stays: 2 });
+  const v = (label) => rows.find((r) => r.label === label)?.value;
+  assert.equal(v("Total children housed"), 37);
+  assert.equal(v("Sex not recorded"), undefined, "hidden when zero");
+  assert.equal(v("Total"), 3);
+  assert.equal(v(FORMS.casework.title), 3);
+  assert.equal(v("Drafts not yet approved"), 2);
+  assert.equal(v("Approved"), undefined, "a status with no referrals is left out");
+});
+
+test("a period is a month or a whole year", async () => {
+  const { periodRange } = await import("../lib/case-files/forms.ts");
+  assert.deepEqual(periodRange("2026-02"), { from: "2026-02-01", to: "2026-02-28", title: "February 2026" });
+  assert.deepEqual(periodRange("2026"), { from: "2026-01-01", to: "2026-12-31", title: "January to December 2026" });
+  assert.equal(periodRange("2026-13"), null);
+  assert.equal(periodRange("x'; drop"), null);
 });

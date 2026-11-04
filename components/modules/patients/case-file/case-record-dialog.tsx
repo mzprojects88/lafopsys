@@ -24,6 +24,15 @@ const manilaParts = (iso: string | null) => {
   return { day: local.slice(0, 10), time: local.slice(11, 16) };
 };
 
+/** A record (`recordId`) or the whole folder (`patientId`) as a PDF download (0124, phase 4). */
+export async function downloadCasePdf(body: { recordId?: string; patientId?: string; period?: string; original: boolean }, name: string) {
+  const res = await fetch("/api/case-files/pdf", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) return void toast.error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "The PDF couldn't be made.");
+  const url = URL.createObjectURL(await res.blob());
+  Object.assign(document.createElement("a"), { href: url, download: `${name}.pdf` }).click();
+  URL.revokeObjectURL(url);
+}
+
 export interface CaseRecordDraft {
   form: FormId;
   record?: CaseRecord;
@@ -119,13 +128,8 @@ export function CaseRecordDialog({
   async function downloadPdf() {
     if (!rec) return;
     setBusy(true);
-    const res = await fetch("/api/case-files/pdf", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recordId: rec.id, original: pdfOriginal }) });
+    await downloadCasePdf({ recordId: rec.id, original: pdfOriginal }, `${def.title} - ${rec.heldOn ?? "draft"}`);
     setBusy(false);
-    if (!res.ok) return void toast.error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "The PDF couldn't be made.");
-    const url = URL.createObjectURL(await res.blob());
-    const a = Object.assign(document.createElement("a"), { href: url, download: `${def.title} - ${rec.heldOn ?? "draft"}.pdf` });
-    a.click();
-    URL.revokeObjectURL(url);
   }
 
   // Findings are recommended, never required (decided 4 Nov): a reminder, not a block.

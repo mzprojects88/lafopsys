@@ -10,6 +10,7 @@ import { useRole } from "@/lib/rbac/use-role";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { canReadCaseFiles, useOpenCaseRecords, type CaseRecord } from "@/lib/hooks/use-case-files";
 import { FORMS } from "@/lib/case-files/forms";
+import { CasePeriodReport } from "@/components/modules/patients/case-file/case-period-report";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { useNow } from "@/lib/hooks/use-now";
 
@@ -80,6 +81,7 @@ export default function CaseSessionsPage() {
             </div>
           </section>
         ))}
+      <CasePeriodReport />
     </div>
   );
 }

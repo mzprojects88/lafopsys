@@ -174,3 +174,90 @@ export function layoutCaseRecord(d: CaseRecordPdfData): PdfPage[] {
 export function buildCaseRecordPdf(d: CaseRecordPdfData): Buffer {
   return buildPdf(layoutCaseRecord(d), `${FORMS[d.form].title}, ${d.caseNumber}`);
 }
+
+/**
+ * The whole case folder (0126, phase 4): a cover page -- the child's lines, the DSWD checklist
+ * ticked from what the folder holds, and the contents -- then every approved record as its paper
+ * form, in checklist order.
+ */
+export function buildCaseFolderPdf(
+  records: CaseRecordPdfData[],
+  cover: { checklist: readonly { label: string; have: boolean; required: boolean }[]; uploads: number },
+): Buffer {
+  const first = records[0];
+  let page = new PdfPage();
+  const coverPages = [page];
+  let y = MARGIN;
+  drawLetterhead(page, y, first.header, first.accreditation);
+  page.text(MARGIN + INNER, y, 13, "CASE FOLDER", { bold: true, align: "right" });
+  page.text(MARGIN + INNER, y + 18, 9.5, `Case No. ${first.caseNumber}`, { align: "right" });
+  y += 96;
+  page.fillRect(MARGIN, y, INNER, 0.75, 0.8);
+  y += 16;
+  const line = (value: string, size = 9.5, opts: { bold?: boolean; gray?: number; indent?: number } = {}) => {
+    if (y + size + 5 > BOTTOM) {
+      page = new PdfPage();
+      coverPages.push(page);
+      y = MARGIN;
+    }
+    page.text(MARGIN + (opts.indent ?? 0), y, size, value, { bold: opts.bold, gray: opts.gray });
+    y += size + 5;
+  };
+  for (const [k, v] of [["Name of Beneficiary", first.childName], ["Age / Sex", first.ageSex], ["Diagnosis", first.diagnosis], ["Name of Parent/Caregiver", first.carerName]] as const)
+    if (v) line(`${k}: ${v}`);
+  y += 10;
+  line("DSWD CASE FOLDER CHECKLIST", 10, { bold: true });
+  for (const c of cover.checklist) line(`${box(c.have)} ${c.label}${c.required ? "" : " (if any)"}`, 9, { indent: 10 });
+  line(`Scanned papers on file: ${cover.uploads} (kept in the app, not reprinted here).`, 8.5, { gray: 0.4, indent: 10 });
+  y += 10;
+  line("CONTENTS", 10, { bold: true });
+  for (const r of records) line(`${FORMS[r.form].title} · ${longDate(r.heldOn)}`, 9, { indent: 10 });
+  for (const p of coverPages) p.text(MARGIN, BOTTOM + 14, 7.5, `Confidential: for case management only. Case folder · ${first.caseNumber}`, { gray: 0.45 });
+  return buildPdf([...coverPages, ...records.flatMap(layoutCaseRecord)], `Case folder, ${first.caseNumber}`);
+}
+
+/** The social worker's period report (phase 4): counts only, signed by the social worker, noted by the CEO. */
+export function buildCasePeriodPdf(d: {
+  title: string;
+  rows: { section: string; label: string; value: number }[];
+  preparedBy: string;
+  ceoName?: string;
+  ceoTitle?: string;
+  header?: string;
+  accreditation?: string;
+}): Buffer {
+  const page = new PdfPage();
+  let y = MARGIN;
+  drawLetterhead(page, y, d.header, d.accreditation);
+  page.text(MARGIN + INNER, y, 13, "SOCIAL WORKER'S REPORT", { bold: true, align: "right" });
+  page.text(MARGIN + INNER, y + 18, 9.5, d.title, { align: "right" });
+  y += 96;
+  page.fillRect(MARGIN, y, INNER, 0.75, 0.8);
+  y += 16;
+  let section = "";
+  for (const r of d.rows) {
+    if (r.section !== section) {
+      section = r.section;
+      y += 6;
+      page.text(MARGIN, y, 10, section.toUpperCase(), { bold: true });
+      y += 16;
+    }
+    page.text(MARGIN + 10, y, 9.5, r.label);
+    page.text(MARGIN + INNER, y, 9.5, String(r.value), { align: "right", bold: true });
+    page.fillRect(MARGIN + 10, y + 12, INNER - 10, 0.5, 0.88);
+    y += 17;
+  }
+  y += 40;
+  const width = INNER / 2 - 16;
+  [
+    { name: d.preparedBy, role: "Prepared by: Resident Social Worker" },
+    { name: d.ceoName ?? "", role: `Noted by: ${d.ceoTitle ?? "Chief Executive Officer"}` },
+  ].forEach((s, i) => {
+    const x = MARGIN + i * (width + 32);
+    page.text(x + width / 2, y, 9.5, s.name, { align: "center" });
+    page.fillRect(x, y + 14, width, 0.75, 0.3);
+    page.text(x + width / 2, y + 20, 8, s.role, { align: "center", gray: 0.3 });
+  });
+  page.text(MARGIN, BOTTOM + 14, 7.5, `Counts only, no names. Social worker's report · ${d.title}`, { gray: 0.45 });
+  return buildPdf([page], `Social worker's report, ${d.title}`);
+}

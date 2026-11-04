@@ -595,8 +595,6 @@ export const DOCUMENT_KINDS = {
   other: "Other",
 } as const;
 export type DocumentKind = keyof typeof DOCUMENT_KINDS;
-/** The checklist's required papers (folder items 1-9); the rest are as needed. */
-export const REQUIRED_KINDS: readonly DocumentKind[] = ["admission_slip", "intake_sheet", "case_study", "birth_certificate", "photo", "intervention_plan", "medical_record", "progress_report", "monitoring"];
 
 export type FormData = Record<string, unknown>;
 
@@ -692,4 +690,81 @@ export function formsForAi(): string {
       });
     return `FORM ${id}: ${FORMS[id].title}\n${lines.join("\n")}`;
   }).join("\n\n");
+}
+
+/** The DSWD case folder checklist (the P139 folder's first page), in its order. An item is in the
+ * folder when an approved app record of one of its forms exists, or a paper of one of its kinds is
+ * uploaded. Drives the Case file's "still missing" note and the folder PDF (0126). */
+export const FOLDER_CHECKLIST: readonly { label: string; forms: readonly FormId[]; kinds: readonly DocumentKind[]; required: boolean }[] = [
+  { label: "Admission slip", forms: [], kinds: ["admission_slip"], required: true },
+  { label: "Intake sheet", forms: ["intake"], kinds: ["intake_sheet"], required: true },
+  { label: "Social case study report", forms: ["case_study"], kinds: ["case_study"], required: true },
+  { label: "Birth certificate", forms: [], kinds: ["birth_certificate"], required: true },
+  { label: "Photo (on admission and discharge)", forms: [], kinds: ["photo"], required: true },
+  { label: "Intervention plan and contract", forms: ["intervention_plan"], kinds: ["intervention_plan"], required: true },
+  { label: "Health / medical and dental records", forms: [], kinds: ["medical_record"], required: true },
+  { label: "Progress reports and running records", forms: ["progress_note", "casework", "counseling"], kinds: ["progress_report", "casework_report", "counseling_record"], required: true },
+  { label: "Monitoring and evaluation report", forms: ["monitoring", "home_visit"], kinds: ["monitoring", "home_visit"], required: true },
+  { label: "Referral letters, case conference records, meetings", forms: ["referral_letter", "dswd_case_summary"], kinds: ["referral_letter", "case_conference"], required: false },
+  { label: "Psychological / psychiatric evaluation", forms: [], kinds: ["psych_evaluation"], required: false },
+  { label: "Legal or court records", forms: [], kinds: ["legal_record"], required: false },
+  { label: "Discharge and aftercare papers", forms: ["pre_discharge_plan", "discharge_slip", "closing_summary", "transfer_summary", "aftercare_plan"], kinds: ["discharge"], required: false },
+];
+
+/** Each checklist item and whether the folder has it. */
+export function folderStatus(records: readonly { form: FormId; status: string }[], documents: readonly { kind: DocumentKind }[]) {
+  return FOLDER_CHECKLIST.map((c) => ({
+    ...c,
+    have: records.some((r) => r.status === "approved" && c.forms.includes(r.form)) || documents.some((d) => c.kinds.includes(d.kind)),
+  }));
+}
+
+/** The order records take in the folder PDF: the checklist's, then anything left, by date. */
+export function folderOrder<R extends { form: FormId; heldOn: string | null }>(records: readonly R[]): R[] {
+  const rank = (f: FormId) => {
+    const i = FOLDER_CHECKLIST.findIndex((c) => c.forms.includes(f));
+    return i < 0 ? FOLDER_CHECKLIST.length : i;
+  };
+  return [...records].sort((a, b) => rank(a.form) - rank(b.form) || (a.heldOn ?? "").localeCompare(b.heldOn ?? ""));
+}
+
+/** What ops.case_period_report (0126) returns: counts only. */
+export interface CasePeriodCounts {
+  records: Partial<Record<FormId, number>>;
+  drafts: number;
+  children_seen: number;
+  referrals: Partial<Record<"submitted" | "approved" | "waitlisted" | "declined" | "admitted", number>>;
+  housed: Partial<Record<"M" | "F" | "unknown", number>>;
+  first_stays: number;
+}
+
+const REFERRAL_LABEL = { submitted: "Still to decide", approved: "Approved", waitlisted: "Waitlisted", declined: "Declined", admitted: "Admitted" } as const;
+
+/** The report's rows, in the order the page and the PDF show them. */
+export function periodReportRows(c: CasePeriodCounts): { section: string; label: string; value: number }[] {
+  const housed = (k: "M" | "F" | "unknown") => c.housed[k] ?? 0;
+  const referrals = Object.values(c.referrals).reduce((a, n) => a + (n ?? 0), 0);
+  return [
+    { section: "Children served", label: "Girls housed", value: housed("F") },
+    { section: "Children served", label: "Boys housed", value: housed("M") },
+    ...(housed("unknown") ? [{ section: "Children served", label: "Sex not recorded", value: housed("unknown") }] : []),
+    { section: "Children served", label: "Total children housed", value: housed("F") + housed("M") + housed("unknown") },
+    { section: "Children served", label: "First stay with LAF", value: c.first_stays },
+    { section: "Referrals received", label: "Total", value: referrals },
+    ...(Object.keys(REFERRAL_LABEL) as (keyof typeof REFERRAL_LABEL)[]).filter((k) => c.referrals[k]).map((k) => ({ section: "Referrals received", label: REFERRAL_LABEL[k], value: c.referrals[k]! })),
+    { section: "Case work (approved records)", label: "Children with a record", value: c.children_seen },
+    ...FORM_GROUPS.flatMap((g) => g.forms).filter((f) => c.records[f]).map((f) => ({ section: "Case work (approved records)", label: FORMS[f].title, value: c.records[f]! })),
+    ...(c.drafts ? [{ section: "Case work (approved records)", label: "Drafts not yet approved", value: c.drafts }] : []),
+  ];
+}
+
+/** "2026-10" is October 2026; "2026" is the whole year (the DSWD annual report). */
+export function periodRange(period: string): { from: string; to: string; title: string } | null {
+  const m = /^(\d{4})(?:-(0[1-9]|1[0-2]))?$/.exec(period);
+  if (!m) return null;
+  const y = Number(m[1]);
+  if (!m[2]) return { from: `${y}-01-01`, to: `${y}-12-31`, title: `January to December ${y}` };
+  const last = new Date(Date.UTC(y, Number(m[2]), 0)).getUTCDate();
+  const month = new Date(Date.UTC(y, Number(m[2]) - 1, 1)).toLocaleString("en-US", { month: "long", timeZone: "UTC" });
+  return { from: `${period}-01`, to: `${period}-${last}`, title: `${month} ${y}` };
 }
