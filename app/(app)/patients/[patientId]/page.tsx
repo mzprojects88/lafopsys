@@ -345,14 +345,14 @@ export default function PatientDetailPage({ params }: { params: Promise<{ patien
       </Tabs>
 
       <EditDetailsDialog
-        key={editing ? "open" : "closed"}
+        key={editing ? "edit-open" : "edit-closed"}
         patient={patient}
         carer={currentCarer}
         open={editing}
         onOpenChange={setEditing}
       />
       <CheckInDialog
-        key={checkingIn ? "open" : "closed"}
+        key={checkingIn ? "check-in-open" : "check-in-closed"}
         target={checkingIn ? { patient } : null}
         onOpenChange={(open) => !open && setCheckingIn(false)}
       />
