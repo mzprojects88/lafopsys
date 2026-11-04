@@ -75,3 +75,21 @@ test("each form prints with its title, ticks, signatures and page breaks", async
   });
   assert.deepEqual(dataFromPairs("home_visit", [{ key: "follow_up", value: '[{"need":"Food","action":"Refer"}]' }, { key: "home_areas", value: "not json" }]), { follow_up: [{ need: "Food", action: "Refer" }] });
 });
+
+test("checklist notes and session findings: kept, cleaned and printed", async () => {
+  const { noteKey, NOTE_LABEL, FINDINGS_KEY, SESSION_FORMS } = await import("../lib/case-files/forms.ts");
+  const { layoutCaseRecord } = await import("../lib/pdf/case-record.ts");
+  for (const id of FORM_IDS) {
+    const keys = new Set(FORMS[id].fields.map((f) => f.key));
+    for (const f of FORMS[id].fields) if (f.type === "checks") assert.ok(!keys.has(noteKey(f.key)), `${id}.${f.key} note key clashes`);
+  }
+  for (const id of SESSION_FORMS) assert.ok(FORMS[id].fields.some((f) => f.key === FINDINGS_KEY && f.type === "textarea"), `${id} has findings`);
+  const data = cleanData("casework", { concerns: ["Food and daily meal needs"], [noteKey("concerns")]: "  Needs rice for the week.  ", [noteKey("nope")]: "dropped", findings: "Mother is coping well." });
+  assert.deepEqual(data, { concerns: ["Food and daily meal needs"], concerns_notes: "Needs rice for the week.", findings: "Mother is coping well." });
+  const { dataFromPairs } = await import("../lib/case-files/forms.ts");
+  assert.deepEqual(dataFromPairs("casework", [{ key: "strengths_notes", value: "Very engaged." }]), { strengths_notes: "Very engaged." });
+  const svg = layoutCaseRecord({ form: "casework", caseNumber: "X", childName: "C", ageSex: "", heldOn: "2026-11-04", data, preparedBy: "a", approvedBy: "a", approvedOn: "2026-11-04" })
+    .map((p) => p.svg.join("")).join("");
+  assert.ok(svg.includes(`${NOTE_LABEL}: Needs rice for the week.`), "note printed");
+  assert.ok(svg.includes("Mother is coping well.") && svg.includes("Social worker&apos;s findings and comments") || svg.includes("Social worker's findings and comments"), "findings printed");
+});

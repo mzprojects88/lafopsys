@@ -644,6 +644,7 @@ export async function readCaseDocument(file: Uint8Array, mediaType: string, pape
         "Name the paper's type from the list. Write a two-sentence summary of what it is and what it records, using no names. " +
         "If part of the paper is one of the app's forms, fill that form: use only the field keys given, copy what is written or ticked exactly (a ticked box is a chosen option; give options exactly as listed), " +
         "checklists as the chosen options joined by ' | ', tables and ratings as JSON as described, dates as yyyy-MM-dd. Leave out anything blank, unreadable or not on the paper; never guess or invent. " +
+        "Words written beside or under a checklist go in that checklist's _notes field; the social worker's findings or comments go in findings. " +
         "A paper with several dated entries (progress notes) gives one record per entry. IDs, certificates, photos and modules fill no form: return no records for them.",
       messages: [
         {

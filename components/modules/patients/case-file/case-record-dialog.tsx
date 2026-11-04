@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { FORMS, prefillData, type Field as FormField, type FormData, type FormId } from "@/lib/case-files/forms";
+import { FINDINGS_KEY, FORMS, NOTE_LABEL, noteKey, prefillData, type Field as FormField, type FormData, type FormId } from "@/lib/case-files/forms";
 import type { CaseRecord, SaveInput } from "@/lib/hooks/use-case-files";
 import type { Patient } from "@/lib/types/patient";
 import { formatDate, todayIso } from "@/lib/utils/date";
@@ -126,6 +126,8 @@ export function CaseRecordDialog({
     URL.revokeObjectURL(url);
   }
 
+  // Findings are recommended, never required (decided 4 Nov): a reminder, not a block.
+  const findingsMissing = def.session && held && !locked && !String(data[FINDINGS_KEY] ?? "").trim();
   const nextOn = def.nextSessionKey ? (data[def.nextSessionKey] as string | undefined) : undefined;
 
   return (
@@ -186,7 +188,7 @@ export function CaseRecordDialog({
         {held ? (
           <div className="flex flex-col gap-4">
             {def.fields.map((f) => (
-              <FieldView key={f.key} field={f} value={data[f.key]} disabled={locked} onChange={(v) => set(f.key, v)} />
+              <FieldView key={f.key} field={f} value={data[f.key]} disabled={locked} onChange={(v) => set(f.key, v)} note={f.type === "checks" ? data[noteKey(f.key)] : undefined} onNote={(v) => set(noteKey(f.key), v)} />
             ))}
           </div>
         ) : (
@@ -260,6 +262,7 @@ export function CaseRecordDialog({
               </Button>
             ) : (
               <>
+                {findingsMissing ? <span className="self-center text-theme-xs text-warning-foreground dark:text-warning">Recommended: write your findings and comments before approving.</span> : null}
                 <Button type="button" variant="outline" disabled={busy} onClick={() => run(() => onSave(input("draft")), "Draft saved.")}>
                   Save draft
                 </Button>
@@ -280,7 +283,21 @@ const chip = (on: boolean) =>
   `rounded-full border px-2.5 py-1 text-left text-theme-xs transition-colors ${on ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted"}`;
 
 /** One field of a case form, editable or read-only. */
-function FieldView({ field: f, value, disabled, onChange }: { field: FormField; value: unknown; disabled: boolean; onChange: (v: unknown) => void }) {
+function FieldView({
+  field: f,
+  value,
+  disabled,
+  onChange,
+  note,
+  onNote,
+}: {
+  field: FormField;
+  value: unknown;
+  disabled: boolean;
+  onChange: (v: unknown) => void;
+  note?: unknown;
+  onNote?: (v: string) => void;
+}) {
   const id = `case-${f.key}`;
   if (f.type === "section") return <h4 className="border-b border-border pb-1 pt-2 text-theme-sm font-semibold">{f.label}</h4>;
   if (f.type === "choice" || f.type === "checks") {
@@ -297,6 +314,9 @@ function FieldView({ field: f, value, disabled, onChange }: { field: FormField; 
             </button>
           ))}
         </div>
+        {f.type === "checks" && onNote ? (
+          <Textarea aria-label={`${f.label}: ${NOTE_LABEL}`} placeholder={NOTE_LABEL} rows={2} maxLength={2000} value={typeof note === "string" ? note : ""} disabled={disabled} onChange={(e) => onNote(e.target.value)} className="mt-1" />
+        ) : null}
       </fieldset>
     );
   }

@@ -1,6 +1,6 @@
 import { A4, PdfPage, buildPdf, wrap } from "./writer.ts";
 import { drawLetterhead, longDate } from "./cash-ar.ts";
-import { FORMS, type FormData, type FormId } from "../case-files/forms.ts";
+import { FORMS, NOTE_LABEL, noteKey, type FormData, type FormId } from "../case-files/forms.ts";
 
 /**
  * One case record (0124) as LAF's paper form: the letterhead, the child's identifying lines, every
@@ -91,6 +91,8 @@ export function layoutCaseRecord(d: CaseRecordPdfData): PdfPage[] {
       const picked = f.type === "checks" ? (Array.isArray(v) ? (v as string[]) : []) : typeof v === "string" ? [v] : [];
       para(f.label, 9.5, { bold: true });
       for (const o of f.options) para(`${box(picked.includes(o))} ${o}`, 9, { indent: 10 });
+      const note = f.type === "checks" ? d.data[noteKey(f.key)] : undefined;
+      if (typeof note === "string" && note) para(`${NOTE_LABEL}: ${note}`, 9, { indent: 10 });
       y += 4;
       continue;
     }

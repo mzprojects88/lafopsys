@@ -154,6 +154,7 @@ export const FORMS: Record<FormId, CaseForm> = {
         "Follow-up monitoring and case management",
       ]),
       checks("attached", "Supporting documents attached", ["Intake and Assessment Form", "Admission Slip", "Initial Intervention Plan"]),
+      area("findings", "Social worker's findings and comments"),
     ],
   },
 
@@ -188,6 +189,7 @@ export const FORMS: Record<FormId, CaseForm> = {
         "Review progress during the next session", "Close counseling intervention",
       ]),
       { key: "next_session", label: "Next Session Date, if applicable", type: "date" },
+      area("findings", "Social worker's findings and comments"),
     ],
   },
 
@@ -274,6 +276,7 @@ export const FORMS: Record<FormId, CaseForm> = {
       area("recommendations", "Specific recommendations"),
       { key: "next_follow_up", label: "Next follow-up date", type: "date" },
       area("agreements", "Agreements made with the beneficiary/family"),
+      area("findings", "Social worker's findings and comments"),
     ],
   },
 
@@ -317,9 +320,16 @@ export const FORMS: Record<FormId, CaseForm> = {
       area("psychosocial_remarks", "Remarks / action needed (psychosocial)"),
       area("assessment", "V. Social Worker's Assessment"),
       area("recommendation", "VI. Recommendation"),
+      area("findings", "Social worker's findings and comments"),
     ],
   },
 };
+
+/** Every checklist carries an optional typed note ("Notes / others"), stored beside it under this key. */
+export const noteKey = (checksKey: string) => `${checksKey}_notes`;
+export const NOTE_LABEL = "Notes / others";
+/** The session forms end with this box: recommended before approving, never required. */
+export const FINDINGS_KEY = "findings";
 
 export const FORM_IDS = Object.keys(FORMS) as FormId[];
 export const SESSION_FORMS = FORM_IDS.filter((f) => FORMS[f].session);
@@ -380,6 +390,8 @@ export function cleanData(form: FormId, raw: unknown): FormData {
     if (f.type === "checks") {
       const picked = Array.isArray(v) ? f.options.filter((o) => v.includes(o)) : [];
       if (picked.length) out[f.key] = picked;
+      const note = str(src[noteKey(f.key)], 2000);
+      if (note) out[noteKey(f.key)] = note;
     } else if (f.type === "choice") {
       if (typeof v === "string" && f.options.includes(v)) out[f.key] = v;
     } else if (f.type === "date") {
@@ -415,6 +427,10 @@ export function caseNumberFor(patient: { caseNumber?: string | null; legacyCode?
 export function dataFromPairs(form: FormId, pairs: readonly { key: string; value: string }[]): FormData {
   const raw: Record<string, unknown> = {};
   for (const { key, value } of pairs) {
+    if (value && FORMS[form].fields.some((x) => x.type === "checks" && noteKey(x.key) === key)) {
+      raw[key] = value;
+      continue;
+    }
     const f = FORMS[form].fields.find((x) => x.key === key);
     if (!f || !value) continue;
     if (f.type === "checks") raw[key] = value.split("|").map((s) => s.trim());
@@ -435,7 +451,7 @@ export function formsForAi(): string {
     const lines = FORMS[id].fields
       .filter((f) => f.type !== "section")
       .map((f) => {
-        const opts = "options" in f ? ` options: ${f.options.join(" | ")}` : "";
+        const opts = "options" in f ? ` options: ${f.options.join(" | ")}${f.type === "checks" ? `; anything written beside it goes in ${noteKey(f.key)} (text)` : ""}` : "";
         const extra = f.type === "table" ? ` JSON array of objects with keys ${f.columns.map((c) => c.key).join(", ")}` : f.type === "ratings" ? ` JSON object {row: option}, rows: ${f.rows.join(" | ")}; options: ${f.options.join(" | ")}` : "";
         return `  ${f.key} (${f.type}) ${f.label}.${opts}${extra}`;
       });
