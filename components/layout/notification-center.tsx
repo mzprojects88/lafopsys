@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { BedDouble, Bell, ClipboardList, CloudOff, Fuel, Mail, MapPin, PenLine, Wrench, type LucideIcon } from "lucide-react";
-import { useOpenCaseRecords } from "@/lib/hooks/use-case-files";
+import { useOpenCaseRecords, usePlansDue } from "@/lib/hooks/use-case-files";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
 import { houseSheetPatientId } from "@/lib/types/house-sheet";
@@ -101,6 +101,7 @@ function CaseReminders({ children }: { children: (reminders: Reminder[]) => Reac
   const sw = roles.includes("social_worker");
   const ceo = roles.includes("ceo");
   const { open } = useOpenCaseRecords(sw || ceo);
+  const plansDue = usePlansDue(sw);
   const toSign = ceo ? open.filter((r) => r.status === "approved" && !r.ceoSignedOn) : [];
   const now = useNow();
   const out: Reminder[] = [];
@@ -114,6 +115,8 @@ function CaseReminders({ children }: { children: (reminders: Reminder[]) => Reac
     if (late.length)
       out.push({ id: "case-sessions-write-up", title: `${late.length} session${late.length === 1 ? "" : "s"} to write up`, body: "They took place: fill in the form and approve it.", href: "/patients/sessions", icon: ClipboardList });
   }
+  if (plansDue)
+    out.push({ id: "case-plans-due", title: `${plansDue} intervention plan${plansDue === 1 ? "" : "s"} to review`, body: "The plan is updated every six months: start a new one from the child's Case file (it opens with the last plan).", href: "/patients/sessions", icon: ClipboardList });
   if (toSign.length)
     out.push({ id: "case-records-to-sign", title: `${toSign.length} case record${toSign.length === 1 ? "" : "s"} to sign`, body: "Approved by the social worker. Read them, then sign the printed PDFs; the social worker records the date.", href: "/patients/sessions#to-sign", icon: PenLine });
   return <>{children(out)}</>;

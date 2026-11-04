@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
 import { createCollection, createCollectionFamily, useCollection } from "@/lib/data/collection-store";
 import { cleanData, type DocumentKind, type FormData, type FormId } from "@/lib/case-files/forms";
@@ -225,4 +226,25 @@ export function useCaseFile(patientId: string, enabled: boolean) {
     removeDocument,
     readDocument,
   };
+}
+
+/** The intervention plan is updated twice a year (DSWD checklist item 6): how many children's latest
+ * approved plan is more than six months old, for the social worker's bell (0126). */
+export function usePlansDue(enabled: boolean): number {
+  const [due, setDue] = React.useState(0);
+  React.useEffect(() => {
+    if (!enabled) return;
+    void db()
+      .from("case_records")
+      .select("patient_id, held_on")
+      .eq("form", "intervention_plan")
+      .eq("status", "approved")
+      .then(({ data }) => {
+        const latest = new Map<string, string>();
+        for (const r of (data ?? []) as { patient_id: string; held_on: string }[]) if (!latest.has(r.patient_id) || r.held_on > latest.get(r.patient_id)!) latest.set(r.patient_id, r.held_on);
+        const cutoff = new Date(Date.now() - 182 * 86_400_000).toISOString().slice(0, 10);
+        setDue([...latest.values()].filter((d) => d < cutoff).length);
+      });
+  }, [enabled]);
+  return due;
 }

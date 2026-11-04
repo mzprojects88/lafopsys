@@ -50,10 +50,17 @@ export function layoutCaseRecord(d: CaseRecordPdfData): PdfPage[] {
     y = MARGIN;
   };
   const para = (value: string, size = 9.5, opts: { bold?: boolean; gray?: number; indent?: number } = {}) => {
-    for (const line of wrap(value, INNER - (opts.indent ?? 0), size)) {
-      ensure(size + 4);
-      page.text(MARGIN + (opts.indent ?? 0), y, size, line, { bold: opts.bold, gray: opts.gray });
-      y += size + 4;
+    // Typed line breaks are paragraphs; a blank line is a gap.
+    for (const part of value.split(/\r?\n/)) {
+      if (!part.trim()) {
+        y += size / 2;
+        continue;
+      }
+      for (const line of wrap(part, INNER - (opts.indent ?? 0), size)) {
+        ensure(size + 4);
+        page.text(MARGIN + (opts.indent ?? 0), y, size, line, { bold: opts.bold, gray: opts.gray });
+        y += size + 4;
+      }
     }
   };
   const pair = (label: string, value: string | undefined) => {
@@ -68,6 +75,25 @@ export function layoutCaseRecord(d: CaseRecordPdfData): PdfPage[] {
   y += 96;
   page.fillRect(MARGIN, y, INNER, 0.75, 0.8);
   y += 12;
+
+  // A letter (0126): the recipient, the client in one line, the salutation and the body; signed by the social worker.
+  if (def.letter) {
+    const s = (k: string) => (typeof d.data[k] === "string" ? (d.data[k] as string) : "");
+    for (const k of ["focal_person", "position", "agency", "address"]) if (s(k)) para(s(k), 10, { bold: k === "focal_person" });
+    y += 10;
+    para(`Client: ${[d.childName, d.ageSex, d.diagnosis].filter(Boolean).join(" · ")}`, 9.5, { gray: 0.25 });
+    y += 8;
+    if (s("salutation")) para(s("salutation"), 10);
+    y += 4;
+    para(s("body"), 10);
+    ensure(90);
+    y += 46;
+    page.text(MARGIN, y, 10, d.preparedBy, { bold: true });
+    page.fillRect(MARGIN, y + 14, INNER / 2 - 16, 0.75, 0.3);
+    page.text(MARGIN, y + 20, 9, "Resident Social Worker, Little Ark Foundation Inc.", { gray: 0.3 });
+    pages.forEach((p, i) => footer(p, i + 1));
+    return pages;
+  }
 
   pair("Name of Beneficiary", d.childName);
   pair("Age / Sex", d.ageSex);
@@ -127,6 +153,7 @@ export function layoutCaseRecord(d: CaseRecordPdfData): PdfPage[] {
     { name: d.approvedBy, role: `Reviewed and approved by: Social Worker · ${longDate(d.approvedOn)}` },
     { name: d.ceoName ?? "", role: `Noted by: ${d.ceoTitle ?? "Chief Executive Officer"}` },
     ...(def.conforme ? [{ name: "", role: "Conforme: Name and Signature of Parent/Caregiver" }] : []),
+    ...(def.extraSigners ?? []).map((role) => ({ name: "", role })),
   ];
   ensure(40 + Math.ceil(signers.length / 2) * 64);
   y += 30;

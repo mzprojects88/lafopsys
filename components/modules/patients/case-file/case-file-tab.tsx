@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
 import { createCollectionFamily, useCollection } from "@/lib/data/collection-store";
-import { DOCUMENT_KINDS, FORMS, FORM_IDS, REQUIRED_KINDS, SESSION_FORMS, type DocumentKind, type FormId } from "@/lib/case-files/forms";
+import { DOCUMENT_KINDS, FORMS, FORM_GROUPS, REQUIRED_KINDS, SESSION_FORMS, type DocumentKind, type FormId } from "@/lib/case-files/forms";
 import { useCaseFile, type CaseRecord } from "@/lib/hooks/use-case-files";
 import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { useReferralsData } from "@/lib/hooks/use-referrals-collection";
@@ -111,12 +111,31 @@ export function CaseFileTab({ patient, stays, appointments, canEdit }: { patient
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
           <CardTitle className="text-base">Case records</CardTitle>
           {canEdit ? (
-          <div className="flex flex-wrap gap-1.5">
-            {FORM_IDS.map((f) => (
-              <Button key={f} size="sm" variant="outline" onClick={() => setDraft({ form: f })}>
-                <FilePlus2 /> {FORMS[f].title.replace(/ (Form|Sheet|Report|Recording)$/, "")}
-              </Button>
-            ))}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <FilePlus2 className="size-4 text-muted-foreground" />
+            <select
+              aria-label="New record"
+              className="h-8 rounded-md border border-input bg-background px-2 text-theme-sm"
+              value=""
+              onChange={(e) => {
+                const form = e.target.value as FormId;
+                if (!form) return;
+                // The plan is reviewed, not rewritten: a new one starts from the last approved one.
+                const last = FORMS[form].carryOver ? cf.records.find((r) => r.form === form && r.status === "approved") : undefined;
+                setDraft({ form, startFrom: last?.data });
+              }}
+            >
+              <option value="">New record…</option>
+              {FORM_GROUPS.map((g) => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.forms.map((f) => (
+                    <option key={f} value={f}>
+                      {FORMS[f].title}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
             <Button size="sm" onClick={() => setDraft({ form: "casework", book: true })}>
               <CalendarPlus /> Book a session
             </Button>

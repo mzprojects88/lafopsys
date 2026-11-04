@@ -63,8 +63,14 @@ test("each form prints with its title, ticks, signatures and page breaks", async
     const svg = pages.map((p) => p.svg.join("")).join("");
     assert.ok(svg.includes(FORMS[form].title.toUpperCase().replace(/&/g, "&amp;")), `${form} title`);
     assert.ok(svg.includes("Case No. LFCN-2026-0012"), `${form} case number`);
+    if (FORMS[form].letter) {
+      assert.ok(svg.includes("Resident Social Worker, Little Ark Foundation Inc."), `${form} letter signature`);
+      assert.equal(buildCaseRecordPdf(d).subarray(0, 5).toString(), "%PDF-");
+      continue;
+    }
     assert.ok(svg.includes("Noted by: Chief Executive Officer"), `${form} CEO line`);
     assert.equal(svg.includes("Conforme"), FORMS[form].conforme, `${form} conforme`);
+    for (const role of FORMS[form].extraSigners ?? []) assert.ok(svg.includes(role.replace(/&/g, "&amp;")), `${form} signer ${role}`);
     if (first) assert.ok(svg.includes(`[x] ${first.options[0]}`) && svg.includes(`[ ] ${first.options[1]}`), `${form} ticks`);
     if (Object.keys(data).length > 2) assert.ok(pages.length > 1, `${form} breaks pages`);
     assert.equal(buildCaseRecordPdf(d).subarray(0, 5).toString(), "%PDF-");
@@ -92,4 +98,11 @@ test("checklist notes and session findings: kept, cleaned and printed", async ()
     .map((p) => p.svg.join("")).join("");
   assert.ok(svg.includes(`${NOTE_LABEL}: Needs rice for the week.`), "note printed");
   assert.ok(svg.includes("Mother is coping well.") && svg.includes("Social worker&apos;s findings and comments") || svg.includes("Social worker's findings and comments"), "findings printed");
+});
+
+test("the New record menu lists every form once", async () => {
+  const { FORM_GROUPS } = await import("../lib/case-files/forms.ts");
+  const listed = FORM_GROUPS.flatMap((g) => g.forms);
+  assert.deepEqual([...listed].sort(), [...FORM_IDS].sort());
+  assert.equal(new Set(listed).size, listed.length);
 });

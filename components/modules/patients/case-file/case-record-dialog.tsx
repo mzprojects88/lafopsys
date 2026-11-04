@@ -30,6 +30,8 @@ export interface CaseRecordDraft {
   /** Opening a booking (a scheduled session) rather than a write-up. */
   book?: boolean;
   bookOn?: string;
+  /** A new record's starting answers (the last approved plan, 0126). */
+  startFrom?: FormData;
 }
 
 /**
@@ -67,7 +69,7 @@ export function CaseRecordDialog({
   const locked = approved || readOnly;
   const booking = draft.book || rec?.status === "scheduled";
   const when = manilaParts(rec?.scheduledAt ?? (draft.bookOn ? manilaAt(draft.bookOn, "09:00") : null));
-  const [data, setData] = React.useState<FormData>(() => rec?.data ?? prefillData(draft.form, patient as unknown as Record<string, unknown>));
+  const [data, setData] = React.useState<FormData>(() => rec?.data ?? (draft.startFrom ? { ...draft.startFrom } : prefillData(draft.form, patient as unknown as Record<string, unknown>)));
   const [heldOn, setHeldOn] = React.useState(rec?.heldOn ?? (booking ? "" : todayIso()));
   const [day, setDay] = React.useState(when.day);
   const [time, setTime] = React.useState(when.time);

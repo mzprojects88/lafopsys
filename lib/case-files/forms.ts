@@ -5,7 +5,11 @@
  * holds only what the paper adds. Wording of the checklists is the paper's.
  */
 
-export type FormId = "intake" | "progress_note" | "casework" | "counseling" | "home_visit" | "monitoring";
+export type FormId =
+  | "intake" | "progress_note" | "casework" | "counseling" | "home_visit" | "monitoring"
+  | "case_study" | "intervention_plan"
+  | "discharge_slip" | "closing_summary" | "transfer_summary" | "aftercare_plan" | "pre_discharge_plan"
+  | "referral_letter" | "dswd_case_summary";
 
 export type Field =
   | { key: string; label: string; type: "section" }
@@ -24,6 +28,12 @@ export interface CaseForm {
   conforme: boolean;
   /** A date field that proposes the next session. */
   nextSessionKey?: string;
+  /** Printed as a letter: the values as paragraphs, no field labels (0126). */
+  letter?: boolean;
+  /** A new record starts from the last approved one of this form (the plan is reviewed, not rewritten). */
+  carryOver?: boolean;
+  /** Signature lines the paper adds beyond the social worker, the CEO and the carer. */
+  extraSigners?: readonly string[];
   fields: readonly Field[];
 }
 
@@ -323,6 +333,223 @@ export const FORMS: Record<FormId, CaseForm> = {
       area("findings", "Social worker's findings and comments"),
     ],
   },
+
+  case_study: {
+    id: "case_study",
+    title: "Social Case Study Report",
+    session: false,
+    conforme: false,
+    fields: [
+      text("illness_category", "Case/Illness Category"),
+      sec("ii", "II. Sources of information and circumstances of referral"),
+      area("sources", "Sources of information and circumstances of referral", {
+        prefill:
+          "The information presented in this report was gathered from the client's existing case records, available medical records from the National Children's Hospital, an interview with the client's parent, and the social worker's direct observations. The client was referred by the National Children's Hospital for assessment and possible assistance under the programs and services of Little Ark Foundation.",
+      }),
+      sec("iii", "III. Presenting problem"),
+      area("presenting_problem", "Presenting problem", { prefill: "reasonForReferral" }),
+      sec("iv", "IV. Background information"),
+      area("the_child", "A. The child"),
+      { key: "family", label: "B. The family", type: "table", columns: FAMILY_COLUMNS },
+      area("the_family", "The family (narrative)"),
+      area("the_community", "C. The community"),
+      sec("v", "V. Assessment"),
+      area("assessment", "Assessment"),
+      sec("vi", "VI. Recommendation"),
+      area("recommendation", "Recommendation"),
+    ],
+  },
+
+  intervention_plan: {
+    id: "intervention_plan",
+    title: "Intervention Plan and Contract",
+    session: false,
+    conforme: true,
+    carryOver: true,
+    fields: [
+      text("period", "Plan period", { hint: "e.g. June 2026 - December 2026" }),
+      {
+        key: "plan",
+        label: "Objectives, activities and status per service (Status: NS Not Started, O Ongoing, C Completed, D Delayed, M Modified, DC Discontinued)",
+        type: "table",
+        columns: [
+          { key: "service", label: "Service" },
+          { key: "objective", label: "Objectives" },
+          { key: "activities", label: "Activities" },
+          { key: "time_frame", label: "Time frame" },
+          { key: "responsible", label: "Responsible person" },
+          { key: "outcome", label: "Expected outcomes" },
+          { key: "status", label: "Status" },
+        ],
+        rows: ["I. Housing Accommodation Services", "II. Everyday Meals Services", "III. Activities Services", "IV. Resources / Social Services", "V. Transportation Services", "VI. Spiritual Care Services"],
+      },
+      { key: "as_of", label: "Monitoring status as of", type: "date" },
+    ],
+  },
+
+  discharge_slip: {
+    id: "discharge_slip",
+    title: "Discharge Slip (LAF-CM-DS-01)",
+    session: false,
+    conforme: true,
+    fields: [
+      { key: "discharged_time", label: "Time discharged", type: "time" },
+      text("destination", "Destination / complete address"),
+      text("receiving_person", "Receiving person / relationship"),
+      text("receiving_contact", "Receiving person's active contact number"),
+      choice("discharge_type", "Type", ["Completed LAF services", "Returned home", "Transferred/referred", "Voluntary withdrawal", "Hospital admission"]),
+      area("reason", "Reason for discharge"),
+      choice("condition", "Condition upon discharge", ["Stable", "For continued monitoring/treatment"]),
+      area("instructions", "Important instructions, next medical appointment, referrals, or aftercare arrangements"),
+      checks("returned", "Documents / belongings returned", ["Medical records/copies", "Referral documents", "Personal belongings"]),
+    ],
+  },
+
+  closing_summary: {
+    id: "closing_summary",
+    title: "Closing Summary / Terminal Report (LAF-CM-CS-02)",
+    session: false,
+    conforme: false,
+    fields: [
+      area("referral_circumstances", "B. Circumstances of referral and presenting problem"),
+      checks("services", "C. Services / interventions provided", ["Temporary shelter", "Meals", "Transportation", "Activities", "Psychosocial support", "Referral/resource assistance", "Spiritual care"]),
+      area("services_details", "Brief details"),
+      area("progress", "D. Progress and outcomes"),
+      area("closure_reason", "E. Reason for case closure"),
+      area("final_assessment", "F. Final assessment, remaining needs, and recommendation"),
+      area("aftercare", "G. Referrals / aftercare arranged"),
+    ],
+  },
+
+  transfer_summary: {
+    id: "transfer_summary",
+    title: "Transfer Summary and Receiving-Party Agreement (LAF-CM-TS-03)",
+    session: false,
+    conforme: true,
+    extraSigners: ["Receiving Party / Authorized Representative", "LGU / LSWDO Representative (if applicable)"],
+    fields: [
+      text("transfer_reason", "Reason for transfer"),
+      text("destination", "Current address / destination"),
+      sec("b", "B. Brief case status"),
+      area("situation", "Current medical, psychosocial, family, financial, and protection situation"),
+      area("services_progress", "Services provided and progress made"),
+      area("pending", "Pending needs, appointments, and immediate actions required"),
+      sec("c", "C. Receiving party"),
+      text("receiving_agency", "Agency / receiving party"),
+      text("receiving_contact_person", "Contact person / position"),
+      text("receiving_address", "Complete address"),
+      text("receiving_mobile", "Active mobile number"),
+      text("receiving_alt", "Alternate number / email"),
+      { key: "contact_verified", label: "Date contact verified", type: "date" },
+      text("expected_service", "Expected service / action"),
+      sec("d", "D. Concerned LGU / LSWDO"),
+      text("lgu_city", "City / municipality"),
+      text("lgu_contact_person", "Contact person / position"),
+      text("lgu_address", "Office address"),
+      text("lgu_phone", "Active mobile / landline"),
+      text("lgu_email", "Email / other contact"),
+      checks("documents", "E. Documents transferred", ["Referral letter", "Transfer summary", "SCSR / intake records", "Medical records/copies", "Intervention/progress records", "Consent forms"]),
+    ],
+  },
+
+  aftercare_plan: {
+    id: "aftercare_plan",
+    title: "Aftercare Plan and Agreement (LAF-CM-AP-04)",
+    session: false,
+    conforme: true,
+    nextSessionKey: "first_follow_up",
+    extraSigners: ["LGU / Receiving Agency (if applicable)"],
+    fields: [
+      { key: "period_from", label: "Aftercare period from", type: "date" },
+      { key: "period_to", label: "Aftercare period to", type: "date" },
+      text("current_address", "Current address"),
+      area("goal", "B. Aftercare goal and priority needs"),
+      {
+        key: "activities",
+        label: "C. Aftercare activities",
+        type: "table",
+        columns: [
+          { key: "activity", label: "Need / activity" },
+          { key: "responsible", label: "Responsible person / agency" },
+          { key: "target", label: "Target date" },
+          { key: "result", label: "Follow-up / expected result" },
+        ],
+      },
+      sec("d", "D. Follow-up schedule and important contacts"),
+      { key: "first_follow_up", label: "First follow-up date", type: "date" },
+      checks("method", "Method", ["Call", "Message", "Visit", "Agency coordination"]),
+      text("laf_contact", "LAF contact person and number"),
+      text("agency_contact", "LGU / agency contact and number"),
+      text("next_appointment", "Next medical appointment, hospital / clinic"),
+    ],
+  },
+
+  pre_discharge_plan: {
+    id: "pre_discharge_plan",
+    title: "Termination / Pre-Discharge Plan (LAF-CM-TP-05)",
+    session: false,
+    conforme: true,
+    extraSigners: ["Client, if age-appropriate"],
+    fields: [
+      { key: "proposed_discharge", label: "Proposed discharge date", type: "date" },
+      area("reason", "Reason for termination / discharge"),
+      checks("readiness", "B. Readiness before discharge", [
+        "Safe destination confirmed", "Parent/guardian/receiving person identified", "Active contact details verified", "Medical follow-up arranged", "Transportation plan discussed",
+        "Medicines/instructions understood", "Referrals coordinated", "Aftercare plan discussed", "Required documents and belongings prepared", "Client and family participated in planning",
+      ]),
+      {
+        key: "tasks",
+        label: "C. Tasks before discharge",
+        type: "table",
+        columns: [
+          { key: "task", label: "Task / arrangement" },
+          { key: "responsible", label: "Responsible person / agency" },
+          { key: "due", label: "Due date" },
+          { key: "status", label: "Status / remarks" },
+        ],
+      },
+      choice("family", "D. Family participation", ["Family agrees with the plan", "Family agrees with comments/conditions", "Plan requires further discussion"]),
+      area("family_comments", "Comments, concerns, or requested changes"),
+      choice("decision", "E. Decision", ["Approved for discharge / case termination", "Deferred until required tasks are completed", "Transferred to another agency / LGU"]),
+    ],
+  },
+
+  referral_letter: {
+    id: "referral_letter",
+    title: "Referral Letter",
+    session: false,
+    conforme: false,
+    letter: true,
+    fields: [
+      text("focal_person", "Focal person"),
+      text("position", "Position"),
+      text("agency", "Foundation / agency"),
+      text("address", "Address"),
+      text("salutation", "Dear ...", { prefill: "Dear Sir/Madam," }),
+      area("body", "Letter", {
+        prefill:
+          "Greetings in the Spirit of Service to Humanity!\n\nI respectfully refer a client who is currently receiving support through the programs and services of Little Ark Foundation Inc. to your institution for further assessment and appropriate assistance.\n\nLittle Ark Foundation Inc. is a nonprofit center-based facility in Quezon City that supports children aged zero (0) to eighteen (18) years old with cancer, thalassemia, and other critical illnesses, together with their caregivers. The Foundation provides free temporary shelter, meals, transportation, psychosocial support, activities, and spiritual care throughout their medical journey.\n\nThe client has reached the maximum age qualification of the Foundation's programs and remains in need of medical, financial, psychosocial, and other support services. To prevent any interruption in care, we have assessed that it is in the client's best interest to be referred and transitioned to an institution that can provide services appropriate to the client's age and continuing needs.\n\nWe hope that your institution can provide the appropriate assistance for the client's medical and psychosocial development. Your warmest consideration is highly appreciated. Should you have any queries, please contact us through info@littlearkfoundation.org or (+63) 976 215 6591.\n\nAttached is the Social Case Study Report of the client for more information.\n\nSincerely yours,",
+      }),
+    ],
+  },
+
+  dswd_case_summary: {
+    id: "dswd_case_summary",
+    title: "Social Case Summary (DSWD)",
+    session: false,
+    conforme: false,
+    fields: [
+      text("addressed_to", "Addressed to", { prefill: "The Head, Department of Social Welfare and Development, National Capital Region" }),
+      text("civil_status", "Civil status"),
+      area("problem", "B. Problem presented", {
+        prefill: "The patient's parent/guardian is seeking financial assistance to support the patient's medications and laboratory procedures amounting to ₱____. Due to limited financial resources, the family is unable to fully defray the medical costs and is therefore seeking outside assistance.",
+      }),
+      area("assessment", "C. Assessment"),
+      area("recommendation", "D. Recommendation", {
+        prefill: "Based on the findings of the assessment and the socio-economic condition of the family, the patient is respectfully recommended for medical and/or financial assistance.",
+      }),
+    ],
+  },
 };
 
 /** Every checklist carries an optional typed note ("Notes / others"), stored beside it under this key. */
@@ -332,6 +559,14 @@ export const NOTE_LABEL = "Notes / others";
 export const FINDINGS_KEY = "findings";
 
 export const FORM_IDS = Object.keys(FORMS) as FormId[];
+
+/** The "New record" menu, in the order a case runs. */
+export const FORM_GROUPS: readonly { label: string; forms: readonly FormId[] }[] = [
+  { label: "Sessions", forms: ["casework", "counseling", "home_visit", "monitoring"] },
+  { label: "Case records", forms: ["intake", "progress_note", "case_study", "intervention_plan"] },
+  { label: "Leaving LAF", forms: ["pre_discharge_plan", "discharge_slip", "closing_summary", "transfer_summary", "aftercare_plan"] },
+  { label: "Letters", forms: ["referral_letter", "dswd_case_summary"] },
+];
 export const SESSION_FORMS = FORM_IDS.filter((f) => FORMS[f].session);
 
 /** The folder's papers (DSWD checklist order), for uploads and the "what's missing" list. */

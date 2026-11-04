@@ -602,6 +602,8 @@ async function main() {
       await scenario(ids, `0124: ${actor} can't write a case record`, actor, null, q(`insert into ops.case_records (patient_id, form, held_on) values (${pt}, 'casework', current_date)`), denied);
       await scenario(ids, `0124: ${actor} can't see case papers`, actor, casePaper, papers, (r) => r.ok && r.data[0].files === 0 && r.data[0].rows === 0);
     }
+    await scenario(ids, "0126: the social worker writes an intervention plan", "social_worker", null, q(`insert into ops.case_records (patient_id, form, held_on, data) values (${pt}, 'intervention_plan', current_date, '{"period":"x"}')`), rows(1));
+    await scenario(ids, "0126: an unknown form is refused", "social_worker", null, q(`insert into ops.case_records (patient_id, form, held_on) values (${pt}, 'not_a_form', current_date)`), checkFailed);
     await scenario(ids, "0124: Case sessions: the social worker works it, the CEO views it", "social_worker", null, q("select string_agg(role || '=' || level, ',' order by role) as levels from shared.role_page_access where page = 'patients.sessions'"), (r) => r.ok && r.data[0].levels === "ceo=view,social_worker=edit");
   }
 
