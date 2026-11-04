@@ -220,3 +220,17 @@ describe("reconcileRoster", () => {
     assert.deepEqual(plan.offSheet, []);
   });
 });
+
+it("a tracker name finds the child's open referral, not a closed one", async () => {
+  const { openReferralFor } = await import("../lib/utils/house-sheet.ts");
+  const refs = [
+    { id: "r1", status: "admitted", patientName: "Ana Santos", patientFirstName: "Ana", patientLastName: "Santos" },
+    { id: "r2", status: "waitlisted", patientName: "Ana Maria Santos", patientFirstName: "Ana Maria", patientLastName: "Santos" },
+    { id: "r3", status: "declined", patientName: "Ben Cruz" },
+    { id: "r4", status: "approved", patientName: "Carla dela Cruz", patientFirstName: "Carla", patientLastName: "dela Cruz" },
+  ];
+  assert.equal(openReferralFor("SANTOS, Ana", refs)?.id, "r2");
+  assert.equal(openReferralFor("Ben Cruz", refs), undefined);
+  assert.equal(openReferralFor("Dela Cruz, Carla", refs)?.id, "r4");
+  assert.equal(openReferralFor("Santos", refs), undefined);
+});

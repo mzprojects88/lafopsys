@@ -522,3 +522,18 @@ export function reconcileRoster(input: ReconcileRosterInput): ReconcileRosterPla
     counts: { seen: input.roster.length, inserted: inserts.length, updated, offSheet: offSheet.length, returned },
   };
 }
+
+/** A referral still open on the board (submitted, approved or waitlisted) for the child a tracker
+ * name names: same last name and first given name. A child referred ahead and then listed by NCH is
+ * checked in from that referral, so there is one referral and one patient record, not two. */
+export function openReferralFor<R extends { status: string; patientName: string; patientFirstName?: string; patientLastName?: string }>(sheetName: string, referrals: readonly R[]): R | undefined {
+  const { first, last } = splitName(sheetName);
+  const l = normalizeName(last);
+  const f = normalizeName(first).split(" ")[0];
+  if (!l || !f) return undefined;
+  return referrals.find((r) => {
+    if (!["submitted", "approved", "waitlisted"].includes(r.status)) return false;
+    const name = splitName(r.patientName);
+    return normalizeName(r.patientLastName ?? name.last) === l && normalizeName(r.patientFirstName ?? name.first).split(" ")[0] === f;
+  });
+}

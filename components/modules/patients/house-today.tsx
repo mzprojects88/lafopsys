@@ -54,6 +54,7 @@ import { PRIORITIES } from "@/lib/utils/master-sheet";
 import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
 import type { Stay } from "@/lib/types/patient";
 import { plainError } from "@/lib/utils/plain-error";
+import { openReferralFor } from "@/lib/utils/house-sheet";
 
 const dayAfter = (iso: string) => {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -88,7 +89,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const { pickups } = usePickups();
   const { topics, checks } = useAllOrientationChecks();
   const [checkIn, setCheckIn] = React.useState<CheckInTarget | null>(null);
-  const { referrals } = useReferralsData();
+  const { referrals, updateReferral } = useReferralsData();
   const [discharge, setDischarge] = React.useState<{ stay: Stay; name: string; on: string } | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   // A bed held before the child arrives (user, 2026-09-25; 0065).
@@ -331,11 +332,40 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                       );
                     })()
                   ) : (
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/patients/admit?fromSheet=${p.id}`}>
-                        <FilePlus2 /> Admit new child
-                      </Link>
-                    </Button>
+                    // A child referred ahead (Referrals) and now on NCH's list: check in from that referral, so
+                    // there is one referral and one record. NCH listing the child is the decision, so a
+                    // submitted or waitlisted referral is approved on the way in.
+                    (() => {
+                      const open = openReferralFor(p.patientName, referrals);
+                      const admitNew = (
+                        <Button asChild size="sm" variant={open ? "ghost" : "outline"}>
+                          <Link href={`/patients/admit?fromSheet=${p.id}`}>
+                            <FilePlus2 /> {open ? "Not them, admit new" : "Admit new child"}
+                          </Link>
+                        </Button>
+                      );
+                      if (!open) return admitNew;
+                      return (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            disabled={busy === p.id}
+                            onClick={async () => {
+                              if (open.status !== "approved") {
+                                setBusy(p.id);
+                                const r = await updateReferral(open.id, { status: "approved" });
+                                setBusy(null);
+                                if (!r.ok) return void toast.error(plainError(r.error));
+                              }
+                              setCheckIn({ referral: { ...open, status: "approved" } });
+                            }}
+                          >
+                            <BedDouble /> Check in from referral
+                          </Button>
+                          {admitNew}
+                        </div>
+                      );
+                    })()
                   )
                 ) : null}
               </div>
