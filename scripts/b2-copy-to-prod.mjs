@@ -2,7 +2,9 @@
 // Re-runnable: a file already in production with the same size is skipped, so a second run copies only
 // what was uploaded since (the final pass at the switch-over). Never deletes anything, never prints a key.
 //
-//   node scripts/b2-copy-to-prod.mjs opsys|inventory [--dry-run]
+//   node scripts/b2-copy-to-prod.mjs opsys|inventory [--dry-run] [--to-dev]
+//
+// --to-dev reverses it: production's newer files into the dev bucket (dev kept a copy for testing).
 //
 // Source: the app's dev .env.local (B2_*). Target: ~/.config/laf/b2-prod.env with
 //   B2_PROD_S3_ENDPOINT, B2_PROD_S3_REGION,
@@ -35,10 +37,12 @@ for (const k of ["B2_PROD_S3_ENDPOINT", "B2_PROD_S3_REGION", `${P}_B2_BUCKET`, `
 
 const client = (endpoint, region, id, secret) =>
   new S3Client({ endpoint, region, credentials: { accessKeyId: id, secretAccessKey: secret }, forcePathStyle: true, requestChecksumCalculation: "WHEN_REQUIRED", responseChecksumValidation: "WHEN_REQUIRED" });
-const src = client(dev.B2_S3_ENDPOINT, dev.B2_S3_REGION, dev.B2_ACCESS_KEY_ID, dev.B2_SECRET_ACCESS_KEY);
-const dst = client(prod.B2_PROD_S3_ENDPOINT, prod.B2_PROD_S3_REGION, prod[`${P}_B2_KEY_ID`], prod[`${P}_B2_APP_KEY`]);
-const SRC = dev.B2_BUCKET_NAME;
-const DST = prod[`${P}_B2_BUCKET`];
+const devClient = client(dev.B2_S3_ENDPOINT, dev.B2_S3_REGION, dev.B2_ACCESS_KEY_ID, dev.B2_SECRET_ACCESS_KEY);
+const prodClient = client(prod.B2_PROD_S3_ENDPOINT, prod.B2_PROD_S3_REGION, prod[`${P}_B2_KEY_ID`], prod[`${P}_B2_APP_KEY`]);
+// --to-dev copies the other way, production -> dev, so local development sees the newer files.
+const toDev = process.argv.includes("--to-dev");
+const [src, dst] = toDev ? [prodClient, devClient] : [devClient, prodClient];
+const [SRC, DST] = toDev ? [prod[`${P}_B2_BUCKET`], dev.B2_BUCKET_NAME] : [dev.B2_BUCKET_NAME, prod[`${P}_B2_BUCKET`]];
 if (SRC === DST) throw new Error("Source and target bucket are the same");
 
 const objects = [];
