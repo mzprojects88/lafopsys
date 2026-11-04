@@ -244,10 +244,12 @@ async function initialise(prod: Client, dev: Client, tables: Table[]) {
   for (const t of tables.filter(ours)) await dev.query(`alter table ${t.name} enable trigger user`);
   await restore();
   await dev.query(`select setval('inventory.audit_log_id_seq', greatest((select coalesce(max(id), 0) from inventory.audit_log), 0) + $1)`, [DEV_AUDIT_OFFSET]);
-  const prodHashes = await hashes(prod, tables);
+  // The agreed state is what was copied (read back from dev, inside this transaction), not production
+  // read again later: a production change made during the copy must reach dev next run, not be undone.
+  const copiedHashes = await hashes(dev, tables);
   await prod.query("begin");
   await prod.query(`delete from sync.row_state`);
-  const agreed = [...prodHashes].flatMap(([table_name, m]) => [...m].map(([pk, hash]) => ({ table_name, pk, hash })));
+  const agreed = [...copiedHashes].flatMap(([table_name, m]) => [...m].map(([pk, hash]) => ({ table_name, pk, hash })));
   for (let i = 0; i < agreed.length; i += 5000) {
     await prod.query(`insert into sync.row_state (table_name, pk, hash) select table_name, pk, hash from jsonb_to_recordset($1::jsonb) as x(table_name text, pk text, hash text)`, [JSON.stringify(agreed.slice(i, i + 5000))]);
   }

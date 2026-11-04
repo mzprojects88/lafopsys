@@ -85,7 +85,7 @@ export default function SettingsPage() {
           <DonationTrackerCard />
         </SectionCard>
 
-        <SectionCard title="Database sync">
+        <SectionCard id="db-sync" className="scroll-mt-24" title="Database sync">
           <DbSyncCard />
         </SectionCard>
 

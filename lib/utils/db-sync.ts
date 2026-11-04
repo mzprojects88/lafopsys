@@ -58,3 +58,8 @@ export function decide(state: Hashes, prod: Hashes, dev: Hashes): Decision {
   }
   return d;
 }
+
+/** The hourly production <-> backup sync (0104) is failing: the last run failed, or nothing has
+ * succeeded for three hours (it failed silently 26 Oct - 4 Nov 2026). */
+export const syncFailing = (lastStatus: string, lastSuccess: string | null, now = Date.now()) =>
+  lastStatus === "failed" || !lastSuccess || now - new Date(lastSuccess).getTime() > 3 * 3600_000;

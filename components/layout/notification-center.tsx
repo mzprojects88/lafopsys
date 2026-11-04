@@ -22,7 +22,7 @@ import { TRACKER_STALE_MS } from "@/lib/utils/cash-gifts";
 import { formatRelative } from "@/lib/utils/date";
 import { formatTime12 } from "@/lib/utils/time12";
 import { formatKm } from "@/lib/utils/odometer";
-import { useOutboxIssues } from "@/lib/hooks/use-outbox-issues";
+import { useOutboxIssues, useSyncHealth } from "@/lib/hooks/use-outbox-issues";
 
 /** Something an admin still has to set up. Worked out from the settings, so it
  * can't be dismissed: it goes away once the thing is done. */
@@ -49,6 +49,17 @@ export function NotificationCenter() {
       body: outbox.held ? "Scheduled reports are queued until the Resend key is set on the hosting." : "See the outbox on Reports › Scheduled Delivery.",
       href: "/reports/schedule",
       icon: Mail,
+    });
+  }
+  // The hourly sync between production and the backup (0104): silent failures reach the Super Admin.
+  const syncHealth = useSyncHealth(role === "admin");
+  if (syncHealth.failing) {
+    reminders.push({
+      id: "db-sync-failing",
+      title: "The database backup sync is failing",
+      body: syncHealth.lastSuccess ? `Last good sync ${formatRelative(syncHealth.lastSuccess)}. See the error in Settings › Database sync.` : "No sync has succeeded yet. See the error in Settings › Database sync.",
+      href: "/settings#db-sync",
+      icon: CloudOff,
     });
   }
   // DTR (0063): without the pin, clock-ins can't be checked against the 20 m radius.

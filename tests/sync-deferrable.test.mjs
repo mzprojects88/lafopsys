@@ -16,3 +16,12 @@ test("links added after 0125 can be deferred", () => {
   }
   assert.deepEqual(offenders, []);
 });
+
+test("the bell calls the sync failing when the last run failed or nothing worked for three hours", async () => {
+  const { syncFailing } = await import("../lib/utils/db-sync.ts");
+  const now = Date.parse("2026-11-04T12:00:00Z");
+  assert.equal(syncFailing("success", "2026-11-04T11:20:00Z", now), false);
+  assert.equal(syncFailing("failed", "2026-11-04T11:20:00Z", now), true);
+  assert.equal(syncFailing("success", "2026-11-04T08:00:00Z", now), true);
+  assert.equal(syncFailing("success", null, now), true);
+});
