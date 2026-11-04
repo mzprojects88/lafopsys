@@ -236,3 +236,13 @@ describe("budgetVsActual (0115)", () => {
     ]);
   });
 });
+
+describe("drivers note dates", () => {
+  it("writes digit dates in words", async () => {
+    const { datesInWords } = await import("../lib/utils/finance-summary.ts");
+    assert.equal(datesInWords("Donations reached ₱120K as of 2026-11-03."), "Donations reached ₱120K as of November 3.");
+    assert.equal(datesInWords("Gifts held steady as of 2026-10."), "Gifts held steady as of October 2026.");
+    assert.equal(datesInWords("614 people-nights and ₱1.19M"), "614 people-nights and ₱1.19M");
+    assert.equal(datesInWords("Account 2026-13 stays"), "Account 2026-13 stays");
+  });
+});

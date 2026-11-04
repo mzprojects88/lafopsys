@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { draftMonthDrivers, suggestExpensePurposes, type DriversExample } from "@/lib/ai/openai";
 import { openaiConfigured } from "@/lib/ai/env";
 import { fetchAll } from "@/lib/supabase/fetch-all";
-import { maskNames, monthsCovered, sharesPhrase, tidyName } from "@/lib/utils/finance-summary";
+import { datesInWords, maskNames, monthsCovered, sharesPhrase, tidyName } from "@/lib/utils/finance-summary";
 
 export type DraftResult = { ok: true; drivers: string; saved: boolean } | { ok: false; error: string };
 export type PurposesResult = { ok: true; suggested: number } | { ok: false; error: string };
@@ -83,6 +83,7 @@ export async function draftDriversFor(admin: SupabaseClient, month: string, { sa
     return { ok: false, error: `The model did not answer: ${e instanceof Error ? e.message : String(e)}` };
   }
   if (!drivers) return { ok: false, error: "The model returned an empty note." };
+  drivers = datesInWords(drivers);
   if (save) {
     const { error: saveError } = await admin.schema("ops").from("finance_month_notes").upsert({ month, draft: drivers, draft_at: new Date().toISOString() }, { onConflict: "month" });
     if (saveError) return { ok: false, error: saveError.message };

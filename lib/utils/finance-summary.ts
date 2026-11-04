@@ -375,3 +375,13 @@ export function budgetVsActual(
   if (actual.has("")) rows.push({ purpose: "Not yet tagged", budgeted: null, actual: actual.get("") ?? 0 });
   return rows;
 }
+
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** The drivers note is prose for the Executive Director: a date the model left as digits
+ * ("as of 2026-10", "2026-11-03") becomes words ("as of October 2026", "November 3"). */
+export function datesInWords(text: string): string {
+  return text
+    .replace(/\b(20\d\d)-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b/g, (_, _y, m, d) => `${MONTH_NAMES[Number(m) - 1]} ${Number(d)}`)
+    .replace(/\b(20\d\d)-(0[1-9]|1[0-2])\b/g, (_, y, m) => `${MONTH_NAMES[Number(m) - 1]} ${y}`);
+}
