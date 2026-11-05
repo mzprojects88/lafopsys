@@ -2,6 +2,7 @@
 
 import type { ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import {
   Plus,
   TrendingUp,
@@ -83,6 +84,7 @@ function buildColumns(programs: Program[]): ColumnDef<CashEntry>[] {
 }
 
 export default function FinancePage() {
+  const { canEdit } = useModuleAccess();
   const { entries: cashEntries } = useCashEntriesData();
   const { programs } = useProgramsData();
   const columns = buildColumns(programs);
@@ -97,7 +99,7 @@ export default function FinancePage() {
         description="All cashflow in/out — donation, infusion, and other means."
         action={
           <>
-            <Button asChild><Link href="/finance/entry"><Plus />New Entry</Link></Button>
+            {canEdit("finance") ? <Button asChild><Link href="/finance/entry"><Plus />New Entry</Link></Button> : null}
             <ModuleSubNav items={SUB_NAV} />
           </>
         }

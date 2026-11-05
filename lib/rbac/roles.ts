@@ -206,7 +206,7 @@ export function canAllowBedException(who: Who) {
   return holdsPower(who, "bed_exception");
 }
 
-/** Clinical detail follows the "Sees clinical detail" power (0093; today every role but Finance and Board). */
+/** Clinical detail follows the "Sees clinical detail" power (0093, 0130): CEO, Office Admin, Social Worker, Chef, Nutritionist. */
 export function canSeeClinicalDetail(who: Who) {
   return holdsPower(who, "clinical_detail");
 }

@@ -147,7 +147,8 @@ export default function DashboardPage() {
     { label: "Request Approval", href: "/finance/approvals", icon: CheckCircle2 },
     { label: "Generate Report", href: "/reports/builder", icon: BarChart3 },
   ].filter((a) => {
-    // Only actions the person may actually take; the inventory app decides its own.
+    // Only actions the person may actually take. Receiving happens in the inventory app, for its editors.
+    if (a.label === "Receive a donation") return hasAnyRole(roles, "admin", "inventory_staff", "inventory_lead");
     const m = moduleForPath(a.href);
     return !isHiddenPath(a.href, role) && (m === null || canEdit(m));
   });

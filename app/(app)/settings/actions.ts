@@ -362,7 +362,7 @@ export async function updateCaseAiReading(enabled: boolean): Promise<UpdateClock
 
 export async function updateTransportPlaces(input: { name: string; lat: number; lng: number }[]): Promise<UpdateClockInRequirementResult> {
   if (!Array.isArray(input) || input.length > 100) return { ok: false, error: "At most 100 places." };
-  const places = input.map((p) => ({ name: String(p?.name ?? "").replace(/s+/g, " ").trim().slice(0, 80), lat: Math.round(Number(p?.lat) * 1e6) / 1e6, lng: Math.round(Number(p?.lng) * 1e6) / 1e6 }));
+  const places = input.map((p) => ({ name: String(p?.name ?? "").replace(/\s+/g, " ").trim().slice(0, 80), lat: Math.round(Number(p?.lat) * 1e6) / 1e6, lng: Math.round(Number(p?.lng) * 1e6) / 1e6 }));
   if (places.some((p) => !p.name || !Number.isFinite(p.lat) || !Number.isFinite(p.lng) || Math.abs(p.lat) > 90 || Math.abs(p.lng) > 180)) return { ok: false, error: "Every place needs a name and a pin (latitude between -90 and 90, longitude between -180 and 180)." };
   if (new Set(places.map((p) => p.name.toLowerCase())).size !== places.length) return { ok: false, error: "Two places have the same name." };
 
@@ -604,6 +604,50 @@ export async function updateExecSummarySettings(input: ExecSummarySettingsInput)
     .schema("shared")
     .from("app_settings")
     .update({ exec_summary: { purposes, confirm_from: confirmFrom, name_from: nameFrom }, updated_at: new Date().toISOString(), updated_by: caller.id })
+    .eq("id", true);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
+/** The AI use statement (0132). A change to the text staff accept raises the version, so everyone is asked again. */
+export async function saveAiConsentText(text: string, familyText: string): Promise<UpdateClockInRequirementResult> {
+  const staffText = String(text ?? "").trim();
+  const family = String(familyText ?? "").trim();
+  if (!staffText || !family || staffText.length > 6000 || family.length > 6000) return { ok: false, error: "Both statements are needed, up to 6,000 characters each." };
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+  if (!caller) return { ok: false, error: "Not signed in." };
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") return { ok: false, error: "Only the Super Admin can change this." };
+  const { data: current, error: readError } = await supabase.schema("shared").from("app_settings").select("ai_consent_text, ai_consent_version").eq("id", true).single();
+  if (readError) return { ok: false, error: readError.message };
+  const version = current.ai_consent_text === staffText ? current.ai_consent_version : Number(current.ai_consent_version) + 1;
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({ ai_consent_text: staffText, ai_consent_family_text: family, ai_consent_version: version, updated_at: new Date().toISOString(), updated_by: caller.id })
+    .eq("id", true);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
+/** Legal approved the statement: staff are asked to accept. Off: nobody is asked. */
+export async function setAiConsentApproved(approved: boolean): Promise<UpdateClockInRequirementResult> {
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+  if (!caller) return { ok: false, error: "Not signed in." };
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") return { ok: false, error: "Only the Super Admin can change this." };
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({ ai_consent_approved: approved === true, updated_at: new Date().toISOString(), updated_by: caller.id })
     .eq("id", true);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/settings");

@@ -9,7 +9,7 @@ import { dayKey } from "@/lib/utils/dtr";
 import { houseSheetCsvUrl, houseSheetHtmlUrl, parseTabList } from "@/lib/utils/house-sheet";
 import { activitySessions, type SheetActivity } from "@/lib/utils/programs-activity";
 import { runsFromSheet, type SheetRow } from "@/lib/utils/programs-care-cart";
-import { headcounts, monthTab, patientMeals, type PatientMeals } from "@/lib/utils/programs-sheet";
+import { dailyRides, headcounts, monthTab, patientMeals, type PatientMeals } from "@/lib/utils/programs-sheet";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -116,7 +116,8 @@ export async function POST(request: Request) {
       results.push({ tab: name, status: "failed", error: message });
       return;
     }
-    const hash = createHash("sha256").update(csv).digest("hex");
+    // The prefix changes when what is read from a tab changes, so every tab is read once more (v2: rides, 0131).
+    const hash = createHash("sha256").update("v2|" + csv).digest("hex");
     const { data: last } = await admin.schema("ops").from("programs_sync_runs").select("csv_hash").eq("tab", name).eq("status", "success").order("started_at", { ascending: false }).limit(1).maybeSingle();
     if (!force && last?.csv_hash === hash) return; // unchanged: no run row
     const { data: run } = await admin.schema("ops").from("programs_sync_runs").insert({ trigger, triggered_by: triggeredBy, tab: name }).select("id").single();
@@ -142,6 +143,7 @@ export async function POST(request: Request) {
     await readTab(tab.name, tab.gid, async (rows) => {
       const meals = patientMeals(rows, tab.year).filter((m) => m.date <= today);
       const errors: string[] = [];
+      await saveRides(admin, dailyRides(rows, tab.year).filter((r) => r.date <= today));
       if (meals.length === 0) return { seen: 0, written: 0, errors };
       const written = await saveMeals(admin, meals);
       await matcher.addUnseen(meals.map((m) => ({ nameKey: m.nameKey, patientName: m.patientName, carerName: m.carerName, date: m.date })), errors);
@@ -184,6 +186,17 @@ async function saveActivity(admin: SupabaseClient, sessions: SheetActivity[]) {
     if (deleteError) throw new Error(`activity center: ${deleteError.message}`);
   }
   return sessions.length;
+}
+
+/** Each day's rides (0131): a date on the tab replaces what was stored; a date not on it is left as it was. */
+async function saveRides(admin: SupabaseClient, rides: ReturnType<typeof dailyRides>) {
+  if (rides.length === 0) return;
+  const synced_at = new Date().toISOString();
+  const { error } = await admin
+    .schema("ops")
+    .from("sheet_rides")
+    .upsert(rides.map((r) => ({ date: r.date, to_nch: r.toNch, to_laf: r.toLaf, synced_at })), { onConflict: "date" });
+  if (error) throw new Error(`rides: ${error.message}`);
 }
 
 /** A date's rows replace that date's (a date not on the tab is left as it was). */

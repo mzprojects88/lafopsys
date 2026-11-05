@@ -16,7 +16,8 @@ export interface DataCheckFinding {
     // gifts in kind (inventory 0069)
     | "gik_lot_no_receipt"
     | "gik_receipt_no_lines"
-    | "gik_ledger_no_receipt";
+    | "gik_ledger_no_receipt"
+    | "gik_value_mismatch";
   severity: "error" | "warning" | "info";
   title: string;
   details: Record<string, unknown>;

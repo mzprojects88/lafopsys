@@ -1,7 +1,15 @@
 // lib/utils/programs-sheet.ts + programs-care-cart.ts (0103): the LAF Programs sheet into the app.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { headcounts, monthTab, patientMeals } from "../lib/utils/programs-sheet.ts";
+import { dailyRides, headcounts, monthTab, patientMeals } from "../lib/utils/programs-sheet.ts";
+
+describe("rides per day (0131)", () => {
+  it("adds L-N and N-L per day, counts a row with no name, and leaves out the totals row", () => {
+    const row = (date, name, ln, nl) => ["", "", date, "", "", name, "", "1", "2", "2", "2", ln, nl];
+    const rides = dailyRides([Array(13).fill("h"), row("Oct 1", "A", "2", "0"), row("", "", "2", "2"), row("Oct 2", "B", "", "2"), row("", "", "148", "128")], 2026);
+    assert.deepEqual(rides, [{ date: "2026-10-01", toNch: 4, toLaf: 2 }, { date: "2026-10-02", toNch: 0, toLaf: 2 }]);
+  });
+});
 import { runsFromSheet } from "../lib/utils/programs-care-cart.ts";
 
 // A-M of a month tab: week, day, date, D, CL, patient, carer, BN, M-B, M-L, M-D, L-N, N-L

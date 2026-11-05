@@ -49,6 +49,12 @@ export const dataChecksStore = createCollection<DataCheck[]>({
   },
 });
 
+/** Gift-in-kind findings still open, for the bell of those who answer them (inventory 0071). */
+export function useOpenGiftChecks(enabled: boolean): number {
+  const { data } = useCollection(enabled ? dataChecksStore : null);
+  return enabled ? (data ?? []).filter((c) => c.status === "open" && c.kind.startsWith("gik_")).length : 0;
+}
+
 export function useDataChecks() {
   const { data: checks, loading } = useCollection(dataChecksStore);
   async function decide(id: string, status: Exclude<DataCheckStatus, "cleared">, note?: string): Promise<MutationResult> {

@@ -34,7 +34,8 @@ const hoursLabel = (h: number) => `${Math.round(h * 100) / 100} h`;
 export default function VolunteersPage() {
   const access = useModuleAccess();
   const { roles } = useRole();
-  const canEdit = access.canEdit("staff") || access.canEdit("house_ops");
+  // Those who run the Activity Center add volunteers; another House Operations page (the Nutritionist's Menu) doesn't count.
+  const canEdit = access.canEdit("staff") || access.levelOfPath("/house-ops/activity-center") === "edit";
   const canCertify = access.canEdit("staff") || holdsPower(roles, "runs_hr");
   const { volunteers, hours, addVolunteer, updateVolunteer, logHours, removeHours } = useVolunteersData();
   const today = todayIso();

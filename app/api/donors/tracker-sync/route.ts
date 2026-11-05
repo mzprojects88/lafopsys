@@ -133,7 +133,7 @@ export async function POST(request: Request) {
   // One deposits tab per bank account (0122); an account whose tab is not on the tracker yet is skipped.
   const { data: accounts } = await admin.schema("ops").from("accounts").select("id, bank_code, tracker_tab").not("tracker_tab", "is", null);
   for (const account of accounts ?? []) {
-    const tab = tabNamed(String(account.tracker_tab).replace(/s+/g, " ").trim().toLowerCase());
+    const tab = tabNamed(String(account.tracker_tab).replace(/\s+/g, " ").trim().toLowerCase());
     if (!tab) continue;
     await readTab(tab.name, tab.gid, async (csv) => {
       const read = depositsFromTab(parseCsv(csv, true), today);

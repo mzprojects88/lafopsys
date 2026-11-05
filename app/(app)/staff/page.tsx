@@ -6,6 +6,7 @@ import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/modul
 import { ClockWidget } from "@/components/modules/staff/clock-widget";
 import { ClockInRequiredDialog } from "@/components/modules/staff/clock-in-required-dialog";
 import { TodayBoard } from "@/components/modules/staff/today-board";
+import { useRole } from "@/lib/rbac/use-role";
 
 const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/staff/dtr", label: "Daily Time Record", icon: Fingerprint },
@@ -15,6 +16,7 @@ const SUB_NAV: ModuleSubNavItem[] = [
 ];
 
 export default function StaffPage() {
+  const { role } = useRole();
   return (
     <div className="flex flex-1 flex-col gap-6">
       <ClockInRequiredDialog />
@@ -25,7 +27,7 @@ export default function StaffPage() {
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1fr]">
-        <ClockWidget />
+        {role === "board" ? null : <ClockWidget />}
 
         <TodayBoard />
       </div>

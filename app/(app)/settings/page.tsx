@@ -20,6 +20,7 @@ import { ProgramsSheetCard } from "@/components/modules/settings/programs-sheet-
 import { DonationTrackerCard } from "@/components/modules/settings/donation-tracker-card";
 import { DbSyncCard } from "@/components/modules/settings/db-sync-card";
 import { ClientErrorsCard } from "@/components/modules/settings/client-errors-card";
+import { AiConsentCard } from "@/components/modules/settings/ai-consent-card";
 import { BedMoveHours } from "@/components/modules/settings/bed-move-hours";
 import { HrSettingsCard } from "@/components/modules/settings/hr-settings-card";
 import { VehiclesCard } from "@/components/modules/settings/vehicles-card";
@@ -76,6 +77,10 @@ export default function SettingsPage() {
 
         <SectionCard id="case-files" className="scroll-mt-24" title="Case files">
           <CaseAiReadingToggle />
+        </SectionCard>
+
+        <SectionCard id="ai-consent" className="scroll-mt-24" title="AI use statement">
+          <AiConsentCard />
         </SectionCard>
 
         <SectionCard title="LAF Programs sheet">

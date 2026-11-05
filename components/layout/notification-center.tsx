@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useRole } from "@/context/role-provider";
+import { useOpenGiftChecks } from "@/lib/hooks/use-data-checks-collection";
+import { holdsPower } from "@/lib/rbac/roles";
 import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { useFleetStatus } from "@/lib/hooks/use-fleet-collection";
 import { useTrackerReceivedAt } from "@/lib/hooks/use-cash-source-status";
@@ -60,6 +62,16 @@ export function NotificationCenter() {
       body: syncHealth.lastSuccess ? `Last good sync ${formatRelative(syncHealth.lastSuccess)}. See the error in Settings › Database sync.` : "No sync has succeeded yet. See the error in Settings › Database sync.",
       href: "/settings#db-sync",
       icon: CloudOff,
+    });
+  }
+  // Gifts in kind (inventory 0071): Finance and the Inventory Lead match the records, then Finance answers each one.
+  const giftChecks = useOpenGiftChecks(holdsPower(roles, "finance_work") || roles.includes("finance"));
+  if (giftChecks > 0) {
+    reminders.push({
+      id: "gift-checks",
+      title: `${giftChecks} gift-in-kind record${giftChecks === 1 ? "" : "s"} to check`,
+      body: "Match them with the Inventory Lead, then answer each one in Finance › Approvals › Data checks.",
+      href: "/finance/approvals",
     });
   }
   // DTR (0063): without the pin, clock-ins can't be checked against the 20 m radius.

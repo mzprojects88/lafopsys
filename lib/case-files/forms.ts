@@ -92,6 +92,7 @@ export const FORMS: Record<FormId, CaseForm> = {
       sec("g", "G. Recommendation"),
       area("recommendation", "Recommendation"),
       { key: "consent_signed_on", label: "Carer signed the consent on", type: "date" },
+      { key: "ai_consent_signed_on", label: "Carer signed the AI use consent on", type: "date" },
     ],
   },
 

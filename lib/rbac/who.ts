@@ -36,7 +36,7 @@ export const BUILT_IN_POWERS: readonly RolePowerRow[] = [
   { role: "social_worker", power: "bed_exception" },
   { role: "inventory_lead", power: "bed_exception" },
   { role: "driver", power: "driver" },
-  ...["ceo", "office_admin", "social_worker", "house_staff", "driver", "volunteer", "chef", "inventory_staff", "inventory_lead", "nutritionist"].map(
+  ...["ceo", "office_admin", "social_worker", "chef", "nutritionist"].map(
     (role) => ({ role, power: "clinical_detail" as Power })
   ),
   // NCH billing (0098).

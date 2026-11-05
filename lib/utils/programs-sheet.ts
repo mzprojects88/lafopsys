@@ -5,7 +5,7 @@ import { nameKey } from "./house-sheet.ts";
  *
  * One row per patient per day: A week, B day, C date ("Oct 1", no year; may be blank under a merged
  * cell, so it carries the row above), F patient, G carer, H BN, I/J/K breakfast / lunch / dinner as
- * people served (2 = patient + carer, 0 = none). L-N and N-L are not meals and are not read. A tab's
+ * people served (2 = patient + carer, 0 = none). L-N and N-L are rides, read per day (dailyRides). A tab's
  * totals row has three-figure numbers and no patient; anything above MAX_PER_ROW isn't a person.
  */
 const MAX_PER_ROW = 6;
@@ -71,6 +71,26 @@ export function patientMeals(rows: string[][], year: number): PatientMeals[] {
       sheetRow: i + 2,
     });
   });
+  return [...out.values()];
+}
+
+/** People riding per day (0131): L-N to NCH, N-L to LAF House. Rows without a child's name count, as they do on the
+ * sheet's own Report. A totals row is left out by its size.
+ * ponytail: a month whose total is still 6 or less can't be told from a ride row; the Report line shows it within days. */
+export function dailyRides(rows: string[][], year: number): { date: string; toNch: number; toLaf: number }[] {
+  const out = new Map<string, { date: string; toNch: number; toLaf: number }>();
+  let date: string | null = null;
+  for (const cells of rows.slice(1)) {
+    const rawDate = (cells[2] ?? "").trim();
+    if (rawDate) date = monthDay(rawDate, year);
+    if (!date) continue;
+    const [n, l] = [people(cells[11]), people(cells[12])];
+    if (n === null || l === null) continue; // a totals row
+    const day = out.get(date) ?? { date, toNch: 0, toLaf: 0 };
+    day.toNch += n;
+    day.toLaf += l;
+    out.set(date, day);
+  }
   return [...out.values()];
 }
 
