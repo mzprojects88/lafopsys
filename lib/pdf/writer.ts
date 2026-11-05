@@ -120,6 +120,19 @@ export class PdfPage {
     this.svg.push(`<rect x="${num(x)}" y="${num(yTop)}" width="${num(width)}" height="${num(height)}" fill="${svgGray(gray)}"/>`);
   }
 
+  /** A filled rectangle in colour (0..1 per channel): the bars and tints of a report. */
+  fillRectRgb(x: number, yTop: number, width: number, height: number, rgb: [number, number, number]): void {
+    const [r, g, b] = rgb;
+    this.ops.push(`${num(r)} ${num(g)} ${num(b)} rg ${num(x)} ${num(A4.height - yTop - height)} ${num(width)} ${num(height)} re f 0 g`);
+    this.svg.push(`<rect x="${num(x)}" y="${num(yTop)}" width="${num(width)}" height="${num(height)}" fill="rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})"/>`);
+  }
+
+  /** A straight line, for table rules and chart axes. */
+  line(x1: number, y1: number, x2: number, y2: number, gray = 0.8, lineWidth = 0.5): void {
+    this.ops.push(`${num(gray)} G ${num(lineWidth)} w ${num(x1)} ${num(A4.height - y1)} m ${num(x2)} ${num(A4.height - y2)} l S`);
+    this.svg.push(`<line x1="${num(x1)}" y1="${num(y1)}" x2="${num(x2)}" y2="${num(y2)}" stroke="${svgGray(gray)}" stroke-width="${num(lineWidth)}"/>`);
+  }
+
   /** A hairline outline, used for the cut guides around each label. */
   strokeRect(x: number, yTop: number, width: number, height: number, gray = 0.85, lineWidth = 0.5): void {
     this.ops.push(
@@ -245,3 +258,4 @@ export function buildPdf(pages: PdfPage[], title: string): Buffer {
 
   return Buffer.concat(chunks);
 }
+

@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Bed, ChevronLeft, ChevronRight, Printer, RotateCcw, Timer, UserPlus, Users } from "lucide-react";
+import { Bed, Printer, RotateCcw, Timer, UserPlus, Users } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PeriodPicker, periodStateWindow, type PeriodState } from "@/components/ui/period-picker";
 import { ChartCard } from "@/components/modules/analytics/chart-card";
+import { AiAnalysisPanel, ReportToolbar, useReportAnalysis } from "@/components/modules/reports/report-ai";
 import { useRole } from "@/context/role-provider";
 import { createClient } from "@/lib/supabase/client";
 import { fetchAll } from "@/lib/supabase/fetch-all";
@@ -19,25 +20,19 @@ import { useReferenceTableData } from "@/lib/hooks/use-reference-table-collectio
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useCafBills } from "@/lib/hooks/use-caf-billing";
 import { holdsPower } from "@/lib/rbac/roles";
+import { analyticsReport, type AnalyticsKpi, type ChartDef } from "@/lib/utils/analytics-report";
 import { cafAmounts, cafMonthLabel } from "@/lib/utils/caf";
 import { formatCurrency } from "@/lib/utils/currency";
-import { formatDate, todayIso } from "@/lib/utils/date";
+import { todayIso } from "@/lib/utils/date";
 import { ILLNESS_CODES, PRIORITIES } from "@/lib/utils/master-sheet";
-import { periodLabel, periodWindow, shiftAnchor, type PeriodKind } from "@/lib/utils/period";
+import { periodLabel, previousWindow, type DayWindow, type RangeKind } from "@/lib/utils/period";
 import { ageGroupOn, autoGrain, breakdown, matchesPatient, series, type Grain, type PatientFilter } from "@/lib/utils/report-series";
 
-type Range = PeriodKind | "custom";
-const RANGES: { value: Range; label: string }[] = [
-  { value: "week", label: "Week" },
-  { value: "month", label: "Month" },
-  { value: "quarter", label: "Quarter" },
-  { value: "year", label: "Year" },
-  { value: "custom", label: "Custom" },
-];
 const ALL = "all";
 const STATUSES = ["ongoing", "check_up", "completed", "expired", "lost_to_follow_up", "non_pedia"];
 const AGE_GROUPS = ["0–1", "2–5", "6–9", "10–12", "13–15", "16–18"];
 const FILTER_KEYS = ["priority", "illnessCode", "diagnosisCategory", "diagnosisId", "status", "sex", "ageGroup", "provinceId", "hospitalId"] as const;
+const FILTER_LABELS: Record<(typeof FILTER_KEYS)[number], string> = { priority: "Priority", illnessCode: "Patient type", diagnosisCategory: "Diagnosis group", diagnosisId: "Diagnosis", status: "Status", sex: "Sex", ageGroup: "Age group", provinceId: "Province", hospitalId: "Hospital" };
 const titleCase = (s: string) => s.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 
 interface Loaded {
@@ -49,63 +44,17 @@ interface Loaded {
   gifts: { date: string; food: number; nonFood: number }[];
   hours: { date: string; minutes: number; late: boolean }[];
 }
-
-/**
- * Analytics (2026-10-15): everything the house records, for any range -- day, week, month,
- * quarter, year or custom -- by day, week or month, with the patient filters (priority, patient
- * type, diagnosis, status, sex, age group, province, hospital) applied to every patient chart.
- * Live from the records, read with the viewer's own access: a section the viewer can't open is
- * left out. Filters stay in the address, so a view can be bookmarked or shared. Prints to PDF.
- */
-export default function AnalyticsPage() {
-  return (
-    <React.Suspense fallback={<p className="text-theme-sm text-muted-foreground">Loading…</p>}>
-      <Analytics />
-    </React.Suspense>
-  );
+type GChart = ChartDef & { group: "patients" | "transport" | "donors" | "caf" | "hours" };
+interface See {
+  patients: boolean;
+  transport: boolean;
+  donors: boolean;
+  hours: boolean;
+  caf: boolean;
 }
 
-function Analytics() {
-  const router = useRouter();
-  const params = useSearchParams();
-  const today = todayIso();
-  const range = (params.get("range") as Range) || "month";
-  const anchor = params.get("at") || today;
-  const win = range === "custom" ? { from: params.get("from") || periodWindow("month", today).from, to: params.get("to") || today } : periodWindow(range, anchor);
-  const { from, to } = win;
-  const grainParam = params.get("by") as Grain | "auto" | null;
-  const grain: Grain = grainParam && grainParam !== "auto" ? grainParam : autoGrain(from, to);
-  const filter: PatientFilter = Object.fromEntries(FILTER_KEYS.flatMap((k) => (params.get(k) ? [[k, params.get(k)!]] : []))) as PatientFilter;
-  const filtered = FILTER_KEYS.some((k) => params.get(k));
-
-  const setParams = (patch: Record<string, string | null>) => {
-    const next = new URLSearchParams(params.toString());
-    for (const [k, v] of Object.entries(patch)) {
-      if (v === null || v === "" || v === ALL) next.delete(k);
-      else next.set(k, v);
-    }
-    router.replace(`?${next.toString()}`, { scroll: false });
-  };
-
-  const access = useModuleAccess();
-  const { roles } = useRole();
-  const see = {
-    patients: access.canView("patients"),
-    transport: access.canView("transport"),
-    donors: access.canView("donors"),
-    hours: holdsPower(roles, "runs_hr") || holdsPower(roles, "finance_work"),
-    caf: holdsPower(roles, "caf_billing_view"),
-  };
-
-  const { patients, appointments } = usePatientsData();
-  const { rows: diagnoses } = useDiagnosesReferenceData();
-  const { rows: provinces } = useReferenceTableData("provinces", "prov", "region");
-  const { rows: hospitals } = useReferenceTableData("hospitals", "hosp");
-  const { donations } = useDonorsData();
-  const { bills } = useCafBills();
-
-  // ---- the range's records, read once per range ----
-  const rangeKey = `${from}|${to}`;
+/** The range's records, read once per range with the viewer's own access; a section they can't open stays empty. */
+function useRangeRecords(from: string, to: string, see: See): { data: Loaded | null; error: string | null } {
   const [loaded, setLoaded] = React.useState<Loaded | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   React.useEffect(() => {
@@ -162,51 +111,167 @@ function Analytics() {
       live = false;
     };
   }, [from, to, see.patients, see.transport, see.donors, see.hours]);
-  const data = loaded?.key === rangeKey ? loaded : null;
+  return { data: loaded?.key === `${from}|${to}` ? loaded : null, error };
+}
+
+/**
+ * Analytics (2026-10-15, any range with the AI comparison since Nov 2026): everything the house
+ * records, for a day, week, month, quarter, year or custom range, by day, week or month, with the
+ * patient filters (priority, patient type, diagnosis, status, sex, age group, province, hospital)
+ * applied to every patient chart. Live from the records, read with the viewer's own access: a
+ * section the viewer can't open is left out. Filters stay in the address, so a view can be
+ * bookmarked or shared. Exports as the branded PDF (description, figures and chart per section,
+ * the AI's comparison with the previous range when kept) and still prints.
+ */
+export default function AnalyticsPage() {
+  return (
+    <React.Suspense fallback={<p className="text-theme-sm text-muted-foreground">Loading…</p>}>
+      <Analytics />
+    </React.Suspense>
+  );
+}
+
+function Analytics() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const today = todayIso();
+  const period: PeriodState = React.useMemo(() => {
+    const kind = (params.get("range") ?? "month") as RangeKind;
+    return { kind: ["today", "week", "month", "quarter", "year", "custom"].includes(kind) ? kind : "month", anchor: params.get("at") ?? today, from: params.get("from") ?? undefined, to: params.get("to") ?? undefined };
+  }, [params, today]);
+  const win = periodStateWindow(period);
+  const { from, to } = win;
+  const prevWin = previousWindow(period.kind, win);
+  const grainParam = params.get("by") as Grain | "auto" | null;
+  const grain: Grain = grainParam && grainParam !== "auto" ? grainParam : autoGrain(from, to);
+  const filter: PatientFilter = Object.fromEntries(FILTER_KEYS.flatMap((k) => (params.get(k) ? [[k, params.get(k)!]] : []))) as PatientFilter;
+  const filtered = FILTER_KEYS.some((k) => params.get(k));
+
+  const setParams = (patch: Record<string, string | null>) => {
+    const next = new URLSearchParams(params.toString());
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === null || v === "" || v === ALL) next.delete(k);
+      else next.set(k, v);
+    }
+    router.replace(`?${next.toString()}`, { scroll: false });
+  };
+  const setPeriod = (next: PeriodState) => setParams({ range: next.kind, at: next.kind !== "custom" && next.anchor !== today ? next.anchor : null, from: next.kind === "custom" ? (next.from ?? null) : null, to: next.kind === "custom" ? (next.to ?? null) : null });
+
+  const access = useModuleAccess();
+  const { roles } = useRole();
+  const see: See = {
+    patients: access.canView("patients"),
+    transport: access.canView("transport"),
+    donors: access.canView("donors"),
+    hours: holdsPower(roles, "runs_hr") || holdsPower(roles, "finance_work"),
+    caf: holdsPower(roles, "caf_billing_view"),
+  };
+
+  const { patients, appointments } = usePatientsData();
+  const { rows: diagnoses } = useDiagnosesReferenceData();
+  const { rows: provinces } = useReferenceTableData("provinces", "prov", "region");
+  const { rows: hospitals } = useReferenceTableData("hospitals", "hosp");
+  const { donations } = useDonorsData();
+  const { bills } = useCafBills();
+  const { data, error } = useRangeRecords(from, to, see);
+  const previous = useRangeRecords(prevWin.from, prevWin.to, see);
+  const ai = useReportAnalysis();
+  const filterKey = params.toString();
+  const clearAnalysis = ai.clear;
+  React.useEffect(() => clearAnalysis(), [from, to, filterKey, clearAnalysis]);
 
   // ---- patients that pass the filters ----
-  const filterKey = params.toString();
   const categoryOf = React.useMemo(() => new Map(diagnoses.map((d) => [d.id, d.category])), [diagnoses]);
   const okPatient = React.useMemo(() => {
     const ok = new Set(patients.filter((p) => matchesPatient(p, filter, { categoryOf: (id) => categoryOf.get(id), today })).map((p) => p.id));
     return (id: string) => ok.has(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the filter is read from the address each render; its string is the key.
   }, [patients, categoryOf, today, filterKey]);
-  const span = { from, to, grain };
-
-  const nights = (data?.nights ?? []).filter((n) => okPatient(n.patientId));
-  const visitStarts = [...new Map(nights.filter((n) => n.visitStart >= from && n.visitStart <= to).map((n) => [n.visitId, { checkInAt: n.visitStart }])).values()];
-  const served = [...new Set(nights.map((n) => n.patientId))].flatMap((id) => patients.filter((p) => p.id === id));
-  const visitsWithNights = new Set(nights.map((n) => n.visitId)).size;
-  const checkUps = appointments.filter((a) => a.date >= from && a.date <= to && okPatient(a.patientId));
-  const meals = (data?.meals ?? []).filter((m) => okPatient(m.patientId));
 
   const provinceName = new Map(provinces.map((p) => [p.id, p.name]));
   const hospitalName = new Map(hospitals.map((h) => [h.id, h.name]));
   const diagnosisName = new Map(diagnoses.map((d) => [d.id, d.name]));
 
-  const cashGifts = see.donors ? donations.filter((d) => d.kind === "cash" && d.currency === "PHP" && d.date >= from && d.date <= to) : [];
-  const giftsRows = [
-    ...(data?.gifts ?? []).map((g) => ({ date: g.date, food: g.food, nonFood: g.nonFood, cash: 0 })),
-    ...cashGifts.map((g) => ({ date: g.date, food: 0, nonFood: 0, cash: g.totalValue })),
-  ];
-  const cafMonths = bills
-    .filter((b) => b.month >= `${from.slice(0, 7)}-01` && b.month <= to)
-    .sort((a, b) => a.month.localeCompare(b.month))
-    .map((b) => {
-      const terms = { rate: b.rate, cap: b.cap, discountPct: b.discountPct };
-      const amounts = b.lines.map((l) => cafAmounts(l, terms));
-      const due = Math.round(amounts.reduce((s, a) => s + a.net, 0));
-      return {
-        label: cafMonthLabel(b.month),
-        billed: due,
-        paid: b.status === "paid" ? due : 0,
-        absorbed: amounts.reduce((s, a) => s + (a.stays - a.billable), 0),
-      };
-    });
+  /** The charts and KPIs for one window's records: drawn for this range, totalled for the previous one. */
+  const build = (d: Loaded, w: DayWindow, g: Grain) => {
+    const span = { from: w.from, to: w.to, grain: g };
+    const nights = d.nights.filter((n) => okPatient(n.patientId));
+    const visitStarts = [...new Map(nights.filter((n) => n.visitStart >= w.from && n.visitStart <= w.to).map((n) => [n.visitId, { checkInAt: n.visitStart }])).values()];
+    const served = [...new Set(nights.map((n) => n.patientId))].flatMap((id) => patients.filter((p) => p.id === id));
+    const visitsWithNights = new Set(nights.map((n) => n.visitId)).size;
+    const checkUps = appointments.filter((a) => a.date >= w.from && a.date <= w.to && okPatient(a.patientId));
+    const meals = d.meals.filter((m) => okPatient(m.patientId));
+    const cashGifts = see.donors ? donations.filter((x) => x.kind === "cash" && x.currency === "PHP" && x.date >= w.from && x.date <= w.to) : [];
+    const giftsRows = [...d.gifts.map((x) => ({ date: x.date, food: x.food, nonFood: x.nonFood, cash: 0 })), ...cashGifts.map((x) => ({ date: x.date, food: 0, nonFood: 0, cash: x.totalValue }))];
+    const cafMonths = bills
+      .filter((b) => b.month >= `${w.from.slice(0, 7)}-01` && b.month <= w.to)
+      .sort((a, b) => a.month.localeCompare(b.month))
+      .map((b) => {
+        const terms = { rate: b.rate, cap: b.cap, discountPct: b.discountPct };
+        const amounts = b.lines.map((l) => cafAmounts(l, terms));
+        const due = Math.round(amounts.reduce((s, a) => s + a.net, 0));
+        return { label: cafMonthLabel(b.month), billed: due, paid: b.status === "paid" ? due : 0, absorbed: amounts.reduce((s, a) => s + (a.stays - a.billable), 0) };
+      });
+    const csv = (n: string) => `${n}-${w.from}-to-${w.to}`;
+    const kpis: AnalyticsKpi[] = see.patients
+      ? [
+          { label: "Bed nights", value: nights.length.toLocaleString(), current: nights.length, previous: 0 },
+          { label: "Families served", value: served.length.toLocaleString(), current: served.length, previous: 0 },
+          { label: "New visits", value: visitStarts.length.toLocaleString(), current: visitStarts.length, previous: 0 },
+          { label: "Nights per visit", value: visitsWithNights ? (nights.length / visitsWithNights).toFixed(1) : "—", current: visitsWithNights ? Math.round((nights.length / visitsWithNights) * 10) / 10 : 0, previous: 0 },
+        ]
+      : [];
+    const families = [{ key: "count", label: "Families" }];
+    const charts: GChart[] = [
+      ...(see.patients
+        ? ([
+            { group: "patients", title: "Bed nights and new visits", description: "Nights slept at LAF House and the visits that started, from the nightly record (the House Sheet while it is the record, the app after).", kind: "line", xKey: "label", data: series([...nights.map((n) => ({ day: n.night, n: 1, v: 0 })), ...visitStarts.map((s) => ({ day: s.checkInAt, n: 0, v: 1 }))], (r) => r.day, span, { nights: (r) => r.n, visits: (r) => r.v }), series: [{ key: "nights", label: "Bed nights" }, { key: "visits", label: "New visits" }], csvName: csv("bed-nights") },
+            { group: "patients", title: "Check-ups and rides", description: "Hospital appointments in the range and how many needed a ride, from Patients > Appointments.", kind: "bar", xKey: "label", data: series(checkUps, (a) => a.date, span, { checkUps: () => 1, rides: (a) => (a.needsTransport ? 1 : 0) }), series: [{ key: "checkUps", label: "Check-ups" }, { key: "rides", label: "Needing a ride" }], csvName: csv("check-ups") },
+            { group: "patients", title: "Families served by priority", description: "Families who stayed in the range, by their admission priority.", kind: "rank", xKey: "name", data: breakdown(served, (p) => (p.priority ? `${p.priority} · ${PRIORITIES[p.priority]}` : null)), series: families, csvName: csv("by-priority") },
+            { group: "patients", title: "By patient type", description: "Families who stayed, by the child's patient type.", kind: "rank", xKey: "name", data: breakdown(served, (p) => (p.illnessCode ? ILLNESS_CODES[p.illnessCode] : null)), series: families, csvName: csv("by-patient-type") },
+            { group: "patients", title: "By diagnosis", description: "Families who stayed, by the child's first diagnosis on record.", kind: "rank", xKey: "name", data: breakdown(served, (p) => diagnosisName.get(p.diagnosisIds[0] ?? "")), series: families, csvName: csv("by-diagnosis") },
+            { group: "patients", title: "By age group", description: "Families who stayed, by the child's age today.", kind: "rank", xKey: "name", data: AGE_GROUPS.map((ag) => ({ name: ag, count: served.filter((p) => ageGroupOn(p.birthDate, today) === ag).length })), series: families, csvName: csv("by-age") },
+            { group: "patients", title: "By province", description: "Families who stayed, by home province.", kind: "rank", xKey: "name", data: breakdown(served, (p) => provinceName.get(p.provinceId)), series: families, csvName: csv("by-province") },
+            { group: "patients", title: "By sex and referring hospital", description: "Families who stayed, by the child's sex and the hospital that referred them.", kind: "rank", xKey: "name", data: [...breakdown(served, (p) => (p.sex === "F" ? "Female" : p.sex === "M" ? "Male" : null), 2), ...breakdown(served, (p) => hospitalName.get(p.referringHospitalId ?? ""), 4)], series: families, csvName: csv("by-sex-hospital") },
+            { group: "patients", title: "Meals served", description: "Meals ticked for the families staying, by breakfast, lunch and dinner.", note: "Ticked on House Today since 15 Oct 2026.", kind: "bar", stacked: true, xKey: "label", data: series(meals, (m) => m.date, span, { breakfast: (m) => (m.meal === "breakfast" ? 1 : 0), lunch: (m) => (m.meal === "lunch" ? 1 : 0), dinner: (m) => (m.meal === "dinner" ? 1 : 0) }), series: [{ key: "breakfast", label: "Breakfast" }, { key: "lunch", label: "Lunch" }, { key: "dinner", label: "Dinner" }], csvName: csv("meals") },
+          ] as GChart[])
+        : []),
+      ...(see.transport
+        ? ([
+            { group: "transport", title: "Trips", description: "Trips driven: pick-ups from the hospital, deliveries to it, urgent runs and errands without passengers, from Transport > Trips.", note: filtered ? "Trips aren't filtered by patient." : undefined, kind: "bar", stacked: true, xKey: "label", data: series(d.trips, (t) => t.date, span, { pickups: (t) => (t.passengers && t.direction === "from_hospital" ? 1 : 0), deliveries: (t) => (t.passengers && t.direction === "to_hospital" && !t.urgent ? 1 : 0), urgent: (t) => (t.urgent ? 1 : 0), errands: (t) => (!t.passengers ? 1 : 0) }), series: [{ key: "pickups", label: "Pick-ups" }, { key: "deliveries", label: "Deliveries" }, { key: "urgent", label: "Urgent" }, { key: "errands", label: "Errands" }], csvName: csv("trips") },
+            { group: "transport", title: "Kilometres and fuel", description: "Kilometres from the trips' odometer readings and pesos spent on fuel from the vehicle expenses.", kind: "bar", xKey: "label", data: series([...d.trips.map((t) => ({ day: t.date, km: t.km, fuel: 0 })), ...d.expenses.map((e) => ({ day: e.date, km: 0, fuel: e.litres > 0 ? e.amount : 0 }))], (r) => r.day, span, { km: (r) => r.km, fuel: (r) => r.fuel }), series: [{ key: "km", label: "Km driven" }, { key: "fuel", label: "Fuel spent (PHP)" }], csvName: csv("km-fuel") },
+          ] as GChart[])
+        : []),
+      ...(see.donors
+        ? ([
+            { group: "donors", title: "Donations", description: "Gifts in kind by the category each line was received under in LAF Inventory, and cash gifts in pesos.", note: filtered ? "Donations aren't filtered by patient." : undefined, kind: "bar", stacked: true, xKey: "label", data: series(giftsRows, (x) => x.date, span, { food: (x) => x.food, nonFood: (x) => x.nonFood, cash: (x) => x.cash }), series: [{ key: "food", label: "Food items" }, { key: "nonFood", label: "Non-food items" }, { key: "cash", label: "Cash" }], csvName: csv("donations") },
+          ] as GChart[])
+        : []),
+      ...(see.caf
+        ? ([{ group: "caf", title: "NCH billing by month", description: "The NCH Cancer Assistance Fund bills: pesos billed and paid, and the nights above the monthly cap that LAF absorbed.", note: "Billed and paid in pesos; nights above the monthly cap are absorbed by LAF.", kind: "bar", xKey: "label", data: cafMonths, series: [{ key: "billed", label: "Billed" }, { key: "paid", label: "Paid" }, { key: "absorbed", label: "Nights absorbed" }], csvName: csv("nch-billing") }] as GChart[])
+        : []),
+      ...(see.hours
+        ? ([{ group: "hours", title: "Staff hours", description: "Hours worked and late arrivals from the staff's clock-ins and clock-outs.", kind: "bar", xKey: "label", data: series(d.hours, (h) => h.date, span, { hours: (h) => Math.round((h.minutes / 60) * 10) / 10, late: (h) => (h.late ? 1 : 0) }), series: [{ key: "hours", label: "Hours worked" }, { key: "late", label: "Late arrivals" }], csvName: csv("staff-hours") }] as GChart[])
+        : []),
+    ];
+    return { kpis, charts, donationsTitle: `Donations · ${formatCurrency(giftsRows.reduce((s, x) => s + x.food + x.nonFood + x.cash, 0))} in the range` };
+  };
 
-  const label = range === "custom" ? `${formatDate(from)} – ${formatDate(to)}` : periodLabel(range, win);
-  const csv = (name: string) => `${name}-${from}-to-${to}`;
+  const current = data ? build(data, win, grain) : null;
+  const before = previous.data ? build(previous.data, prevWin, "month") : null;
+  const kpis: AnalyticsKpi[] = (current?.kpis ?? []).map((k, i) => ({ ...k, previous: before?.kpis[i]?.current ?? 0 }));
+
+  const label = periodLabel(period.kind, win);
+  const prevLabel = periodLabel(period.kind, prevWin);
+  const filterWords = FILTER_KEYS.flatMap((k) => {
+    const v = params.get(k);
+    if (!v) return [];
+    const text = k === "diagnosisId" ? diagnosisName.get(v) : k === "provinceId" ? provinceName.get(v) : k === "hospitalId" ? hospitalName.get(v) : k === "status" ? titleCase(v) : k === "illnessCode" ? ILLNESS_CODES[v as keyof typeof ILLNESS_CODES] : v;
+    return [`${FILTER_LABELS[k]}: ${text ?? v}`];
+  });
+  const report = () => analyticsReport({ charts: current?.charts ?? [], previous: before?.charts ?? [], kpis, period: label, previousPeriod: prevLabel, filters: filterWords });
+  const delta = (k: AnalyticsKpi) => (k.previous > 0 ? Math.round(((k.current - k.previous) / k.previous) * 100) : undefined);
+
   const options = (pairs: [string, string][]) =>
     pairs.map(([value, text]) => (
       <SelectItem key={value} value={value}>
@@ -224,55 +289,39 @@ function Analytics() {
       </SelectContent>
     </Select>
   );
+  const card = (c: ChartDef) => <ChartCard key={c.title} title={c.title === "Donations" ? (current?.donationsTitle ?? c.title) : c.title} description={c.description} note={c.note} kind={c.kind} stacked={c.stacked} xKey={c.xKey} data={c.data} series={c.series} csvName={c.csvName} analysis={ai.analysis?.sections[c.title]} />;
+  const group = (g: string) => (current?.charts ?? []).filter((c) => c.group === g).map(card);
+  const icons = [Bed, Users, UserPlus, Timer];
 
   return (
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader
         title="Analytics"
-        description="Live from the records for any range, by day, week or month. Patient filters apply to every patient chart; each chart downloads as CSV, and the page prints to PDF."
+        description="Live from the records for any range, by day, week or month, compared with the range before. Patient filters apply to every patient chart; each chart downloads as CSV; the page exports as a branded PDF with the AI's comparison, or prints."
         action={
           <Button variant="outline" className="print:hidden" onClick={() => window.print()}>
-            <Printer /> Print / PDF
+            <Printer /> Print
           </Button>
         }
       />
 
       <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Select value={range} onValueChange={(v) => setParams({ range: v, at: null })}>
-            <SelectTrigger className="w-32 print:hidden" aria-label="Date range">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>{RANGES.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}</SelectContent>
-          </Select>
-          {range === "custom" ? (
-            <span className="flex items-center gap-2 print:hidden">
-              <Input type="date" aria-label="From" className="w-40" value={from} max={to} onChange={(e) => e.target.value && setParams({ from: e.target.value })} />
-              <span className="text-theme-sm text-muted-foreground">to</span>
-              <Input type="date" aria-label="To" className="w-40" value={to} min={from} onChange={(e) => e.target.value && setParams({ to: e.target.value })} />
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 print:hidden">
-              <Button type="button" size="icon-sm" variant="outline" aria-label="Previous" onClick={() => setParams({ at: shiftAnchor(range, anchor, -1) })}>
-                <ChevronLeft />
-              </Button>
-              <Button type="button" size="icon-sm" variant="outline" aria-label="Next" onClick={() => setParams({ at: shiftAnchor(range, anchor, 1) })}>
-                <ChevronRight />
-              </Button>
-            </span>
-          )}
-          <span className="text-theme-sm font-medium">{label}</span>
-          <Select value={grainParam ?? "auto"} onValueChange={(v) => setParams({ by: v === "auto" ? null : v })}>
-            <SelectTrigger className="w-36 print:hidden" aria-label="Group by">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="auto">By {grain} (auto)</SelectItem>
-              <SelectItem value="day">By day</SelectItem>
-              <SelectItem value="week">By week</SelectItem>
-              <SelectItem value="month">By month</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <PeriodPicker value={period} onChange={setPeriod} />
+            <Select value={grainParam ?? "auto"} onValueChange={(v) => setParams({ by: v === "auto" ? null : v })}>
+              <SelectTrigger className="w-36 print:hidden" aria-label="Group by">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">By {grain} (auto)</SelectItem>
+                <SelectItem value="day">By day</SelectItem>
+                <SelectItem value="week">By week</SelectItem>
+                <SelectItem value="month">By month</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <ReportToolbar ai={ai} buildSpec={() => report().spec} buildInput={() => report().input} filename={`LAF-Analytics-${from}-${to}.pdf`} />
         </div>
         {see.patients && (
           <div className="flex flex-wrap items-center gap-2">
@@ -296,104 +345,22 @@ function Analytics() {
 
       {error ? <p className="text-theme-sm text-destructive">{error}</p> : null}
       {!data ? <p className="text-theme-sm text-muted-foreground">Loading the records…</p> : null}
+      <AiAnalysisPanel text={ai.analysis?.overall} />
 
-      {see.patients && data && (
+      {see.patients && current && (
         <>
           <KpiGrid>
-            <KpiCard label="Bed nights" value={nights.length.toLocaleString()} icon={Bed} sublabel={filtered ? "Filtered" : undefined} />
-            <KpiCard label="Families served" value={served.length.toLocaleString()} icon={Users} />
-            <KpiCard label="New visits" value={visitStarts.length.toLocaleString()} icon={UserPlus} />
-            <KpiCard label="Nights per visit" value={visitsWithNights ? (nights.length / visitsWithNights).toFixed(1) : "—"} icon={Timer} />
+            {kpis.map((k, i) => (
+              <KpiCard key={k.label} label={k.label} value={k.value} icon={icons[i]} sublabel={`${prevLabel}: ${k.previous.toLocaleString()}${filtered ? " · filtered" : ""}`} deltaPct={delta(k)} deltaLabel={`vs ${prevLabel}`} />
+            ))}
           </KpiGrid>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <ChartCard
-              title="Bed nights and new visits"
-              kind="line"
-              data={series([...nights.map((n) => ({ day: n.night, n: 1, v: 0 })), ...visitStarts.map((s) => ({ day: s.checkInAt, n: 0, v: 1 }))], (r) => r.day, span, { nights: (r) => r.n, visits: (r) => r.v })}
-              series={[{ key: "nights", label: "Bed nights" }, { key: "visits", label: "New visits" }]}
-              csvName={csv("bed-nights")}
-            />
-            <ChartCard
-              title="Check-ups and rides"
-              data={series(checkUps, (a) => a.date, span, { checkUps: () => 1, rides: (a) => (a.needsTransport ? 1 : 0) })}
-              series={[{ key: "checkUps", label: "Check-ups" }, { key: "rides", label: "Needing a ride" }]}
-              csvName={csv("check-ups")}
-            />
-            <ChartCard title="Families served by priority" kind="rank" xKey="name" data={breakdown(served, (p) => (p.priority ? `${p.priority} · ${PRIORITIES[p.priority]}` : null))} series={[{ key: "count", label: "Families" }]} csvName={csv("by-priority")} />
-            <ChartCard title="By patient type" kind="rank" xKey="name" data={breakdown(served, (p) => (p.illnessCode ? ILLNESS_CODES[p.illnessCode] : null))} series={[{ key: "count", label: "Families" }]} csvName={csv("by-patient-type")} />
-            <ChartCard title="By diagnosis" kind="rank" xKey="name" data={breakdown(served, (p) => diagnosisName.get(p.diagnosisIds[0] ?? ""))} series={[{ key: "count", label: "Families" }]} csvName={csv("by-diagnosis")} />
-            <ChartCard title="By age group" kind="rank" xKey="name" data={AGE_GROUPS.map((g) => ({ name: g, count: served.filter((p) => ageGroupOn(p.birthDate, today) === g).length }))} series={[{ key: "count", label: "Families" }]} csvName={csv("by-age")} />
-            <ChartCard title="By province" kind="rank" xKey="name" data={breakdown(served, (p) => provinceName.get(p.provinceId))} series={[{ key: "count", label: "Families" }]} csvName={csv("by-province")} />
-            <ChartCard title="By sex and referring hospital" kind="rank" xKey="name" data={[...breakdown(served, (p) => (p.sex === "F" ? "Female" : p.sex === "M" ? "Male" : null), 2), ...breakdown(served, (p) => hospitalName.get(p.referringHospitalId ?? ""), 4)]} series={[{ key: "count", label: "Families" }]} csvName={csv("by-sex-hospital")} />
-            <ChartCard
-              title="Meals served"
-              note="Ticked on House Today since 15 Oct 2026."
-              stacked
-              data={series(meals, (m) => m.date, span, { breakfast: (m) => (m.meal === "breakfast" ? 1 : 0), lunch: (m) => (m.meal === "lunch" ? 1 : 0), dinner: (m) => (m.meal === "dinner" ? 1 : 0) })}
-              series={[{ key: "breakfast", label: "Breakfast" }, { key: "lunch", label: "Lunch" }, { key: "dinner", label: "Dinner" }]}
-              csvName={csv("meals")}
-            />
-          </div>
+          <AiAnalysisPanel text={ai.analysis?.sections.Patients} />
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">{group("patients")}</div>
         </>
       )}
-
-      {see.transport && data && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <ChartCard
-            title="Trips"
-            note={filtered ? "Trips aren't filtered by patient." : undefined}
-            stacked
-            data={series(data.trips, (t) => t.date, span, {
-              pickups: (t) => (t.passengers && t.direction === "from_hospital" ? 1 : 0),
-              deliveries: (t) => (t.passengers && t.direction === "to_hospital" && !t.urgent ? 1 : 0),
-              urgent: (t) => (t.urgent ? 1 : 0),
-              errands: (t) => (!t.passengers ? 1 : 0),
-            })}
-            series={[{ key: "pickups", label: "Pick-ups" }, { key: "deliveries", label: "Deliveries" }, { key: "urgent", label: "Urgent" }, { key: "errands", label: "Errands" }]}
-            csvName={csv("trips")}
-          />
-          <ChartCard
-            title="Kilometres and fuel"
-            data={series([...data.trips.map((t) => ({ day: t.date, km: t.km, fuel: 0 })), ...data.expenses.map((e) => ({ day: e.date, km: 0, fuel: e.litres > 0 ? e.amount : 0 }))], (r) => r.day, span, { km: (r) => r.km, fuel: (r) => r.fuel })}
-            series={[{ key: "km", label: "Km driven" }, { key: "fuel", label: "Fuel spent (PHP)" }]}
-            csvName={csv("km-fuel")}
-          />
-        </div>
-      )}
-
-      {see.donors && data && (
-        <ChartCard
-          title={`Donations · ${formatCurrency(giftsRows.reduce((s, g) => s + g.food + g.nonFood + g.cash, 0))} in the range`}
-          note={filtered ? "Donations aren't filtered by patient." : "Gifts in kind by the category each line was received under in LAF Inventory; cash in pesos."}
-          stacked
-          data={series(giftsRows, (g) => g.date, span, { food: (g) => g.food, nonFood: (g) => g.nonFood, cash: (g) => g.cash })}
-          series={[{ key: "food", label: "Food items" }, { key: "nonFood", label: "Non-food items" }, { key: "cash", label: "Cash" }]}
-          csvName={csv("donations")}
-        />
-      )}
-
-      {(see.caf || see.hours) && data && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {see.caf && (
-            <ChartCard
-              title="NCH billing by month"
-              note="Billed and paid in pesos; nights above the monthly cap are absorbed by LAF."
-              xKey="label"
-              data={cafMonths}
-              series={[{ key: "billed", label: "Billed" }, { key: "paid", label: "Paid" }, { key: "absorbed", label: "Nights absorbed" }]}
-              csvName={csv("nch-billing")}
-            />
-          )}
-          {see.hours && (
-            <ChartCard
-              title="Staff hours"
-              data={series(data.hours, (h) => h.date, span, { hours: (h) => Math.round((h.minutes / 60) * 10) / 10, late: (h) => (h.late ? 1 : 0) })}
-              series={[{ key: "hours", label: "Hours worked" }, { key: "late", label: "Late arrivals" }]}
-              csvName={csv("staff-hours")}
-            />
-          )}
-        </div>
-      )}
+      {see.transport && current && <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">{group("transport")}</div>}
+      {see.donors && current && group("donors")}
+      {(see.caf || see.hours) && current && <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">{[...group("caf"), ...group("hours")]}</div>}
     </div>
   );
 }

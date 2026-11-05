@@ -14,6 +14,9 @@ import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { Button } from "@/components/ui/button";
+import { PeriodPicker, periodStateWindow, type PeriodState } from "@/components/ui/period-picker";
+import { periodLabel } from "@/lib/utils/period";
+import { todayIso } from "@/lib/utils/date";
 import { useDonorsData } from "@/lib/hooks/use-donors-collection";
 import { useDonorPledgesData } from "@/lib/hooks/use-donor-pledges-collection";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
@@ -89,13 +92,19 @@ export default function DonorsPage() {
   const { suggestions } = useDonorSuggestions();
   const [adding, setAdding] = React.useState(false);
   const [filter, setFilter] = React.useState<FilterKey>("all");
-  const split = React.useMemo(() => givingSplit(donations), [donations]);
+  // The range the figures cover (Nov 2026): all time until a period is picked; then the KPIs, the
+  // cash / in-kind columns and the donor count follow the gifts dated inside it.
+  const [period, setPeriod] = React.useState<PeriodState | null>(null);
+  const window = period ? periodStateWindow(period) : null;
+  const inRange = React.useMemo(() => (window ? donations.filter((d) => d.date >= window.from && d.date <= window.to) : donations), [donations, window]);
+  const split = React.useMemo(() => givingSplit(inRange), [inRange]);
   const columns = React.useMemo(() => buildColumns(pledges, split), [pledges, split]);
   const namesWaiting = React.useMemo(() => namesToConfirm(cashGifts.lines, all, cashGifts.decided).length, [cashGifts.lines, cashGifts.decided, all]);
   const pick = (key: FilterKey) => (key === "all" ? all : key === "vip" ? all.filter((d) => isVipEligible(d, pledges)) : all.filter((d) => d.type === key));
-  const donors = pick(filter);
-  const totalGifts = donors.reduce((sum, d) => sum + d.giftCount, 0);
-  const totalLifetimeValue = donors.reduce((sum, d) => sum + d.lifetimeValue, 0);
+  const gave = new Set(inRange.map((d) => d.donorId));
+  const donors = window ? pick(filter).filter((d) => gave.has(d.id)) : pick(filter);
+  const totalGifts = window ? inRange.filter((d) => gave.has(d.donorId) && donors.some((x) => x.id === d.donorId)).length : donors.reduce((sum, d) => sum + d.giftCount, 0);
+  const totalLifetimeValue = window ? donors.reduce((sum, d) => sum + (split.get(d.id)?.cash ?? 0) + (split.get(d.id)?.inKind ?? 0), 0) : donors.reduce((sum, d) => sum + d.lifetimeValue, 0);
   const cashTotal = donors.reduce((sum, d) => sum + (split.get(d.id)?.cash ?? 0), 0);
   const inKindTotal = donors.reduce((sum, d) => sum + (split.get(d.id)?.inKind ?? 0), 0);
 
@@ -124,9 +133,16 @@ export default function DonorsPage() {
       />
       {editor && <DonorFormDialog open={adding} onOpenChange={setAdding} />}
 
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card p-3">
+        <Button type="button" size="sm" variant={window ? "outline" : "default"} onClick={() => setPeriod(null)}>
+          All time
+        </Button>
+        {period ? <PeriodPicker value={period} onChange={setPeriod} /> : <Button type="button" size="sm" variant="outline" onClick={() => setPeriod({ kind: "month", anchor: todayIso() })}>Pick a period</Button>}
+        {window ? <span className="text-theme-xs text-muted-foreground">Figures and the cash / in-kind columns cover gifts dated {periodLabel(period!.kind, window)}.</span> : null}
+      </div>
       <KpiGrid>
-        <KpiCard label="Total Donors" value={donors.length} icon={Users} sublabel={`${totalGifts.toLocaleString()} gifts`} />
-        <KpiCard label="Lifetime Value" value={formatCurrency(totalLifetimeValue)} icon={Wallet} />
+        <KpiCard label={window ? "Donors who gave" : "Total Donors"} value={donors.length} icon={Users} sublabel={`${totalGifts.toLocaleString()} gifts`} />
+        <KpiCard label={window ? "Value received" : "Lifetime Value"} value={formatCurrency(totalLifetimeValue)} icon={Wallet} />
         <KpiCard label="Cash" value={formatCurrency(cashTotal)} icon={Banknote} />
         <KpiCard label="In kind" value={formatCurrency(inKindTotal)} icon={Package} />
       </KpiGrid>

@@ -5,6 +5,8 @@ import { BedDouble, Bus, CalendarClock, ClipboardCheck, FileSpreadsheet, FileTex
 import { PageHeader } from "@/components/patterns/page-header";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { SectionCard } from "@/components/patterns/section-card";
+import { Button } from "@/components/ui/button";
+import { FileDown } from "lucide-react";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { holdsPower, type ModuleKey } from "@/lib/rbac/roles";
 import type { Power } from "@/lib/rbac/who";
@@ -53,6 +55,13 @@ export default function ReportsPage() {
   return (
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader title="Reports" description="What the system can report today, and where. Each report opens inside its module." action={<ModuleSubNav items={SUB_NAV} />} />
+      <SectionCard title="Generate a report" description="One document for any range: the programs, donations, transport, staff hours, NCH billing and inventory figures for a day, week, month, quarter, year or two dates, compared with the range before, with the AI's analysis, as a branded PDF.">
+        <Button asChild>
+          <Link href="/reports/generate">
+            <FileDown /> Open the report generator
+          </Link>
+        </Button>
+      </SectionCard>
       <SectionCard title={`Reports you can open (${open.length})`} flush bodyClassName="divide-y divide-border">
         {open.map((r) => (
           <Link key={r.href} href={r.href} className="flex items-start gap-3 px-5 py-3 hover:bg-muted/60">

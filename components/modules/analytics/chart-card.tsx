@@ -7,6 +7,7 @@ import { SectionCard } from "@/components/patterns/section-card";
 import { Button } from "@/components/ui/button";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { csvLines, downloadCsv } from "@/lib/utils/csv";
+import { AiAnalysisPanel } from "@/components/modules/reports/report-ai";
 
 export interface ChartSeries {
   key: string;
@@ -21,6 +22,8 @@ const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--cha
  */
 export function ChartCard({
   title,
+  description,
+  analysis,
   note,
   data,
   series,
@@ -30,6 +33,10 @@ export function ChartCard({
   stacked = false,
 }: {
   title: string;
+  /** What the chart counts and where the figures come from; printed under it in the PDF. */
+  description?: string;
+  /** The AI comparison for this chart, when the person asked for it. */
+  analysis?: string;
   note?: string;
   data: Record<string, string | number>[];
   series: ChartSeries[];
@@ -55,6 +62,7 @@ export function ChartCard({
         </Button>
       }
     >
+      {description ? <p className="-mt-1 mb-1 text-theme-xs text-muted-foreground">{description}</p> : null}
       {note ? <p className="-mt-1 mb-2 text-theme-xs text-muted-foreground">{note}</p> : null}
       {empty ? (
         <p className="py-8 text-center text-theme-sm text-muted-foreground">Nothing in this range.</p>
@@ -95,6 +103,7 @@ export function ChartCard({
           )}
         </ChartContainer>
       )}
+      <AiAnalysisPanel text={analysis} compact />
     </SectionCard>
   );
 }

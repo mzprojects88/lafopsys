@@ -103,6 +103,7 @@ export const PAGES: PageDef[] = [
   p("reports", "schedule", "/reports/schedule", "Scheduled Delivery"),
   p("reports", "caf_billing", "/reports/caf-billing", "NCH billing", "caf_billing_view"),
   p("reports", "programs", "/reports/programs", "Programs report"),
+  p("reports", "generate", "/reports/generate", "Report generator"),
   p("executive", "overview", "/executive", "Executive Overview"),
 ];
 

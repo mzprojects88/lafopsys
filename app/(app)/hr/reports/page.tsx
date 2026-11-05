@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { HrSubNav } from "@/components/modules/hr/hr-subnav";
+import { DtrReportSection } from "@/components/modules/hr/dtr-report-section";
 import { useYearPayslips, useYtdOpenings } from "@/lib/hooks/use-payroll-collections";
 import { useEmployees } from "@/lib/hooks/use-employees-collection";
 import { useHolidays } from "@/lib/hooks/use-hr-reference-collections";
@@ -150,6 +151,7 @@ function ReportsInner() {
         {loading ? null : <span className="text-theme-xs text-muted-foreground">{`${monthSlips.length} settled payslip(s) in ${MONTHS[Number(month.slice(5, 7)) - 1]}`}</span>}
       </div>
 
+      <DtrReportSection today={today} />
       <SectionCard
         flush
         title={`Monthly remittances · ${MONTHS[Number(month.slice(5, 7)) - 1]} ${year}`}

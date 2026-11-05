@@ -119,7 +119,7 @@ export function monthGridDays(month: string): string[] {
 }
 
 /** Human label for a window, e.g. "Sep 7 – Sep 13, 2026" or "Q3 2026". */
-export function periodLabel(kind: PeriodKind, window: DayWindow): string {
+export function periodLabel(kind: RangeKind, window: DayWindow): string {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const [fy, fm, fd] = parts(window.from);
   const [ty, tm, td] = parts(window.to);
@@ -128,6 +128,8 @@ export function periodLabel(kind: PeriodKind, window: DayWindow): string {
     case "today":
       return `${mon(fm)} ${fd}, ${fy}`;
     case "week":
+    case "custom":
+      if (window.from === window.to) return `${mon(fm)} ${fd}, ${fy}`;
       return fy === ty ? `${mon(fm)} ${fd} – ${mon(tm)} ${td}, ${fy}` : `${mon(fm)} ${fd}, ${fy} – ${mon(tm)} ${td}, ${ty}`;
     case "month":
       return `${mon(fm)} ${fy}`;
@@ -136,4 +138,57 @@ export function periodLabel(kind: PeriodKind, window: DayWindow): string {
     case "year":
       return String(fy);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Reports (Nov 2026): one picker for every report, with a custom range and the
+// "previous range" every report compares itself with.
+// ---------------------------------------------------------------------------
+
+/** A report's range: a calendar period around an anchor day, or any two days. */
+export type RangeKind = PeriodKind | "custom";
+
+export const RANGE_KINDS: { value: RangeKind; label: string }[] = [
+  { value: "today", label: "Day" },
+  { value: "week", label: "Week" },
+  { value: "month", label: "Month" },
+  { value: "quarter", label: "Quarter" },
+  { value: "year", label: "Year" },
+  { value: "custom", label: "Custom" },
+];
+
+/** Inclusive number of days in a window. */
+export function windowDays(window: DayWindow): number {
+  const [fy, fm, fd] = parts(window.from);
+  const [ty, tm, td] = parts(window.to);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000) + 1;
+}
+
+/**
+ * The range a report compares itself with: the same calendar period just
+ * before (last week, last month, last year), or for a day / custom range the
+ * same number of days ending the day before it starts.
+ */
+export function previousWindow(kind: RangeKind, window: DayWindow): DayWindow {
+  if (kind === "today" || kind === "custom") {
+    const days = windowDays(window);
+    const to = addDays(window.from, -1);
+    return { from: addDays(to, -(days - 1)), to };
+  }
+  return periodWindow(kind, shiftAnchor(kind, window.from, -1));
+}
+
+/** The window for a picker's state: a calendar period around the anchor day,
+ * or the custom days (falling back to the anchor's month when they are missing or reversed). */
+export function resolveRange(kind: RangeKind, anchor: string, from?: string | null, to?: string | null): DayWindow {
+  if (kind !== "custom") return periodWindow(kind, anchor);
+  if (from && to && /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) && from <= to) return { from, to };
+  return periodWindow("month", anchor);
+}
+
+/** The one-word grain a window is naturally broken into: days for up to five
+ * weeks, weeks for up to a year, months beyond. */
+export function naturalGrain(window: DayWindow): "day" | "week" | "month" {
+  const days = windowDays(window);
+  return days <= 35 ? "day" : days <= 371 ? "week" : "month";
 }

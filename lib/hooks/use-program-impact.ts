@@ -3,29 +3,30 @@
 import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
-import type { ImpactLine, ImpactRow } from "@/lib/utils/program-impact";
+import type { DayWindow } from "@/lib/utils/period";
+import type { Grain, ImpactLine, ImpactRow } from "@/lib/utils/program-impact";
 
-/** The report rows for one year (ops.program_impact, 0112): computed on request from the live tables. */
-export function useProgramImpact(year: number, refreshKey = 0) {
+/** The report rows for a range (ops.program_impact_range, 0128): computed on request from the live tables. */
+export function useProgramImpact(window: DayWindow, grain: Grain, refreshKey = 0) {
   const [state, setState] = React.useState<{ key: string; rows: ImpactRow[]; error: string | null } | null>(null);
-  const key = `${year}|${refreshKey}`;
+  const key = `${window.from}|${window.to}|${grain}|${refreshKey}`;
   React.useEffect(() => {
     let live = true;
     void createClient()
       .schema("ops")
-      .rpc("program_impact", { p_year: year })
+      .rpc("program_impact_range", { p_from: window.from, p_to: window.to, p_grain: grain })
       .then(({ data, error }) => {
         if (!live) return;
         setState({
           key,
-          rows: error ? [] : ((data ?? []) as Record<string, unknown>[]).map((r) => ({ line: String(r.line) as ImpactLine, month: Number(r.month), native: Number(r.native), fromSheet: Number(r.from_sheet) })),
+          rows: error ? [] : ((data ?? []) as Record<string, unknown>[]).map((r) => ({ line: String(r.line) as ImpactLine, bucket: String(r.bucket).slice(0, 10), native: Number(r.native), fromSheet: Number(r.from_sheet) })),
           error: error?.message ?? null,
         });
       });
     return () => {
       live = false;
     };
-  }, [year, key]);
+  }, [window.from, window.to, grain, key]);
   return state?.key === key ? { rows: state.rows, error: state.error, loading: false } : { rows: [] as ImpactRow[], error: null, loading: true };
 }
 
