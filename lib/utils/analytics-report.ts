@@ -67,7 +67,7 @@ export function analyticsReport(args: { charts: ChartDef[]; previous: ChartDef[]
   });
   const all = [...(kpiSection ? [kpiSection] : []), ...sections];
   return {
-    spec: { title: "Analytics Report", subtitle: "Everything the house records, for the range, from the live records", period, previousPeriod, filters: filters.length ? filters : undefined, sections: all.map((s) => ({ heading: s.heading, description: s.description, kpis: s.kpis, table: s.table, chart: s.chart })) },
+    spec: { title: "Analytics Report", subtitle: "Everything the house records, for the range, from the live records", period, previousPeriod, filters: filters.length ? filters : undefined, sections: all.map((s) => ({ heading: s.heading, description: s.description, kpis: s.kpis, table: "table" in s ? s.table : undefined, chart: "chart" in s ? s.chart : undefined })) },
     input: { title: "Analytics Report", period, previousPeriod, sections: all.map((s) => s.input) },
   };
 }
