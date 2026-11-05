@@ -19,6 +19,7 @@ import { CaseAiReadingToggle } from "@/components/modules/settings/case-ai-readi
 import { ProgramsSheetCard } from "@/components/modules/settings/programs-sheet-card";
 import { DonationTrackerCard } from "@/components/modules/settings/donation-tracker-card";
 import { DbSyncCard } from "@/components/modules/settings/db-sync-card";
+import { ClientErrorsCard } from "@/components/modules/settings/client-errors-card";
 import { BedMoveHours } from "@/components/modules/settings/bed-move-hours";
 import { HrSettingsCard } from "@/components/modules/settings/hr-settings-card";
 import { VehiclesCard } from "@/components/modules/settings/vehicles-card";
@@ -87,6 +88,10 @@ export default function SettingsPage() {
 
         <SectionCard id="db-sync" className="scroll-mt-24" title="Database sync">
           <DbSyncCard />
+        </SectionCard>
+
+        <SectionCard id="app-errors" className="scroll-mt-24" title="App errors">
+          <ClientErrorsCard />
         </SectionCard>
 
         <SectionCard id="document-names" className="scroll-mt-24" title="Documents: staff names">

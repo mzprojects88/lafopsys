@@ -176,6 +176,9 @@ async function recordDataChecks(admin: SupabaseClient, today: string): Promise<{
     // An account with no statement at all is not behind: it has not started (LandBank until it is encoded).
     if (last) findings.push(...checkStatement(String(a.bank_code ?? a.name), String(last.posting_date), today));
   }
+  // Gifts in kind (inventory 0069): a donation lot without its receipt, a receipt without lines, a ledger gift without a receipt.
+  const gik = await admin.schema("inventory").rpc("in_kind_data_checks");
+  if (!gik.error) findings.push(...((gik.data ?? []) as DataCheckFinding[]));
   const { data: recorded, error } = await admin.schema("ops").rpc("record_data_checks", { p_findings: findings });
   if (error) throw new Error(error.message);
   // New findings get the AI's one-line suggestion, after the reply; a failure leaves them without one.

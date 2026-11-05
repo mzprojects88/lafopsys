@@ -6,7 +6,17 @@
 
 export interface DataCheckFinding {
   key: string;
-  kind: "unreadable_row" | "paper_missing" | "paper_nonnumeric" | "paper_reused" | "paper_skipped" | "statement_behind";
+  kind:
+    | "unreadable_row"
+    | "paper_missing"
+    | "paper_nonnumeric"
+    | "paper_reused"
+    | "paper_skipped"
+    | "statement_behind"
+    // gifts in kind (inventory 0069)
+    | "gik_lot_no_receipt"
+    | "gik_receipt_no_lines"
+    | "gik_ledger_no_receipt";
   severity: "error" | "warning" | "info";
   title: string;
   details: Record<string, unknown>;
