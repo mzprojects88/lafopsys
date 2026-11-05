@@ -17,22 +17,22 @@ export type Role =
   /** A role an admin created in Settings > Roles & Access (0093): key "role-<name>". */
   | (string & {});
 
-export const ROLES: { value: Role; label: string; sampleUser: string }[] = [
+export const ROLES: { value: Role; label: string }[] = [
   // "admin" is the database name of the Super Admin (0073 kept it, to keep ~50 checks unchanged).
-  { value: "admin", label: "Super Admin", sampleUser: "Super Admin" },
-  { value: "ceo", label: "CEO", sampleUser: "Butch Bustamante" },
-  { value: "office_admin", label: "Office Admin", sampleUser: "Desiree Candia Loquinario" },
-  { value: "social_worker", label: "Social Worker", sampleUser: "Queen Izell Spencer" },
-  { value: "house_staff", label: "House Staff", sampleUser: "Margielyn Formento" },
-  { value: "driver", label: "Driver", sampleUser: "Christopher Fajardo" },
-  { value: "finance", label: "Finance Staff", sampleUser: "Sam Berja" },
-  { value: "board", label: "Board", sampleUser: "Board Trustee" },
-  { value: "volunteer", label: "Volunteer", sampleUser: "Care Cart Volunteer" },
-  { value: "chef", label: "Chef & Kitchen Staff", sampleUser: "Jonalie Mapesos" },
-  { value: "inventory_staff", label: "Inventory Staff", sampleUser: "Jeffrey Olfato" },
-  { value: "inventory_lead", label: "Inventory Lead", sampleUser: "Desiree Candia Loquinario" },
-  { value: "nutritionist", label: "Nutritionist", sampleUser: "Staff Nutritionist" },
-  { value: "partner_viewer", label: "Partner viewer (outside)", sampleUser: "NCH Representative" },
+  { value: "admin", label: "Super Admin" },
+  { value: "ceo", label: "CEO" },
+  { value: "office_admin", label: "Office Admin" },
+  { value: "social_worker", label: "Social Worker" },
+  { value: "house_staff", label: "House Staff" },
+  { value: "driver", label: "Driver" },
+  { value: "finance", label: "Finance Staff" },
+  { value: "board", label: "Board" },
+  { value: "volunteer", label: "Volunteer" },
+  { value: "chef", label: "Chef & Kitchen Staff" },
+  { value: "inventory_staff", label: "Inventory Staff" },
+  { value: "inventory_lead", label: "Inventory Lead" },
+  { value: "nutritionist", label: "Nutritionist" },
+  { value: "partner_viewer", label: "Partner viewer (outside)" },
 ];
 
 export type Entity = "US_501C3" | "PH_SEC";
