@@ -2,15 +2,14 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { User, ShieldCheck, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PinInput } from "@/components/patterns/pin-input";
-import { useRole } from "@/context/role-provider";
-import { createClient } from "@/lib/supabase/client";
+import { signInWithPin } from "@/app/(auth)/login/actions";
 import type { Role } from "@/lib/types/common";
 import { resolveLandingPath } from "@/lib/rbac/roles";
 import { fetchModuleAccess, fetchMyOverrides } from "@/lib/hooks/use-module-access";
@@ -19,15 +18,12 @@ const PIN_LENGTH = 6;
 
 export interface LoginRosterEntry {
   id: string;
-  email: string;
   firstName: string;
   lastName: string;
 }
 
 export function LoginForm({ roster }: { roster: LoginRosterEntry[] }) {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const { login } = useRole();
   const [staffId, setStaffId] = React.useState(roster[0]?.id ?? "");
   const [pin, setPin] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
@@ -40,57 +36,38 @@ export function LoginForm({ roster }: { roster: LoginRosterEntry[] }) {
     if (!selected || pin.length !== PIN_LENGTH) return;
 
     setSubmitting(true);
-    const supabase = createClient();
-
-    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-      email: selected.email,
-      password: pin,
-    });
-    if (signInError || !signInData.user) {
-      toast.error("Incorrect PIN. Please try again.");
+    // The account's email is resolved on the server: the browser only ever holds staff ids and names.
+    const result = await signInWithPin({ staffId: selected.id, pin });
+    if (!result.ok) {
+      toast.error(result.error);
       setPin("");
       setSubmitting(false);
       return;
     }
-
-    const { data: staffRow, error: staffError } = await supabase
-      .schema("shared")
-      .from("staff")
-      .select("role, extra_roles, first_name, last_name, must_change_pin, landing_path")
-      .eq("id", signInData.user.id)
-      .single();
-
-    if (staffError || !staffRow) {
-      toast.error("Signed in, but couldn't load your account details. Contact an admin.");
-      setSubmitting(false);
-      return;
-    }
-
-    const fullName = `${staffRow.first_name} ${staffRow.last_name}`;
-    const extraRoles = ((staffRow.extra_roles as string[] | null) ?? []) as Role[];
-    login(staffRow.role as Role, fullName, extraRoles);
 
     // A bookmarked deep link (middleware's ?next=) still wins; otherwise the
     // person's own landing page, otherwise their role's default. The PIN-change
     // page carries the same ?next= through so the link is not lost on the way.
     const destination = resolveLandingPath(
       {
-        role: [staffRow.role as Role, ...extraRoles],
-        landingPath: staffRow.landing_path as string | null,
+        role: [result.role as Role, ...(result.extraRoles as Role[])],
+        landingPath: result.landingPath,
         next: searchParams.get("next"),
       },
       await fetchModuleAccess(),
-      await fetchMyOverrides(signInData.user.id)
+      await fetchMyOverrides(result.staffId)
     );
 
-    if (staffRow.must_change_pin) {
+    // A full page load, not router.push: the session cookies were set by the server, so RoleProvider
+    // gets no sign-in event and would keep its signed-out state (no staff id) until the next reload.
+    if (result.mustChangePin) {
       toast.info("This is a temporary PIN — set a new one to continue.");
-      router.push(`/change-pin?next=${encodeURIComponent(destination)}`);
+      window.location.assign(`/change-pin?next=${encodeURIComponent(destination)}`);
       return;
     }
 
-    toast.success(`Welcome, ${fullName}`);
-    router.push(destination);
+    toast.success(`Welcome, ${result.name}`);
+    window.location.assign(destination);
   }
 
   return (
