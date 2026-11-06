@@ -3,71 +3,30 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { LoginForm, type LoginRosterEntry } from "@/components/modules/auth/login-form";
 import pkg from "@/package.json";
 
-type AdminClient = ReturnType<typeof createAdminClient>;
-
 // Rendered per request: the name picker reads the staff table, and without this the page was
 // prerendered at build time, so an account created after the last deploy did not appear until
 // the next one (found 2026-10-14; laf-inventory's login already had it).
 export const dynamic = "force-dynamic";
 
-// Login used to reconstruct `${staffCode}@staff.lafopsys.internal` and hope
-// it matched -- it only ever did for accounts created by this app. An
-// account created by the sibling laf-inventory app carries a different real
-// email and would fail to sign in here. Reading the actual stored email
-// instead makes login work regardless of which app created the account.
-async function fetchAuthEmailsById(admin: AdminClient) {
-  const emailById = new Map<string, string>();
-  let page = 1;
-  const perPage = 200; // org-wide account count is in the dozens; loop guards against future growth
-  for (;;) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
-    if (error) {
-      console.error("listUsers failed while building login email map:", error.message);
-      break;
-    }
-    for (const u of data.users) {
-      if (u.email) emailById.set(u.id, u.email);
-    }
-    if (data.users.length < perPage) break;
-    page += 1;
-  }
-  return emailById;
-}
-
 // A visitor on the login page has no session yet, so the RLS-gated
 // `shared.staff` table isn't readable by the browser client (RLS requires
 // `authenticated`). The admin (service_role) client bypasses RLS to fetch
-// just the name/staff_code fields needed to populate the picker — this is a
+// just the names needed to populate the picker — this is a
 // Server Component specifically so that privileged client never reaches the
 // browser (lib/supabase/admin.ts is `server-only`).
 export default async function LoginPage() {
   const supabase = createAdminClient();
-  const [{ data }, emailById] = await Promise.all([
-    supabase
-      .schema("shared")
-      .from("staff")
-      .select("id, staff_code, first_name, last_name")
-      .eq("active", true)
-      // Every staff role, created ones too (0093); an outside account signs in to Inventory only.
-      .neq("role", "partner_viewer")
-      .order("first_name"),
-    fetchAuthEmailsById(supabase),
-  ]);
+  const { data } = await supabase
+    .schema("shared")
+    .from("staff")
+    .select("id, first_name, last_name")
+    .eq("active", true)
+    // Every staff role, created ones too (0093); an outside account signs in to Inventory only.
+    .neq("role", "partner_viewer")
+    .order("first_name");
 
-  const roster: LoginRosterEntry[] = (data ?? [])
-    .map((s) => ({
-      id: s.id,
-      email: emailById.get(s.id),
-      firstName: s.first_name,
-      lastName: s.last_name,
-    }))
-    .filter((s): s is LoginRosterEntry => {
-      if (!s.email) {
-        console.error(`shared.staff row ${s.id} (${s.firstName} ${s.lastName}) has no matching auth.users email — hiding from login picker.`);
-        return false;
-      }
-      return true;
-    });
+  // Names only: the email Supabase Auth signs in with stays on the server (./actions.ts).
+  const roster: LoginRosterEntry[] = (data ?? []).map((s) => ({ id: s.id, firstName: s.first_name, lastName: s.last_name }));
 
   return (
     <Suspense fallback={null}>
