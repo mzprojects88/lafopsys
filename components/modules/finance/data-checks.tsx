@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Check, CircleAlert, MessageSquareText, Wrench } from "lucide-react";
+import { Check, CircleAlert, ExternalLink, MessageSquareText, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -16,6 +16,7 @@ import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { formatDate } from "@/lib/utils/date";
 import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 import { cn } from "@/lib/utils";
+import { inventoryAppHref } from "@/lib/utils/inventory-app";
 
 const SEVERITY: Record<DataCheck["severity"], { label: string; tone: keyof typeof STATUS_TONE_CLASSES }> = {
   error: { label: "Needs a fix", tone: "negative" },
@@ -23,6 +24,9 @@ const SEVERITY: Record<DataCheck["severity"], { label: string; tone: keyof typeo
   info: { label: "Note", tone: "neutral" },
 };
 const DECISION: Record<string, string> = { correct: "Correct as is", fixed: "Fixed on the sheet", explained: "Explained" };
+/** Gifts in kind (gik_*, Inventory 0069/0073) are fixed in LAF Inventory, where the receipt and its stock live. */
+const inInventory = (c: DataCheck) => c.kind.startsWith("gik_");
+const decisionLabel = (c: DataCheck) => (c.status === "fixed" && inInventory(c) ? "Fixed in Inventory" : (DECISION[c.status] ?? c.status));
 
 /**
  * Finance › Approvals › Data checks (0122): what the Donation Tracker sync found inconsistent --
@@ -97,7 +101,7 @@ export function DataChecks() {
                   ) : null}
                   <p className="text-theme-xs text-muted-foreground">
                     First seen {formatDate(c.firstSeen.slice(0, 10))}
-                    {c.status !== "open" ? ` · ${DECISION[c.status] ?? c.status}${nameOf(c.decidedBy) ? ` by ${nameOf(c.decidedBy)}` : ""}${c.decidedAt ? ` · ${formatDate(c.decidedAt.slice(0, 10))}` : ""}${c.note ? ` — ${c.note}` : ""}` : ""}
+                    {c.status !== "open" ? ` · ${decisionLabel(c)}${nameOf(c.decidedBy) ? ` by ${nameOf(c.decidedBy)}` : ""}${c.decidedAt ? ` · ${formatDate(c.decidedAt.slice(0, 10))}` : ""}${c.note ? ` — ${c.note}` : ""}` : ""}
                   </p>
                 </div>
                 {decides ? (
@@ -107,8 +111,15 @@ export function DataChecks() {
                         <Check /> Correct as is
                       </Button>
                       <Button size="sm" variant="outline" disabled={busy === c.id} onClick={() => act(c, "fixed")}>
-                        <Wrench /> Fixed on the sheet
+                        <Wrench /> {inInventory(c) ? "Fixed in Inventory" : "Fixed on the sheet"}
                       </Button>
+                      {inInventory(c) ? (
+                        <Button size="sm" variant="outline" asChild>
+                          <a href={inventoryAppHref("/donors?tab=receipts")} target="_blank" rel="noreferrer">
+                            <ExternalLink /> Open in Inventory
+                          </a>
+                        </Button>
+                      ) : null}
                       <Button size="sm" variant="outline" disabled={busy === c.id} onClick={() => { setExplaining(c); setNote(""); }}>
                         <MessageSquareText /> Explain
                       </Button>
