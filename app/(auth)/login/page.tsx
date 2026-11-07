@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { LoginForm, type LoginRosterEntry } from "@/components/modules/auth/login-form";
-import pkg from "@/package.json";
 
 // Rendered per request: the name picker reads the staff table, and without this the page was
 // prerendered at build time, so an account created after the last deploy did not appear until
@@ -31,8 +30,6 @@ export default async function LoginPage() {
   return (
     <Suspense fallback={null}>
       <LoginForm roster={roster} />
-      {/* Which build is running (Jesse's request, 2026-10-13): the version he sets in package.json. */}
-      <p className="pointer-events-none fixed inset-x-0 bottom-3 text-center text-xs text-muted-foreground">LAF Operating System v{pkg.version}</p>
     </Suspense>
   );
 }

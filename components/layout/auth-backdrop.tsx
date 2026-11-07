@@ -12,10 +12,13 @@ export function AuthBackdrop({
   children,
   panelTitle = "LAF Operating System",
   panelText = "Patients and admissions, staff time, the house, donors and the books of Little Ark Foundation, in one place.",
+  version,
 }: {
   children: ReactNode;
   panelTitle?: string;
   panelText?: string;
+  /** Shown as "ArkOS v…" under the copyright (staff pages only; the donor portal passes none). */
+  version?: string;
 }) {
   return (
     <div className="relative flex min-h-svh bg-background">
@@ -28,7 +31,11 @@ export function AuthBackdrop({
         </div>
         <div className="relative z-10 flex w-full flex-col items-center gap-6">
           {children}
-          <p className="text-theme-xs text-muted-foreground">© {new Date().getFullYear()} Little Ark Foundation. All rights reserved.</p>
+          {/* In the page's flow under the form, never pinned to the screen (it used to overlap on phones). */}
+          <footer className="flex flex-col items-center gap-0.5 text-center text-theme-xs text-muted-foreground">
+            <p>© {new Date().getFullYear()} Little Ark Foundation. All rights reserved.</p>
+            {version ? <p>ArkOS v{version}</p> : null}
+          </footer>
         </div>
       </div>
 
