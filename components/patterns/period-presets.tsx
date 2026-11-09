@@ -98,7 +98,7 @@ export function PeriodPresetsBar({
   return (
     <div className={cn("flex flex-col gap-2 rounded-2xl border border-border bg-card p-3 print:hidden", className)}>
       {/* Wraps instead of scrolling, so the chosen period is always in sight on a phone. */}
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Period">
+      <div className="flex flex-wrap gap-1 lg:gap-1.5" role="group" aria-label="Period">
         {PRESETS.filter((p) => p.key !== "all" || allowAll).map((p) => (
           <button
             key={p.key}
@@ -107,7 +107,7 @@ export function PeriodPresetsBar({
             aria-label={p.label}
             aria-pressed={state.key === p.key}
             onClick={() => pick(p.key)}
-            className="shrink-0 rounded-full border border-border px-3 py-1 text-theme-xs font-medium whitespace-nowrap text-muted-foreground tabular-nums transition-colors hover:text-foreground aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary"
+            className="shrink-0 rounded-full border border-border px-2 py-1 text-theme-xs font-medium whitespace-nowrap text-muted-foreground tabular-nums lg:px-3 transition-colors hover:text-foreground aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary"
           >
             <span className="lg:hidden">{p.code}</span>
             <span className="hidden lg:inline">{p.label}</span>
