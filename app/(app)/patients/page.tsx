@@ -3,7 +3,12 @@
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
-import { Users, UserCheck, CalendarPlus } from "lucide-react";
+import { Users, UserCheck, CalendarPlus, LogIn, LogOut, BedDouble, Utensils, Home } from "lucide-react";
+import { LoadingState } from "@/components/patterns/loading-state";
+import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
+import { useProgramImpact } from "@/lib/hooks/use-program-impact";
+import { shown, total } from "@/lib/utils/program-impact";
+import { isActiveStay } from "@/lib/utils/beds";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
@@ -19,7 +24,6 @@ import { PRIORITIES, recordGaps } from "@/lib/utils/master-sheet";
 import Link from "next/link";
 import type { Carer, Patient } from "@/lib/types/patient";
 import { computeAge } from "@/lib/utils/age";
-import { todayIso } from "@/lib/utils/date";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 
 
@@ -76,15 +80,33 @@ const columnsFor = (dxName: Map<string, string>): ColumnDef<Patient>[] => [
 ];
 
 export default function PatientsPage() {
+  return (
+    <React.Suspense fallback={<LoadingState />}>
+      <PatientsContent />
+    </React.Suspense>
+  );
+}
+
+function PatientsContent() {
   const router = useRouter();
-  const { patients, carers } = usePatientsData();
+  const { patients, carers, stays } = usePatientsData();
   const { rows: diagnoses } = useDiagnosesReferenceData();
   const columns = React.useMemo(() => columnsFor(new Map(diagnoses.map((d) => [d.id, d.name]))), [diagnoses]);
   const canEdit = useModuleAccess().canEdit("patients");
+  // The period (Nov 2026): Today by default. Total, Ongoing and In the house stay "right now".
+  const period = usePeriodPresets("patients", "today");
+  const w = period.window!;
+  const inPeriod = (date: string | undefined | null) => !!date && date.slice(0, 10) >= w.from && date.slice(0, 10) <= w.to;
+  const [onlyAdmitted, setOnlyAdmitted] = React.useState(false);
   const ongoingCount = patients.filter((p) => p.status === "ongoing").length;
-  const admittedThisMonth = patients.filter(
-    (p) => p.admittedAt.slice(0, 7) === todayIso().slice(0, 7)
-  ).length;
+  const inHouse = stays.filter(isActiveStay).length;
+  const admitted = patients.filter((p) => inPeriod(p.admittedAt));
+  const checkIns = stays.filter((s) => inPeriod(s.checkInAt)).length;
+  const checkOuts = stays.filter((s) => inPeriod(s.checkOutAt)).length;
+  // Nights and meals as the Programs report counts them (the app's records, or the sheet while it is the record).
+  const impact = useProgramImpact(w, "month");
+  const nights = impact.loading || impact.error ? "—" : total(impact.rows, "housing", shown).toLocaleString();
+  const meals = impact.loading || impact.error ? "—" : (["meals_breakfast", "meals_lunch", "meals_dinner"] as const).reduce((s, l) => s + total(impact.rows, l, shown), 0).toLocaleString();
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -98,15 +120,33 @@ export default function PatientsPage() {
       <SheetChangesPanel canDecide={canEdit} />
       {canEdit ? <NeedsDetails patients={patients} carers={carers} /> : null}
 
+      <PeriodPresetsBar state={period.state} onChange={period.setState} label={period.label} today={period.today} />
+
       <KpiGrid>
-        <KpiCard label="Total Patients" value={patients.length} icon={Users} />
-        <KpiCard label="Ongoing" value={ongoingCount} icon={UserCheck} />
-        <KpiCard label="Admitted This Month" value={admittedThisMonth} icon={CalendarPlus} />
+        <KpiCard label="Admitted" value={admitted.length} sublabel={period.label} icon={CalendarPlus} />
+        <KpiCard label="Check-ins" value={checkIns} sublabel={period.label} icon={LogIn} />
+        <KpiCard label="Check-outs" value={checkOuts} sublabel={period.label} icon={LogOut} />
+        <KpiCard label="Nights Housed" value={nights} sublabel={`People-nights · ${period.label}`} icon={BedDouble} />
+        <KpiCard label="Meals Served" value={meals} sublabel={period.label} icon={Utensils} />
+        <KpiCard label="In the House" value={inHouse} sublabel="Families · now" icon={Home} />
+        <KpiCard label="Ongoing" value={ongoingCount} sublabel="Now" icon={UserCheck} />
+        <KpiCard label="Total Patients" value={patients.length} sublabel="All time" icon={Users} />
       </KpiGrid>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          aria-pressed={onlyAdmitted}
+          onClick={() => setOnlyAdmitted((v) => !v)}
+          className="shrink-0 rounded-full border border-border px-3 py-1 text-theme-xs font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary"
+        >
+          Only admitted in this period <span className="tabular-nums">{admitted.length}</span>
+        </button>
+      </div>
 
       <DataTable
         columns={columns}
-        data={patients}
+        data={onlyAdmitted ? admitted : patients}
         searchPlaceholder="Search patients…"
         onRowClick={(p) => router.push(`/patients/${p.id}`)}
       />

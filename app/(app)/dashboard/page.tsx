@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import {
   Users,
@@ -41,14 +42,29 @@ import { moduleForPath } from "@/lib/rbac/roles";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { inventoryAppHref } from "@/lib/utils/inventory-app";
 import { formatCurrency } from "@/lib/utils/currency";
-import { formatDate, todayIso } from "@/lib/utils/date";
-import { addDays } from "@/lib/utils/dtr";
+import { formatDate } from "@/lib/utils/date";
 import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 import { ROLES, type Role } from "@/lib/types/common";
 import { doesFinance, hasAnyRole } from "@/lib/rbac/roles";
+import { LoadingState } from "@/components/patterns/loading-state";
+import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
+import { bucketOf, daysOf } from "@/lib/utils/period-presets";
+import { naturalGrain } from "@/lib/utils/period";
 
 export default function DashboardPage() {
+  return (
+    <React.Suspense fallback={<LoadingState />}>
+      <DashboardContent />
+    </React.Suspense>
+  );
+}
+
+function DashboardContent() {
   const { role, roles, title, user } = useRole();
+  // The period the dated figures cover (Nov 2026); In-House Now, the pending counts and stock stay "right now".
+  const period = usePeriodPresets("dashboard", "this_month");
+  const w = period.window!;
+  const inPeriod = (date: string | undefined | null) => !!date && date.slice(0, 10) >= w.from && date.slice(0, 10) <= w.to;
   const has = (...r: Role[]) => hasAnyRole(roles, ...r);
   const roleLabel = ROLES.find((r) => r.value === title)?.label ?? title;
   const { referrals } = useReferralsData();
@@ -68,9 +84,12 @@ export default function DashboardPage() {
   const pendingApprovals = leaveRequests.filter((a) => a.status === "pending").length;
   const pendingReferrals = referrals.filter((r) => r.status === "submitted").length;
   const expiringSoon = expiringLots.filter((l) => l.days_left >= 0 && l.days_left <= 14).length;
-  // This month's cash in, as the card says (it used to add up every year).
-  const thisMonth = todayIso().slice(0, 7);
-  const cashIn = cashEntries.filter((e) => e.direction === "inflow" && e.date.startsWith(thisMonth)).reduce((s, e) => s + e.amount, 0);
+  // Cash gifts in the period, from the donor ledger like Donors & Donations (until Nov 2026 this added up the
+  // finance cash book, so it showed P0 while gifts were coming in).
+  const cashIn = donations.filter((d) => d.kind === "cash" && d.currency === "PHP" && inPeriod(d.date)).reduce((s, d) => s + d.totalValue, 0);
+  const inKindIn = donations.filter((d) => d.kind === "in_kind" && inPeriod(d.date)).reduce((s, d) => s + d.totalValue, 0);
+  const admittedInPeriod = patients.filter((p) => inPeriod(p.admittedAt)).length;
+  const referralsReceived = referrals.filter((r) => inPeriod(r.date)).length;
 
   // The beds drawn on the floor plan (0047), one admission slot each by default.
   const capacity = houseCapacity(units);
@@ -87,32 +106,29 @@ export default function DashboardPage() {
   const goodStock = [...stockByItem.values()].filter((s) => s === "ok").length;
   const lowStock = [...stockByItem.values()].filter((s) => s === "low").length;
 
-  // The last 30 days, as the card says (it used to be the last 14 days that had a gift).
-  const since30 = addDays(todayIso(), -29);
-  const donationChart = donations
-    .filter((d) => d.date >= since30)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .reduce<{ date: string; amount: number }[]>((acc, d) => {
-      const existing = acc.find((row) => row.date === d.date);
-      if (existing) existing.amount += d.totalValue;
-      else acc.push({ date: d.date, amount: d.totalValue });
-      return acc;
-    }, []);
+  // Both charts follow the period: one point a day up to five weeks, a week up to a year, a month beyond.
+  const grain = naturalGrain(w);
+  const days = daysOf(w);
+  const buckets = [...new Set(days.map((d) => bucketOf(d, grain)))];
+  const giftsByBucket = new Map<string, number>();
+  for (const d of donations) if (inPeriod(d.date)) giftsByBucket.set(bucketOf(d.date, grain), (giftsByBucket.get(bucketOf(d.date, grain)) ?? 0) + d.totalValue);
+  const donationChart = buckets.map((b) => ({ date: b, amount: giftsByBucket.get(b) ?? 0 }));
 
+  // The newest five in the period: gifts, check-ins, approved referrals.
   const recentActivity = [
-    ...donations.slice(0, 2).map((d) => ({
+    ...donations.filter((d) => inPeriod(d.date)).map((d) => ({
       icon: HandCoins,
       title: `Donation of ${formatCurrency(d.totalValue, d.currency)} received`,
       subtitle: donors.find((dn) => dn.id === d.donorId)?.name ?? "Anonymous",
       date: d.date,
     })),
-    ...stays.slice(0, 2).map((s) => ({
+    ...stays.filter((s) => inPeriod(s.checkInAt)).map((s) => ({
       icon: UserPlus,
       title: "Patient stay recorded",
       subtitle: patients.find((p) => p.id === s.patientId)?.firstName ?? "—",
       date: s.checkInAt,
     })),
-    ...referrals.filter((r) => r.status === "approved").slice(0, 1).map((r) => ({
+    ...referrals.filter((r) => r.status === "approved" && inPeriod(r.date)).map((r) => ({
       icon: BadgeCheck,
       title: "Referral approved",
       subtitle: r.patientName,
@@ -155,13 +171,13 @@ export default function DashboardPage() {
 
   const chartConfig: ChartConfig = { amount: { label: "Donations", color: "var(--chart-1)" } };
 
-  // The card is explicitly labeled "Last 30 days" -- real censusHistory can span
-  // much further back than mock data ever did, so it's windowed here to match
-  // what the label actually promises rather than dumping the full real history.
-  const admissionsTrend = censusHistory.slice(-30).map((day) => ({
-    date: day.date,
-    enrolled: patients.filter((p) => p.admittedAt <= day.date).length,
-    admissions: patients.filter((p) => p.admittedAt === day.date).length,
+  // Enrolled = admitted by the end of each point; admissions = admitted within it.
+  const lastDayOf = new Map<string, string>();
+  for (const d of days) lastDayOf.set(bucketOf(d, grain), d);
+  const admissionsTrend = buckets.map((b) => ({
+    date: b,
+    enrolled: patients.filter((p) => p.admittedAt && p.admittedAt.slice(0, 10) <= (lastDayOf.get(b) ?? b)).length,
+    admissions: patients.filter((p) => inPeriod(p.admittedAt) && bucketOf(p.admittedAt.slice(0, 10), grain) === b).length,
   }));
   const admissionsChartConfig: ChartConfig = {
     enrolled: { label: "Enrolled", color: "var(--chart-1)" },
@@ -178,26 +194,33 @@ export default function DashboardPage() {
         </h1>
       </div>
 
+      <PeriodPresetsBar state={period.state} onChange={period.setState} label={period.label} today={period.today} />
+
       <KpiGrid>
         {has("admin", "office_admin", "social_worker", "house_staff", "driver") && (
-          <KpiCard label="In-House Now" value={inHouseNow} sublabel="Residents" icon={Users} />
+          <KpiCard label="In-House Now" value={inHouseNow} sublabel="Residents · now" icon={Users} />
         )}
         {has("admin", "office_admin", "social_worker") && (
-          <KpiCard label="Enrolled Patients" value={patients.length} sublabel="Total" icon={UserCheck} />
+          <KpiCard label="New Admissions" value={admittedInPeriod} sublabel={`${patients.length} enrolled in all · ${period.label}`} icon={UserCheck} />
         )}
         {has("admin", "office_admin", "finance", "board") && !isHiddenPath("/donors", roles) && (
-          <KpiCard label="Cash Donations" value={formatCurrency(cashIn)} sublabel="This month" icon={Wallet} />
+          <KpiCard label="Cash Donations" value={formatCurrency(cashIn)} sublabel={period.label} icon={Wallet} />
+        )}
+        {has("admin", "office_admin", "finance", "board") && !isHiddenPath("/donors", roles) && (
+          <KpiCard label="Gifts in Kind" value={formatCurrency(inKindIn)} sublabel={period.label} icon={HandCoins} />
         )}
         {doesFinance(roles) && !isHiddenPath("/finance", roles) && (
-          <KpiCard label="Pending Approvals" value={pendingApprovals} sublabel="Items" icon={ClipboardList} tone={pendingApprovals > 0 ? "warning" : "default"} />
+          <KpiCard label="Pending Approvals" value={pendingApprovals} sublabel="Items · now" icon={ClipboardList} tone={pendingApprovals > 0 ? "warning" : "default"} />
         )}
         {has("admin", "office_admin", "social_worker") && (
-          <KpiCard label="Pending Referrals" value={pendingReferrals} sublabel="Referrals" icon={Send} tone={pendingReferrals > 0 ? "warning" : "default"} />
+          <KpiCard label="Pending Referrals" value={pendingReferrals} sublabel={`Now · ${referralsReceived} received in the period`} icon={Send} tone={pendingReferrals > 0 ? "warning" : "default"} />
         )}
         {has("admin", "house_staff") && (
-          <KpiCard label="Items Expiring ≤14d" value={expiringSoon} sublabel="Items" icon={PackageX} tone={expiringSoon > 0 ? "warning" : "default"} />
+          <KpiCard label="Items Expiring ≤14d" value={expiringSoon} sublabel="Items · now" icon={PackageX} tone={expiringSoon > 0 ? "warning" : "default"} />
         )}
-        {role === "volunteer" && !isHiddenPath("/donors", role) && <KpiCard label="Donations Recorded" value={donations.length} icon={HandCoins} />}
+        {role === "volunteer" && !isHiddenPath("/donors", role) && (
+          <KpiCard label="Donations Recorded" value={donations.filter((d) => inPeriod(d.date)).length} sublabel={period.label} icon={HandCoins} />
+        )}
       </KpiGrid>
 
       <div className="flex flex-col gap-2">
@@ -229,10 +252,10 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3 lg:gap-6">
         <div className="flex min-w-0 flex-col gap-5 lg:col-span-2 lg:gap-6">
           {!isHiddenPath("/donors", role) && (
-            <SectionCard title="Donations Trend" description="Last 30 days">
+            <SectionCard title="Donations Trend" description={period.label}>
               <div className="mb-3 flex items-center gap-1.5 text-theme-xs text-muted-foreground">
                 <span className="size-2 rounded-full bg-chart-1" />
-                Cash Donations (₱)
+                All gifts, cash and in kind (₱)
               </div>
               <ChartContainer config={chartConfig} className="h-56 w-full">
                 <AreaChart data={donationChart}>
@@ -251,7 +274,7 @@ export default function DashboardPage() {
             </SectionCard>
           )}
 
-          <SectionCard title="Patients & Admissions Trend" description="Last 30 days">
+          <SectionCard title="Patients & Admissions Trend" description={period.label}>
             <div className="mb-3 flex items-center gap-3 text-theme-xs text-muted-foreground">
               <span className="flex items-center gap-1.5">
                 <span className="size-2 rounded-full bg-chart-1" />
@@ -273,8 +296,9 @@ export default function DashboardPage() {
             </ChartContainer>
           </SectionCard>
 
-          <SectionCard title="Recent Activity" flush>
+          <SectionCard title="Recent Activity" description={period.label} flush>
             <ul className="divide-y divide-border">
+              {recentActivity.length === 0 ? <li className="px-5 py-3 text-theme-xs text-muted-foreground">Nothing recorded in this period.</li> : null}
               {recentActivity.map((a, i) => (
                 <li key={i} className="flex items-start gap-3 px-5 py-3">
                   <IconCircle icon={a.icon} size="sm" />
