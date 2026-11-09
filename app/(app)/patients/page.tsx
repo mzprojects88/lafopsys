@@ -9,6 +9,7 @@ import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period
 import { useProgramImpact } from "@/lib/hooks/use-program-impact";
 import { shown, total } from "@/lib/utils/program-impact";
 import { isActiveStay } from "@/lib/utils/beds";
+import { useCensusData } from "@/lib/hooks/use-census-collection";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
@@ -99,7 +100,9 @@ function PatientsContent() {
   const inPeriod = (date: string | undefined | null) => !!date && date.slice(0, 10) >= w.from && date.slice(0, 10) <= w.to;
   const [onlyAdmitted, setOnlyAdmitted] = React.useState(false);
   const ongoingCount = patients.filter((p) => p.status === "ongoing").length;
-  const inHouse = stays.filter(isActiveStay).length;
+  // As the Dashboard counts it: families checked in now, or the house sheet's count while nobody is checked in in the app.
+  const { history: census } = useCensusData();
+  const inHouse = stays.filter(isActiveStay).length || (census[census.length - 1]?.inHouse ?? 0);
   const admitted = patients.filter((p) => inPeriod(p.admittedAt));
   const checkIns = stays.filter((s) => inPeriod(s.checkInAt)).length;
   const checkOuts = stays.filter((s) => inPeriod(s.checkOutAt)).length;
