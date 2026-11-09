@@ -140,7 +140,7 @@ function DonorsContent() {
       />
       {editor && <DonorFormDialog open={adding} onOpenChange={setAdding} />}
 
-      <PeriodPresetsBar state={period.state} onChange={period.setState} label={period.label} today={period.today} allowAll />
+      <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} allowAll />
       <KpiGrid>
         <KpiCard label={window ? "Donors who gave" : "Total Donors"} value={donors.length} icon={Users} sublabel={`${totalGifts.toLocaleString()} gifts · ${period.label}`} />
         <KpiCard label={window ? "Value received" : "Lifetime Value"} value={formatCurrency(totalLifetimeValue)} icon={Wallet} sublabel={period.label} />

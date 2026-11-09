@@ -194,7 +194,7 @@ function DashboardContent() {
         </h1>
       </div>
 
-      <PeriodPresetsBar state={period.state} onChange={period.setState} label={period.label} today={period.today} />
+      <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} />
 
       <KpiGrid>
         {has("admin", "office_admin", "social_worker", "house_staff", "driver") && (

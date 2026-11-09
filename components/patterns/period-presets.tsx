@@ -5,7 +5,19 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { todayIso } from "@/lib/utils/date";
-import { PRESETS, parsePreset, presetLabel, presetQuery, presetWindow, type PresetKey, type PresetState } from "@/lib/utils/period-presets";
+import { PRESETS, parsePreset, presetDescription, presetLabel, presetQuery, presetWindow, type PresetKey, type PresetState } from "@/lib/utils/period-presets";
+
+/** The current time, ticking every half minute; null until the page is in the browser, so the server never draws a clock. */
+function useNow(): Date | null {
+  const [now, setNow] = React.useState<Date | null>(null);
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the clock starts once the page is in the browser
+    setNow(new Date());
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return now;
+}
 
 const storageKey = (page: string) => `laf-period:${page}`;
 
@@ -58,22 +70,24 @@ export function usePeriodPresets(page: string, fallback: PresetKey, allowAll = f
 
 const window_localStorage = () => (typeof window === "undefined" ? null : window.localStorage);
 
-/** Today · Yesterday · This week · Last week · This month · Last month · Custom (· All time), and what the figures cover. */
+/**
+ * The period chips (codes on a phone, +0D -1D +0Wk -1Wk +0M -1M CSTM ALL; words from desktop width up) and, under
+ * them, what the chosen one covers in words, as of the current Manila time when it runs to today.
+ */
 export function PeriodPresetsBar({
   state,
   onChange,
-  label,
   today,
   allowAll = false,
   className,
 }: {
   state: PresetState;
   onChange: (next: PresetState) => void;
-  label: string;
   today: string;
   allowAll?: boolean;
   className?: string;
 }) {
+  const now = useNow();
   const custom = state.key === "custom" ? presetWindow(state, today) : null;
   const pick = (key: PresetKey) => {
     if (key !== "custom") return onChange({ key });
@@ -89,12 +103,14 @@ export function PeriodPresetsBar({
           <button
             key={p.key}
             type="button"
-            title={p.code}
+            title={p.label}
+            aria-label={p.label}
             aria-pressed={state.key === p.key}
             onClick={() => pick(p.key)}
-            className="shrink-0 rounded-full border border-border px-3 py-1 text-theme-xs font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary"
+            className="shrink-0 rounded-full border border-border px-3 py-1 text-theme-xs font-medium whitespace-nowrap text-muted-foreground tabular-nums transition-colors hover:text-foreground aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary"
           >
-            {p.label}
+            <span className="lg:hidden">{p.code}</span>
+            <span className="hidden lg:inline">{p.label}</span>
           </button>
         ))}
       </div>
@@ -120,7 +136,18 @@ export function PeriodPresetsBar({
             />
           </span>
         ) : null}
-        <span className="text-theme-xs text-muted-foreground">Figures cover: {label}</span>
+        <span className="text-theme-xs text-muted-foreground" aria-live="polite">
+          {(() => {
+            const text = presetDescription(state, today, now);
+            const at = text.indexOf(": ");
+            return (
+              <>
+                <b className="font-semibold text-foreground">{text.slice(0, at)}:</b>
+                {text.slice(at + 1)}
+              </>
+            );
+          })()}
+        </span>
       </div>
     </div>
   );

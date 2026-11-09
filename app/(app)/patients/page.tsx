@@ -123,7 +123,7 @@ function PatientsContent() {
       <SheetChangesPanel canDecide={canEdit} />
       {canEdit ? <NeedsDetails patients={patients} carers={carers} /> : null}
 
-      <PeriodPresetsBar state={period.state} onChange={period.setState} label={period.label} today={period.today} />
+      <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} />
 
       <KpiGrid>
         <KpiCard label="Admitted" value={admitted.length} sublabel={period.label} icon={CalendarPlus} />

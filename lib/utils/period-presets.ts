@@ -12,8 +12,8 @@ export type PresetKey = "today" | "yesterday" | "this_week" | "last_week" | "thi
 export const PRESETS: { key: PresetKey; label: string; code: string }[] = [
   { key: "today", label: "Today", code: "+0D" },
   { key: "yesterday", label: "Yesterday", code: "-1D" },
-  { key: "this_week", label: "This week", code: "+0WK" },
-  { key: "last_week", label: "Last week", code: "-1WK" },
+  { key: "this_week", label: "This week", code: "+0Wk" },
+  { key: "last_week", label: "Last week", code: "-1Wk" },
   { key: "this_month", label: "This month", code: "+0M" },
   { key: "last_month", label: "Last month", code: "-1M" },
   { key: "custom", label: "Custom", code: "CSTM" },
@@ -78,6 +78,52 @@ export function presetLabel(state: PresetState, window: DayWindow | null): strin
   const range = periodLabel(kind, window);
   const name = PRESETS.find((p) => p.key === state.key)?.label;
   return state.key === "custom" ? range : `${name} · ${range}`;
+}
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const dayParts = (key: string) => key.split("-").map(Number) as [number, number, number];
+const weekday = (key: string) => {
+  const [y, m, d] = dayParts(key);
+  return WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+};
+const monthDay = (key: string) => `${MONTHS[dayParts(key)[1] - 1]} ${dayParts(key)[2]}`;
+const fullDate = (key: string) => `${monthDay(key)}, ${dayParts(key)[0]}`;
+
+/** "5:55 AM" in Manila (12-hour clock, as every time in the apps). */
+export function manilaTime(now: Date): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit", hour12: true }).format(now);
+}
+
+/** "October 3 to 15, 2026", "October 3 to November 2, 2026", "December 20, 2026 to January 5, 2027". */
+function span(from: string, to: string): string {
+  const [fy, fm] = dayParts(from);
+  const [ty, tm, td] = dayParts(to);
+  if (fy !== ty) return `${fullDate(from)} to ${fullDate(to)}`;
+  if (fm === tm) return `${monthDay(from)} to ${td}, ${ty}`;
+  return `${monthDay(from)} to ${fullDate(to)}`;
+}
+
+/**
+ * What the bar says under the chips: the chosen period in words, with the time the figures are as of when the
+ * period runs up to today (Manila). `now` is null until the page is in the browser: the time is then left out.
+ *   Today: figures as of today, November 10, 2026, 5:55 AM
+ *   Last week: figures from Monday, November 2 to Sunday, November 8, 2026
+ */
+export function presetDescription(state: PresetState, today: string, now: Date | null): string {
+  const asOf = now ? `, ${manilaTime(now)}` : "";
+  const w = presetWindow(state, today);
+  const name = PRESETS.find((p) => p.key === state.key)?.label ?? "";
+  if (!w) return `${name}: every figure on record, as of ${fullDate(today)}${asOf}`;
+  if (state.key === "today") return `${name}: figures as of today, ${fullDate(today)}${asOf}`;
+  if (w.from === w.to) return `${name}: figures for ${weekday(w.from)}, ${fullDate(w.from)}`;
+  // A period that runs past today stops at today: nothing later exists yet.
+  if (w.to >= today && w.from <= today) {
+    const start = state.key === "this_week" ? `${weekday(w.from)}, ${monthDay(w.from)}` : monthDay(w.from);
+    return w.from === today ? `${name}: figures as of today, ${fullDate(today)}${asOf}` : `${name}: figures from ${start} to today, ${fullDate(today)}${asOf}`;
+  }
+  if (state.key === "last_week") return `${name}: figures from ${weekday(w.from)}, ${monthDay(w.from)} to ${weekday(w.to)}, ${fullDate(w.to)}`;
+  return `${name}: figures from ${span(w.from, w.to)}`;
 }
 
 /** Every day of a window, oldest first (capped, so a very long custom range cannot hang a chart). */
