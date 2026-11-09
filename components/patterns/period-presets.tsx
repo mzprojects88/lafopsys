@@ -83,7 +83,8 @@ export function PeriodPresetsBar({
   };
   return (
     <div className={cn("flex flex-col gap-2 rounded-2xl border border-border bg-card p-3 print:hidden", className)}>
-      <div className="no-scrollbar -mx-1 flex gap-1.5 overflow-x-auto px-1" role="group" aria-label="Period">
+      {/* Wraps instead of scrolling, so the chosen period is always in sight on a phone. */}
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Period">
         {PRESETS.filter((p) => p.key !== "all" || allowAll).map((p) => (
           <button
             key={p.key}
