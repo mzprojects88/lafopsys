@@ -3,13 +3,15 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { AlertTriangle, Bus, Car, ChevronLeft, ChevronRight, Coins, Fuel, Gauge, HandCoins, Route, Wrench } from "lucide-react";
+import { AlertTriangle, Bus, Car, Coins, Fuel, Gauge, HandCoins, Route, Wrench } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { ModuleSubNav } from "@/components/patterns/module-subnav";
 import { TRANSPORT_SUB_NAV } from "@/components/modules/transport/transport-nav";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { SectionCard } from "@/components/patterns/section-card";
 import { EmptyState } from "@/components/patterns/empty-state";
+import { LoadingState } from "@/components/patterns/loading-state";
+import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,19 +24,12 @@ import { recordFuelLevel, useFleetStatus, usePeriodData, type PeriodTrip, type V
 import { useRouteKm } from "@/lib/hooks/use-vehicles-collection";
 import { useVehicleExpenses } from "@/lib/hooks/use-vehicle-expenses-collection";
 import { formatCurrency } from "@/lib/utils/currency";
-import { formatDate, todayIso } from "@/lib/utils/date";
-import { periodRange, periodTotals, shiftPeriod, untrackedGaps, type PeriodKind, type PeriodTotals } from "@/lib/utils/fuel";
+import { formatDate } from "@/lib/utils/date";
+import { periodTotals, untrackedGaps, type PeriodTotals } from "@/lib/utils/fuel";
 import { formatKm, isUnusualTrip, routeKey } from "@/lib/utils/odometer";
 import { formatPesoCents } from "@/lib/utils/vehicle-expenses";
 import { cn } from "@/lib/utils";
 
-const KINDS: { value: PeriodKind; label: string }[] = [
-  { value: "day", label: "Day" },
-  { value: "week", label: "Week" },
-  { value: "month", label: "Month" },
-  { value: "quarter", label: "Quarter" },
-  { value: "year", label: "Year" },
-];
 const LEVELS = [
   { value: 0, label: "E" },
   { value: 0.25, label: "¼" },
@@ -49,17 +44,22 @@ const litres = (n: number) => `${n.toLocaleString("en-PH", { maximumFractionDigi
  * fuel and costs, the checks that need a look, and when each service is due.
  */
 export default function FuelMonitoringPage() {
+  return (
+    <React.Suspense fallback={<LoadingState />}>
+      <FuelMonitoringContent />
+    </React.Suspense>
+  );
+}
+
+function FuelMonitoringContent() {
   const access = useModuleAccess();
   const canEdit = access.canEdit("transport");
   const { statuses, loading } = useFleetStatus();
-  const [kind, setKind] = React.useState<PeriodKind>("month");
-  const [anchor, setAnchor] = React.useState(todayIso());
   const [vehicleId, setVehicleId] = React.useState("all");
-  const period = periodRange(kind, anchor);
-  const data = usePeriodData(period.from, period.to);
+  const period = usePeriodPresets("fuel", "this_month");
+  const data = usePeriodData(period.window!.from, period.window!.to);
   const routes = useRouteKm();
   const { kindName } = useVehicleExpenses();
-  const atToday = period.to >= todayIso();
 
   const shown = statuses.filter((s) => vehicleId === "all" || s.vehicle.id === vehicleId);
   const perVehicle = shown.map((s) => ({
@@ -82,7 +82,7 @@ export default function FuelMonitoringPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <PageHeader title="Fuel Monitoring" description="Trips, km, fuel and every vehicle cost, by day, week, month, quarter or year." action={<ModuleSubNav items={TRANSPORT_SUB_NAV} />} />
+      <PageHeader title="Fuel Monitoring" description="Trips, km, fuel and every vehicle cost for the period you pick." action={<ModuleSubNav items={TRANSPORT_SUB_NAV} />} />
 
       {!loading && statuses.length === 0 ? (
         <EmptyState icon={Car} title="No vehicles yet" description="The Super Admin adds them in Settings › Vehicles." />
@@ -96,29 +96,7 @@ export default function FuelMonitoringPage() {
 
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="no-scrollbar flex gap-1 overflow-x-auto rounded-xl bg-muted p-1" role="tablist" aria-label="Period">
-            {KINDS.map((k) => (
-              <button
-                key={k.value}
-                type="button"
-                role="tab"
-                aria-selected={kind === k.value}
-                onClick={() => setKind(k.value)}
-                className="rounded-lg px-3 py-1.5 text-theme-sm font-medium whitespace-nowrap text-muted-foreground transition-colors aria-selected:bg-card aria-selected:text-foreground aria-selected:shadow-theme-xs"
-              >
-                {k.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1">
-            <Button size="icon-sm" variant="outline" aria-label="Earlier" onClick={() => setAnchor(shiftPeriod(kind, anchor, -1))}>
-              <ChevronLeft />
-            </Button>
-            <span className="min-w-40 text-center text-theme-sm font-medium tabular-nums">{period.label}</span>
-            <Button size="icon-sm" variant="outline" aria-label="Later" disabled={atToday} onClick={() => setAnchor(shiftPeriod(kind, anchor, 1))}>
-              <ChevronRight />
-            </Button>
-          </div>
+          <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} className="w-full" />
           {statuses.length > 1 && (
             <Select value={vehicleId} onValueChange={setVehicleId}>
               <SelectTrigger className="w-full sm:w-56" aria-label="Vehicle">

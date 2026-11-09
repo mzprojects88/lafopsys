@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
@@ -24,6 +25,8 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
+import { LoadingState } from "@/components/patterns/loading-state";
+import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { Button } from "@/components/ui/button";
 import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
@@ -84,13 +87,25 @@ function buildColumns(programs: Program[]): ColumnDef<CashEntry>[] {
 }
 
 export default function FinancePage() {
+  return (
+    <React.Suspense fallback={<LoadingState />}>
+      <FinanceContent />
+    </React.Suspense>
+  );
+}
+
+function FinanceContent() {
   const { canEdit } = useModuleAccess();
-  const { entries: cashEntries } = useCashEntriesData();
+  const { entries: all } = useCashEntriesData();
   const { programs } = useProgramsData();
   const columns = buildColumns(programs);
+  // In, out, net and the list follow the period (this month by default, or All time); pending stays "now".
+  const period = usePeriodPresets("finance", "this_month", true);
+  const w = period.window;
+  const cashEntries = w ? all.filter((e) => !!e.date && e.date >= w.from && e.date <= w.to) : all;
   const totalInflow = cashEntries.filter((e) => e.direction === "inflow").reduce((s, e) => s + e.amount, 0);
   const totalOutflow = cashEntries.filter((e) => e.direction === "outflow").reduce((s, e) => s + e.amount, 0);
-  const pendingCount = cashEntries.filter((e) => e.approvalStatus === "pending").length;
+  const pendingCount = all.filter((e) => e.approvalStatus === "pending").length;
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -105,11 +120,12 @@ export default function FinancePage() {
         }
       />
 
+      <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} allowAll />
       <KpiGrid>
-        <KpiCard label="Total Inflow" value={formatCurrency(totalInflow)} icon={TrendingUp} />
-        <KpiCard label="Total Outflow" value={formatCurrency(totalOutflow)} icon={TrendingDown} />
-        <KpiCard label="Net" value={formatCurrency(totalInflow - totalOutflow)} icon={Scale} />
-        <KpiCard label="Pending Approvals" value={pendingCount} icon={Clock} tone={pendingCount > 0 ? "warning" : "default"} />
+        <KpiCard label="Total Inflow" value={formatCurrency(totalInflow)} sublabel={period.label} icon={TrendingUp} />
+        <KpiCard label="Total Outflow" value={formatCurrency(totalOutflow)} sublabel={period.label} icon={TrendingDown} />
+        <KpiCard label="Net" value={formatCurrency(totalInflow - totalOutflow)} sublabel={period.label} icon={Scale} />
+        <KpiCard label="Pending Approvals" value={pendingCount} sublabel="Now" icon={Clock} tone={pendingCount > 0 ? "warning" : "default"} />
       </KpiGrid>
 
       <DataTable columns={columns} data={cashEntries} searchPlaceholder="Search cashflow…" pageSize={12} />

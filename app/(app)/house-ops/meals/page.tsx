@@ -6,10 +6,11 @@ import { Banknote, ChefHat, Users, Utensils } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
-import { Input } from "@/components/ui/input";
+import { LoadingState } from "@/components/patterns/loading-state";
+import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
 import { useKitchenRecords, type KitchenMeal } from "@/lib/hooks/use-kitchen-records";
 import { formatCurrency } from "@/lib/utils/currency";
-import { formatDate, todayIso } from "@/lib/utils/date";
+import { formatDate } from "@/lib/utils/date";
 
 const peso = (v: number | null) => (v === null ? "—" : formatCurrency(v, "PHP"));
 
@@ -34,9 +35,16 @@ const columns: ColumnDef<KitchenMeal>[] = [
  * drawn for it -- read only. Meals are recorded in LAF Inventory › Meals.
  */
 export default function MealsPage() {
-  const [month, setMonth] = React.useState(todayIso().slice(0, 7));
-  const from = `${month}-01`;
-  const to = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
+  return (
+    <React.Suspense fallback={<LoadingState />}>
+      <MealsContent />
+    </React.Suspense>
+  );
+}
+
+function MealsContent() {
+  const period = usePeriodPresets("house-meals", "this_month");
+  const { from, to } = period.window!;
   const { rows, error } = useKitchenRecords("house_meals", from, to);
   const meals = rows ?? [];
   const served = meals.reduce((s, m) => s + m.served, 0);
@@ -49,8 +57,8 @@ export default function MealsPage() {
       <PageHeader
         title="Meals"
         description="Meals the kitchen recorded in LAF Inventory, with who was served and the stock used. Read only: meals are recorded in LAF Inventory › Meals."
-        action={<Input type="month" aria-label="Month" className="w-44" value={month} max={todayIso().slice(0, 7)} onChange={(e) => e.target.value && setMonth(e.target.value)} />}
       />
+      <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} />
       <KpiGrid>
         <KpiCard label="Meals recorded" value={meals.length.toLocaleString()} icon={Utensils} />
         <KpiCard label="People served" value={served.toLocaleString()} icon={Users} />

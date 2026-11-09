@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { Download } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { ModuleSubNav } from "@/components/patterns/module-subnav";
 import { SectionCard } from "@/components/patterns/section-card";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
+import { LoadingState } from "@/components/patterns/loading-state";
+import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
@@ -13,9 +15,8 @@ import { useVehicles } from "@/lib/hooks/use-vehicles-collection";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { useVehicleExpenses } from "@/lib/hooks/use-vehicle-expenses-collection";
 import { TRANSPORT_SUB_NAV } from "@/components/modules/transport/transport-nav";
-import { periodRange, shiftPeriod, type PeriodKind } from "@/lib/utils/fuel";
 import { csvLines, downloadCsv } from "@/lib/utils/csv";
-import { formatDate, todayIso } from "@/lib/utils/date";
+import { formatDate } from "@/lib/utils/date";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatTime12 } from "@/lib/utils/time12";
 import { directionLabel } from "@/lib/utils/trip-direction";
@@ -51,27 +52,26 @@ interface ExpenseRow {
   posted: boolean;
 }
 
-const PERIODS: { value: PeriodKind; label: string }[] = [
-  { value: "day", label: "Day" },
-  { value: "week", label: "Week" },
-  { value: "month", label: "Month" },
-  { value: "quarter", label: "Quarter" },
-  { value: "year", label: "Year" },
-];
-
 /**
  * Transport & fuel report (go-live, 2026-10-13): the period's trips and fuel/expense entries as
  * tables with CSV downloads -- the Fuel Monitoring screen shows the figures, this hands them to
  * the office. Transport view is enough to read it.
  */
 export default function TransportReportPage() {
+  return (
+    <React.Suspense fallback={<LoadingState />}>
+      <TransportReportContent />
+    </React.Suspense>
+  );
+}
+
+function TransportReportContent() {
   const { vehicles } = useVehicles();
   const { staff } = useStaffRoster();
   const { kindName } = useVehicleExpenses();
-  const [kind, setKind] = React.useState<PeriodKind>("month");
-  const [anchor, setAnchor] = React.useState(todayIso());
   const [vehicleId, setVehicleId] = React.useState("all");
-  const period = periodRange(kind, anchor);
+  const presets = usePeriodPresets("transport-report", "this_month");
+  const period = { ...presets.window!, label: presets.label };
   const [trips, setTrips] = React.useState<TripRow[] | null>(null);
   const [expenses, setExpenses] = React.useState<ExpenseRow[] | null>(null);
 
@@ -151,9 +151,6 @@ export default function TransportReportPage() {
   const totalCost = shownExpenses.reduce((n, e) => n + e.amount, 0);
   const driverPaid = shownExpenses.filter((e) => e.paidBy === "driver").reduce((n, e) => n + e.amount, 0);
 
-  // Day keys stepped in UTC: a local midnight turned into ISO slipped a day back in Manila (UTC+8),
-  // so the arrows could stay on the same period. Same stepping as Fuel Monitoring.
-  const step = (dir: -1 | 1) => setAnchor(shiftPeriod(kind, anchor, dir));
 
   function exportTrips() {
     downloadCsv(
@@ -201,14 +198,8 @@ export default function TransportReportPage() {
   return (
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader title="Transport & Fuel Report" description={`${period.label}: trips, kilometres, fuel and expenses, with CSV downloads.`} action={<ModuleSubNav items={TRANSPORT_SUB_NAV} />} />
+      <PeriodPresetsBar state={presets.state} onChange={presets.setState} today={presets.today} />
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={kind} onValueChange={(v) => setKind(v as PeriodKind)}>
-          <SelectTrigger className="w-32" aria-label="Period"><SelectValue /></SelectTrigger>
-          <SelectContent>{PERIODS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}</SelectContent>
-        </Select>
-        <Button size="sm" variant="outline" aria-label="Earlier" onClick={() => step(-1)}><ChevronLeft /></Button>
-        <span className="text-theme-sm">{period.label}</span>
-        <Button size="sm" variant="outline" aria-label="Later" disabled={period.to >= todayIso()} onClick={() => step(1)}><ChevronRight /></Button>
         <Select value={vehicleId} onValueChange={setVehicleId}>
           <SelectTrigger className="w-48" aria-label="Vehicle"><SelectValue /></SelectTrigger>
           <SelectContent>

@@ -12,7 +12,6 @@ import { SectionCard } from "@/components/patterns/section-card";
 import { LoadingState } from "@/components/patterns/loading-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -28,6 +27,7 @@ import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
 import { csvLines, downloadCsv } from "@/lib/utils/csv";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { todayIso } from "@/lib/utils/date";
+import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
 import { dayKey, effectiveStatus, formatMinutes, isLong, sessionMinutes, timeLabel12, totalsFor, type DtrSession } from "@/lib/utils/dtr";
 import type { PunchLocationStatus, TimePunch } from "@/lib/types/staff";
 import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
@@ -285,10 +285,20 @@ function sessionsToCsv(rows: SessionRow[]): string {
 }
 
 export default function DtrPage() {
+  return (
+    <React.Suspense fallback={<LoadingState />}>
+      <DtrContent />
+    </React.Suspense>
+  );
+}
+
+function DtrContent() {
   const { staff } = useStaffRoster();
   const [staffFilter, setStaffFilter] = React.useState("all");
-  const [fromDate, setFromDate] = React.useState("");
-  const [toDate, setToDate] = React.useState("");
+  // The list and the CSV cover the period (this month by default, or All time); the cards stay today / this week / this month.
+  const period = usePeriodPresets("dtr", "this_month", true);
+  const fromDate = period.window?.from ?? "";
+  const toDate = period.window?.to ?? "";
   const [tab, setTab] = React.useState("sessions");
   const { role, roles, isHr, staffId: myId } = useRole();
   const { requests } = useCorrectionRequests();
@@ -408,6 +418,7 @@ export default function DtrPage() {
         <KpiCard label="Currently Clocked In" value={loading ? "…" : totals.openCount} icon={LogIn} />
       </KpiGrid>
 
+      <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} allowAll />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Field>
           <FieldLabel htmlFor="dtrStaff">Staff</FieldLabel>
@@ -424,14 +435,6 @@ export default function DtrPage() {
               ))}
             </SelectContent>
           </Select>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="dtrFrom">From</FieldLabel>
-          <Input id="dtrFrom" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="dtrTo">To</FieldLabel>
-          <Input id="dtrTo" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </Field>
       </div>
 

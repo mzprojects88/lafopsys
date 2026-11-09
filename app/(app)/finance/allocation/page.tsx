@@ -1,5 +1,8 @@
 "use client";
 
+import * as React from "react";
+import { LoadingState } from "@/components/patterns/loading-state";
+import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { PageHeader } from "@/components/patterns/page-header";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
@@ -15,8 +18,20 @@ const chartConfig: ChartConfig = {
 };
 
 export default function AllocationPage() {
-  const { entries: cashEntries } = useCashEntriesData();
+  return (
+    <React.Suspense fallback={<LoadingState />}>
+      <AllocationContent />
+    </React.Suspense>
+  );
+}
+
+function AllocationContent() {
+  const { entries: all } = useCashEntriesData();
   const { programs } = useProgramsData();
+  // Outflows dated in the period (this month by default, or All time).
+  const period = usePeriodPresets("finance-allocation", "this_month", true);
+  const w = period.window;
+  const cashEntries = w ? all.filter((e) => !!e.date && e.date >= w.from && e.date <= w.to) : all;
   const outflows = cashEntries.filter((e) => e.direction === "outflow");
   const totalOutflow = outflows.reduce((sum, e) => sum + e.amount, 0);
 
@@ -42,9 +57,10 @@ export default function AllocationPage() {
         description="Converts the website's headline percentage from an assertion into a computed, auditable figure."
       />
 
+      <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} allowAll />
       <KpiGrid>
-        <KpiCard label="% to Programs" value={programPct !== undefined ? `${programPct}%` : "—"} icon={Percent} />
-        <KpiCard label="Total Outflow" value={formatCurrency(totalOutflow)} icon={TrendingDown} />
+        <KpiCard label="% to Programs" value={programPct !== undefined ? `${programPct}%` : "—"} sublabel={period.label} icon={Percent} />
+        <KpiCard label="Total Outflow" value={formatCurrency(totalOutflow)} sublabel={period.label} icon={TrendingDown} />
         <KpiCard
           label="Program Spend"
           value={hasProgramAttribution ? formatCurrency(programSpend) : "—"}
@@ -59,7 +75,7 @@ export default function AllocationPage() {
         </p>
       )}
 
-      <SectionCard title="Spend by Program">
+      <SectionCard title="Spend by Program" description={period.label}>
           <ChartContainer config={chartConfig} className="h-72 w-full">
             <BarChart data={chartData} layout="vertical" margin={{ left: 16 }}>
               <CartesianGrid horizontal={false} />

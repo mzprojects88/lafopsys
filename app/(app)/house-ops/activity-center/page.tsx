@@ -2,7 +2,10 @@
 
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Plus } from "lucide-react";
+import { Clock, HandHeart, Plus, Sparkles, Users } from "lucide-react";
+import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
+import { LoadingState } from "@/components/patterns/loading-state";
+import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
@@ -45,7 +48,20 @@ const columns: ColumnDef<ActivitySession>[] = [
 ];
 
 export default function ActivityCenterPage() {
-  const { sessions, addSession } = useActivitySessionsData();
+  return (
+    <React.Suspense fallback={<LoadingState />}>
+      <ActivityCenterContent />
+    </React.Suspense>
+  );
+}
+
+function ActivityCenterContent() {
+  const { sessions: all, addSession } = useActivitySessionsData();
+  // The sessions and their totals in the period (this month by default).
+  const period = usePeriodPresets("activity-center", "this_month");
+  const w = period.window!;
+  const sessions = all.filter((x) => x.date >= w.from && x.date <= w.to);
+  const sum = (pick: (x: ActivitySession) => number) => sessions.reduce((n, x) => n + (pick(x) || 0), 0);
   const editable = useModuleAccess().canEdit("house_ops");
   const [open, setOpen] = React.useState(false);
   const [title, setTitle] = React.useState("");
@@ -147,6 +163,13 @@ export default function ActivityCenterPage() {
           </Dialog>
         }
       />
+      <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} />
+      <KpiGrid>
+        <KpiCard label="Sessions" value={sessions.length.toLocaleString()} sublabel={period.label} icon={Sparkles} />
+        <KpiCard label="Participants" value={sum((x) => x.participants).toLocaleString()} sublabel={period.label} icon={Users} />
+        <KpiCard label="Volunteers" value={sum((x) => x.volunteerCount).toLocaleString()} sublabel={period.label} icon={HandHeart} />
+        <KpiCard label="Hours" value={sum((x) => x.hours).toLocaleString()} sublabel={period.label} icon={Clock} />
+      </KpiGrid>
       <DataTable columns={columns} data={sessions} searchPlaceholder="Search sessions…" />
     </div>
   );

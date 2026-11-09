@@ -22,6 +22,8 @@ import { useRole } from "@/lib/rbac/use-role";
 import { holdsPower } from "@/lib/rbac/roles";
 import { VOLUNTEER_ACTIVITIES, type Volunteer, type VolunteerActivity } from "@/lib/types/staff";
 import { formatDate, todayIso } from "@/lib/utils/date";
+import { LoadingState } from "@/components/patterns/loading-state";
+import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
 
 const BLANK: VolunteerDraft = { firstName: "", lastName: "", focusArea: "Care Cart", phone: "", email: "", active: true };
 const hoursLabel = (h: number) => `${Math.round(h * 100) / 100} h`;
@@ -32,6 +34,14 @@ const hoursLabel = (h: number) => `${Math.round(h * 100) / 100} h`;
  * volunteers and log hours; the Super Admin and the Office Admin print certificates.
  */
 export default function VolunteersPage() {
+  return (
+    <React.Suspense fallback={<LoadingState />}>
+      <VolunteersContent />
+    </React.Suspense>
+  );
+}
+
+function VolunteersContent() {
   const access = useModuleAccess();
   const { roles } = useRole();
   // Those who run the Activity Center add volunteers; another House Operations page (the Nutritionist's Menu) doesn't count.
@@ -39,7 +49,10 @@ export default function VolunteersPage() {
   const canCertify = access.canEdit("staff") || holdsPower(roles, "runs_hr");
   const { volunteers, hours, addVolunteer, updateVolunteer, logHours, removeHours } = useVolunteersData();
   const today = todayIso();
-  const year = today.slice(0, 4);
+  // Hours and sessions in the period (this month by default); active volunteers stay "now".
+  const period = usePeriodPresets("volunteers", "this_month", true);
+  const w = period.window;
+  const inPeriod = hours.filter((h) => !w || (h.date >= w.from && h.date <= w.to));
 
   const [editing, setEditing] = React.useState<{ id: string | null; draft: VolunteerDraft } | null>(null);
   const [logging, setLogging] = React.useState<{ volunteerId: string; date: string; hours: string; activity: VolunteerActivity; note: string } | null>(null);
@@ -50,8 +63,6 @@ export default function VolunteersPage() {
     const v = volunteers.find((x) => x.id === id);
     return v ? `${v.firstName} ${v.lastName}` : "Volunteer";
   };
-  const hoursThisYear = hours.filter((h) => h.date.startsWith(year)).reduce((s, h) => s + h.hours, 0);
-  const sessionsThisMonth = hours.filter((h) => h.date.startsWith(today.slice(0, 7))).length;
 
   async function saveVolunteer() {
     if (!editing) return;
@@ -139,7 +150,7 @@ export default function VolunteersPage() {
               </>
             ) : null}
             {canCertify ? (
-              <Button size="sm" variant="outline" className="h-7 gap-1.5" disabled={v.totalHours <= 0} onClick={() => setCertFor({ volunteer: v, from: `${year}-01-01`, to: today })}>
+              <Button size="sm" variant="outline" className="h-7 gap-1.5" disabled={v.totalHours <= 0} onClick={() => setCertFor({ volunteer: v, from: `${today.slice(0, 4)}-01-01`, to: today })}>
                 <Award className="size-3.5" /> Certificate
               </Button>
             ) : null}
@@ -169,10 +180,11 @@ export default function VolunteersPage() {
           ) : null
         }
       />
+      <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} allowAll />
       <KpiGrid>
-        <KpiCard label="Active volunteers" value={volunteers.filter((v) => v.active).length} icon={Users} />
-        <KpiCard label={`Hours in ${year}`} value={hoursLabel(hoursThisYear)} icon={Clock} />
-        <KpiCard label="Sessions this month" value={sessionsThisMonth} icon={Award} />
+        <KpiCard label="Active volunteers" value={volunteers.filter((v) => v.active).length} sublabel="Now" icon={Users} />
+        <KpiCard label="Hours" value={hoursLabel(inPeriod.reduce((s, h) => s + h.hours, 0))} sublabel={period.label} icon={Clock} />
+        <KpiCard label="Sessions" value={inPeriod.length} sublabel={period.label} icon={Award} />
       </KpiGrid>
       <DataTable columns={columns} data={volunteers} searchPlaceholder="Search volunteers…" />
 

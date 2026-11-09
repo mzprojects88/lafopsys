@@ -1,5 +1,8 @@
 "use client";
 
+import * as React from "react";
+import { LoadingState } from "@/components/patterns/loading-state";
+import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
 import { PageHeader } from "@/components/patterns/page-header";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
@@ -20,15 +23,26 @@ const SUB_NAV: ModuleSubNavItem[] = [
 ];
 
 export default function HouseOpsPage() {
+  return (
+    <React.Suspense fallback={<LoadingState />}>
+      <HouseOpsContent />
+    </React.Suspense>
+  );
+}
+
+function HouseOpsContent() {
   const { history, loading } = useCensusData();
   const beds = useBedOccupancy();
   const { trips } = useTripsData();
-  // Today's meals as the kitchen recorded them in LAF Inventory (0102).
-  const { rows: todaysMealRows } = useKitchenRecords("house_meals", todayIso(), todayIso());
+  // Trips and meals follow the period (Today by default); the census and beds stay "now".
+  const period = usePeriodPresets("house-ops", "today");
+  const w = period.window!;
+  // Meals as the kitchen recorded them in LAF Inventory (0102).
+  const { rows: todaysMealRows } = useKitchenRecords("house_meals", w.from, w.to);
 
   const today = history.find((c) => c.date === todayIso()) ?? history[history.length - 1];
   const yesterday = today ? history[history.findIndex((c) => c.date === today.date) - 1] : undefined;
-  const todaysTrips = trips.filter((t) => t.date === todayIso()).length;
+  const todaysTrips = trips.filter((t) => t.date >= w.from && t.date <= w.to).length;
   const todaysMeals = (todaysMealRows ?? []).reduce((s, m) => s + m.served, 0);
 
   return (
@@ -38,6 +52,8 @@ export default function HouseOpsPage() {
         description="Live census, floor plan, meals, transport, Care Cart, and Activity Center."
         action={<ModuleSubNav items={SUB_NAV} />}
       />
+
+      <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} />
 
       <KpiGrid>
         <KpiCard
@@ -51,11 +67,11 @@ export default function HouseOpsPage() {
           }
           deltaLabel="vs previous day on record"
         />
-        <KpiCard label="Beds Occupied" value={beds.total ? `${beds.occupied} / ${beds.total}` : beds.loading ? "…" : "—"} icon={Home} />
-        <KpiCard label="Beds Shared" value={beds.total ? beds.shared : beds.loading ? "…" : "—"} icon={Share2} />
-        <KpiCard label="Utilization" value={beds.utilization !== undefined ? `${beds.utilization}%` : beds.loading ? "…" : "—"} icon={Percent} />
-        <KpiCard label="Trips Today" value={todaysTrips} icon={Car} />
-        <KpiCard label="Meals Served Today" value={todaysMeals} icon={Utensils} />
+        <KpiCard label="Beds Occupied" value={beds.total ? `${beds.occupied} / ${beds.total}` : beds.loading ? "…" : "—"} sublabel="Now" icon={Home} />
+        <KpiCard label="Beds Shared" value={beds.total ? beds.shared : beds.loading ? "…" : "—"} sublabel="Now" icon={Share2} />
+        <KpiCard label="Utilization" value={beds.utilization !== undefined ? `${beds.utilization}%` : beds.loading ? "…" : "—"} sublabel="Now" icon={Percent} />
+        <KpiCard label="Trips" value={todaysTrips} sublabel={period.label} icon={Car} />
+        <KpiCard label="Meals Served" value={todaysMeals} sublabel={period.label} icon={Utensils} />
       </KpiGrid>
     </div>
   );
