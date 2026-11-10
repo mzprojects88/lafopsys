@@ -77,7 +77,6 @@ create table if not exists ops.finance_settings (
   id boolean primary key default true check (id),
   start_date date,
   liquidation_days smallint check (liquidation_days between 1 and 90),
-  block_advance_when_overdue boolean not null default true,
   history_to_cash_book boolean not null default false,
   updated_at timestamptz not null default now()
 );

@@ -349,13 +349,11 @@ export default function FinancialSettingsPage() {
             columns={[
               { label: "Requests start", render: (r) => (r.start_date ? formatDate(str(r.start_date), "MMMM d, yyyy") : "Not set") },
               { label: "Liquidate advances within", render: (r) => (r.liquidation_days ? `${str(r.liquidation_days)} days` : "Not set") },
-              { label: "Overdue advance blocks a new one", render: (r) => (r.block_advance_when_overdue ? "Yes" : "No") },
               { label: "History to the cash book", render: (r) => (r.history_to_cash_book ? "On" : "Off") },
             ]}
             fields={[
               { key: "start_date", label: "Payment requests start on", kind: "date", hint: "Vouchers before this date come from the registers (history)." },
               { key: "liquidation_days", label: "Liquidate a cash advance within (days)", kind: "number" },
-              { key: "block_advance_when_overdue", label: "A person with an overdue advance can't get a new one", kind: "switch" },
               { key: "history_to_cash_book", label: "Imported (history) vouchers post to the cash book", kind: "switch", hint: "Off until the accountant decides. When on, entries already in the cash book are skipped, not counted twice." },
             ]}
           />
