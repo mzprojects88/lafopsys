@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   Settings,
   Bus,
+  Receipt,
   type LucideIcon,
 } from "lucide-react";
 
@@ -92,6 +93,7 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "House Operations", href: "/house-ops", group: "Work", icon: Home, module: "house_ops", note: "Also reads resident names, for trips and meals." },
   { title: "Donors & Donations", href: "/donors", group: "Work", icon: HandCoins, module: "donors", note: "Donations are recorded in the LAF Inventory app; this is the donor record and the receipts." },
   { title: "Financial", href: "/finance", group: "Work", icon: Wallet, module: "finance" },
+  { title: "Payment Requests", href: "/requests", group: "Work", icon: Receipt, module: "requests", note: "Ask for a payment, reimbursement or cash advance, and follow it to approval; signers sign here." },
   // Every government deadline the foundation carries (0043/0044); HR-flagged
   // people reach the same page through the HR sub-menu.
   { title: "Compliances", href: "/compliance", group: "Work", icon: ShieldCheck, module: "compliance" },

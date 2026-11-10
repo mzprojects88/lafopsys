@@ -23,7 +23,8 @@ export type ModuleKey =
   | "analytics"
   | "reports"
   | "settings"
-  | "transport";
+  | "transport"
+  | "requests";
 
 export type AccessLevel = "none" | "view" | "edit";
 
