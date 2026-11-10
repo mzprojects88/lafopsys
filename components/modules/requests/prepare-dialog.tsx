@@ -102,7 +102,7 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange }: { voucher:
               <div key={l.id} className="grid gap-2 rounded-xl border border-border p-3 sm:grid-cols-12">
                 <div className="sm:col-span-12 flex flex-wrap justify-between gap-2 text-theme-sm">
                   <span className="font-medium">{n + 1}. {l.description}{l.orNumber ? ` · OR ${l.orNumber}` : " · no OR number"}</span>
-                  <span className="tabular-nums">{formatCurrency(l.amount)}</span>
+                  <span className="tabular-nums">{formatCurrency(l.amount, "PHP", true)}</span>
                 </div>
                 <Select value={c.account_id ?? ""} onValueChange={(v) => set(n, { account_id: v })}>
                   <SelectTrigger className="w-full sm:col-span-6" aria-label={`Item ${n + 1}: account`}><SelectValue placeholder="Account" /></SelectTrigger>

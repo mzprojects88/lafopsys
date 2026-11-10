@@ -1,10 +1,12 @@
 import type { Currency } from "@/lib/types/common";
 
-export function formatCurrency(amount: number, currency: Currency = "PHP") {
+/** Whole units for figures at a glance; `exact` keeps the centavos (vouchers and their lines, Nov 2026). */
+export function formatCurrency(amount: number, currency: Currency = "PHP", exact = false) {
   return new Intl.NumberFormat(currency === "PHP" ? "en-PH" : "en-US", {
     style: "currency",
     currency,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: exact ? 2 : 0,
+    maximumFractionDigits: exact ? 2 : 0,
   }).format(amount);
 }
 

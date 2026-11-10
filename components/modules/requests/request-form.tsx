@@ -184,7 +184,7 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
         </div>
       </SectionCard>
 
-      <SectionCard title="Items" description="One line per thing paid for. The receipts and quotations are added once the request is saved." actions={<span className="text-theme-sm font-medium tabular-nums">Total {formatCurrency(total)}</span>}>
+      <SectionCard title="Items" description="One line per thing paid for. The receipts and quotations are added once the request is saved." actions={<span className="text-theme-sm font-medium tabular-nums">Total {formatCurrency(total, "PHP", true)}</span>}>
         <div className="flex flex-col gap-3">
           {items.map((item, n) => {
             const label = labelOf(item);
@@ -240,7 +240,7 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
                 <div className="flex items-end justify-between gap-2 sm:col-span-4">
                   <div className="text-theme-xs text-muted-foreground">
                     {account ? <>Account {String(account.code)} · {String(account.name)}</> : "The account follows the type."}
-                    <p className="text-theme-sm font-medium tabular-nums text-foreground">{formatCurrency(amount(item))}</p>
+                    <p className="text-theme-sm font-medium tabular-nums text-foreground">{formatCurrency(amount(item), "PHP", true)}</p>
                   </div>
                   {items.length > 1 ? (
                     <Button type="button" size="sm" variant="ghost" className="text-destructive" aria-label={`Remove item ${n + 1}`} onClick={() => setItems((list) => list.filter((_, i) => i !== n))}>

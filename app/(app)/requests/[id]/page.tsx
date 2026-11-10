@@ -122,7 +122,7 @@ export default function RequestDetailPage() {
             ["Fund", code(v.t2Id) || "—"],
             ["Paid by", PAY_LABEL[v.payMethod]],
             ["Needed by", v.neededBy ? formatDate(v.neededBy) : "—"],
-            ["Total", formatCurrency(v.total)],
+            ["Total", formatCurrency(v.total, "PHP", true)],
             ...(v.t4Code ? [["Employee (T4)", v.t4Code]] : []),
             ...(v.legacyLink ? [["Papers (register)", v.legacyLink]] : []),
           ].map(([k, val]) => (
@@ -198,11 +198,11 @@ export default function RequestDetailPage() {
               <tbody>
                 {lines.map((l) => (
                   <tr key={l.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-2.5">{l.description}<span className="block text-theme-xs text-muted-foreground">{l.qty} × {formatCurrency(l.unitCost)}</span></td>
+                    <td className="px-4 py-2.5">{l.description}<span className="block text-theme-xs text-muted-foreground">{l.qty} × {formatCurrency(l.unitCost, "PHP", true)}</span></td>
                     <td className="px-4 py-2.5">{l.orNumber ?? "—"}</td>
                     <td className="px-4 py-2.5">{[account(l.accountId)?.code ?? l.legacyCode, account(l.accountId)?.name].filter(Boolean).join(" ") || "—"}</td>
                     <td className="px-4 py-2.5">{[code(l.t1Id), code(l.t3Id)].filter(Boolean).join(":") || "—"}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{formatCurrency(l.amount)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{formatCurrency(l.amount, "PHP", true)}</td>
                   </tr>
                 ))}
               </tbody>

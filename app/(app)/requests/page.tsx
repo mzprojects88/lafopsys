@@ -160,7 +160,7 @@ function RequestsContent() {
     { id: "date", header: BASIS[basis], accessorFn: (v) => dateOf(v) ?? "", cell: ({ row }) => formatDate(dateOf(row.original)) },
     { id: "purpose", header: "For", accessorFn: (v) => v.purpose, cell: ({ row }) => <span className="line-clamp-2 max-w-72">{row.original.purpose}</span> },
     { id: "requester", header: "Requested by", accessorFn: (v) => name(v.requestedBy) || v.payeeText || "" },
-    { id: "amount", header: codeFilter ? "Amount (matching items)" : "Amount", accessorFn: amountOf, cell: ({ row }) => <span className="tabular-nums">{formatCurrency(amountOf(row.original))}</span> },
+    { id: "amount", header: codeFilter ? "Amount (matching items)" : "Amount", accessorFn: amountOf, cell: ({ row }) => <span className="tabular-nums">{formatCurrency(amountOf(row.original), "PHP", true)}</span> },
     { id: "status", header: "Status", accessorFn: (v) => v.status, cell: ({ row }) => <VoucherStatusBadge status={row.original.status} /> },
     {
       id: "waiting",
@@ -177,7 +177,7 @@ function RequestsContent() {
     { id: "account", header: "Account", accessorFn: (r) => [account(r.l.accountId)?.code ?? r.l.legacyCode, account(r.l.accountId)?.name].filter(Boolean).join(" ") },
     { id: "class", header: "Class", accessorFn: (r) => [code(r.l.t1Id), code(r.l.t3Id)].filter(Boolean).join(":") },
     { id: "fund", header: "Fund", accessorFn: (r) => code(r.v.t2Id) },
-    { id: "amount", header: "Amount", accessorFn: (r) => r.l.amount, cell: ({ row }) => <span className="tabular-nums">{formatCurrency(row.original.l.amount)}</span> },
+    { id: "amount", header: "Amount", accessorFn: (r) => r.l.amount, cell: ({ row }) => <span className="tabular-nums">{formatCurrency(row.original.l.amount, "PHP", true)}</span> },
   ];
 
   const canExport = holdsPower(roles, "finance_export");
@@ -216,8 +216,8 @@ function RequestsContent() {
 
       <KpiGrid>
         <KpiCard label="Requests" value={shown.length} sublabel={period.label} icon={Inbox} />
-        <KpiCard label={codeFilter ? "Amount (matching items)" : "Amount"} value={formatCurrency(total)} sublabel={period.label} icon={Wallet} />
-        <KpiCard label="Approved" value={formatCurrency(approved)} sublabel={`${shown.filter((v) => v.status === "approved").length} requests`} icon={FileCheck2} tone="positive" />
+        <KpiCard label={codeFilter ? "Amount (matching items)" : "Amount"} value={formatCurrency(total, "PHP", true)} sublabel={period.label} icon={Wallet} />
+        <KpiCard label="Approved" value={formatCurrency(approved, "PHP", true)} sublabel={`${shown.filter((v) => v.status === "approved").length} requests`} icon={FileCheck2} tone="positive" />
         <KpiCard
           label="Still moving"
           value={moving.length}
