@@ -33,6 +33,8 @@ export interface Program {
   id: string;
   name: ProgramTag;
   description: string;
+  /** The voucher program (T3 code) its spending counts under (0133). */
+  t3Id?: string | null;
 }
 
 export interface UnitOfMeasure {

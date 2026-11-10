@@ -31,6 +31,8 @@ export const POWERS: { key: Power; title: string; note: string }[] = [
   { key: "caf_billing", title: "Prepares NCH billing", note: "The monthly Cancer Assistance Fund bill: nights, final, sent, paid." },
   { key: "caf_billing_view", title: "Sees NCH billing", note: "Reads the monthly bills and downloads them." },
   { key: "confirm_summary", title: "Confirms the executive summary", note: "Approves the app's draft of each month's Key monthly drivers on the Executive page (the Super Admin always can)." },
+  { key: "finance_setup", title: "Sets up Finance", note: "Financial Settings: the chart of accounts, codes, expense types, approval authority, cash funds, payees and withholding." },
+  { key: "finance_export", title: "Exports for QuickBooks", note: "Downloads vouchers and their lists for QuickBooks, for any period." },
 ];
 
 const p = (module: ModuleKey, key: string, path: string, title: string, power?: Power): PageDef => ({ key: `${module}.${key}`, module, path, title, power });
@@ -96,6 +98,7 @@ export const PAGES: PageDef[] = [
   p("finance", "registers", "/finance/registers", "AR / Donee Cert Registers"),
   p("finance", "vehicle_costs", "/finance/vehicle-costs", "Vehicle costs"),
   p("finance", "entry", "/finance/entry", "New Cash Entry"),
+  p("finance", "settings", "/finance/settings", "Financial Settings", "finance_setup"),
   p("analytics", "dashboard", "/analytics", "Analytics"),
   p("reports", "catalogue", "/reports", "Reports"),
   p("reports", "documents", "/reports/documents", "Documents"),

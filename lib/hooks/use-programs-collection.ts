@@ -8,10 +8,11 @@ interface ProgramRow {
   id: string;
   name: string;
   description: string | null;
+  t3_id?: string | null;
 }
 
 function toProgram(row: ProgramRow): Program {
-  return { id: row.id, name: row.name as Program["name"], description: row.description ?? "" };
+  return { id: row.id, name: row.name as Program["name"], description: row.description ?? "", t3Id: row.t3_id ?? null };
 }
 
 /** Real `ops.programs` reference data -- the 6-item LAF program taxonomy. */

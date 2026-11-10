@@ -20,7 +20,11 @@ import {
   CalendarRange,
   Upload,
   Fuel,
+  Settings2,
 } from "lucide-react";
+import { FinanceSetupBanner } from "@/components/modules/finance/setup-banner";
+import { useRole } from "@/lib/rbac/use-role";
+import { holdsPower } from "@/lib/rbac/roles";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
@@ -46,6 +50,7 @@ const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/finance/close", label: "Monthly Close", icon: ClipboardCheck },
   { href: "/finance/registers", label: "Registers", icon: BookOpen },
   { href: "/finance/vehicle-costs", label: "Vehicle Costs", icon: Fuel },
+  { href: "/finance/settings", label: "Financial Settings", icon: Settings2 },
 ];
 import type { CashEntry } from "@/lib/types/finance";
 import type { Program } from "@/lib/types/reference";
@@ -99,6 +104,7 @@ export default function FinancePage() {
 
 function FinanceContent() {
   const { canEdit } = useModuleAccess();
+  const { roles } = useRole();
   const { entries: all } = useCashEntriesData();
   const { programs } = useProgramsData();
   const columns = buildColumns(programs);
@@ -132,6 +138,7 @@ function FinanceContent() {
         }
       />
 
+      {holdsPower(roles, "finance_setup") ? <FinanceSetupBanner /> : null}
       <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} allowAll />
       <KpiGrid>
         <KpiCard label="Total Inflow" value={formatCurrency(totalInflow)} sublabel={period.label} icon={TrendingUp} />
