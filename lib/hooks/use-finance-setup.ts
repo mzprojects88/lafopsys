@@ -47,26 +47,34 @@ export function useSetupRows(table: SetupTable) {
 
 type Result = { ok: true } | { ok: false; error: string };
 
+/** The database's refusals in plain words; anything else as it came. */
+function plain(error: { code?: string; message: string }): string {
+  if (error.code === "23505") return "Two rows would share a code: give one a new code first (for example one of the two 5204s).";
+  if (error.code === "23503") return "It is still used elsewhere (an expense type, a fund, a payee or a signer): change those first.";
+  if (error.code === "23514" && /coa_accounts_check/.test(error.message)) return "A row without a code can't be settled: give it a code, or remove it.";
+  return error.message;
+}
+
 /** Adds a row (no key) or changes it. */
 export async function saveSetupRow(table: SetupTable, key: string | null, values: SetupRow): Promise<Result> {
   const q = createClient().schema("ops").from(table);
   const { error } = key ? await q.update(values).eq(KEY[table] ?? "id", key) : await q.insert(values);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: plain(error) };
   await stores[table].refetch();
   return { ok: true };
 }
 
 export async function removeSetupRow(table: SetupTable, key: string): Promise<Result> {
   const { error } = await createClient().schema("ops").from(table).delete().eq(KEY[table] ?? "id", key);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: plain(error) };
   await stores[table].refetch();
   return { ok: true };
 }
 
-/** Clears every open review note in a table at once (the "Settle all" button). */
-export async function settleAll(table: SetupTable): Promise<Result> {
-  const { error } = await createClient().schema("ops").from(table).update({ review_note: null }).not("review_note", "is", null);
-  if (error) return { ok: false, error: error.message };
+/** Clears the open review notes of these rows at once (a card's "Settle all" button). */
+export async function settleAll(table: SetupTable, keys: string[]): Promise<Result> {
+  const { error } = await createClient().schema("ops").from(table).update({ review_note: null }).in(KEY[table] ?? "id", keys);
+  if (error) return { ok: false, error: plain(error) };
   await stores[table].refetch();
   return { ok: true };
 }

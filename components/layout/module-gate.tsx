@@ -12,8 +12,9 @@ import { pageForPath } from "@/lib/rbac/pages";
  * A page set to None for this person's roles (Settings -> Roles & Access) is not shown, even
  * from a typed URL (0093: per page; before, per menu). The data behind it is refused by the
  * database by the menu's level either way (0050); this keeps the page from rendering.
- * HR-flagged people reach Compliances through HR whatever their role's row; a page opened by a
- * power (HR management) checks the power itself.
+ * HR-flagged people reach Compliances through HR whatever their role's row. A page opened by a
+ * power needs the power (0133: Financial Settings), except HR, whose page is also everyone's own HR view
+ * and checks the power itself.
  */
 export function ModuleGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -24,7 +25,7 @@ export function ModuleGate({ children }: { children: React.ReactNode }) {
 
   if (!moduleKey || (moduleKey === "compliance" && isHr)) return <>{children}</>;
   if (!ready || loading) return null;
-  if (page?.power || (page ? levelOfPage(page) !== "none" : canView(moduleKey))) return <>{children}</>;
+  if (page?.power === "runs_hr" || (page ? levelOfPage(page) !== "none" : canView(moduleKey))) return <>{children}</>;
   return (
     <EmptyState
       icon={Lock}

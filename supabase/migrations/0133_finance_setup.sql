@@ -63,8 +63,8 @@ comment on column ops.programs.t3_id is 'The voucher program (T3) this ArkOS pro
 create table if not exists ops.expense_types (
   id uuid primary key default gen_random_uuid(),
   label text not null check (length(btrim(label)) between 1 and 80),
-  use_id uuid not null references ops.fin_codes(id) on delete cascade deferrable initially immediate,
-  account_id uuid not null references ops.coa_accounts(id) on delete cascade deferrable initially immediate,
+  use_id uuid not null references ops.fin_codes(id) on delete restrict deferrable initially immediate,
+  account_id uuid not null references ops.coa_accounts(id) on delete restrict deferrable initially immediate,
   sort integer not null default 0,
   active boolean not null default true,
   review_note text check (length(review_note) <= 1000),
@@ -93,7 +93,7 @@ create table if not exists ops.voucher_authority (
   requester_role text references shared.roles(key) on delete cascade deferrable initially immediate,
   min_amount numeric(12, 2) not null default 0 check (min_amount >= 0),
   max_amount numeric(12, 2) check (max_amount is null or max_amount > min_amount),
-  staff_id uuid references shared.staff(id) on delete cascade deferrable initially immediate,
+  staff_id uuid references shared.staff(id) on delete restrict deferrable initially immediate,
   alternate_staff_id uuid references shared.staff(id) on delete set null deferrable initially immediate,
   urgent boolean not null default false,
   updated_at timestamptz not null default now(),
@@ -440,6 +440,29 @@ begin
   end loop;
 end $$;
 
+-- Programs belong to Settings (Super Admin), so whoever sets up Finance maps them to their voucher program
+-- through this function: only that column, and logged like the rest.
+create or replace function ops.set_program_t3(p_program text, p_t3 uuid)
+returns void language plpgsql security definer set search_path = ops, shared, pg_temp as $$
+declare v_before jsonb;
+begin
+  if not shared.has_power('finance_setup') then
+    raise exception 'Only whoever sets up Finance can map programs.' using errcode = '42501';
+  end if;
+  if p_t3 is not null and not exists (select 1 from ops.fin_codes where id = p_t3 and tier = 'T3') then
+    raise exception 'Pick a T3 program code.' using errcode = '23514';
+  end if;
+  select to_jsonb(p) into v_before from ops.programs p where p.id = p_program;
+  if v_before is null then
+    raise exception 'No such program.' using errcode = 'P0002';
+  end if;
+  update ops.programs set t3_id = p_t3 where id = p_program;
+  insert into ops.finance_setup_log (table_name, row_key, action, before, after)
+  select 'programs', p_program, 'UPDATE', v_before, to_jsonb(p) from ops.programs p where p.id = p_program;
+end $$;
+revoke all on function ops.set_program_t3(text, uuid) from public;
+grant execute on function ops.set_program_t3(text, uuid) to authenticated, service_role;
+
 -- 8. The setup checklist (the Monthly Close pattern): what is still open before the first payment request.
 -- Any staff member may ask (the request form shows whether requests are open); it answers with counts and
 -- the names of roles, programs, steps and funds, never people.
@@ -472,13 +495,14 @@ begin
       case when v_list is not null then 'ArkOS programs without a voucher program: ' || v_list || '.' end,
       case when n = 0 and v_list is null then 'Every code is settled and every ArkOS program has its voucher program.' end));
 
-  select count(*) filter (where e.review_note is not null), string_agg(distinct e.label, ', ') filter (where a.is_header or not a.active)
+  select count(*) filter (where e.review_note is not null),
+         string_agg(distinct e.label, ', ') filter (where a.is_header or not a.active or u.tier = 'T2' or not u.active)
     into n, v_list
-    from ops.expense_types e join ops.coa_accounts a on a.id = e.account_id where e.active;
+    from ops.expense_types e join ops.coa_accounts a on a.id = e.account_id join ops.fin_codes u on u.id = e.use_id where e.active;
   v_items := v_items || jsonb_build_object('key', 'expense_types', 'label', 'Expense types confirmed', 'done', n = 0 and v_list is null,
     'detail', concat_ws(' ',
       case when n = 1 then '1 expense type to confirm.' when n > 1 then n || ' expense types to confirm.' end,
-      case when v_list is not null then 'Pointing at a heading or switched-off account: ' || v_list || '.' end,
+      case when v_list is not null then 'Pointing at a heading or switched-off account, or at a donor fund or switched-off code instead of a program or cost center: ' || v_list || '.' end,
       case when n = 0 and v_list is null then 'Every expense type is confirmed.' end));
 
   -- Each step must be covered from 0 up (ranges [min, max)), counting only rows whose person is active:
@@ -510,6 +534,9 @@ begin
     into v_list
     from ops.cash_funds f left join ops.coa_accounts a on a.id = f.account_id
     where f.active and (f.account_id is null or a.is_header or not a.active or a.review_note is not null or f.float_amount is null or f.top_up_below is null or f.custodian_staff_id is null);
+  if not exists (select 1 from ops.cash_funds where active and kind = 'petty_cash') then
+    v_list := concat_ws('; ', 'No petty cash fund in use', v_list);
+  end if;
   v_items := v_items || jsonb_build_object('key', 'funds', 'label', 'Petty cash and GCash funds set', 'done', v_list is null,
     'detail', coalesce(v_list || '.', 'Every fund has its account, float, top-up point and custodian.'));
 

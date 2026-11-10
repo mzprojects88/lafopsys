@@ -90,6 +90,30 @@ try {
   await check("finance staff hold the export power", null, `select count(*)::int n from shared.role_powers where role = 'finance' and power = 'finance_export'`, (r) => r.ok && r.rows[0].n === 1);
   await check("authenticated may run the checklist", null, `select has_function_privilege('authenticated', 'ops.finance_setup_checklist()', 'execute') ok, has_function_privilege('authenticated', 'ops.log_finance_setup()', 'execute') logfn`, (r) => r.ok && r.rows[0].ok === true);
 
+  // Removing what others still use is refused, never cascaded (code review, 10 Nov).
+  await check("removing an account an expense type uses is refused", ids.admin, `delete from ops.coa_accounts where code = '5934'`, (r) => !r.ok && r.code === "23503");
+  await check("removing a program code is refused while expense types use it", ids.admin, `delete from ops.fin_codes where code = 'TRN'`, (r) => !r.ok && r.code === "23503" && /expense_types_use_id_fkey/.test(r.error));
+  await check("a signer's staff row is protected (restrict, not cascade)", null, `select string_agg(conname || '=' || confdeltype::text, ',' order by conname) s from pg_constraint where conrelid in ('ops.voucher_authority'::regclass, 'ops.expense_types'::regclass) and contype = 'f'`, (r) => r.ok && /expense_types_account_id_fkey=r/.test(r.rows[0].s) && /expense_types_use_id_fkey=r/.test(r.rows[0].s) && /voucher_authority_staff_id_fkey=r/.test(r.rows[0].s) && /voucher_authority_alternate_staff_id_fkey=n/.test(r.rows[0].s));
+  await c.query("savepoint funds_off");
+  await c.query(`update ops.cash_funds set active = false`);
+  await c.query(`update ops.expense_types set use_id = md5('code:T2:OC')::uuid where label = 'Rent'`);
+  await check("no petty cash fund in use keeps funds open; an expense type on a fund is flagged", ids.sw, `select ops.finance_setup_checklist() j`, (r) => {
+    const items = checklist(r)?.items ?? [];
+    const f = items.find((i) => i.key === "funds"), e = items.find((i) => i.key === "expense_types");
+    console.log("   ", f?.detail, "|", e?.detail);
+    return f && !f.done && /No petty cash/.test(f.detail) && /Rent/.test(e?.detail ?? "");
+  });
+  await c.query("rollback to savepoint funds_off");
+
+  // A person granted "Sets up Finance" (not a Super Admin) works the settings and maps the programs.
+  await check("finance staff can't map a program", ids.finance, `select ops.set_program_t3('prog-housing', null)`, (r) => !r.ok && r.code === "42501");
+  await c.query("savepoint granted");
+  await c.query(`insert into shared.role_powers (role, power) values ('finance', 'finance_setup')`);
+  await check("with the power, finance staff change the chart", ids.finance, `update ops.coa_accounts set name = name where code = '1101' returning id`, (r) => r.ok && r.n === 1);
+  await check("with the power, finance staff map a program (logged)", ids.finance, `select ops.set_program_t3('prog-meals', md5('code:T3:CCT')::uuid); select 1`, (r) => r.ok);
+  await check("... a T1 code is refused as a program", ids.finance, `select ops.set_program_t3('prog-meals', md5('code:T1:ADM')::uuid)`, (r) => !r.ok && r.code === "23514");
+  await c.query("rollback to savepoint granted");
+
   // Completing the setup turns the checklist ready.
   await c.query("savepoint setup_all");
   await c.query(`update ops.coa_accounts set code = '5205' where id = md5('coa:134')::uuid`);

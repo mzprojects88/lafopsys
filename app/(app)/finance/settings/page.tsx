@@ -43,7 +43,7 @@ const STEPS = [
 ];
 const TABLE_LABEL: Record<string, string> = {
   coa_accounts: "Chart of accounts", fin_codes: "Codes", expense_types: "Expense types", finance_settings: "General",
-  voucher_authority: "Authority", cash_funds: "Funds", ewt_rates: "Withholding rates", payees: "Payees",
+  voucher_authority: "Authority", cash_funds: "Funds", ewt_rates: "Withholding rates", payees: "Payees", programs: "ArkOS programs",
 };
 
 const str = (v: unknown) => (v == null ? "" : String(v));
@@ -88,7 +88,7 @@ export default function FinancialSettingsPage() {
   const headings = accounts.filter((a) => a.is_header && a.code).map((a) => ({ value: str(a.id), label: accountLabel(a.id) }));
   const t1 = codes.filter((c) => c.tier === "T1").map((c) => ({ value: str(c.id), label: codeLabel(c.id) }));
   const t3 = codes.filter((c) => c.tier === "T3").map((c) => ({ value: str(c.id), label: codeLabel(c.id) }));
-  const people = staff.filter((s) => s.active && s.role !== "partner_viewer").map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName}` }));
+  const people = staff.filter((s) => s.active).map((s) => ({ value: s.id, label: personLabel(s.id) }));
   const roleOptions = roles.filter((r) => !r.archived_at && r.key !== "partner_viewer").map((r) => ({ value: r.key, label: r.name }));
 
   const nextSort = (rows: SetupRow[]) => Math.max(0, ...rows.map((r) => Number(r.sort ?? 0))) + 1;
@@ -199,7 +199,7 @@ export default function FinancialSettingsPage() {
                   <Select
                     value={p.t3Id ?? "__none"}
                     onValueChange={async (v) => {
-                      const { error } = await createClient().schema("ops").from("programs").update({ t3_id: v === "__none" ? null : v }).eq("id", p.id);
+                      const { error } = await createClient().schema("ops").rpc("set_program_t3", { p_program: p.id, p_t3: v === "__none" ? null : v });
                       if (error) return void toast.error(error.message);
                       await programsStore.refetch();
                     }}

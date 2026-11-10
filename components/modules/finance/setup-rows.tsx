@@ -107,7 +107,7 @@ export function SetupRows({ table, title, description, rows, columns, fields, bl
 
   async function settleEverything() {
     if (!confirm(`Mark all ${notes} notes in ${title} as settled? Do this only once each one has been checked.`)) return;
-    const r = await settleAll(table);
+    const r = await settleAll(table, rows.filter((x) => x.review_note).map((x) => keyOf(table, x)));
     toast[r.ok ? "success" : "error"](r.ok ? "All settled" : r.error);
   }
 
