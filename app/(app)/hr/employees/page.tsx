@@ -16,6 +16,8 @@ import { useEmployees } from "@/lib/hooks/use-employees-collection";
 import { useRole } from "@/lib/rbac/use-role";
 import { canManageHr } from "@/lib/rbac/roles";
 import { formatDate } from "@/lib/utils/date";
+import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/filters";
+import { optionsOf } from "@/lib/utils/filters";
 import { EMPLOYMENT_STATUSES, EMPLOYMENT_TYPES, employeeFullName, type Employee, type EmploymentStatus } from "@/lib/types/hr";
 
 const TYPE_LABEL = Object.fromEntries(EMPLOYMENT_TYPES.map((t) => [t.value, t.label]));
@@ -28,6 +30,7 @@ export default function EmployeesPage() {
   const { employees, loading, error } = useEmployees();
   const [query, setQuery] = React.useState("");
   const [status, setStatus] = React.useState<"working" | EmploymentStatus | "all">("working");
+  const f = useFilters("department", "type");
 
   if (!canManageHr(role, isHr)) {
     return <EmptyState title="HR only" description="The employee register is for admins and HR." />;
@@ -36,6 +39,7 @@ export default function EmployeesPage() {
   const q = query.trim().toLowerCase();
   const rows = employees.filter((e) => {
     if (status === "working" ? !(e.status === "active" || e.status === "on_leave") : status !== "all" && e.status !== status) return false;
+    if (!f.ok("department", e.department) || !f.ok("type", e.employmentType)) return false;
     if (!q) return true;
     return [employeeFullName(e), e.employeeCode, e.position, e.department ?? ""].some((v) => v.toLowerCase().includes(q));
   });
@@ -91,6 +95,9 @@ export default function EmployeesPage() {
           <SelectItem value="all">Everyone</SelectItem>
         </SelectContent>
       </Select>
+      <FilterSelect all="All departments" value={f.values.department} onChange={f.set("department")} options={optionsOf(employees, (e) => e.department)} className="w-44" />
+      <FilterSelect all="All employment types" value={f.values.type} onChange={f.set("type")} options={optionsOf(employees, (e) => e.employmentType, (v) => TYPE_LABEL[v] ?? v)} className="w-48" />
+      <ClearFilters active={f.active} onClear={f.clear} />
       <span className="text-xs text-muted-foreground">{rows.length} shown</span>
     </div>
   );

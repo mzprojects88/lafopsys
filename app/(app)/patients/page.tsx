@@ -7,9 +7,12 @@ import { Users, UserCheck, CalendarPlus, LogIn, LogOut, BedDouble, Utensils, Hom
 import { LoadingState } from "@/components/patterns/loading-state";
 import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
 import { useProgramImpact } from "@/lib/hooks/use-program-impact";
-import { shown, total } from "@/lib/utils/program-impact";
+import { shown as impactShown, total } from "@/lib/utils/program-impact";
 import { isActiveStay } from "@/lib/utils/beds";
 import { useCensusData } from "@/lib/hooks/use-census-collection";
+import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/filters";
+import { optionsOf } from "@/lib/utils/filters";
+import { useReferenceTableData } from "@/lib/hooks/use-reference-table-collection";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
@@ -21,7 +24,7 @@ import { SheetChangesPanel } from "@/components/modules/patients/sheet-changes-p
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { cities } from "@/lib/mock-data/reference-data";
 import { useDiagnosesReferenceData } from "@/lib/hooks/use-diagnoses-reference-collection";
-import { PRIORITIES, recordGaps } from "@/lib/utils/master-sheet";
+import { ILLNESS_CODES, PRIORITIES, recordGaps } from "@/lib/utils/master-sheet";
 import Link from "next/link";
 import type { Carer, Patient } from "@/lib/types/patient";
 import { computeAge } from "@/lib/utils/age";
@@ -99,17 +102,47 @@ function PatientsContent() {
   const w = period.window!;
   const inPeriod = (date: string | undefined | null) => !!date && date.slice(0, 10) >= w.from && date.slice(0, 10) <= w.to;
   const [onlyAdmitted, setOnlyAdmitted] = React.useState(false);
-  const ongoingCount = patients.filter((p) => p.status === "ongoing").length;
-  // As the Dashboard counts it: families checked in now, or the house sheet's count while nobody is checked in in the app.
+  // Filters beside the dates: the cards and the list follow them (nights and meals stay for everyone).
+  const { rows: provinces } = useReferenceTableData("provinces", "prov", "region");
+  const { rows: phases } = useReferenceTableData("treatment_phases", "phase");
+  const f = useFilters("status", "sex", "caf", "type", "priority", "province", "phase");
+  const shown = patients.filter(
+    (p) =>
+      f.ok("status", p.status) &&
+      f.ok("sex", p.sex) &&
+      f.ok("caf", p.cafBilling ? "yes" : "no") &&
+      f.ok("type", p.illnessCode) &&
+      f.ok("priority", p.priority) &&
+      f.ok("province", p.provinceId) &&
+      f.ok("phase", p.treatmentPhaseId)
+  );
+  const shownIds = new Set(shown.map((p) => p.id));
+  const theirs = stays.filter((s) => shownIds.has(s.patientId));
+  const ongoingCount = shown.filter((p) => p.status === "ongoing").length;
+  // As the Dashboard counts it: families checked in now, or the house sheet's count while nobody is checked in in the app
+  // (the sheet's count has no names, so it is left out while a filter is set).
   const { history: census } = useCensusData();
-  const inHouse = stays.filter(isActiveStay).length || (census[census.length - 1]?.inHouse ?? 0);
-  const admitted = patients.filter((p) => inPeriod(p.admittedAt));
-  const checkIns = stays.filter((s) => inPeriod(s.checkInAt)).length;
-  const checkOuts = stays.filter((s) => inPeriod(s.checkOutAt)).length;
+  const inHouse = theirs.filter(isActiveStay).length || (f.active ? 0 : (census[census.length - 1]?.inHouse ?? 0));
+  const admitted = shown.filter((p) => inPeriod(p.admittedAt));
+  const checkIns = theirs.filter((s) => inPeriod(s.checkInAt)).length;
+  const checkOuts = theirs.filter((s) => inPeriod(s.checkOutAt)).length;
+  const nameOf = (list: { id: string; name: string }[]) => (id: string) => list.find((x) => x.id === id)?.name ?? id;
+  const toolbar = (
+    <>
+      <FilterSelect all="All statuses" value={f.values.status} onChange={f.set("status")} options={optionsOf(patients, (p) => p.status)} />
+      <FilterSelect all="Both sexes" value={f.values.sex} onChange={f.set("sex")} options={optionsOf(patients, (p) => p.sex, (v) => (v === "F" ? "Female" : "Male"))} className="w-32" />
+      <FilterSelect all="CAF or not" value={f.values.caf} onChange={f.set("caf")} options={[{ value: "yes", label: "CAF billed" }, { value: "no", label: "Not CAF" }]} className="w-32" />
+      <FilterSelect all="All illnesses" value={f.values.type} onChange={f.set("type")} options={optionsOf(patients, (p) => p.illnessCode, (v) => ILLNESS_CODES[v as keyof typeof ILLNESS_CODES] ?? v)} />
+      <FilterSelect all="All priorities" value={f.values.priority} onChange={f.set("priority")} options={optionsOf(patients, (p) => p.priority, (v) => `${v} · ${PRIORITIES[v as keyof typeof PRIORITIES] ?? ""}`)} />
+      <FilterSelect all="All provinces" value={f.values.province} onChange={f.set("province")} options={optionsOf(patients, (p) => p.provinceId, nameOf(provinces))} />
+      <FilterSelect all="All treatment phases" value={f.values.phase} onChange={f.set("phase")} options={optionsOf(patients, (p) => p.treatmentPhaseId, nameOf(phases))} className="w-48" />
+      <ClearFilters active={f.active} onClear={f.clear} />
+    </>
+  );
   // Nights and meals as the Programs report counts them (the app's records, or the sheet while it is the record).
   const impact = useProgramImpact(w, "month");
-  const nights = impact.loading || impact.error ? "—" : total(impact.rows, "housing", shown).toLocaleString();
-  const meals = impact.loading || impact.error ? "—" : (["meals_breakfast", "meals_lunch", "meals_dinner"] as const).reduce((s, l) => s + total(impact.rows, l, shown), 0).toLocaleString();
+  const nights = impact.loading || impact.error ? "—" : total(impact.rows, "housing", impactShown).toLocaleString();
+  const meals = impact.loading || impact.error ? "—" : (["meals_breakfast", "meals_lunch", "meals_dinner"] as const).reduce((s, l) => s + total(impact.rows, l, impactShown), 0).toLocaleString();
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -129,11 +162,11 @@ function PatientsContent() {
         <KpiCard label="Admitted" value={admitted.length} sublabel={period.label} icon={CalendarPlus} />
         <KpiCard label="Check-ins" value={checkIns} sublabel={period.label} icon={LogIn} />
         <KpiCard label="Check-outs" value={checkOuts} sublabel={period.label} icon={LogOut} />
-        <KpiCard label="Nights Housed" value={nights} sublabel={`People-nights · ${period.label}`} icon={BedDouble} />
-        <KpiCard label="Meals Served" value={meals} sublabel={period.label} icon={Utensils} />
+        <KpiCard label="Nights Housed" value={nights} sublabel={`People-nights${f.active ? ", all patients" : ""} · ${period.label}`} icon={BedDouble} />
+        <KpiCard label="Meals Served" value={meals} sublabel={f.active ? `All patients · ${period.label}` : period.label} icon={Utensils} />
         <KpiCard label="In the House" value={inHouse} sublabel="Families · now" icon={Home} />
         <KpiCard label="Ongoing" value={ongoingCount} sublabel="Now" icon={UserCheck} />
-        <KpiCard label="Total Patients" value={patients.length} sublabel="All time" icon={Users} />
+        <KpiCard label="Total Patients" value={shown.length} sublabel={f.active ? `All time · ${patients.length} without filters` : "All time"} icon={Users} />
       </KpiGrid>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -149,7 +182,8 @@ function PatientsContent() {
 
       <DataTable
         columns={columns}
-        data={onlyAdmitted ? admitted : patients}
+        data={onlyAdmitted ? admitted : shown}
+        toolbar={toolbar}
         searchPlaceholder="Search patients…"
         onRowClick={(p) => router.push(`/patients/${p.id}`)}
       />

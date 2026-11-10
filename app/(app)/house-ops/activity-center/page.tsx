@@ -6,6 +6,7 @@ import { Clock, HandHeart, Plus, Sparkles, Users } from "lucide-react";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { LoadingState } from "@/components/patterns/loading-state";
 import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
+import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/filters";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
@@ -60,7 +61,8 @@ function ActivityCenterContent() {
   // The sessions and their totals in the period (this month by default).
   const period = usePeriodPresets("activity-center", "this_month");
   const w = period.window!;
-  const sessions = all.filter((x) => x.date >= w.from && x.date <= w.to);
+  const f = useFilters("site");
+  const sessions = all.filter((x) => x.date >= w.from && x.date <= w.to && f.ok("site", x.site ?? "NCH"));
   const sum = (pick: (x: ActivitySession) => number) => sessions.reduce((n, x) => n + (pick(x) || 0), 0);
   const editable = useModuleAccess().canEdit("house_ops");
   const [open, setOpen] = React.useState(false);
@@ -170,7 +172,17 @@ function ActivityCenterContent() {
         <KpiCard label="Volunteers" value={sum((x) => x.volunteerCount).toLocaleString()} sublabel={period.label} icon={HandHeart} />
         <KpiCard label="Hours" value={sum((x) => x.hours).toLocaleString()} sublabel={period.label} icon={Clock} />
       </KpiGrid>
-      <DataTable columns={columns} data={sessions} searchPlaceholder="Search sessions…" />
+      <DataTable
+        columns={columns}
+        data={sessions}
+        searchPlaceholder="Search sessions…"
+        toolbar={
+          <>
+            <FilterSelect all="Both sites" value={f.values.site} onChange={f.set("site")} options={[{ value: "NCH", label: "LAF Center @ NCH" }, { value: "LAF", label: "LAF House" }]} className="w-44" />
+            <ClearFilters active={f.active} onClear={f.clear} />
+          </>
+        }
+      />
     </div>
   );
 }

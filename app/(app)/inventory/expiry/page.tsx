@@ -8,12 +8,17 @@ import { SectionCard } from "@/components/patterns/section-card";
 import { LoadingState } from "@/components/patterns/loading-state";
 import { useExpiringLots, useStorageLocations } from "@/lib/hooks/use-inventory-views";
 import { formatCurrency } from "@/lib/utils/currency";
+import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/filters";
+import { optionsOf } from "@/lib/utils/filters";
 import { expiryStatus } from "@/lib/utils/inventory-status";
 
 export default function ExpiryPage() {
-  const { rows, loading, error } = useExpiringLots();
+  const { rows: all, loading, error } = useExpiringLots();
   const { rows: locations } = useStorageLocations();
   const pathById = new Map(locations.map((l) => [l.id, l.path]));
+  // Where the lots are stored narrows the three columns and the value at risk.
+  const f = useFilters("location");
+  const rows = all.filter((l) => f.ok("location", l.storage_location_id));
 
   // v_expiring is already the 60-day window, sorted first-expired-first-out.
   const sorted = [...rows].sort((a, b) => a.days_left - b.days_left);
@@ -32,6 +37,11 @@ export default function ExpiryPage() {
           loading ? undefined : `${rows.length} lot${rows.length === 1 ? "" : "s"} expiring within 60 days · ${formatCurrency(valueAtRisk)} at risk. Sorted first-expired-first-out.`
         }
       />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <FilterSelect all="Every location" value={f.values.location} onChange={f.set("location")} options={optionsOf(all, (l) => l.storage_location_id, (v) => pathById.get(v) ?? v)} className="w-64" />
+        <ClearFilters active={f.active} onClear={f.clear} />
+      </div>
 
       {error ? (
         <EmptyState title="Couldn't load expiry data" description={error} />

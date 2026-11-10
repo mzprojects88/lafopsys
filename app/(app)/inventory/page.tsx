@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { useStockSummary } from "@/lib/hooks/use-inventory-views";
 import type { StockSummaryRow } from "@/lib/types/inventory-views";
 import { formatCurrency } from "@/lib/utils/currency";
+import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/filters";
+import { optionsOf } from "@/lib/utils/filters";
 import { inventoryAppHref } from "@/lib/utils/inventory-app";
 
 const SUB_NAV: ModuleSubNavItem[] = [
@@ -65,7 +67,10 @@ const columns: ColumnDef<ItemRow>[] = [
 export default function InventoryPage() {
   const router = useRouter();
   const { rows, loading, error } = useStockSummary();
-  const items = React.useMemo(() => foldByItem(rows), [rows]);
+  const all = React.useMemo(() => foldByItem(rows), [rows]);
+  // Category and stock status narrow the cards and the list.
+  const f = useFilters("category", "status");
+  const items = all.filter((i) => f.ok("category", i.category) && f.ok("status", i.status));
 
   const lowStock = items.filter((i) => i.status === "low").length;
   const outOfStock = items.filter((i) => i.status === "out").length;
@@ -104,6 +109,13 @@ export default function InventoryPage() {
         <DataTable
           columns={columns}
           data={items}
+          toolbar={
+            <>
+              <FilterSelect all="All categories" value={f.values.category} onChange={f.set("category")} options={optionsOf(all, (i) => i.category, (v) => v.charAt(0) + v.slice(1).toLowerCase())} className="w-44" />
+              <FilterSelect all="Any stock status" value={f.values.status} onChange={f.set("status")} options={[{ value: "ok", label: "In stock" }, { value: "low", label: "Low" }, { value: "out", label: "Out" }]} />
+              <ClearFilters active={f.active} onClear={f.clear} />
+            </>
+          }
           searchPlaceholder="Search items…"
           emptyMessage="No items with stock on hand."
           onRowClick={(item) => router.push(`/inventory/${item.item_id}`)}

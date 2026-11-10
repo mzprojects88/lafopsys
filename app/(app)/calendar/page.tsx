@@ -19,6 +19,8 @@ import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { SyncStatus } from "@/components/modules/calendar/sync-status";
 import { dayKey, monthKey } from "@/lib/utils/dtr";
 import { inWindow, periodLabel, periodWindow, shiftAnchor, type PeriodKind } from "@/lib/utils/period";
+import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/filters";
+import { optionsOf } from "@/lib/utils/filters";
 import type { CalendarEvent } from "@/lib/types/calendar";
 
 const PERIODS: { kind: PeriodKind; label: string }[] = [
@@ -38,7 +40,10 @@ const PERIODS: { kind: PeriodKind; label: string }[] = [
  * Manila day from useNow(), never the frozen demo constant.
  */
 export default function CalendarPage() {
-  const { events, loading, error } = useCalendarEventsData();
+  const { events: allEvents, loading, error } = useCalendarEventsData();
+  // Venue (LAF, NCH, online…) and officer on duty narrow the list and the month grid.
+  const f = useFilters("venue", "officer");
+  const events = React.useMemo(() => allEvents.filter((e) => f.ok("venue", e.venue) && f.ok("officer", e.officerOnDuty)), [allEvents, f.values]); // eslint-disable-line react-hooks/exhaustive-deps -- f.ok reads f.values
   const { calendarSheetSyncEnabled } = useAppSettings();
   const canEdit = useModuleAccess().canEdit("calendar");
   const canEditEvent = React.useCallback(
@@ -99,6 +104,9 @@ export default function CalendarPage() {
         </Button>
       </div>
       <span className="text-sm font-medium tabular-nums">{view === "month" ? periodLabel("month", periodWindow("month", anchor)) : periodLabel(kind, window)}</span>
+      <FilterSelect all="Every venue" value={f.values.venue} onChange={f.set("venue")} options={optionsOf(allEvents, (e) => e.venue, (v) => v)} className="w-36" />
+      <FilterSelect all="Any officer" value={f.values.officer} onChange={f.set("officer")} options={optionsOf(allEvents, (e) => e.officerOnDuty, (v) => v)} className="w-44" />
+      <ClearFilters active={f.active} onClear={f.clear} />
     </div>
   );
 

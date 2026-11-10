@@ -8,6 +8,8 @@ import { SectionCard } from "@/components/patterns/section-card";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { LoadingState } from "@/components/patterns/loading-state";
 import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
+import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/filters";
+import { optionsOf } from "@/lib/utils/filters";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
@@ -143,7 +145,9 @@ function TransportReportContent() {
     const s = staff.find((x) => x.id === id);
     return s ? `${s.firstName} ${s.lastName}` : "";
   };
-  const shownTrips = (trips ?? []).filter((t) => vehicleId === "all" || t.vehicleId === vehicleId);
+  // Driver, direction and status narrow the trips; the vehicle narrows trips and expenses alike.
+  const f = useFilters("driver", "direction", "status");
+  const shownTrips = (trips ?? []).filter((t) => (vehicleId === "all" || t.vehicleId === vehicleId) && f.ok("driver", t.driverId) && f.ok("direction", t.direction) && f.ok("status", t.status));
   const shownExpenses = (expenses ?? []).filter((e) => vehicleId === "all" || e.vehicleId === vehicleId);
   const km = (t: TripRow) => (t.odometerStart != null && t.odometerEnd != null ? t.odometerEnd - t.odometerStart : null);
   const totalKm = shownTrips.reduce((n, t) => n + (km(t) ?? 0), 0);
@@ -207,6 +211,10 @@ function TransportReportContent() {
             {vehicles.map((v) => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}
           </SelectContent>
         </Select>
+        <FilterSelect all="All drivers" value={f.values.driver} onChange={f.set("driver")} options={optionsOf(trips ?? [], (t) => t.driverId, (v) => staffName(v) || "Driver")} className="w-48" />
+        <FilterSelect all="All directions" value={f.values.direction} onChange={f.set("direction")} options={optionsOf(trips ?? [], (t) => t.direction, (v) => directionLabel(v, true))} />
+        <FilterSelect all="Any status" value={f.values.status} onChange={f.set("status")} options={optionsOf(trips ?? [], (t) => t.status)} className="w-36" />
+        <ClearFilters active={f.active} onClear={f.clear} />
       </div>
 
       <KpiGrid>

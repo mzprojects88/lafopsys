@@ -8,6 +8,8 @@ import { DataTable } from "@/components/patterns/data-table";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { LoadingState } from "@/components/patterns/loading-state";
 import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
+import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/filters";
+import { optionsOf } from "@/lib/utils/filters";
 import { useKitchenRecords, type KitchenMeal } from "@/lib/hooks/use-kitchen-records";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
@@ -46,7 +48,8 @@ function MealsContent() {
   const period = usePeriodPresets("house-meals", "this_month");
   const { from, to } = period.window!;
   const { rows, error } = useKitchenRecords("house_meals", from, to);
-  const meals = rows ?? [];
+  const f = useFilters("meal");
+  const meals = (rows ?? []).filter((m) => f.ok("meal", m.mealType));
   const served = meals.reduce((s, m) => s + m.served, 0);
   const linked = meals.filter((m) => m.drawValue !== null);
   const stock = linked.reduce((s, m) => s + (m.drawValue ?? 0), 0);
@@ -70,7 +73,18 @@ function MealsContent() {
       ) : rows === null ? (
         <p className="text-theme-sm text-muted-foreground">Loading meals…</p>
       ) : (
-        <DataTable columns={columns} data={meals} searchPlaceholder="Search by meal or dish…" pageSize={21} />
+        <DataTable
+          columns={columns}
+          data={meals}
+          searchPlaceholder="Search by meal or dish…"
+          pageSize={21}
+          toolbar={
+            <>
+              <FilterSelect all="All meals" value={f.values.meal} onChange={f.set("meal")} options={optionsOf(rows ?? [], (m) => m.mealType)} />
+              <ClearFilters active={f.active} onClear={f.clear} />
+            </>
+          }
+        />
       )}
     </div>
   );

@@ -9,6 +9,8 @@ import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { Badge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/patterns/loading-state";
 import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
+import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/filters";
+import { optionsOf } from "@/lib/utils/filters";
 import { useKitchenRecords, type CareCartRun } from "@/lib/hooks/use-kitchen-records";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
@@ -54,7 +56,9 @@ function CareCartContent() {
   const period = usePeriodPresets("house-care-cart", "this_month");
   const { from, to } = period.window!;
   const { rows, error } = useKitchenRecords("house_care_cart", from, to);
-  const runs = rows ?? [];
+  const f = useFilters("status", "slot");
+  const slotLabel = (v: string) => (/^\d{1,2}:\d{2}/.test(v) ? formatTime12(v) : v);
+  const runs = (rows ?? []).filter((r) => f.ok("status", r.status) && f.ok("slot", r.timeSlot));
   const served = runs.filter((r) => r.status === "delivered");
   const people = served.reduce((s, r) => s + (r.served ?? 0), 0);
   const stock = runs.reduce((s, r) => s + (r.drawValue ?? 0), 0);
@@ -77,7 +81,19 @@ function CareCartContent() {
       ) : rows === null ? (
         <p className="text-theme-sm text-muted-foreground">Loading Care Cart runs…</p>
       ) : (
-        <DataTable columns={columns} data={runs} searchPlaceholder="Search by dish, source or volunteer…" pageSize={21} />
+        <DataTable
+          columns={columns}
+          data={runs}
+          searchPlaceholder="Search by dish, source or volunteer…"
+          pageSize={21}
+          toolbar={
+            <>
+              <FilterSelect all="Any status" value={f.values.status} onChange={f.set("status")} options={optionsOf(rows ?? [], (r) => r.status, (v) => STATUS[v] ?? v)} className="w-36" />
+              <FilterSelect all="Any time" value={f.values.slot} onChange={f.set("slot")} options={optionsOf(rows ?? [], (r) => r.timeSlot, slotLabel)} className="w-36" />
+              <ClearFilters active={f.active} onClear={f.clear} />
+            </>
+          }
+        />
       )}
     </div>
   );

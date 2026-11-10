@@ -48,6 +48,7 @@ import { ROLES, type Role } from "@/lib/types/common";
 import { doesFinance, hasAnyRole } from "@/lib/rbac/roles";
 import { LoadingState } from "@/components/patterns/loading-state";
 import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
+import { FilterSelect, useFilters } from "@/components/patterns/filters";
 import { bucketOf, daysOf } from "@/lib/utils/period-presets";
 import { naturalGrain } from "@/lib/utils/period";
 
@@ -114,27 +115,32 @@ function DashboardContent() {
   for (const d of donations) if (inPeriod(d.date)) giftsByBucket.set(bucketOf(d.date, grain), (giftsByBucket.get(bucketOf(d.date, grain)) ?? 0) + d.totalValue);
   const donationChart = buckets.map((b) => ({ date: b, amount: giftsByBucket.get(b) ?? 0 }));
 
-  // The newest five in the period: gifts, check-ins, approved referrals.
+  // The newest five in the period: gifts, check-ins, approved referrals (or one of them).
+  const shows = useFilters("kind");
   const recentActivity = [
     ...donations.filter((d) => inPeriod(d.date)).map((d) => ({
+      kind: "gift",
       icon: HandCoins,
       title: `Donation of ${formatCurrency(d.totalValue, d.currency)} received`,
       subtitle: donors.find((dn) => dn.id === d.donorId)?.name ?? "Anonymous",
       date: d.date,
     })),
     ...stays.filter((s) => inPeriod(s.checkInAt)).map((s) => ({
+      kind: "stay",
       icon: UserPlus,
       title: "Patient stay recorded",
       subtitle: patients.find((p) => p.id === s.patientId)?.firstName ?? "—",
       date: s.checkInAt,
     })),
     ...referrals.filter((r) => r.status === "approved" && inPeriod(r.date)).map((r) => ({
+      kind: "referral",
       icon: BadgeCheck,
       title: "Referral approved",
       subtitle: r.patientName,
       date: r.date,
     })),
   ]
+    .filter((a) => shows.ok("kind", a.kind))
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 5);
 
@@ -296,7 +302,12 @@ function DashboardContent() {
             </ChartContainer>
           </SectionCard>
 
-          <SectionCard title="Recent Activity" description={period.label} flush>
+          <SectionCard
+            title="Recent Activity"
+            description={period.label}
+            flush
+            actions={<FilterSelect all="Everything" value={shows.values.kind} onChange={shows.set("kind")} options={[{ value: "gift", label: "Gifts" }, { value: "stay", label: "Check-ins" }, { value: "referral", label: "Referrals" }]} className="w-32" />}
+          >
             <ul className="divide-y divide-border">
               {recentActivity.length === 0 ? <li className="px-5 py-3 text-theme-xs text-muted-foreground">Nothing recorded in this period.</li> : null}
               {recentActivity.map((a, i) => (

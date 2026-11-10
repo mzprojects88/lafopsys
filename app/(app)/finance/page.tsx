@@ -27,6 +27,9 @@ import { StatusBadge } from "@/components/patterns/status-badge";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { LoadingState } from "@/components/patterns/loading-state";
 import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
+import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/filters";
+import { optionsOf } from "@/lib/utils/filters";
+import { ENTITIES } from "@/lib/types/common";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { Button } from "@/components/ui/button";
 import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
@@ -102,7 +105,16 @@ function FinanceContent() {
   // In, out, net and the list follow the period (this month by default, or All time); pending stays "now".
   const period = usePeriodPresets("finance", "this_month", true);
   const w = period.window;
-  const cashEntries = w ? all.filter((e) => !!e.date && e.date >= w.from && e.date <= w.to) : all;
+  const f = useFilters("direction", "approval", "entity", "source", "program");
+  const cashEntries = all.filter(
+    (e) =>
+      (!w || (!!e.date && e.date >= w.from && e.date <= w.to)) &&
+      f.ok("direction", e.direction) &&
+      f.ok("approval", e.approvalStatus) &&
+      f.ok("entity", e.entity) &&
+      f.ok("source", e.source) &&
+      f.ok("program", e.programId)
+  );
   const totalInflow = cashEntries.filter((e) => e.direction === "inflow").reduce((s, e) => s + e.amount, 0);
   const totalOutflow = cashEntries.filter((e) => e.direction === "outflow").reduce((s, e) => s + e.amount, 0);
   const pendingCount = all.filter((e) => e.approvalStatus === "pending").length;
@@ -128,7 +140,22 @@ function FinanceContent() {
         <KpiCard label="Pending Approvals" value={pendingCount} sublabel="Now" icon={Clock} tone={pendingCount > 0 ? "warning" : "default"} />
       </KpiGrid>
 
-      <DataTable columns={columns} data={cashEntries} searchPlaceholder="Search cashflow…" pageSize={12} />
+      <DataTable
+        columns={columns}
+        data={cashEntries}
+        searchPlaceholder="Search cashflow…"
+        pageSize={12}
+        toolbar={
+          <>
+            <FilterSelect all="In and out" value={f.values.direction} onChange={f.set("direction")} options={[{ value: "inflow", label: "Inflow" }, { value: "outflow", label: "Outflow" }]} className="w-32" />
+            <FilterSelect all="Any approval" value={f.values.approval} onChange={f.set("approval")} options={optionsOf(all, (e) => e.approvalStatus)} />
+            <FilterSelect all="PH and US" value={f.values.entity} onChange={f.set("entity")} options={optionsOf(all, (e) => e.entity, (v) => ENTITIES.find((x) => x.value === v)?.label ?? v)} />
+            <FilterSelect all="All sources" value={f.values.source} onChange={f.set("source")} options={optionsOf(all, (e) => e.source, sourceLabel)} className="w-48" />
+            <FilterSelect all="All programs" value={f.values.program} onChange={f.set("program")} options={optionsOf(all, (e) => e.programId, (v) => programs.find((p) => p.id === v)?.name ?? v)} />
+            <ClearFilters active={f.active} onClear={f.clear} />
+          </>
+        }
+      />
     </div>
   );
 }

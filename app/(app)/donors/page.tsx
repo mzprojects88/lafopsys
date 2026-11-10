@@ -6,7 +6,11 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Users, Wallet, Banknote, Package, Plus, Receipt, Award, Megaphone, UserPlus, Sparkles, Sigma } from "lucide-react";
 import { useCashGifts } from "@/lib/hooks/use-cash-gifts";
-import { givingSplit, namesToConfirm } from "@/lib/utils/cash-gifts";
+import { givingSplit, namesToConfirm, PAYMENT_METHOD_LABEL } from "@/lib/utils/cash-gifts";
+import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/filters";
+import { optionsOf } from "@/lib/utils/filters";
+import { useCampaignsData } from "@/lib/hooks/use-campaigns-collection";
+import { ENTITIES } from "@/lib/types/common";
 import { useDonorSuggestions } from "@/lib/hooks/use-donor-suggestions";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
@@ -103,15 +107,20 @@ function DonorsContent() {
   // in-kind columns and the donor count follow the gifts dated inside it.
   const period = usePeriodPresets("donors", "this_month", true);
   const window = period.window;
-  const inRange = React.useMemo(() => (window ? donations.filter((d) => d.date >= window.from && d.date <= window.to) : donations), [donations, window]);
+  // Filters on the gifts themselves (kind, entity, campaign, how paid): the figures and the donor list follow them.
+  const { campaigns } = useCampaignsData();
+  const f = useFilters("kind", "entity", "campaign", "method");
+  const giftOk = (d: (typeof donations)[number]) => f.ok("kind", d.kind) && f.ok("entity", d.receivingEntity) && f.ok("campaign", d.campaignId) && f.ok("method", d.paymentMethod);
+  const narrowed = !!window || f.active > 0;
+  const inRange = React.useMemo(() => donations.filter((d) => (!window || (d.date >= window.from && d.date <= window.to)) && giftOk(d)), [donations, window, f.values]); // eslint-disable-line react-hooks/exhaustive-deps -- giftOk reads f.values
   const split = React.useMemo(() => givingSplit(inRange), [inRange]);
   const columns = React.useMemo(() => buildColumns(pledges, split), [pledges, split]);
   const namesWaiting = React.useMemo(() => namesToConfirm(cashGifts.lines, all, cashGifts.decided).length, [cashGifts.lines, cashGifts.decided, all]);
   const pick = (key: FilterKey) => (key === "all" ? all : key === "vip" ? all.filter((d) => isVipEligible(d, pledges)) : all.filter((d) => d.type === key));
   const gave = new Set(inRange.map((d) => d.donorId));
-  const donors = window ? pick(filter).filter((d) => gave.has(d.id)) : pick(filter);
-  const totalGifts = window ? inRange.filter((d) => gave.has(d.donorId) && donors.some((x) => x.id === d.donorId)).length : donors.reduce((sum, d) => sum + d.giftCount, 0);
-  const totalLifetimeValue = window ? donors.reduce((sum, d) => sum + (split.get(d.id)?.cash ?? 0) + (split.get(d.id)?.inKind ?? 0), 0) : donors.reduce((sum, d) => sum + d.lifetimeValue, 0);
+  const donors = narrowed ? pick(filter).filter((d) => gave.has(d.id)) : pick(filter);
+  const totalGifts = narrowed ? inRange.filter((d) => gave.has(d.donorId) && donors.some((x) => x.id === d.donorId)).length : donors.reduce((sum, d) => sum + d.giftCount, 0);
+  const totalLifetimeValue = narrowed ? donors.reduce((sum, d) => sum + (split.get(d.id)?.cash ?? 0) + (split.get(d.id)?.inKind ?? 0), 0) : donors.reduce((sum, d) => sum + d.lifetimeValue, 0);
   const cashTotal = donors.reduce((sum, d) => sum + (split.get(d.id)?.cash ?? 0), 0);
   const inKindTotal = donors.reduce((sum, d) => sum + (split.get(d.id)?.inKind ?? 0), 0);
 
@@ -142,8 +151,8 @@ function DonorsContent() {
 
       <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} allowAll />
       <KpiGrid>
-        <KpiCard label={window ? "Donors who gave" : "Total Donors"} value={donors.length} icon={Users} sublabel={`${totalGifts.toLocaleString()} gifts · ${period.label}`} />
-        <KpiCard label={window ? "Value received" : "Lifetime Value"} value={formatCurrency(totalLifetimeValue)} icon={Wallet} sublabel={period.label} />
+        <KpiCard label={narrowed ? "Donors who gave" : "Total Donors"} value={donors.length} icon={Users} sublabel={`${totalGifts.toLocaleString()} gifts · ${period.label}`} />
+        <KpiCard label={narrowed ? "Value received" : "Lifetime Value"} value={formatCurrency(totalLifetimeValue)} icon={Wallet} sublabel={period.label} />
         <KpiCard label="Cash" value={formatCurrency(cashTotal)} icon={Banknote} sublabel={period.label} />
         <KpiCard label="In kind" value={formatCurrency(inKindTotal)} icon={Package} sublabel={period.label} />
       </KpiGrid>
@@ -165,6 +174,15 @@ function DonorsContent() {
       <DataTable
         columns={columns}
         data={donors}
+        toolbar={
+          <>
+            <FilterSelect all="Cash and in kind" value={f.values.kind} onChange={f.set("kind")} options={[{ value: "cash", label: "Cash" }, { value: "in_kind", label: "In kind" }]} />
+            <FilterSelect all="PH and US" value={f.values.entity} onChange={f.set("entity")} options={optionsOf(donations, (d) => d.receivingEntity, (v) => ENTITIES.find((e) => e.value === v)?.label ?? v)} />
+            <FilterSelect all="All campaigns" value={f.values.campaign} onChange={f.set("campaign")} options={optionsOf(donations, (d) => d.campaignId, (v) => campaigns.find((c) => c.id === v)?.name ?? "Campaign")} className="w-48" />
+            <FilterSelect all="Any payment" value={f.values.method} onChange={f.set("method")} options={optionsOf(donations, (d) => d.paymentMethod, (v) => PAYMENT_METHOD_LABEL[v as keyof typeof PAYMENT_METHOD_LABEL] ?? v)} />
+            <ClearFilters active={f.active} onClear={f.clear} />
+          </>
+        }
         searchPlaceholder="Search donors…"
         onRowClick={(d) => router.push(`/donors/${d.id}`)}
       />

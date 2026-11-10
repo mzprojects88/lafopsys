@@ -28,6 +28,9 @@ import { csvLines, downloadCsv } from "@/lib/utils/csv";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { todayIso } from "@/lib/utils/date";
 import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
+import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/filters";
+import { optionsOf } from "@/lib/utils/filters";
+import { ROLES } from "@/lib/types/common";
 import { dayKey, effectiveStatus, formatMinutes, isLong, sessionMinutes, timeLabel12, totalsFor, type DtrSession } from "@/lib/utils/dtr";
 import type { PunchLocationStatus, TimePunch } from "@/lib/types/staff";
 import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
@@ -318,20 +321,26 @@ function DtrContent() {
     [staff]
   );
 
+  // Role narrows whose records show; session status finds the open, long and missing punches.
+  const f = useFilters("role", "status");
+  const roleFilter = f.values.role;
+  const statusFilter = f.values.status;
   const inRange = React.useCallback(
     (staffId: string, day: string) => {
       if (staffFilter !== "all" && staffId !== staffFilter) return false;
+      if (roleFilter !== "all" && staff.find((x) => x.id === staffId)?.role !== roleFilter) return false;
       if (fromDate && day < fromDate) return false;
       if (toDate && day > toDate) return false;
       return true;
     },
-    [staffFilter, fromDate, toDate]
+    [staffFilter, roleFilter, staff, fromDate, toDate]
   );
 
   const sessionRows: SessionRow[] = React.useMemo(() => {
     const rows: SessionRow[] = [];
     for (const s of sessions) {
       if (!inRange(s.staffId, s.dayKey)) continue;
+      if (statusFilter !== "all" && displayStatus(s, now) !== statusFilter) continue;
       rows.push({
         id: s.id,
         staffId: s.staffId,
@@ -346,7 +355,7 @@ function DtrContent() {
     }
     // Newest first, like the punch log.
     return rows.reverse();
-  }, [sessions, inRange, staffName, now]);
+  }, [sessions, inRange, staffName, now, statusFilter]);
 
   const punchRows: PunchRow[] = React.useMemo(() => {
     const rows: PunchRow[] = [];
@@ -436,6 +445,11 @@ function DtrContent() {
             </SelectContent>
           </Select>
         </Field>
+        <div className="flex flex-wrap items-end gap-2 sm:col-span-2">
+          <FilterSelect all="All roles" value={f.values.role} onChange={f.set("role")} options={optionsOf(staff, (s) => s.role, (v) => ROLES.find((r) => r.value === v)?.label ?? v)} className="w-44" />
+          <FilterSelect all="Any session status" value={f.values.status} onChange={f.set("status")} options={(Object.keys(SESSION_STATUS) as SessionDisplayStatus[]).map((k) => ({ value: k, label: SESSION_STATUS[k].label }))} className="w-48" />
+          <ClearFilters active={f.active} onClear={f.clear} />
+        </div>
       </div>
 
       {/* Who can see this is enforced by row-level security, not by hiding the page —
