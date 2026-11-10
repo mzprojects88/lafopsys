@@ -148,9 +148,9 @@ try {
   await step("... sent", ids.sw, `select ops.voucher_act($1, 'submit')`, [g], (r) => r.ok);
   await step("the requester cancels it before Finance prepares it (with a reason)", ids.sw, `select ops.voucher_act($1, 'cancel', 'Paid from my pocket')`, [g], (r) => r.ok && val(r) === "cancelled");
 
-  const adminReq = val(await step("a Super Admin's request", ids.admin1, `select ops.voucher_save(null, $1::jsonb, $2::jsonb) id`, [header({ purpose: "Bank fee" }), lines], (r) => r.ok));
-  await step("... skips endorsement (no endorser for the role)", ids.admin1, `select ops.voucher_act($1, 'submit') s`, [adminReq], (r) => r.ok && val(r) === "endorsed");
-  await step("... and its requester may not approve it later", null, `select ops.voucher_may_sign(v, 'approve', $2) ok from ops.vouchers v where v.id = $1`, [adminReq, ids.admin1], (r) => r.ok && r.rows[0].ok === false);
+  const adminReq = val(await step("a Super Admin's request (the other approver signs it)", ids.admin2, `select ops.voucher_save(null, $1::jsonb, $2::jsonb) id`, [header({ purpose: "Bank fee" }), lines], (r) => r.ok));
+  await step("... skips endorsement (no endorser for the role)", ids.admin2, `select ops.voucher_act($1, 'submit') s`, [adminReq], (r) => r.ok && val(r) === "endorsed");
+  await step("... and its requester may not approve it later", null, `select ops.voucher_may_sign(v, 'approve', $2) ok from ops.vouchers v where v.id = $1`, [adminReq, ids.admin2], (r) => r.ok && r.rows[0].ok === false);
 
   const dd = val(await step("a draft to throw away", ids.sw, `select ops.voucher_save(null, $1::jsonb, $2::jsonb) id`, [header(), lines], (r) => r.ok));
   await step("the requester discards their unsent draft", ids.sw, `select ops.voucher_act($1, 'discard')`, [dd], (r) => r.ok && val(r) === "discarded");
@@ -167,7 +167,24 @@ try {
   await step("the urgent approver row doesn't count on a normal request", null, `select ops.voucher_may_sign(v, 'approve', $2) ok from ops.vouchers v where v.id = $1`, [pc, ids.finance], (r) => r.ok && r.rows[0].ok === false);
   await c.query(`insert into ops.payees (name, tin) values ('Test Hardware', '123456789000')`);
   await step("a driver picks a supplier by name, without its TIN", ids.driver, `select * from ops.payee_choices() where name = 'Test Hardware'`, [], (r) => r.ok && r.n === 1 && !("tin" in r.rows[0]));
+  await c.query(`insert into ops.payees (name, kind) values ('A family (burial aid)', 'person')`);
+  await step("a person paid is not in the requesters' list", ids.driver, `select count(*)::int n from ops.payee_choices() where name like 'A family%'`, [], (r) => r.ok && r.rows[0].n === 0);
   await step("a partner gets no supplier names", ids.partner, `select count(*)::int n from ops.payee_choices()`, [], (r) => r.ok && r.rows[0].n === 0);
+  // Code review fixes (11 Nov).
+  await step("a skipped endorsement reads after its submit", null, `select string_agg(action, ',' order by at) s from ops.voucher_events where voucher_id = $1`, [adminReq], (r) => r.ok && r.rows[0].s === "submit,skip_endorse");
+  const fd = val(await step("a draft with a file", ids.sw, `select ops.voucher_save(null, $1::jsonb, $2::jsonb) id`, [header(), lines], (r) => r.ok));
+  await c.query(`insert into ops.voucher_files (id, voucher_id, kind, object_key, file_name, content_type, bytes, uploaded_by) values (gen_random_uuid(), $1, 'receipt', 'test/' || gen_random_uuid(), 'or.jpg', 'image/jpeg', 10, $2)`, [fd, ids.sw]);
+  await step("a draft with files can't be discarded (they would stay in the store)", ids.sw, `select ops.voucher_act($1, 'discard')`, [fd], refused("23514"), false);
+  await step("Finance can't attach to someone's draft", ids.finance, `select ops.voucher_can_attach($1) ok`, [fd], (r) => r.ok && r.rows[0].ok === false);
+  await step("Finance can't attach after approval", ids.finance, `select ops.voucher_can_attach($1) ok`, [vid], (r) => r.ok && r.rows[0].ok === false);
+  await c.query(`update ops.voucher_authority set alternate_staff_id = null where step = 'endorse' and requester_role = 'office_admin'`);
+  await c.query(`update ops.voucher_authority set staff_id = $1 where step = 'endorse' and requester_role = 'office_admin'`, [ids.office]);
+  const own = val(await step("the office admin (sole endorser for their role) drafts a request", ids.office, `select ops.voucher_save(null, $1::jsonb, $2::jsonb) id`, [header(), lines], (r) => r.ok));
+  await step("... sending it is refused: nobody else would endorse it", ids.office, `select ops.voucher_act($1, 'submit')`, [own], (r) => !r.ok && /endorsement/.test(r.error), false);
+  const back = val(await step("a request to send back", ids.sw, `select ops.voucher_save(null, $1::jsonb, $2::jsonb) id`, [header({ purpose: "Back" }), lines], (r) => r.ok));
+  await step("... sent", ids.sw, `select ops.voucher_act($1, 'submit')`, [back], (r) => r.ok);
+  await step("... sent back", ids.office, `select ops.voucher_act($1, 'return', 'Wrong amount')`, [back], (r) => r.ok);
+  await step("the requester's queue holds it as returned", ids.sw, `select count(*)::int n from ops.voucher_queue() where voucher_id = $1 and step = 'returned'`, [back], (r) => r.ok && r.rows[0].n === 1);
   await step("functions run as callers only where granted", null,
     `select has_function_privilege('authenticated', 'ops.voucher_may_sign(ops.vouchers, text, uuid)', 'execute') may, has_function_privilege('authenticated', 'ops.voucher_act(uuid, text, text)', 'execute') act`, [], (r) => r.ok && r.rows[0].may === false && r.rows[0].act === true);
 } finally {

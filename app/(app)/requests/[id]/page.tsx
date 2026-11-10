@@ -39,9 +39,9 @@ const SIGN: Record<string, { action: string; label: string }> = { endorse: { act
 export default function RequestDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { roles, staffId: me } = useRole();
+  const { staffId: me } = useRole();
   const { canEdit } = useModuleAccess();
-  const { vouchers, lines: allLines, events: allEvents, queue, loading } = useVouchers();
+  const { vouchers, lines: allLines, events: allEvents, queue, loading, linesLoading } = useVouchers();
   const { data: codes } = useSetupRows("fin_codes");
   const { data: accounts } = useSetupRows("coa_accounts");
   const { staff } = useStaffRoster();
@@ -60,7 +60,8 @@ export default function RequestDetailPage() {
     void createClient().schema("ops").rpc("voucher_can_attach", { p_id: v.id }).then(({ data }) => setCanAttach(Boolean(data)));
   }, [v?.id, v?.status]); // eslint-disable-line react-hooks/exhaustive-deps -- re-asked when the request moves
 
-  if (loading && !v) return <LoadingState />;
+  // The form and the prepare dialog start from the items, so they wait for them (a blank list would be saved over them).
+  if ((loading && !v) || linesLoading) return <LoadingState />;
   if (!v) return <EmptyState title="No such request" description="It doesn't exist, or it isn't one you can see." />;
 
   const name = (who: string | null) => {
@@ -71,7 +72,8 @@ export default function RequestDetailPage() {
   const account = (aid: string | null) => accounts.find((a) => a.id === aid);
   const mine = v.requestedBy === me;
   const editable = mine && (v.status === "draft" || v.status === "returned") && v.source === "app";
-  const waitingStep = queue.find((q) => q.voucherId === v.id)?.step ?? null;
+  const queued = queue.find((q) => q.voucherId === v.id)?.step ?? null;
+  const waitingStep = queued === "returned" ? null : queued;
   const canCancel = OPEN.includes(v.status) || v.status === "returned" ? (mine && ["returned", "submitted", "endorsed"].includes(v.status)) || canEdit("finance") : false;
   const steps = trackSteps(v.status, events, now);
 
@@ -139,7 +141,7 @@ export default function RequestDetailPage() {
               Sent back: {events.filter((e) => e.action === "return").at(-1)?.note}. Change what is needed and send it again.
             </p>
           ) : null}
-          <RequestForm voucher={v} lines={lines} />
+          <RequestForm key={lines.map((l) => l.id).join()} voucher={v} lines={lines} />
         </>
       ) : (
         <SectionCard title="Where it is">
@@ -231,7 +233,7 @@ export default function RequestDetailPage() {
         </SectionCard>
       ) : null}
 
-      {roles.length && waitingStep === "validate" ? <PrepareDialog voucher={v} lines={lines} open={preparing} onOpenChange={setPreparing} /> : null}
+      {waitingStep === "validate" && preparing ? <PrepareDialog key={lines.map((l) => l.id).join()} voucher={v} lines={lines} open={preparing} onOpenChange={setPreparing} /> : null}
       <ReasonDialog
         open={!!asking}
         onOpenChange={(o) => !o && setAsking(null)}

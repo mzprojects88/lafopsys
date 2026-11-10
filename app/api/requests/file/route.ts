@@ -82,7 +82,7 @@ export async function GET(request: Request) {
   return NextResponse.json({ ok: true, url }, { headers: { "cache-control": "no-store" } });
 }
 
-/** Removes a file: whoever may attach to the request now, their own uploads; Finance editors, any. */
+/** Removes a file: its uploader, while they may still attach to the request (never after approval). */
 export async function DELETE(request: Request) {
   const id = new URL(request.url).searchParams.get("id") ?? "";
   if (!UUID_RE.test(id)) return NextResponse.json({ ok: false, error: "Bad file id." }, { status: 400 });
@@ -90,11 +90,8 @@ export async function DELETE(request: Request) {
   if (!user) return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
   const { data } = await supabase.schema("ops").from("voucher_files").select("voucher_id, object_key, uploaded_by").eq("id", id).maybeSingle();
   if (!data) return NextResponse.json({ ok: false, error: "No file you can see." }, { status: 404 });
-  const [{ data: may }, { data: finance }] = await Promise.all([
-    supabase.schema("ops").rpc("voucher_can_attach", { p_id: data.voucher_id }),
-    supabase.schema("shared").rpc("module_editable", { p_module: "finance" }),
-  ]);
-  if (!may || (data.uploaded_by !== user.id && !finance)) return NextResponse.json({ ok: false, error: "You can't remove this file now." }, { status: 403 });
+  const { data: may } = await supabase.schema("ops").rpc("voucher_can_attach", { p_id: data.voucher_id });
+  if (!may || data.uploaded_by !== user.id) return NextResponse.json({ ok: false, error: "You can't remove this file now." }, { status: 403 });
   const { error } = await createAdminClient().schema("ops").from("voucher_files").delete().eq("id", id);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   await deleteObject(data.object_key as string).catch(() => undefined);

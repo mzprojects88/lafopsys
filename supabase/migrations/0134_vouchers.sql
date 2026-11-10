@@ -97,7 +97,9 @@ create table if not exists ops.voucher_events (
   signer_text text check (length(signer_text) <= 120),
   note text check (length(note) <= 1000),
   source text not null default 'app' check (source in ('app', 'sheet')),
-  at timestamptz not null default now()
+  -- The clock, not the transaction's start: a submit and its skipped endorsement are written together and must
+  -- still read in order.
+  at timestamptz not null default clock_timestamp()
 );
 create index if not exists voucher_events_voucher on ops.voucher_events (voucher_id, at);
 
@@ -174,7 +176,7 @@ create or replace function ops.voucher_step(p_status text)
 returns text language sql immutable set search_path = pg_temp as $$
   select case p_status when 'submitted' then 'endorse' when 'endorsed' then 'validate' when 'prepared' then 'review' when 'reviewed' then 'approve' end;
 $$;
-grant execute on function ops.voucher_step(text) to authenticated, service_role;
+revoke all on function ops.voucher_step(text) from public;
 
 -- 5. The requester saves a draft (or a returned request): the header and all its lines at once. The account
 -- and the cost center / program of each line come from the expense type, never from the browser.
@@ -218,7 +220,7 @@ begin
   if v_kind = 'supplier' and v_payee is null then
     raise exception 'Pick the supplier to be paid.' using errcode = '23514';
   end if;
-  if v_payee is not null and not exists (select 1 from ops.payees where id = v_payee and active) then
+  if v_payee is not null and not exists (select 1 from ops.payees where id = v_payee and active and kind = 'supplier') then
     raise exception 'That payee is not in use.' using errcode = '23514';
   end if;
   if v_t2 is null or not exists (select 1 from ops.fin_codes where id = v_t2 and tier = 'T2' and active) then
@@ -379,6 +381,10 @@ begin
     if v.requested_by is distinct from me or v.status <> 'draft' or v.request_number is not null then
       raise exception 'Only your own unsent draft can be discarded.' using errcode = '23514';
     end if;
+    -- Its files would stay in the store with nothing pointing at them.
+    if exists (select 1 from ops.voucher_files where voucher_id = v.id) then
+      raise exception 'Remove its files first, then discard it.' using errcode = '23514';
+    end if;
     delete from ops.vouchers where id = v.id;
     return 'discarded';
   elsif p_action = 'submit' then
@@ -396,6 +402,19 @@ begin
       raise exception 'Add the items and their amounts first.' using errcode = '23514';
     end if;
     select role into v_role from shared.staff where id = me;
+    -- Nobody signs their own request: every step needs someone else for this amount (or, for endorsement, a row
+    -- saying none is needed), or the request would wait forever.
+    select string_agg(st.label, ', ') into v_step
+    from (values ('endorse', 'endorsement'), ('validate', 'preparing'), ('review', 'review'), ('approve', 'approval')) st(step, label)
+    where not exists (
+      select 1 from ops.voucher_authority a
+      where a.step = st.step and (st.step <> 'endorse' or a.requester_role = v_role)
+        and v.total >= a.min_amount and (a.max_amount is null or v.total < a.max_amount)
+        and (not a.urgent or v.urgent)
+        and ((st.step = 'endorse' and a.staff_id is null) or (a.staff_id is distinct from me and a.staff_id is not null) or (a.alternate_staff_id is not null and a.alternate_staff_id <> me)));
+    if v_step is not null then
+      raise exception 'Nobody but you signs the % of this request: ask Finance to add another signer or an alternate (Financial Settings › Authority).', v_step using errcode = '23514';
+    end if;
     v_from := v.status;
     update ops.vouchers set status = 'submitted', requester_role = v_role, submitted_at = now(),
       request_number = coalesce(request_number, ops.next_doc_number('REQ', extract(year from v_today)::integer))
@@ -447,12 +466,15 @@ end $$;
 revoke all on function ops.voucher_act(uuid, text, text) from public;
 grant execute on function ops.voucher_act(uuid, text, text) to authenticated;
 
--- 8. What waits for the caller (the "Waiting for me" tab and the bell): the same rule as signing.
+-- 8. What waits for the caller (the "Waiting for me" tab and the bell): what they may sign, by the same rule as
+-- signing, and their own requests sent back to them (step 'returned').
 create or replace function ops.voucher_queue()
 returns table (voucher_id uuid, step text) language sql stable security definer set search_path = ops, pg_temp as $$
   select v.id, ops.voucher_step(v.status)
   from ops.vouchers v
-  where v.source = 'app' and ops.voucher_step(v.status) is not null and ops.voucher_may_sign(v, ops.voucher_step(v.status), auth.uid());
+  where v.source = 'app' and ops.voucher_step(v.status) is not null and ops.voucher_may_sign(v, ops.voucher_step(v.status), auth.uid())
+  union all
+  select v.id, 'returned' from ops.vouchers v where v.requested_by = auth.uid() and v.status = 'returned';
 $$;
 revoke all on function ops.voucher_queue() from public;
 grant execute on function ops.voucher_queue() to authenticated;
@@ -472,22 +494,25 @@ $$;
 revoke all on function ops.voucher_similar(uuid) from public;
 grant execute on function ops.voucher_similar(uuid) to authenticated;
 
--- The suppliers a requester may pick: names only (TINs and addresses stay with Finance).
+-- A payee is a supplier or a person (a patient's family paid burial or emergency aid, for example). Requesters
+-- pick suppliers by name only; people paid, their TINs and addresses stay with Finance.
+alter table ops.payees add column if not exists kind text not null default 'supplier' check (kind in ('supplier', 'person'));
 create or replace function ops.payee_choices()
 returns table (id uuid, name text) language sql stable security definer set search_path = ops, shared, pg_temp as $$
-  select p.id, p.name from ops.payees p where p.active and shared.current_staff_roles() is not null order by p.name;
+  select p.id, p.name from ops.payees p where p.active and p.kind = 'supplier' and shared.current_staff_roles() is not null order by p.name;
 $$;
 revoke all on function ops.payee_choices() from public;
 grant execute on function ops.payee_choices() to authenticated;
 
--- Who may attach a file: the requester until Finance prepares it; Finance editors until it is closed.
+-- Who may attach (and remove their own) files: the requester until Finance prepares it; Finance editors while it
+-- moves from sending to approval (never someone's draft, never after approval: the papers then stand).
 create or replace function ops.voucher_can_attach(p_id uuid)
 returns boolean language sql stable security definer set search_path = ops, shared, pg_temp as $$
   select exists (
     select 1 from ops.vouchers v
     where v.id = p_id and v.source = 'app' and shared.current_staff_roles() is not null and (
       (v.requested_by = auth.uid() and v.status in ('draft', 'returned', 'submitted', 'endorsed'))
-      or (shared.module_level('finance') = 'edit' and v.status not in ('rejected', 'cancelled'))));
+      or (shared.module_level('finance') = 'edit' and v.status in ('submitted', 'endorsed', 'prepared', 'reviewed'))));
 $$;
 revoke all on function ops.voucher_can_attach(uuid) from public;
 grant execute on function ops.voucher_can_attach(uuid) to authenticated;

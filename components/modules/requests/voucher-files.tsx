@@ -6,6 +6,7 @@ import { FileText, Paperclip, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCollection } from "@/lib/data/collection-store";
+import { useRole } from "@/lib/rbac/use-role";
 import { voucherFilesStore } from "@/lib/hooks/use-vouchers";
 import { formatBytes } from "@/lib/utils/file-paths";
 
@@ -23,6 +24,7 @@ const readAsDataUrl = (file: File) =>
 
 /** A request's receipts, invoices and quotations: open one, add one (when allowed), remove one's own. */
 export function VoucherFiles({ voucherId, canAttach }: { voucherId: string; canAttach: boolean }) {
+  const { staffId } = useRole();
   const { data: all } = useCollection(voucherFilesStore);
   const files = all.filter((f) => f.voucherId === voucherId);
   const [kind, setKind] = React.useState<Kind>("receipt");
@@ -69,7 +71,7 @@ export function VoucherFiles({ voucherId, canAttach }: { voucherId: string; canA
             {f.fileName}
           </button>
           <span className="shrink-0 text-theme-xs text-muted-foreground">{KINDS[f.kind]} · {formatBytes(f.bytes)}</span>
-          {canAttach ? (
+          {canAttach && f.uploadedBy === staffId ? (
             <Button size="sm" variant="ghost" className="text-destructive" aria-label={`Remove ${f.fileName}`} onClick={() => void remove(f.id)}>
               <Trash2 />
             </Button>

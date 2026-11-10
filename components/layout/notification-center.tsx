@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { BedDouble, Bell, ClipboardList, CloudOff, Fuel, Mail, MapPin, PenLine, Receipt, Wrench, type LucideIcon } from "lucide-react";
 import { useCollection } from "@/lib/data/collection-store";
-import { voucherQueueStore, vouchersStore } from "@/lib/hooks/use-vouchers";
+import { voucherQueueStore } from "@/lib/hooks/use-vouchers";
 import { useOpenCaseRecords, usePlansDue } from "@/lib/hooks/use-case-files";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
@@ -113,15 +113,14 @@ export function NotificationCenter() {
 
 /** Payment Requests (0134): what waits for this person to sign, and their own requests sent back to them. */
 function RequestReminders({ children }: { children: (reminders: Reminder[]) => React.ReactNode }) {
-  const { staffId } = useRole();
-  const { data: queue } = useCollection(voucherQueueStore);
-  const { data: vouchers } = useCollection(vouchersStore);
-  const returned = vouchers.filter((v) => v.requestedBy === staffId && v.status === "returned");
+  const { data: all } = useCollection(voucherQueueStore);
+  const queue = all.filter((q) => q.step !== "returned");
+  const returned = all.filter((q) => q.step === "returned");
   const out: Reminder[] = [];
   if (queue.length)
     out.push({ id: "requests-waiting", title: `${queue.length} payment request${queue.length === 1 ? "" : "s"} wait for you`, body: "To endorse, prepare, review or approve.", href: "/requests", icon: Receipt });
   if (returned.length)
-    out.push({ id: "requests-returned", title: `${returned.length} of your requests ${returned.length === 1 ? "was" : "were"} sent back`, body: "Read why, change it and send it again.", href: returned.length === 1 ? `/requests/${returned[0].id}` : "/requests", icon: Receipt });
+    out.push({ id: "requests-returned", title: `${returned.length} of your requests ${returned.length === 1 ? "was" : "were"} sent back`, body: "Read why, change it and send it again.", href: returned.length === 1 ? `/requests/${returned[0].voucherId}` : "/requests", icon: Receipt });
   return <>{children(out)}</>;
 }
 

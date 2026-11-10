@@ -28,6 +28,7 @@ import { optionsOf, words } from "@/lib/utils/filters";
 import { csvLines, downloadCsv } from "@/lib/utils/csv";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
+import { dayKey } from "@/lib/utils/dtr";
 import { daysWaiting, KIND_LABEL, OPEN, PAY_LABEL, shownAmount, STATUS_LABEL } from "@/lib/utils/vouchers";
 
 type Basis = "requested" | "prepared" | "approved";
@@ -85,9 +86,10 @@ function RequestsContent() {
   }, [events]);
   const filesOf = new Set(files.map((x) => x.voucherId));
   const dateOf = (v: Voucher): string | null => {
-    if (basis === "requested") return (v.submittedAt ?? v.createdAt).slice(0, 10);
+    // The Manila day: a request sent at 7:30 AM on the 1st belongs to the 1st, not the 30th (UTC).
+    if (basis === "requested") return dayKey(v.submittedAt ?? v.createdAt);
     const ev = (eventsOf.get(v.id) ?? []).filter((e) => e.action === (basis === "prepared" ? "prepare" : "approve")).at(-1);
-    return ev?.at.slice(0, 10) ?? null;
+    return ev ? dayKey(ev.at) : null;
   };
   const lastMove = (v: Voucher) => (eventsOf.get(v.id) ?? []).at(-1)?.at ?? v.createdAt;
   const flags = (v: Voucher) => {
@@ -113,7 +115,8 @@ function RequestsContent() {
     const amount = shownAmount(v.total, linesOf.get(v.id) ?? [], codeFilter ? lineOk : null);
     return (
       (tab === "all" || waitingIds.has(v.id)) &&
-      (!w || (!!d && d >= w.from && d <= w.to)) &&
+      // What waits for someone waits whatever its date.
+      (tab === "waiting" || !w || (!!d && d >= w.from && d <= w.to)) &&
       f.ok("type", v.voucherType ?? "none") &&
       f.ok("kind", v.kind) &&
       f.ok("status", v.status) &&
@@ -134,16 +137,15 @@ function RequestsContent() {
   const total = shown.reduce((s, v) => s + amountOf(v), 0);
   const approved = shown.filter((v) => v.status === "approved").reduce((s, v) => s + amountOf(v), 0);
   const moving = shown.filter((v) => OPEN.includes(v.status));
-  const allLines = lines;
 
   const opt = {
-    type: [...optionsOf(vouchers, (v) => v.voucherType ?? "none", (x) => (x === "none" ? "Not yet a voucher" : x))],
+    type: optionsOf(vouchers, (v) => v.voucherType ?? "none", (x) => (x === "none" ? "Not yet a voucher" : x)),
     kind: optionsOf(vouchers, (v) => v.kind, (k) => KIND_LABEL[k as keyof typeof KIND_LABEL] ?? words(k)),
     status: optionsOf(vouchers, (v) => v.status, (s) => STATUS_LABEL[s as keyof typeof STATUS_LABEL] ?? words(s)),
-    account: optionsOf(allLines, (l) => l.accountId, (id) => [account(id)?.code, account(id)?.name].filter(Boolean).join(" ")),
-    group: optionsOf(allLines, (l) => groupOf(l.accountId), (c) => `${c} ${String(accounts.find((a) => a.code === c)?.name ?? "")}`),
-    t1: optionsOf(allLines, (l) => l.t1Id, (id) => code(id)),
-    t3: optionsOf(allLines, (l) => l.t3Id, (id) => code(id)),
+    account: optionsOf(lines, (l) => l.accountId, (id) => [account(id)?.code, account(id)?.name].filter(Boolean).join(" ")),
+    group: optionsOf(lines, (l) => groupOf(l.accountId), (c) => `${c} ${String(accounts.find((a) => a.code === c)?.name ?? "")}`),
+    t1: optionsOf(lines, (l) => l.t1Id, (id) => code(id)),
+    t3: optionsOf(lines, (l) => l.t3Id, (id) => code(id)),
     t2: optionsOf(vouchers, (v) => v.t2Id, (id) => code(id)),
     requester: optionsOf(vouchers, (v) => v.requestedBy, (id) => name(id) || "—"),
     signer: optionsOf(events, (e) => e.actor, (id) => name(id) || "—"),

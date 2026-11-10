@@ -318,18 +318,20 @@ export default function FinancialSettingsPage() {
           <SetupRows
             table="payees"
             title="Payees"
-            description="Suppliers and others LAF pays. Staff are paid as themselves and need no row here."
+            description="Suppliers, and people LAF pays (a family's burial or emergency aid). Requesters see suppliers' names only; people stay with Finance. Staff are paid as themselves and need no row here."
             rows={payees}
             search={(r) => `${str(r.name)} ${str(r.tin)}`}
             addLabel="Add payee"
-            blank={{ active: true }}
+            blank={{ active: true, kind: "supplier" }}
             columns={[
               { label: "Payee", render: (r) => <span className="font-medium">{str(r.name)} {off(r)}</span> },
+              { label: "Kind", render: (r) => (r.kind === "person" ? "Person" : "Supplier") },
               { label: "TIN", render: (r) => <span className="tabular-nums">{str(r.tin) || "—"}</span> },
               { label: "Withholding", render: (r) => str(r.ewt_atc) || "None" },
             ]}
             fields={[
               { key: "name", label: "Name", kind: "text" },
+              { key: "kind", label: "Kind", kind: "select", options: [{ value: "supplier", label: "Supplier (requesters can pick it)" }, { value: "person", label: "Person (Finance only)" }] },
               { key: "tin", label: "TIN", kind: "text", hint: "Digits only: 9, or 9 plus the 3- or 5-digit branch code." },
               { key: "address", label: "Address", kind: "textarea" },
               { key: "ewt_atc", label: "Withholding tax", kind: "select", optional: true, options: rates.filter((r) => r.active !== false).map((r) => ({ value: str(r.atc), label: `${str(r.atc)} · ${str(r.description)} (${str(r.rate)}%)` })) },

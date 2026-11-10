@@ -142,7 +142,8 @@ export const voucherFilesStore = createCollection<VoucherFile[]>({
     bytes: num(r.bytes), uploadedBy: s(r.uploaded_by), uploadedAt: String(r.uploaded_at),
   })),
 });
-/** What waits for this person to sign (ops.voucher_queue: the same rule the database signs by). */
+/** What waits for this person (ops.voucher_queue): steps they may sign, by the rule the database signs by, and
+ * their own requests sent back to them (step "returned"). */
 export const voucherQueueStore = createCollection<{ voucherId: string; step: string }[]>({
   key: "ops.voucher_queue",
   empty: [],
@@ -156,10 +157,10 @@ export const voucherQueueStore = createCollection<{ voucherId: string; step: str
 
 export function useVouchers() {
   const { data: vouchers, loading } = useCollection(vouchersStore);
-  const { data: lines } = useCollection(voucherLinesStore);
+  const { data: lines, loading: linesLoading } = useCollection(voucherLinesStore);
   const { data: events } = useCollection(voucherEventsStore);
   const { data: queue } = useCollection(voucherQueueStore);
-  return { vouchers, lines, events, queue, loading };
+  return { vouchers, lines, events, queue, loading, linesLoading };
 }
 
 type Result<T = null> = { ok: true; value: T } | { ok: false; error: string };
