@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { bucketOf, daysOf, manilaTime, parsePreset, presetDescription, presetLabel, presetQuery, presetWindow, PRESETS } from "../lib/utils/period-presets.ts";
 
 test("the codes the chips show on a phone", () => {
-  assert.deepEqual(PRESETS.map((p) => p.code), ["+0D", "-1D", "+0Wk", "-1Wk", "+0M", "-1M", "CSTM", "ALL"]);
+  assert.deepEqual(PRESETS.map((p) => p.code), ["+0D", "-1D", "+0Wk", "-1Wk", "+0M", "-1M", "+0Y", "-1Y", "CSTM", "ALL"]);
 });
 
 test("the caption under the chips, in words, with the Manila time when the period runs to today", () => {
@@ -82,4 +82,14 @@ test("captions", () => {
   assert.equal(presetLabel({ key: "last_week" }, w("last_week", "2026-11-10")), "Last week · Nov 2 – Nov 8, 2026");
   assert.equal(presetLabel({ key: "custom", from: "2026-10-03", to: "2026-11-02" }, w("custom", "2026-11-10", { from: "2026-10-03", to: "2026-11-02" })), "Oct 3 – Nov 2, 2026");
   assert.equal(presetLabel({ key: "all" }, null), "All time");
+});
+
+test("years (Payment Requests): whole calendar years, read in words", () => {
+  {
+    assert.deepEqual(presetWindow({ key: "this_year" }, "2026-11-11"), { from: "2026-01-01", to: "2026-12-31" });
+    assert.deepEqual(presetWindow({ key: "last_year" }, "2026-01-01"), { from: "2025-01-01", to: "2025-12-31" });
+    assert.equal(presetLabel({ key: "this_year" }, presetWindow({ key: "this_year" }, "2026-11-11")), "This year · 2026");
+    assert.equal(presetDescription({ key: "this_year" }, "2026-11-11", null), "This year: figures from January 1 to today, November 11, 2026");
+    assert.equal(presetDescription({ key: "last_year" }, "2026-11-11", null), "Last year: figures from January 1 to December 31, 2025");
+  }
 });

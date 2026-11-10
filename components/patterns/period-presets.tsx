@@ -79,12 +79,15 @@ export function PeriodPresetsBar({
   onChange,
   today,
   allowAll = false,
+  years = false,
   className,
 }: {
   state: PresetState;
   onChange: (next: PresetState) => void;
   today: string;
   allowAll?: boolean;
+  /** Also offer This year and Last year. */
+  years?: boolean;
   className?: string;
 }) {
   const now = useNow();
@@ -99,7 +102,7 @@ export function PeriodPresetsBar({
     <div className={cn("flex flex-col gap-2 rounded-2xl border border-border bg-card p-3 print:hidden", className)}>
       {/* On a phone the chips share the width equally (one line, the chosen one always in sight); words from desktop up. */}
       <div className="flex gap-1 lg:flex-wrap lg:gap-1.5" role="group" aria-label="Period">
-        {PRESETS.filter((p) => p.key !== "all" || allowAll).map((p) => (
+        {PRESETS.filter((p) => (p.key !== "all" || allowAll) && (years || (p.key !== "this_year" && p.key !== "last_year"))).map((p) => (
           <button
             key={p.key}
             type="button"

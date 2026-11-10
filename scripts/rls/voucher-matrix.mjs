@@ -165,6 +165,9 @@ try {
   await step("... reviewed", ids.office, `select ops.voucher_act($1, 'review')`, [u], (r) => r.ok);
   await step("the urgent approver who prepared it still may not approve it", ids.finance, `select ops.voucher_act($1, 'approve')`, [u], refused("42501"), false);
   await step("the urgent approver row doesn't count on a normal request", null, `select ops.voucher_may_sign(v, 'approve', $2) ok from ops.vouchers v where v.id = $1`, [pc, ids.finance], (r) => r.ok && r.rows[0].ok === false);
+  await c.query(`insert into ops.payees (name, tin) values ('Test Hardware', '123456789000')`);
+  await step("a driver picks a supplier by name, without its TIN", ids.driver, `select * from ops.payee_choices() where name = 'Test Hardware'`, [], (r) => r.ok && r.n === 1 && !("tin" in r.rows[0]));
+  await step("a partner gets no supplier names", ids.partner, `select count(*)::int n from ops.payee_choices()`, [], (r) => r.ok && r.rows[0].n === 0);
   await step("functions run as callers only where granted", null,
     `select has_function_privilege('authenticated', 'ops.voucher_may_sign(ops.vouchers, text, uuid)', 'execute') may, has_function_privilege('authenticated', 'ops.voucher_act(uuid, text, text)', 'execute') act`, [], (r) => r.ok && r.rows[0].may === false && r.rows[0].act === true);
 } finally {

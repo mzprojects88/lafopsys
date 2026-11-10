@@ -472,6 +472,14 @@ $$;
 revoke all on function ops.voucher_similar(uuid) from public;
 grant execute on function ops.voucher_similar(uuid) to authenticated;
 
+-- The suppliers a requester may pick: names only (TINs and addresses stay with Finance).
+create or replace function ops.payee_choices()
+returns table (id uuid, name text) language sql stable security definer set search_path = ops, shared, pg_temp as $$
+  select p.id, p.name from ops.payees p where p.active and shared.current_staff_roles() is not null order by p.name;
+$$;
+revoke all on function ops.payee_choices() from public;
+grant execute on function ops.payee_choices() to authenticated;
+
 -- Who may attach a file: the requester until Finance prepares it; Finance editors until it is closed.
 create or replace function ops.voucher_can_attach(p_id uuid)
 returns boolean language sql stable security definer set search_path = ops, shared, pg_temp as $$

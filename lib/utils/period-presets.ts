@@ -7,7 +7,7 @@ import { periodLabel, periodWindow, type DayWindow } from "./period.ts";
  * Monday (period.ts). Pure day-key arithmetic, so it runs the same on the server and in Manila, and
  * loads under `node --test` (imports only ./period and ./dtr).
  */
-export type PresetKey = "today" | "yesterday" | "this_week" | "last_week" | "this_month" | "last_month" | "custom" | "all";
+export type PresetKey = "today" | "yesterday" | "this_week" | "last_week" | "this_month" | "last_month" | "this_year" | "last_year" | "custom" | "all";
 
 export const PRESETS: { key: PresetKey; label: string; code: string }[] = [
   { key: "today", label: "Today", code: "+0D" },
@@ -16,6 +16,9 @@ export const PRESETS: { key: PresetKey; label: string; code: string }[] = [
   { key: "last_week", label: "Last week", code: "-1Wk" },
   { key: "this_month", label: "This month", code: "+0M" },
   { key: "last_month", label: "Last month", code: "-1M" },
+  // Offered only where the page asks for years (Payment Requests, Nov 2026).
+  { key: "this_year", label: "This year", code: "+0Y" },
+  { key: "last_year", label: "Last year", code: "-1Y" },
   { key: "custom", label: "Custom", code: "CSTM" },
   { key: "all", label: "All time", code: "ALL" },
 ];
@@ -46,6 +49,12 @@ export function presetWindow(state: PresetState, today: string): DayWindow | nul
       return periodWindow("month", today);
     case "last_month":
       return periodWindow("month", addDays(periodWindow("month", today).from, -1));
+    case "this_year":
+      return { from: `${today.slice(0, 4)}-01-01`, to: `${today.slice(0, 4)}-12-31` };
+    case "last_year": {
+      const y = Number(today.slice(0, 4)) - 1;
+      return { from: `${y}-01-01`, to: `${y}-12-31` };
+    }
     case "custom":
       return isDay(state.from) && isDay(state.to) && state.from <= state.to ? { from: state.from, to: state.to } : periodWindow("month", today);
     case "all":
@@ -75,7 +84,7 @@ export function presetQuery(state: PresetState): Record<string, string> {
 export function presetLabel(state: PresetState, window: DayWindow | null): string {
   if (!window) return "All time";
   const kind = state.key === "this_month" || state.key === "last_month" ? "month" : state.key === "today" || state.key === "yesterday" ? "today" : "custom";
-  const range = periodLabel(kind, window);
+  const range = state.key === "this_year" || state.key === "last_year" ? window.from.slice(0, 4) : periodLabel(kind, window);
   const name = PRESETS.find((p) => p.key === state.key)?.label;
   return state.key === "custom" ? range : `${name} · ${range}`;
 }

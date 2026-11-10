@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { BedDouble, Bell, ClipboardList, CloudOff, Fuel, Mail, MapPin, PenLine, Wrench, type LucideIcon } from "lucide-react";
+import { BedDouble, Bell, ClipboardList, CloudOff, Fuel, Mail, MapPin, PenLine, Receipt, Wrench, type LucideIcon } from "lucide-react";
+import { useCollection } from "@/lib/data/collection-store";
+import { voucherQueueStore, vouchersStore } from "@/lib/hooks/use-vouchers";
 import { useOpenCaseRecords, usePlansDue } from "@/lib/hooks/use-case-files";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
@@ -93,8 +95,11 @@ export function NotificationCenter() {
   const admissions = roles.includes("admin") || roles.includes("social_worker") || roles.includes("inventory_lead");
   // Case files (0124): the social worker's sessions, and the CEO's records to sign.
   const caseRole = roles.includes("social_worker") || roles.includes("ceo");
-  const bell = (more: Reminder[]) =>
-    caseRole ? <CaseReminders>{(c) => <BellPopover reminders={[...reminders, ...more, ...c]} />}</CaseReminders> : <BellPopover reminders={[...reminders, ...more]} />;
+  const bell = (more: Reminder[]) => (
+    <RequestReminders>
+      {(r) => (caseRole ? <CaseReminders>{(c) => <BellPopover reminders={[...reminders, ...more, ...r, ...c]} />}</CaseReminders> : <BellPopover reminders={[...reminders, ...more, ...r]} />)}
+    </RequestReminders>
+  );
   const rest = (a: Reminder[]) => {
     const withA = (more: Reminder[]) => bell([...a, ...more]);
     if (fleet && tracker) return <TrackerReminder>{(t) => <FleetReminders>{(f) => withA([...t, ...f])}</FleetReminders>}</TrackerReminder>;
@@ -104,6 +109,20 @@ export function NotificationCenter() {
   };
   if (admissions) return <AdmissionReminder>{rest}</AdmissionReminder>;
   return rest([]);
+}
+
+/** Payment Requests (0134): what waits for this person to sign, and their own requests sent back to them. */
+function RequestReminders({ children }: { children: (reminders: Reminder[]) => React.ReactNode }) {
+  const { staffId } = useRole();
+  const { data: queue } = useCollection(voucherQueueStore);
+  const { data: vouchers } = useCollection(vouchersStore);
+  const returned = vouchers.filter((v) => v.requestedBy === staffId && v.status === "returned");
+  const out: Reminder[] = [];
+  if (queue.length)
+    out.push({ id: "requests-waiting", title: `${queue.length} payment request${queue.length === 1 ? "" : "s"} wait for you`, body: "To endorse, prepare, review or approve.", href: "/requests", icon: Receipt });
+  if (returned.length)
+    out.push({ id: "requests-returned", title: `${returned.length} of your requests ${returned.length === 1 ? "was" : "were"} sent back`, body: "Read why, change it and send it again.", href: returned.length === 1 ? `/requests/${returned[0].id}` : "/requests", icon: Receipt });
+  return <>{children(out)}</>;
 }
 
 const manilaDay = (iso: string) => new Date(new Date(iso).getTime() + 8 * 3600_000).toISOString().slice(0, 10);

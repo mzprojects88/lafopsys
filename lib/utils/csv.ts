@@ -6,8 +6,13 @@
  */
 
 /** Every field is quoted, so a comma, a newline or an accent in a name can
- * never shift a column. Embedded quotes are doubled, per RFC 4180. */
-const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
+ * never shift a column. Embedded quotes are doubled, per RFC 4180. A field a
+ * spreadsheet would run as a formula (=, +, -, @, tab or return first, Nov 2026)
+ * gets a leading apostrophe; plain numbers such as -250.50 stay numbers. */
+export const escapeCsv = (value: string) => {
+  const safe = /^[=+\-@\t\r]/.test(value) && !/^-?\d+(\.\d+)?$/.test(value) ? `'${value}` : value;
+  return `"${safe.replace(/"/g, '""')}"`;
+};
 
 export function csvLines(header: string[], rows: string[][]): string {
   return [header, ...rows].map((r) => r.map(escapeCsv).join(",")).join("\n");
