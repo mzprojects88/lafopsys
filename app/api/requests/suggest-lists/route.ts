@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { isRateLimited } from "@/lib/utils/rate-limit";
 import { openaiConfigured } from "@/lib/ai/env";
 import { suggestPaymentLists } from "@/lib/ai/openai";
-import { fetchAll } from "@/lib/supabase/fetch-all";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -23,27 +22,25 @@ export async function POST() {
   if (!openaiConfigured()) return NextResponse.json({ ok: false, error: "AI suggestions are not set up (OPENAI_API_KEY)." }, { status: 503 });
 
   const ops = () => supabase.schema("ops");
-  const [{ data: programs }, { data: accounts }, { data: categories }, { data: types }, lines] = await Promise.all([
-    ops().from("programs").select("name"),
-    ops().from("coa_accounts").select("id, code, name, description, is_header, active").like("code", "5%"),
-    ops().from("recipient_categories").select("name"),
-    ops().from("expense_types").select("label").eq("for_person", true),
-    fetchAll<{ account_id: string | null }>((from, to) => ops().from("voucher_lines").select("account_id").order("id").range(from, to)),
-  ]);
-  const usable = (accounts ?? []).filter((a) => a.code && !a.is_header && a.active);
-  const codeOf = new Map(usable.map((a) => [a.id as string, a.code as string]));
-  const counts = new Map<string, number>();
-  for (const l of lines) {
-    const code = l.account_id ? codeOf.get(l.account_id) : undefined;
-    if (code) counts.set(code, (counts.get(code) ?? 0) + 1);
-  }
   try {
+    const reads = await Promise.all([
+      ops().from("programs").select("name"),
+      ops().from("coa_accounts").select("code, name, description, is_header, active").like("code", "5%"),
+      ops().from("recipient_categories").select("name"),
+      ops().from("expense_types").select("label").eq("for_person", true),
+      // Counts per account in one query (ops.voucher_line_counts, 0135): all vouchers, nothing but numbers.
+      ops().rpc("voucher_line_counts"),
+    ]);
+    const failed = reads.find((r) => r.error);
+    if (failed) return NextResponse.json({ ok: false, error: failed.error!.message }, { status: 500 });
+    const [{ data: programs }, { data: accounts }, { data: categories }, { data: types }, { data: counts }] = reads;
+    const usable = ((accounts ?? []) as { code: string | null; name: string; description: string | null; is_header: boolean; active: boolean }[]).filter((a) => a.code && !a.is_header && a.active);
     const s = await suggestPaymentLists({
-      programs: (programs ?? []).map((p) => p.name as string),
-      accounts: usable.map((a) => ({ code: a.code as string, name: a.name as string, description: (a.description as string | null) ?? null })),
-      categories: (categories ?? []).map((c) => c.name as string),
-      purposes: [...new Set((types ?? []).map((t) => t.label as string))],
-      linesByAccount: [...counts].map(([code, n]) => ({ code, lines: n })),
+      programs: ((programs ?? []) as { name: string }[]).map((p) => p.name),
+      accounts: usable.map((a) => ({ code: a.code as string, name: a.name, description: a.description ?? null })),
+      categories: ((categories ?? []) as { name: string }[]).map((c) => c.name),
+      purposes: [...new Set(((types ?? []) as { label: string }[]).map((t) => t.label))],
+      linesByAccount: ((counts ?? []) as { code: string; lines: number }[]).map((r) => ({ code: r.code, lines: r.lines })),
     });
     const known = new Set(usable.map((a) => a.code as string));
     return NextResponse.json({ ok: true, categories: s.categories, purposes: s.purposes.filter((p) => known.has(p.accountCode)) });

@@ -25,6 +25,10 @@ const ORDER: Record<SetupTable, string> = {
 };
 const KEY: Partial<Record<SetupTable, string>> = { ewt_rates: "atc" };
 export const keyOf = (table: SetupTable, row: SetupRow) => String(row[KEY[table] ?? "id"]);
+/** The next place at the end of a list (a new row's `sort`). */
+export const nextSort = (rows: readonly SetupRow[]) => Math.max(0, ...rows.map((r) => Number(r.sort ?? 0))) + 1;
+/** A recipient category's kind in words (0135). */
+export const RECIPIENT_KIND: Record<string, string> = { patient: "Patient", provider: "Service provider", other: "Other" };
 
 const stores = Object.fromEntries(
   (Object.keys(ORDER) as SetupTable[]).map((table) => [

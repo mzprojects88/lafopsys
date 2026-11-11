@@ -99,7 +99,8 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
   const fundId = header.t2_id || String(funds.find((f) => f.code === "UNR")?.id ?? funds.find((f) => !f.restricted)?.id ?? "");
   const fund = funds.find((f) => f.id === fundId);
   // Paying a person: only the purposes Finance marks for it (burial aid, financial aid...).
-  const toPerson = header.to_person && header.kind !== "reimbursement";
+  // A person is paid directly: a supplier payment or petty cash (an advance or a reimbursement pays the requester).
+  const toPerson = header.to_person && (header.kind === "supplier" || header.kind === "petty_cash");
   const activeTypes = types.filter((t) => t.active !== false && (!toPerson || t.for_person));
   const category = categories.find((c) => c.id === header.recipient_category_id);
   const readsPatients = canView("patients") || canView("house_ops");
@@ -119,7 +120,7 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
   async function save(send: boolean) {
     setBusy(true);
     const person = toPerson
-      ? { to_person: true, recipient_category_id: header.recipient_category_id, patient_id: category?.kind === "patient" ? header.patient_id : null, recipient_name: header.recipient_name }
+      ? { to_person: true, recipient_category_id: header.recipient_category_id, patient_id: category?.kind === "patient" && readsPatients ? header.patient_id : null, recipient_name: header.recipient_name }
       : { to_person: false, recipient_category_id: null, patient_id: null, recipient_name: null };
     const saved = await saveVoucher(voucher?.id ?? null, { ...header, ...person, t2_id: fundId, payee_id: header.kind === "supplier" && !toPerson ? header.payee_id : null }, items.map((i) => ({ description: i.description, qty: Number(i.qty) || 0, unit_cost: Number(i.unit_cost), or_number: i.or_number, expense_type_id: i.expense_type_id })));
     if (!saved.ok) {
@@ -165,7 +166,7 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
             <FieldLabel htmlFor="req-purpose">What is it for?</FieldLabel>
             <Textarea id="req-purpose" rows={2} maxLength={500} value={header.purpose} onChange={(e) => set("purpose", e.target.value)} placeholder="e.g. Diesel for the NCH runs this week" />
           </Field>
-          {header.kind !== "reimbursement" ? (
+          {header.kind === "supplier" || header.kind === "petty_cash" ? (
             <Field className="sm:col-span-2">
               <label className="flex items-center gap-2 text-theme-sm font-medium">
                 <Switch checked={header.to_person} onCheckedChange={(v) => set("to_person", v)} />
@@ -189,7 +190,7 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
               {category?.kind === "patient" && readsPatients ? (
                 <Field>
                   <FieldLabel htmlFor="req-patient">Patient</FieldLabel>
-                  <PatientPick value={header.patient_id} onChange={(v) => set("patient_id", v)} />
+                  <PatientPick value={header.patient_id} onChange={(v) => setHeader((h) => ({ ...h, patient_id: v, recipient_name: null }))} />
                 </Field>
               ) : null}
               <Field>

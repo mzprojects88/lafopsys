@@ -13,7 +13,7 @@ import { SetupRows, type SetupColumn, type SetupField } from "@/components/modul
 import { PersonListSuggestions } from "@/components/modules/finance/person-list-suggestions";
 import { createClient } from "@/lib/supabase/client";
 import { useCollection } from "@/lib/data/collection-store";
-import { setupChecklistStore, setupLogStore, useSetupRows, type SetupRow } from "@/lib/hooks/use-finance-setup";
+import { nextSort, RECIPIENT_KIND, setupChecklistStore, setupLogStore, useSetupRows, type SetupRow } from "@/lib/hooks/use-finance-setup";
 import { programsStore, useProgramsData } from "@/lib/hooks/use-programs-collection";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { useRoleNames } from "@/lib/hooks/use-module-access";
@@ -93,7 +93,6 @@ export default function FinancialSettingsPage() {
   const people = staff.filter((s) => s.active).map((s) => ({ value: s.id, label: personLabel(s.id) }));
   const roleOptions = roles.filter((r) => !r.archived_at && r.key !== "partner_viewer").map((r) => ({ value: r.key, label: r.name }));
 
-  const nextSort = (rows: SetupRow[]) => Math.max(0, ...rows.map((r) => Number(r.sort ?? 0))) + 1;
 
   const codeFields = (tier: "T1" | "T2" | "T3"): SetupField[] => [
     { key: "code", label: "Code", kind: "text", upper: true, hint: "2 to 8 capital letters or digits, as it should appear in QuickBooks." },
@@ -257,7 +256,7 @@ export default function FinancialSettingsPage() {
             blank={{ kind: "other", active: true, sort: nextSort(categories) }}
             columns={[
               { label: "Category", render: (r) => <span className="font-medium">{str(r.name)} {off(r)}</span> },
-              { label: "Kind", render: (r) => (r.kind === "patient" ? "Patient" : r.kind === "provider" ? "Service provider" : "Other") },
+              { label: "Kind", render: (r) => RECIPIENT_KIND[str(r.kind)] ?? "Other" },
             ]}
             fields={[
               { key: "name", label: "Name", kind: "text" },

@@ -99,6 +99,10 @@ begin
   if coalesce((p_voucher->>'urgent')::boolean, false) and length(btrim(coalesce(p_voucher->>'urgent_reason', ''))) = 0 then
     raise exception 'Say why it is urgent.' using errcode = '23514';
   end if;
+  -- A person is paid directly (a supplier payment or petty cash); an advance or a reimbursement pays the requester.
+  if v_person and v_kind not in ('supplier', 'petty_cash') then
+    raise exception 'Only a direct payment or petty cash can go to a person; an advance or a reimbursement goes to you.' using errcode = '23514';
+  end if;
   if v_person then
     -- A person, not a supplier: a category Finance keeps, and the person's name (a patient picked from Patients by
     -- someone who may read Patients, or typed).
@@ -185,6 +189,35 @@ end $$;
 revoke all on function ops.voucher_save(uuid, jsonb, jsonb) from public;
 grant execute on function ops.voucher_save(uuid, jsonb, jsonb) to authenticated;
 
+-- Possible duplicates (0134's rule) also know people: two live requests paying the same patient, or the same
+-- person by name, for the same total within 30 days, whoever filed them.
+create or replace function ops.voucher_similar(p_id uuid)
+returns integer language sql stable security definer set search_path = ops, pg_temp as $$
+  select count(*)::integer from ops.vouchers o, ops.vouchers v
+  where v.id = p_id and ops.can_read_voucher(v.requested_by, v.status, v.requester_role)
+    and o.id <> v.id and o.status not in ('draft', 'cancelled', 'rejected')
+    and (exists (select 1 from ops.voucher_lines a join ops.voucher_lines b on lower(a.or_number) = lower(b.or_number)
+                 where a.voucher_id = v.id and b.voucher_id = o.id)
+         or (o.total = v.total and v.total > 0 and abs(extract(epoch from (o.created_at - v.created_at))) <= 30 * 86400
+             and (case
+                    when v.to_person then o.to_person and (o.patient_id = v.patient_id or lower(btrim(o.recipient_name)) = lower(btrim(v.recipient_name)))
+                    else not o.to_person and (o.payee_id = v.payee_id or (v.payee_id is null and o.payee_id is null and o.requested_by = v.requested_by))
+                  end)));
+$$;
+revoke all on function ops.voucher_similar(uuid) from public;
+grant execute on function ops.voucher_similar(uuid) to authenticated;
+
+-- How often each account was used on vouchers, for the AI suggestions (counts only; whoever sets up Finance).
+create or replace function ops.voucher_line_counts()
+returns table (code text, lines integer) language sql stable security definer set search_path = ops, shared, pg_temp as $$
+  select a.code, count(*)::integer
+  from ops.voucher_lines l join ops.coa_accounts a on a.id = l.account_id
+  where shared.has_power('finance_setup') and a.code is not null
+  group by a.code;
+$$;
+revoke all on function ops.voucher_line_counts() from public;
+grant execute on function ops.voucher_line_counts() to authenticated;
+
 -- 4. The setup checklist counts the categories with the expense types.
 create or replace function ops.finance_setup_checklist()
 returns jsonb
@@ -216,7 +249,7 @@ begin
       case when n = 0 and v_list is null then 'Every code is settled and every ArkOS program has its voucher program.' end));
 
   -- 0135: the recipient categories are confirmed with the expense types.
-  select count(*) filter (where e.review_note is not null) + (select count(*) from ops.recipient_categories where review_note is not null),
+  select count(*) filter (where e.review_note is not null) + (select count(*) from ops.recipient_categories where review_note is not null and active),
          string_agg(distinct e.label, ', ') filter (where a.is_header or not a.active or u.tier = 'T2' or not u.active)
     into n, v_list
     from ops.expense_types e join ops.coa_accounts a on a.id = e.account_id join ops.fin_codes u on u.id = e.use_id where e.active;

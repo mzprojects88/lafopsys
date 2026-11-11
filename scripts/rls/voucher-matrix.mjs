@@ -54,6 +54,7 @@ try {
     (select id from shared.staff where role = 'partner_viewer' and active limit 1) partner,
     (select id from shared.staff where active and role = 'board' limit 1) board,
     (select md5('code:T2:UNR')::uuid) unr, (select md5('code:T2:OC')::uuid) oc`)).rows[0];
+  if (!ids.chef) throw new Error("fixture missing: an active chef with no extra roles (the no-Patients-access requester)");
   console.log("fixtures:", Object.fromEntries(Object.entries(ids).map(([k, v]) => [k, !!v])));
   const lines = JSON.stringify([{ description: "Diesel", qty: 2, unit_cost: 1500, expense_type_id: (await c.query(`select ${GAS_TRN} id`)).rows[0].id, or_number: "OR-1001" }]);
   const header = (extra = {}) => JSON.stringify({ kind: "reimbursement", purpose: "Fuel for the NCH run", t2_id: ids.unr, pay_method: "cash", ...extra });
@@ -200,7 +201,7 @@ try {
     (r) => r.ok && r.rows[0].to_person && r.rows[0].named && r.rows[0].no_payee);
   await step("a chef (no Patients or House Ops access) can't pick a patient", ids.chef, `select ops.voucher_save(null, $1::jsonb, $2::jsonb)`,
     [person({ recipient_category_id: await catId("patient"), patient_id: pt }), burialLine], refused("42501"), false);
-  await step("... but can type the person's name", ids.driver, `select ops.voucher_save(null, $1::jsonb, $2::jsonb) id`,
+  await step("... but can type the person's name", ids.chef, `select ops.voucher_save(null, $1::jsonb, $2::jsonb) id`,
     [person({ recipient_category_id: await catId("other"), recipient_name: "A neighbour" }), burialLine], (r) => r.ok);
   await step("paying a person needs a person purpose (gasoline refused)", ids.sw, `select ops.voucher_save(null, $1::jsonb, $2::jsonb)`,
     [person({ recipient_category_id: await catId("other"), recipient_name: "Someone" }), lines], (r) => !r.ok && /purpose for paying a person/.test(r.error), false);
@@ -210,6 +211,14 @@ try {
   await step("... endorsed", ids.office, `select ops.voucher_act($1, 'endorse')`, [pp], (r) => r.ok);
   await step("... prepared (5501)", ids.finance, `select ops.voucher_prepare($1, $2, null, '[]'::jsonb) n`, [pp, ids.unr], (r) => r.ok && /^PV-/.test(val(r)));
   await step("a driver can't read the patient-family voucher", ids.driver, `select count(*)::int n from ops.vouchers where id = $1`, [pp], (r) => r.ok && r.rows[0].n === 0);
+  await step("a cash advance can't go to a person", ids.sw, `select ops.voucher_save(null, $1::jsonb, $2::jsonb)`,
+    [person({ kind: "cash_advance", recipient_category_id: await catId("other"), recipient_name: "Someone" }), burialLine], (r) => !r.ok && /direct payment or petty cash/.test(r.error), false);
+  const twin = val(await step("a second burial aid for the same patient, by another requester", ids.driver, `select ops.voucher_save(null, $1::jsonb, $2::jsonb) id`,
+    [person({ recipient_category_id: await catId("patient"), patient_id: pt }), burialLine], (r) => r.ok));
+  await step("... sent", ids.driver, `select ops.voucher_act($1, 'submit')`, [twin], (r) => r.ok);
+  await step("... is flagged as a possible duplicate (same patient, same total)", ids.driver, `select ops.voucher_similar($1) n`, [twin], (r) => r.ok && r.rows[0].n >= 1);
+  await step("usage counts are for whoever sets up Finance only", ids.sw, `select count(*)::int n from ops.voucher_line_counts()`, [], (r) => r.ok && r.rows[0].n === 0);
+  await step("... the Super Admin gets counts per account", ids.admin1, `select count(*)::int n from ops.voucher_line_counts()`, [], (r) => r.ok && r.rows[0].n > 0);
   await step("the categories are in the setup checklist", null, `select ops.finance_setup_checklist()->'items'->2->>'label' l`, [], (r) => r.ok && /recipient categories/.test(r.rows[0].l));
   await step("functions run as callers only where granted", null,
     `select has_function_privilege('authenticated', 'ops.voucher_may_sign(ops.vouchers, text, uuid)', 'execute') may, has_function_privilege('authenticated', 'ops.voucher_act(uuid, text, text)', 'execute') act`, [], (r) => r.ok && r.rows[0].may === false && r.rows[0].act === true);

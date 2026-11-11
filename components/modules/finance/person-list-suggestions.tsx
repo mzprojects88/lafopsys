@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { saveSetupRow, useSetupRows } from "@/lib/hooks/use-finance-setup";
+import { nextSort, RECIPIENT_KIND, saveSetupRow, useSetupRows } from "@/lib/hooks/use-finance-setup";
 
 interface Suggestion {
   categories: { name: string; kind: "patient" | "provider" | "other"; reason: string }[];
@@ -41,7 +41,6 @@ export function PersonListSuggestions() {
   const programFor = (code: string) =>
     codes.find((c) => c.tier === "T3" && c.active && ((c.account_prefixes as string[]) ?? []).some((p) => code.startsWith(p)))?.id ??
     codes.find((c) => c.tier === "T1" && c.code === "ADM")?.id;
-  const nextSort = (rows: Record<string, unknown>[]) => Math.max(0, ...rows.map((r) => Number(r.sort ?? 0))) + 1;
 
   async function add(key: string, run: () => ReturnType<typeof saveSetupRow>) {
     const r = await run();
@@ -72,7 +71,7 @@ export function PersonListSuggestions() {
                   return (
                     <div key={key} className="flex items-start gap-3 rounded-xl border border-border p-3">
                       <div className="min-w-0 flex-1 text-theme-sm">
-                        <p className="font-medium">{c.name} <span className="text-theme-xs text-muted-foreground">({c.kind})</span></p>
+                        <p className="font-medium">{c.name} <span className="text-theme-xs text-muted-foreground">({RECIPIENT_KIND[c.kind]})</span></p>
                         <p className="text-theme-xs text-muted-foreground">{c.reason}</p>
                       </div>
                       <Button size="sm" variant="outline" disabled={added.has(key)} onClick={() => void add(key, () => saveSetupRow("recipient_categories", null, { name: c.name, kind: c.kind, active: true, sort: nextSort(categories) }))}>
