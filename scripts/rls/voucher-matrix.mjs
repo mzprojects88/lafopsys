@@ -84,6 +84,8 @@ try {
   await c.query(`delete from ops.voucher_authority`);
   await c.query(`insert into ops.voucher_authority (step, staff_id) values ('validate', $1), ('review', $2), ('approve_payment', $3), ('release', $1)`, [ids.finance, ids.office, ids.admin2]);
   await c.query(`insert into ops.voucher_authority (step, max_amount, staff_id) values ('approve', 5000, $1)`, [ids.admin1]);
+  // 0139: a second payment approver, so an admin's own request can be paid too.
+  await c.query(`insert into ops.voucher_authority (step, staff_id) values ('approve_payment', $1)`, [ids.admin1]);
   await c.query(`insert into ops.voucher_authority (step, min_amount, staff_id) values ('approve', 5000, $1)`, [ids.admin2]);
   await c.query(`insert into ops.voucher_authority (step, requester_role, staff_id)
     select 'endorse', r.role, case when r.role = 'admin' then null when r.role = 'office_admin' then $2::uuid else $1::uuid end

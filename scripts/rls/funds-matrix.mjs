@@ -220,12 +220,25 @@ try {
   await walk("zero liquidation", liq3, ids.driver, null, false, false);
   await step("settling needs the account the change goes back to", ids.office, `select ops.voucher_pay($1, 'release')`, [liq3], refused("23514"), false);
   await step("settled into BDO", ids.office, `select ops.voucher_pay($1, 'release', $2)`, [liq3, bdo], (r) => r.ok && val(r) === "released");
-  await step("... 500 back into the cash book", null, `select direction, amount from ops.cash_entries where source_id = 'voucher:' || $1`, [liq3], (r) => r.ok && r.rows[0].direction === "inflow" && Number(r.rows[0].amount) === 500);
+  await step("... the advance's 500 taken back: nothing spent, cash net 0", null,
+    `select sum(amount)::numeric t from ops.cash_entries where (source_id like 'voucher:' || $1 || ':%' or source_id like 'voucher:' || $2 || ':%') and direction = 'outflow'`, [adv3, liq3],
+    (r) => r.ok && Number(r.rows[0].t) === 0);
+  await step("the 3,000 advance liquidated at 2,600: spending 2,600 by the liquidation's program", null,
+    `select sum(amount)::numeric t, count(distinct program_id)::int p from ops.cash_entries where (source_id like 'voucher:' || $1 || ':%' or source_id like 'voucher:' || $2 || ':%') and direction = 'outflow'`, [adv, liq],
+    (r) => r.ok && Number(r.rows[0].t) === 2600);
   await step("... and the advance is settled", ids.driver, `select count(*)::int n from ops.advances_open() where voucher_id = $1`, [adv3], (r) => r.ok && r.rows[0].n === 0);
   await step("a top-up posts nothing to the cash book (the slips did)", null, `select count(*)::int n from ops.cash_entries where source_id like 'voucher:' || $1 || '%'`, [top], (r) => r.ok && r.rows[0].n === 0);
 
+  await step("the only releaser can't send a request nobody else could release", ids.office, `select ops.voucher_act(ops.voucher_save(null, $1::jsonb, $2::jsonb), 'submit')`, [header({ kind: "reimbursement" }), item(100)],
+    (r) => !r.ok && /release/.test(r.error), false);
+  await step("nobody calls the payment-signing helper directly", ids.driver, `select ops.voucher_may_pay(v, 'release', $2) from ops.vouchers v where v.id = $1`, [reim, ids.driver], refused("42501"), false);
+
   // 5. QuickBooks.
   const today = await one(`select (now() at time zone 'Asia/Manila')::date::text`);
+  await c.query("savepoint noacc");
+  await c.query(`update ops.finance_settings set advances_account_id = null`);
+  await step("no advances account set: no file, rather than a journal that doesn't balance", ids.finance, `select count(*) from ops.voucher_qb_export($1, $1)`, [today], refused("23514"), false);
+  await c.query("rollback to savepoint noacc");
   await step("a driver can't export", ids.driver, `select count(*) from ops.voucher_qb_export($1, $1)`, [today], refused("42501"), false);
   const qb = await step("Finance exports today's journal", ids.finance, `select * from ops.voucher_qb_export($1, $1)`, [today], (r) => r.ok && r.n > 0);
   const byJournal = new Map();

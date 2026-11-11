@@ -300,7 +300,7 @@ function RequestsContent() {
         <KpiCard
           label="Still moving"
           value={moving.length}
-          sublabel={moving.length ? (["submitted", "endorsed", "prepared", "reviewed"] as const).map((st) => `${moving.filter((v) => v.status === st).length} ${STATUS_LABEL[st].toLowerCase()}`).join(" · ") : "Nothing waiting"}
+          sublabel={moving.length ? OPEN.map((st) => [st, moving.filter((v) => v.status === st).length] as const).filter(([, n]) => n > 0).map(([st, n]) => `${n} ${STATUS_LABEL[st].toLowerCase()}`).join(" · ") : "Nothing waiting"}
           icon={Clock}
           tone={moving.length ? "warning" : "default"}
         />

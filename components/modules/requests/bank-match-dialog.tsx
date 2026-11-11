@@ -20,7 +20,7 @@ const shift = (day: string, days: number) => new Date(Date.parse(`${day}T00:00:0
 export function BankMatchDialog({ voucher, open, onOpenChange }: { voucher: Voucher; open: boolean; onOpenChange: (o: boolean) => void }) {
   const [debits, setDebits] = React.useState<Debit[] | null>(null);
   const [busy, setBusy] = React.useState(false);
-  const net = voucher.total - voucher.ewtTotal;
+  const net = Math.round((voucher.total - voucher.ewtTotal) * 100) / 100;
 
   React.useEffect(() => {
     if (!open || !voucher.releasedAt) return;

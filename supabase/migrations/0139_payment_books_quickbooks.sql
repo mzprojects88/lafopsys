@@ -61,8 +61,8 @@ returns boolean language sql stable security definer set search_path = ops, pg_t
       where e.voucher_id = p_v.id and e.actor = p_actor and e.action in ('prepare_payment', 'approve_payment')
         and e.at > coalesce((select max(e2.at) from ops.voucher_events e2 where e2.voucher_id = p_v.id and e2.action = 'approve'), '-infinity'));
 $$;
+-- Called only from definer functions (the queue, voucher_pay): nobody calls it directly.
 revoke all on function ops.voucher_may_pay(ops.vouchers, text, uuid) from public;
-grant execute on function ops.voucher_may_pay(ops.vouchers, text, uuid) to authenticated;
 
 -- 3. Paying: prepare the payment, approve it, release it (and post the cash book).
 create or replace function ops.voucher_pay(p_id uuid, p_action text, p_account uuid default null, p_reference text default null, p_note text default null)
@@ -128,13 +128,16 @@ begin
     v_number := coalesce(v.voucher_number, v.request_number);
     -- The cash book, by program (from each line's T3); a top-up is a transfer to its fund and posts nothing.
     if v.kind = 'liquidation' then
-      if v_diff <> 0 then
-        insert into ops.cash_entries (source_id, date, direction, source, entity, currency, amount, description, approval_status)
-        values ('voucher:' || v.id, (now() at time zone 'Asia/Manila')::date, case when v_diff > 0 then 'inflow' else 'outflow' end, 'voucher', 'PH_SEC', 'PHP', abs(v_diff),
-                left(v_number || ': ' || case when v_diff > 0 then 'change returned' else 'overspend reimbursed' end || ' (' || v.purpose || ')', 500), 'approved')
-        on conflict (source_id) do nothing;
-      end if;
-    elsif v.kind <> 'fund_topup' then
+      -- The advance's outflows (by its estimated programs) are taken back as negative outflows, and the real
+      -- spending goes in by program: spending by program is the liquidation's, and the cash net of both entries
+      -- is the change returned (or the overspend paid).
+      insert into ops.cash_entries (source_id, date, direction, source, entity, currency, amount, program_id, description, approval_status)
+      select 'voucher:' || v.id || ':undo:' || coalesce(e.program_id, 'none'), (now() at time zone 'Asia/Manila')::date, 'outflow', 'voucher', 'PH_SEC', 'PHP', -e.amount, e.program_id,
+             left(v_number || ': advance settled (' || v.purpose || ')', 500), 'approved'
+      from ops.cash_entries e where e.source_id like 'voucher:' || v.advance_of || ':%' and e.direction = 'outflow' and e.amount > 0
+      on conflict (source_id) do nothing;
+    end if;
+    if v.kind <> 'fund_topup' then
       insert into ops.cash_entries (source_id, date, direction, source, entity, currency, amount, program_id, description, approval_status)
       select 'voucher:' || v.id || ':' || coalesce(p.id, 'none'), (now() at time zone 'Asia/Manila')::date, 'outflow', 'voucher', 'PH_SEC', 'PHP',
              sum(l.amount - l.ewt_amount), p.id, left(v_number || ': ' || v.purpose, 500), 'approved'
@@ -161,17 +164,34 @@ language plpgsql security definer set search_path = ops, shared, pg_temp as $$
 #variable_conflict use_column
 declare
   s ops.finance_settings;
+  v_ids uuid[];
 begin
   if shared.current_staff_roles() is null or not shared.has_power('finance_export') then
     raise exception 'Only whoever holds the export power exports to QuickBooks.' using errcode = '42501';
   end if;
   select * into s from ops.finance_settings;
+  -- One set of vouchers for the file and for the mark (a voucher released meanwhile is in neither).
+  select coalesce(array_agg(v.id), '{}') into v_ids from ops.vouchers v
+  where v.source = 'app' and v.status = 'released' and (v.released_at at time zone 'Asia/Manila')::date between p_from and p_to;
+  -- 2: every account the entries need, or no file (a silently missing line would unbalance it in QuickBooks).
+  if s.advances_account_id is null and exists (select 1 from ops.vouchers where id = any(v_ids) and kind in ('cash_advance', 'liquidation')) then
+    raise exception 'Set the account for cash advances first (Financial Settings › General).' using errcode = '23514';
+  end if;
+  if s.ewt_payable_account_id is null and exists (select 1 from ops.vouchers where id = any(v_ids) and ewt_total > 0) then
+    raise exception 'Set the account for withholding tax payable first (Financial Settings › General).' using errcode = '23514';
+  end if;
+  if exists (select 1 from ops.vouchers v left join ops.cash_funds f on f.id = v.fund_id where v.id = any(v_ids) and v.kind = 'fund_topup' and f.account_id is null) then
+    raise exception 'Set the fund''s account first (Financial Settings › Funds).' using errcode = '23514';
+  end if;
+  if exists (select 1 from ops.vouchers v join ops.voucher_lines l on l.voucher_id = v.id where v.id = any(v_ids) and v.kind in ('reimbursement', 'supplier', 'petty_cash', 'liquidation') and l.account_id is null) then
+    raise exception 'A paid voucher has an item without an account: correct its coding first.' using errcode = '23514';
+  end if;
   return query
   with vs as (
     select v.*, (v.released_at at time zone 'Asia/Manila')::date jday,
            coalesce(case when v.to_person then v.recipient_name end, p.name, v.t4_code, '') who
     from ops.vouchers v left join ops.payees p on p.id = v.payee_id
-    where v.source = 'app' and v.status = 'released' and (v.released_at at time zone 'Asia/Manila')::date between p_from and p_to
+    where v.id = any(v_ids)
   ), dr as (
     -- Expenses (and a liquidation's real spending), line by line.
     select vs.id, a.code || ' ' || a.name acc, l.amount amt, left(vs.purpose || ': ' || l.description, 300) descr,
@@ -207,8 +227,7 @@ begin
   order by vs.jday, vs.voucher_number, x.ord;
   -- Marked after the rows are read, so they still say whether each was exported before.
   if p_mark then
-    update ops.vouchers set exported_at = now()
-    where source = 'app' and status = 'released' and (released_at at time zone 'Asia/Manila')::date between p_from and p_to;
+    update ops.vouchers set exported_at = now() where id = any(v_ids);
   end if;
 end $$;
 revoke all on function ops.voucher_qb_export(date, date, boolean) from public;
@@ -229,14 +248,18 @@ begin
     raise exception 'Only a released voucher is matched to the bank.' using errcode = '23514';
   end if;
   if v.bank_transaction_id is not null then
-    update ops.bank_transactions set matched_cash_entry_id = null where id = v.bank_transaction_id and matched_cash_entry_id in (select id from ops.cash_entries where source_id like 'voucher:' || v.id || '%');
+    update ops.bank_transactions set matched_cash_entry_id = null, category = case when v.kind = 'fund_topup' and category = 'transfer' then null else category end
+    where id = v.bank_transaction_id;
   end if;
   if p_tx is not null then
     perform 1 from ops.bank_transactions where id = p_tx and debit = v.total - v.ewt_total and matched_cash_entry_id is null for update;
     if not found or exists (select 1 from ops.vouchers where bank_transaction_id = p_tx and id <> v.id) then
       raise exception 'That bank debit is not this voucher''s amount, or is matched already.' using errcode = '23514';
     end if;
-    update ops.bank_transactions set matched_cash_entry_id = (select id from ops.cash_entries where source_id like 'voucher:' || v.id || '%' order by amount desc limit 1) where id = p_tx;
+    -- The voucher's largest cash entry (one debit, one mark); a top-up has none and is a transfer to its fund.
+    update ops.bank_transactions set matched_cash_entry_id = (select id from ops.cash_entries where source_id like 'voucher:' || v.id || ':%' and amount > 0 order by amount desc limit 1),
+      category = case when v.kind = 'fund_topup' then 'transfer' else category end
+    where id = p_tx;
   end if;
   update ops.vouchers set bank_transaction_id = p_tx where id = v.id;
   insert into ops.voucher_events (voucher_id, action, from_status, to_status, actor, note)
@@ -438,8 +461,10 @@ begin
     -- Nobody signs their own request: every step needs someone else for this amount (or, for endorsement, a row
     -- saying none is needed), or the request would wait forever.
     select string_agg(st.label, ', ') into v_step
-    from (values ('endorse', 'endorsement'), ('validate', 'preparing'), ('review', 'review'), ('approve', 'approval')) st(step, label)
-    where not exists (
+    -- 0139: and the payment's approval (not for a slip from a fund or a liquidation) and its release.
+    from (values ('endorse', 'endorsement'), ('validate', 'preparing'), ('review', 'review'), ('approve', 'approval'), ('approve_payment', 'payment approval'), ('release', 'release')) st(step, label)
+    where not (st.step = 'approve_payment' and (v.kind in ('petty_cash', 'liquidation') or v.pay_method = 'gcash'))
+      and not exists (
       select 1 from ops.voucher_authority a
       where a.step = st.step and (st.step <> 'endorse' or a.requester_role = v_role)
         and v.total >= a.min_amount and (a.max_amount is null or v.total < a.max_amount)

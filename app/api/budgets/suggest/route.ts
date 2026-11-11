@@ -6,7 +6,7 @@ import { suggestBudget } from "@/lib/ai/openai";
 import { fetchAll } from "@/lib/supabase/fetch-all";
 import { MEASURES, measureTotal, type Measure } from "@/lib/utils/budgets";
 import type { ImpactLine } from "@/lib/utils/program-impact";
-import { countedDay, settledAdvances, type VoucherKind, type VoucherStatus } from "@/lib/utils/vouchers";
+import { countedDay, settledAdvances, SPENDING, type VoucherKind, type VoucherStatus } from "@/lib/utils/vouchers";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 90;
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     // lines and preparing dates, in parallel batches of ids.
     const [gifts, vouchers] = await Promise.all([
       fetchAll<Record<string, unknown>>((from, to) => ops().from("donations").select("id, date, total_value").gte("date", start).order("id").range(from, to)),
-      fetchAll<Record<string, unknown>>((from, to) => ops().from("vouchers").select("id, kind, status, advance_of, submitted_at, created_at").in("status", ["prepared", "reviewed", "approved"]).or(`submitted_at.gte.${start},created_at.gte.${start}`).order("id").range(from, to)),
+      fetchAll<Record<string, unknown>>((from, to) => ops().from("vouchers").select("id, kind, status, advance_of, submitted_at, created_at").in("status", [...SPENDING]).or(`submitted_at.gte.${start},created_at.gte.${start}`).order("id").range(from, to)),
     ]);
     const ids = vouchers.map((v) => String(v.id));
     const batches = Array.from({ length: Math.ceil(ids.length / 150) }, (_, i) => ids.slice(i * 150, i * 150 + 150));
