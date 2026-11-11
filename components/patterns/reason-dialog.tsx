@@ -20,6 +20,8 @@ interface ReasonDialogProps {
   description?: string;
   confirmLabel?: string;
   requireReason?: boolean;
+  /** The fewest characters a required reason needs (what the database checks). */
+  minLength?: number;
   destructive?: boolean;
   onConfirm: (reason: string) => void;
 }
@@ -31,6 +33,7 @@ export function ReasonDialog({
   description,
   confirmLabel = "Confirm",
   requireReason = true,
+  minLength = 1,
   destructive = false,
   onConfirm,
 }: ReasonDialogProps) {
@@ -65,7 +68,7 @@ export function ReasonDialog({
           </Button>
           <Button
             variant={destructive ? "destructive" : "default"}
-            disabled={requireReason && reason.trim().length === 0}
+            disabled={requireReason && reason.trim().length < minLength}
             onClick={handleConfirm}
           >
             {confirmLabel}

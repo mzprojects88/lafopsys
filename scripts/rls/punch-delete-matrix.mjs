@@ -54,14 +54,17 @@ try {
   await c.query(`insert into ops.time_punch_photos (punch_id, staff_id, object_key, bytes) values ($1, $2, 'test/punch-a.jpg', 100)`, [pA, ids.driver]);
   const eB = await entry("2099-01-06");
   const pB1 = await punch(eB, "clock_in", "2099-01-06T00:00:00Z");
-  await punch(eB, "clock_out", "2099-01-06T08:00:00Z");
+  const pB2 = await punch(eB, "clock_out", "2099-01-06T08:00:00Z");
 
-  await step("the driver can't delete their own punch", ids.driver, `select ops.time_punch_delete($1, 'mistake')`, [pA], refused("42501"), false);
-  await step("HR can't delete a punch", ids.hr, `select ops.time_punch_delete($1, 'mistake')`, [pA], refused("42501"), false);
-  await step("Finance can't either", ids.finance, `select ops.time_punch_delete($1, 'mistake')`, [pA], refused("42501"), false);
+  // The server calls it (service role) with the person it verified; nobody calls it from the browser.
+  const del = (actor, punchId, reason) => ["select ops.time_punch_delete($1, $2, $3) r", [punchId, reason, actor]];
+  await step("a signed-in Super Admin can't call it directly", ids.admin, `select ops.time_punch_delete($1, 'mistake', $2)`, [pA, ids.admin], refused("42501"), false);
+  await step("the driver can't delete their own punch", null, ...del(ids.driver, pA, "mistake"), refused("42501"), false);
+  await step("HR can't delete a punch", null, ...del(ids.hr, pA, "mistake"), refused("42501"), false);
+  await step("Finance can't either", null, ...del(ids.finance, pA, "mistake"), refused("42501"), false);
   await step("nobody writes the log directly", ids.admin, `insert into ops.time_punch_deletions (punch_id, punched_at, punch, reason) values (gen_random_uuid(), now(), '{}', 'x')`, [], refused("42501"), false);
-  await step("the Super Admin needs a reason", ids.admin, `select ops.time_punch_delete($1, ' ')`, [pA], refused("23514"), false);
-  await step("the Super Admin deletes the mistaken punch", ids.admin, `select ops.time_punch_delete($1, 'Punched in by mistake') r`, [pA],
+  await step("the Super Admin needs a reason of 3 characters or more", null, ...del(ids.admin, pA, "NA"), refused("23514"), false);
+  await step("the Super Admin deletes the mistaken punch", null, ...del(ids.admin, pA, "Punched in by mistake"),
     (r) => r.ok && r.rows[0].r.entry_deleted === true && r.rows[0].r.photo_key === "test/punch-a.jpg");
   await step("... the punch, its photo record and its emptied day are gone", null,
     `select (select count(*)::int from ops.time_punches where id = $1) + (select count(*)::int from ops.time_punch_photos where punch_id = $1) + (select count(*)::int from ops.time_entries where id = $2) n`, [pA, eA],
@@ -71,14 +74,18 @@ try {
     (r) => r.ok && r.rows[0].who === true && r.rows[0].t === "clock_in" && r.rows[0].photo_key === "test/punch-a.jpg");
   await step("HR reads the log", ids.hr, `select count(*)::int n from ops.time_punch_deletions where punch_id = $1`, [pA], (r) => r.ok && r.rows[0].n === 1);
   await step("the driver doesn't", ids.driver, `select count(*)::int n from ops.time_punch_deletions`, [], (r) => r.ok && r.rows[0].n === 0);
-  await step("a day with another punch stays (the route recomputes it)", ids.admin, `select ops.time_punch_delete($1, 'Duplicate punch') r`, [pB1],
-    (r) => r.ok && r.rows[0].r.entry_deleted === false);
-  await step("... its other punch is still there", null, `select count(*)::int n from ops.time_punches where time_entry_id = $1`, [eB], (r) => r.ok && r.rows[0].n === 1);
+  await step("a clock-in with its clock-out: delete the clock-out first", null, ...del(ids.admin, pB1, "Duplicate punch"), (r) => !r.ok && /clock-out first/.test(r.error), false);
+  await step("the clock-out goes; the day stays (the route recomputes it)", null, ...del(ids.admin, pB2, "Clocked out by mistake"), (r) => r.ok && r.rows[0].r.entry_deleted === false);
+  await step("... then the clock-in goes, and the emptied day with it", null, ...del(ids.admin, pB1, "Duplicate punch"), (r) => r.ok && r.rows[0].r.entry_deleted === true);
   const eC = await entry("2099-01-07");
   const pC = await punch(eC, "clock_in", "2099-01-07T00:00:00Z");
-  await c.query(`insert into ops.dtr_correction_requests (time_entry_id, staff_id, kind, punch_type, requested_at, reason) values ($1, $2, 'missed_clock_out', 'clock_out', '2099-01-07T09:00:00Z', 'forgot')`, [eC, ids.driver]);
-  await step("a day with a correction request is settled through the request", ids.admin, `select ops.time_punch_delete($1, 'mistake')`, [pC], refused("23514"), false);
-  await step("an unknown punch", ids.admin, `select ops.time_punch_delete(gen_random_uuid(), 'mistake')`, [], refused("P0002"), false);
+  const pC2 = await punch(eC, "clock_in", "2099-01-07T00:05:00Z");
+  const req = await one(`insert into ops.dtr_correction_requests (time_entry_id, staff_id, kind, punch_type, requested_at, reason) values ($1, $2, 'missed_clock_out', 'clock_out', '2099-01-07T09:00:00Z', 'forgot') returning id`, [eC, ids.driver]);
+  await step("a day with a request still to decide is settled through the request", null, ...del(ids.admin, pC2, "Duplicate clock-in"), refused("23514"), false);
+  await c.query(`update ops.dtr_correction_requests set status = 'rejected', decided_by = $2, decided_at = now() where id = $1`, [req, ids.admin]);
+  await step("once decided, a duplicate on that day can go (the day stays)", null, ...del(ids.admin, pC2, "Duplicate clock-in"), (r) => r.ok && r.rows[0].r.entry_deleted === false);
+  await step("... but not its last punch, which would take the request with the day", null, ...del(ids.admin, pC, "mistake"), refused("23514"), false);
+  await step("an unknown punch", null, ...del(ids.admin, "00000000-0000-0000-0000-000000000000", "mistake"), refused("P0002"), false);
 } finally {
   await c.query("rollback");
   await c.end();

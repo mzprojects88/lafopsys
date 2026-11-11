@@ -4,7 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { reverseGeocode } from "@/lib/utils/geocode";
 import { clientIpFromHeaders, parseUserAgent } from "@/lib/utils/device";
 import { todayIso, nowTimeLabel } from "@/lib/utils/date";
-import { addDays, entryTotals, pairSessions, zonedDayStart } from "@/lib/utils/dtr";
+import { addDays } from "@/lib/utils/dtr";
+import { dayTotals } from "@/lib/server/dtr-day";
 import type { PunchLocationStatus } from "@/lib/types/staff";
 import { deleteObject, putObject } from "@/lib/files/b2";
 import { decodeJpegDataUrl, punchPhotoKey, type PhotoStatus } from "@/lib/utils/punch-photo";
@@ -293,26 +294,12 @@ export async function POST(request: Request) {
   }
 
   // ---- the day's totals, from the punches (the only source of duration) ----
-  // Window = the entry's day plus the next, so an overnight session's clock-out
-  // is in range; sessions belong to the day they were clocked in.
-  const { data: punchRows } = await supabase
-    .schema("ops")
-    .from("time_punches")
-    .select("id, staff_id, punch_type, punched_at, time_entry_id")
-    .eq("staff_id", user.id)
-    .gte("punched_at", zonedDayStart(entryDay).toISOString())
-    .lt("punched_at", zonedDayStart(addDays(entryDay, 2)).toISOString());
-  type PunchRowLite = { id: string; staff_id: string; punch_type: "clock_in" | "clock_out"; punched_at: string; time_entry_id: string | null };
-  const sessions = pairSessions(
-    ((punchRows ?? []) as PunchRowLite[]).map((r) => ({
-      id: r.id,
-      staffId: r.staff_id,
-      punchType: r.punch_type,
-      punchedAt: r.punched_at,
-      timeEntryId: r.time_entry_id ?? undefined,
-    }))
-  );
-  const totals = entryTotals(sessions, entryDay, user.id);
+  let totals: { totalMinutes: number; sessionCount: number };
+  try {
+    totals = await dayTotals(supabase, user.id, entryDay);
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: `Punch recorded, but the daily summary failed: ${(e as Error).message}` }, { status: 500 });
+  }
 
   const { error: summaryError } = await db
     .schema("ops")

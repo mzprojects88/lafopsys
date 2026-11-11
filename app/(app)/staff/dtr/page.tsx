@@ -6,9 +6,9 @@ import { format, parseISO } from "date-fns";
 import { CalendarDays, CalendarRange, Clock, Download, LogIn, MapPinOff, PencilLine, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ReasonDialog } from "@/components/patterns/reason-dialog";
-import { createClient } from "@/lib/supabase/client";
-import { createCollection, useCollection } from "@/lib/data/collection-store";
+import { useCollection } from "@/lib/data/collection-store";
 import { timePunchesStore } from "@/lib/hooks/use-time-punches-collection";
+import { punchDeletionsStore } from "@/lib/hooks/use-punch-deletions-collection";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
@@ -193,18 +193,6 @@ const sessionColumns: ColumnDef<SessionRow>[] = [
   },
 ];
 
-/** Punches the Super Admin deleted as mistakes (0141): a copy of each, with who and why. HR and the Super Admin read it. */
-const punchDeletionsStore = createCollection<{ id: string; staffId: string | null; punchedAt: string; punchType: string; reason: string; deletedBy: string | null; deletedAt: string }[]>({
-  key: "ops.time_punch_deletions",
-  empty: [],
-  tables: [{ schema: "ops", table: "time_punch_deletions" }],
-  fetch: async () => {
-    const { data, error } = await createClient().schema("ops").from("time_punch_deletions").select("id, staff_id, punched_at, punch, reason, deleted_by, deleted_at").order("deleted_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r) => ({ id: r.id, staffId: r.staff_id, punchedAt: r.punched_at, punchType: String((r.punch as { punch_type?: string })?.punch_type ?? ""), reason: r.reason, deletedBy: r.deleted_by, deletedAt: r.deleted_at }));
-  },
-});
-
 /** Deleted punches (0141), for HR and the Super Admin: rendered only for them, so nobody else loads the log. */
 function DeletedPunches({ staffName }: { staffName: (id: string) => string }) {
   const { data } = useCollection(punchDeletionsStore);
@@ -215,8 +203,8 @@ function DeletedPunches({ staffName }: { staffName: (id: string) => string }) {
         {data.map((d) => (
           <li key={d.id} className="flex flex-wrap gap-x-3 gap-y-1 px-5 py-2.5 text-theme-sm">
             <span className="font-medium">{d.staffId ? staffName(d.staffId) : "—"}</span>
-            <span>{d.punchType === "clock_out" ? "Out" : "In"} · {format(parseISO(d.punchedAt), "MMM d, yyyy")} {timeLabel12(d.punchedAt)}</span>
-            <span className="text-muted-foreground">deleted {format(parseISO(d.deletedAt), "MMM d, yyyy")} {timeLabel12(d.deletedAt)} by {d.deletedBy ? staffName(d.deletedBy) : "the system"}: {d.reason}</span>
+            <span>{d.punchType === "clock_out" ? "Out" : "In"} · {format(parseISO(dayKey(d.punchedAt)), "MMM d, yyyy")} {timeLabel12(d.punchedAt)}</span>
+            <span className="text-muted-foreground">deleted {format(parseISO(dayKey(d.deletedAt)), "MMM d, yyyy")} {timeLabel12(d.deletedAt)} by {d.deletedBy ? staffName(d.deletedBy) : "the system"}: {d.reason}</span>
           </li>
         ))}
       </ul>
@@ -366,7 +354,7 @@ function DtrContent() {
   async function deletePunch(p: PunchRow, reason: string) {
     const res = await fetch("/api/dtr/punch/delete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ punchId: p.id, reason }) }).catch(() => null);
     const body = (await res?.json().catch(() => null)) as { ok: boolean; error?: string; warning?: string | null } | null;
-    if (!body?.ok) return void toast.error(body?.error ?? "No connection: try again.");
+    if (!body?.ok) return void toast.error(body?.error ?? (res ? `The server refused it (${res.status}): try again.` : "No connection: try again."));
     if (body.warning) toast.warning(body.warning);
     else toast.success("Punch deleted; the deletion is logged");
     await Promise.all([timePunchesStore.refetch(), punchDeletionsStore.refetch()]);
@@ -640,6 +628,7 @@ function DtrContent() {
             description={deleting ? `${deleting.staffName}, ${deleting.punchType === "clock_in" ? "in" : "out"} at ${deleting.dateLabel} ${deleting.timeLabel}. Only for a punch made by mistake: it leaves the record, its photo is removed, and the deletion is logged with your reason.` : ""}
             confirmLabel="Delete punch"
             requireReason
+            minLength={3}
             destructive
             onConfirm={(reason) => {
               const p = deleting;

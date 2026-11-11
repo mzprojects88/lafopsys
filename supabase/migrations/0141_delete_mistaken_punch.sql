@@ -3,9 +3,9 @@
 -- Punches were never deleted (the DTR is payroll and labour-law evidence). The user: "superadmin should be able to
 -- delete entries like this" (a punch entered by mistake). So, narrowly: only the Super Admin, only with a reason,
 -- and every deletion keeps a full copy of the punch in ops.time_punch_deletions (HR and the Super Admin read it;
--- nobody edits it). A punch tied to a correction request is settled through that request instead. The day's
--- summary (ops.time_entries) goes when nothing is left in it; otherwise /api/dtr/punch/delete recomputes it with
--- the punch route's own pairing rules (lib/utils/dtr.ts) and removes the photo file from storage.
+-- nobody edits it). The one door is /api/dtr/punch/delete (the function is the server's only, never called from
+-- the browser): it removes the photo file and recomputes the day's summary with the punch route's pairing rules,
+-- so nothing is left half done. The day's summary goes with its last punch.
 
 create table if not exists ops.time_punch_deletions (
   id uuid primary key default gen_random_uuid(),
@@ -25,8 +25,13 @@ create policy "hr and the super admin read punch deletions" on ops.time_punch_de
   for select to authenticated using (shared.has_role('admin') or hr.is_hr_staff());
 revoke all on ops.time_punch_deletions from anon, authenticated;
 grant select on ops.time_punch_deletions to authenticated;
+do $$ begin
+  alter publication supabase_realtime add table ops.time_punch_deletions;
+exception when duplicate_object then null; end $$;
 
-create or replace function ops.time_punch_delete(p_punch uuid, p_reason text)
+-- p_actor is the signed-in person the route verified; the function takes them as its caller for the checks and the
+-- log, and only the server (service role) may call it.
+create or replace function ops.time_punch_delete(p_punch uuid, p_reason text, p_actor uuid)
 returns jsonb language plpgsql security definer set search_path = ops, shared, pg_temp as $$
 declare
   p ops.time_punches;
@@ -34,35 +39,50 @@ declare
   v_key text;
   v_left integer := 0;
 begin
-  if shared.current_staff_roles() is null or not shared.has_role('admin') then
+  perform set_config('request.jwt.claims', json_build_object('sub', p_actor, 'role', 'authenticated')::text, true);
+  if p_actor is null or shared.current_staff_roles() is null or not shared.has_role('admin') then
     raise exception 'Only the Super Admin deletes a punch.' using errcode = '42501';
   end if;
   if length(v_reason) not between 3 and 500 then
-    raise exception 'Say why this punch is deleted.' using errcode = '23514';
+    raise exception 'Say why this punch is deleted (at least 3 characters).' using errcode = '23514';
   end if;
+  select * into p from ops.time_punches where id = p_punch;
+  if not found then
+    raise exception 'No such punch.' using errcode = 'P0002';
+  end if;
+  -- The day first, then the punch: a punch arriving on this day meanwhile waits, and is counted (never cascaded away).
+  perform 1 from ops.time_entries where id = p.time_entry_id for update;
   select * into p from ops.time_punches where id = p_punch for update;
   if not found then
     raise exception 'No such punch.' using errcode = 'P0002';
   end if;
-  -- A correction request on this punch or its day would be lost with them: settle it through the request.
-  if exists (select 1 from ops.dtr_correction_requests r where r.adjustment_punch_id = p.id or r.time_entry_id = p.time_entry_id) then
+  select count(*) into v_left from ops.time_punches where time_entry_id = p.time_entry_id and id <> p.id;
+  -- A clock-in that a clock-out closes: its clock-out would be left alone and pair with another day.
+  if p.punch_type = 'clock_in' and exists (
+    select 1 from ops.time_punches o
+    where o.time_entry_id = p.time_entry_id and o.punch_type = 'clock_out' and o.punched_at > p.punched_at
+      and not exists (select 1 from ops.time_punches i where i.time_entry_id = p.time_entry_id and i.punch_type = 'clock_in' and i.punched_at > p.punched_at and i.punched_at < o.punched_at)) then
+    raise exception 'This clock-in has its clock-out: delete the clock-out first.' using errcode = '23514';
+  end if;
+  -- A correction request still to decide, one that made this punch, or any the emptied day would take with it.
+  if exists (
+    select 1 from ops.dtr_correction_requests r
+    where r.adjustment_punch_id = p.id
+       or (r.time_entry_id = p.time_entry_id and (r.status = 'pending' or v_left = 0))) then
     raise exception 'This day has a correction request: settle it through the request instead.' using errcode = '23514';
   end if;
   select object_key into v_key from ops.time_punch_photos where punch_id = p.id;
   insert into ops.time_punch_deletions (punch_id, staff_id, punched_at, punch, photo_key, reason, deleted_by)
-  values (p.id, p.staff_id, p.punched_at, to_jsonb(p), v_key, v_reason, auth.uid());
+  values (p.id, p.staff_id, p.punched_at, to_jsonb(p), v_key, v_reason, p_actor);
   delete from ops.time_punch_photos where punch_id = p.id;
   delete from ops.time_punches where id = p.id;
-  if p.time_entry_id is not null then
-    select count(*) into v_left from ops.time_punches where time_entry_id = p.time_entry_id;
-    if v_left = 0 then
-      delete from ops.time_entries where id = p.time_entry_id;
-    end if;
+  if p.time_entry_id is not null and v_left = 0 then
+    delete from ops.time_entries where id = p.time_entry_id;
   end if;
   return jsonb_build_object('staff_id', p.staff_id, 'punched_at', p.punched_at, 'time_entry_id', p.time_entry_id,
                             'entry_deleted', p.time_entry_id is not null and v_left = 0, 'photo_key', v_key);
 end $$;
-revoke all on function ops.time_punch_delete(uuid, text) from public;
-grant execute on function ops.time_punch_delete(uuid, text) to authenticated;
+revoke all on function ops.time_punch_delete(uuid, text, uuid) from public, anon, authenticated;
+grant execute on function ops.time_punch_delete(uuid, text, uuid) to service_role;
 
 notify pgrst, 'reload schema';
