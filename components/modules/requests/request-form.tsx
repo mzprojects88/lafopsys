@@ -14,6 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { createClient } from "@/lib/supabase/client";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
 import { setupChecklistStore, useSetupRows } from "@/lib/hooks/use-finance-setup";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
+import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { actOnVoucher, saveVoucher, type DraftHeader, type DraftLine, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
 import { formatCurrency } from "@/lib/utils/currency";
 import { fundAllows, KIND_LABEL, PAY_LABEL, type VoucherKind } from "@/lib/utils/vouchers";
@@ -36,6 +38,23 @@ interface LineDraft extends Omit<DraftLine, "qty" | "unit_cost"> {
   qty: string;
   unit_cost: string;
 }
+/** The patient a person-paid request is for, from Patients (loaded only for those who read Patients). */
+function PatientPick({ value, onChange }: { value: string | null; onChange: (id: string | null) => void }) {
+  const { patients } = usePatientsData();
+  const sorted = [...patients].sort((a, b) => `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`));
+  return (
+    <Select value={value ?? "__none"} onValueChange={(v) => onChange(v === "__none" ? null : v)}>
+      <SelectTrigger id="req-patient" className="w-full"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__none">Not picked (type the name)</SelectItem>
+        {sorted.map((p) => (
+          <SelectItem key={p.id} value={p.id}>{p.lastName}, {p.firstName} · {p.patientNumber}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 const blankLine = (): LineDraft => ({ label: "", expense_type_id: "", description: "", qty: "1", unit_cost: "", or_number: "" });
 
 /**
@@ -50,6 +69,8 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
   const { data: accounts } = useSetupRows("coa_accounts");
   const { data: payees } = useCollection(payeeChoicesStore);
   const { data: checklist } = useCollection(setupChecklistStore);
+  const { data: categories } = useSetupRows("recipient_categories");
+  const { canView } = useModuleAccess();
 
   const funds = codes.filter((c) => c.tier === "T2" && c.active);
   const typeById = (id: string) => types.find((t) => t.id === id);
@@ -62,6 +83,10 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
     needed_by: voucher?.neededBy ?? null,
     urgent: voucher?.urgent ?? false,
     urgent_reason: voucher?.urgentReason ?? null,
+    to_person: voucher?.toPerson ?? false,
+    recipient_category_id: voucher?.recipientCategoryId ?? null,
+    patient_id: voucher?.patientId ?? null,
+    recipient_name: voucher?.recipientName ?? null,
   }));
   const [items, setItems] = React.useState<LineDraft[]>(() =>
     lines?.length
@@ -73,7 +98,11 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
   // Unrestricted unless the requester picks a donor's fund.
   const fundId = header.t2_id || String(funds.find((f) => f.code === "UNR")?.id ?? funds.find((f) => !f.restricted)?.id ?? "");
   const fund = funds.find((f) => f.id === fundId);
-  const activeTypes = types.filter((t) => t.active !== false);
+  // Paying a person: only the purposes Finance marks for it (burial aid, financial aid...).
+  const toPerson = header.to_person && header.kind !== "reimbursement";
+  const activeTypes = types.filter((t) => t.active !== false && (!toPerson || t.for_person));
+  const category = categories.find((c) => c.id === header.recipient_category_id);
+  const readsPatients = canView("patients") || canView("house_ops");
   const labels = [...new Set([...activeTypes].sort((a, b) => Number(a.sort) - Number(b.sort)).map((t) => String(t.label)))];
   const usesOf = (label: string) => activeTypes.filter((t) => t.label === label);
   const nameOfUse = (useId: unknown) => {
@@ -89,7 +118,10 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
 
   async function save(send: boolean) {
     setBusy(true);
-    const saved = await saveVoucher(voucher?.id ?? null, { ...header, t2_id: fundId, payee_id: header.kind === "supplier" ? header.payee_id : null }, items.map((i) => ({ description: i.description, qty: Number(i.qty) || 0, unit_cost: Number(i.unit_cost), or_number: i.or_number, expense_type_id: i.expense_type_id })));
+    const person = toPerson
+      ? { to_person: true, recipient_category_id: header.recipient_category_id, patient_id: category?.kind === "patient" ? header.patient_id : null, recipient_name: header.recipient_name }
+      : { to_person: false, recipient_category_id: null, patient_id: null, recipient_name: null };
+    const saved = await saveVoucher(voucher?.id ?? null, { ...header, ...person, t2_id: fundId, payee_id: header.kind === "supplier" && !toPerson ? header.payee_id : null }, items.map((i) => ({ description: i.description, qty: Number(i.qty) || 0, unit_cost: Number(i.unit_cost), or_number: i.or_number, expense_type_id: i.expense_type_id })));
     if (!saved.ok) {
       setBusy(false);
       return void toast.error(saved.error);
@@ -133,7 +165,41 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
             <FieldLabel htmlFor="req-purpose">What is it for?</FieldLabel>
             <Textarea id="req-purpose" rows={2} maxLength={500} value={header.purpose} onChange={(e) => set("purpose", e.target.value)} placeholder="e.g. Diesel for the NCH runs this week" />
           </Field>
-          {header.kind === "supplier" ? (
+          {header.kind !== "reimbursement" ? (
+            <Field className="sm:col-span-2">
+              <label className="flex items-center gap-2 text-theme-sm font-medium">
+                <Switch checked={header.to_person} onCheckedChange={(v) => set("to_person", v)} />
+                Payment goes to a person (a patient&apos;s family, a service provider...)
+              </label>
+            </Field>
+          ) : null}
+          {toPerson ? (
+            <>
+              <Field>
+                <FieldLabel htmlFor="req-category">Who is the person?</FieldLabel>
+                <Select value={header.recipient_category_id ?? ""} onValueChange={(v) => setHeader((h) => ({ ...h, recipient_category_id: v, patient_id: null }))}>
+                  <SelectTrigger id="req-category" className="w-full"><SelectValue placeholder="Pick a category" /></SelectTrigger>
+                  <SelectContent>
+                    {categories.filter((c) => c.active !== false).map((c) => (
+                      <SelectItem key={String(c.id)} value={String(c.id)}>{String(c.name)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              {category?.kind === "patient" && readsPatients ? (
+                <Field>
+                  <FieldLabel htmlFor="req-patient">Patient</FieldLabel>
+                  <PatientPick value={header.patient_id} onChange={(v) => set("patient_id", v)} />
+                </Field>
+              ) : null}
+              <Field>
+                <FieldLabel htmlFor="req-person">Name of the person paid</FieldLabel>
+                <Input id="req-person" maxLength={160} value={header.recipient_name ?? ""} onChange={(e) => set("recipient_name", e.target.value)} placeholder={header.patient_id ? "Leave empty to use the patient's name" : "Full name"} />
+                <FieldDescription>Seen by you, Finance and the signers only.</FieldDescription>
+              </Field>
+            </>
+          ) : null}
+          {header.kind === "supplier" && !toPerson ? (
             <Field>
               <FieldLabel htmlFor="req-payee">Supplier to pay</FieldLabel>
               <Select value={header.payee_id ?? ""} onValueChange={(v) => set("payee_id", v)}>

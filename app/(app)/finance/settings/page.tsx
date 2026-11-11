@@ -43,7 +43,7 @@ const STEPS = [
 ];
 const TABLE_LABEL: Record<string, string> = {
   coa_accounts: "Chart of accounts", fin_codes: "Codes", expense_types: "Expense types", finance_settings: "General",
-  voucher_authority: "Authority", cash_funds: "Funds", ewt_rates: "Withholding rates", payees: "Payees", programs: "ArkOS programs",
+  recipient_categories: "Recipient categories", voucher_authority: "Authority", cash_funds: "Funds", ewt_rates: "Withholding rates", payees: "Payees", programs: "ArkOS programs",
 };
 
 const str = (v: unknown) => (v == null ? "" : String(v));
@@ -65,6 +65,7 @@ export default function FinancialSettingsPage() {
   const { data: funds } = useSetupRows("cash_funds");
   const { data: rates } = useSetupRows("ewt_rates");
   const { data: payees } = useSetupRows("payees");
+  const { data: categories } = useSetupRows("recipient_categories");
   const { data: checklist } = useCollection(setupChecklistStore);
   const { data: log } = useCollection(setupLogStore);
   const { programs } = useProgramsData();
@@ -218,7 +219,7 @@ export default function FinancialSettingsPage() {
           </SectionCard>
         </TabsContent>
 
-        <TabsContent value="expense" className="mt-4">
+        <TabsContent value="expense" className="mt-4 flex flex-col gap-4">
           <SetupRows
             table="expense_types"
             title="Expense types"
@@ -231,11 +232,31 @@ export default function FinancialSettingsPage() {
               { label: "Expense type", render: (r) => <span className="font-medium">{str(r.label)} {off(r)}</span> },
               { label: "Used for", render: (r) => codeLabel(r.use_id) },
               { label: "Account", render: (r) => accountLabel(r.account_id) },
+              { label: "To a person", render: (r) => (r.for_person ? "Yes" : "—") },
             ]}
             fields={[
               { key: "label", label: "Expense type (as the requester reads it)", kind: "text" },
               { key: "use_id", label: "Used for", kind: "select", options: [...t3, ...t1], hint: "A program (T3), or a cost center such as Admin (T1)." },
               { key: "account_id", label: "Account", kind: "select", options: postable },
+              { key: "for_person", label: "A purpose for paying a person (burial aid, financial aid...)", kind: "switch" },
+              { key: "active", label: "In use", kind: "switch" },
+              { key: "sort", label: "Order in the list", kind: "number" },
+            ]}
+          />
+          <SetupRows
+            table="recipient_categories"
+            title="Recipient categories"
+            description="Who a person paid can be, when a request says the payment goes to a person. A Patient category lets those who read Patients pick the patient."
+            rows={categories}
+            addLabel="Add category"
+            blank={{ kind: "other", active: true, sort: nextSort(categories) }}
+            columns={[
+              { label: "Category", render: (r) => <span className="font-medium">{str(r.name)} {off(r)}</span> },
+              { label: "Kind", render: (r) => (r.kind === "patient" ? "Patient" : r.kind === "provider" ? "Service provider" : "Other") },
+            ]}
+            fields={[
+              { key: "name", label: "Name", kind: "text" },
+              { key: "kind", label: "Kind", kind: "select", options: [{ value: "patient", label: "Patient (pick from Patients)" }, { value: "provider", label: "Service provider (a person)" }, { value: "other", label: "Other" }] },
               { key: "active", label: "In use", kind: "switch" },
               { key: "sort", label: "Order in the list", kind: "number" },
             ]}

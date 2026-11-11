@@ -63,7 +63,8 @@ function RequestsContent() {
   const [query, setQuery] = React.useState("");
   const [minAmount, setMinAmount] = React.useState("");
   const [maxAmount, setMaxAmount] = React.useState("");
-  const f = useFilters("type", "kind", "status", "account", "group", "t1", "t3", "t2", "requester", "signer", "pay", "flag");
+  const f = useFilters("type", "kind", "status", "account", "group", "t1", "t3", "t2", "requester", "signer", "pay", "flag", "recipient");
+  const { data: categories } = useSetupRows("recipient_categories");
   const now = useNow().getTime();
 
   const name = (id: string | null) => {
@@ -123,12 +124,13 @@ function RequestsContent() {
       f.ok("t2", v.t2Id) &&
       f.ok("requester", v.requestedBy) &&
       f.ok("pay", v.payMethod) &&
+      f.ok("recipient", v.toPerson ? v.recipientCategoryId : "none") &&
       (f.values.signer === "all" || (eventsOf.get(v.id) ?? []).some((e) => e.actor === f.values.signer)) &&
       (f.values.flag === "all" || flags(v).includes(f.values.flag)) &&
       (!codeFilter || (linesOf.get(v.id) ?? []).some(lineOk)) &&
       amount >= min &&
       amount <= max &&
-      (!q || [v.requestNumber, v.voucherNumber, v.legacyNumber, v.purpose, ...(linesOf.get(v.id) ?? []).flatMap((l) => [l.description, l.orNumber])].some((x) => x?.toLowerCase().includes(q)))
+      (!q || [v.requestNumber, v.voucherNumber, v.legacyNumber, v.purpose, v.recipientName, ...(linesOf.get(v.id) ?? []).flatMap((l) => [l.description, l.orNumber])].some((x) => x?.toLowerCase().includes(q)))
     );
   });
   const amountOf = (v: Voucher) => shownAmount(v.total, linesOf.get(v.id) ?? [], codeFilter ? lineOk : null);
@@ -150,6 +152,7 @@ function RequestsContent() {
     requester: optionsOf(vouchers, (v) => v.requestedBy, (id) => name(id) || "—"),
     signer: optionsOf(events, (e) => e.actor, (id) => name(id) || "—"),
     pay: optionsOf(vouchers, (v) => v.payMethod, (p) => PAY_LABEL[p] ?? p),
+    recipient: optionsOf(vouchers, (v) => (v.toPerson ? v.recipientCategoryId : "none"), (id) => (id === "none" ? "Not to a person" : `To: ${String(categories.find((c) => c.id === id)?.name ?? "a person")}`)),
     flag: optionsOf(vouchers.flatMap((v) => flags(v)), (x) => x, (x) => FLAG_LABEL[x] ?? x),
   };
   const active = f.active + (minAmount ? 1 : 0) + (maxAmount ? 1 : 0);
@@ -248,6 +251,7 @@ function RequestsContent() {
         <FilterSelect all="Everyone who asked" value={f.values.requester} onChange={f.set("requester")} options={opt.requester} className="w-48" />
         <FilterSelect all="Signed by anyone" value={f.values.signer} onChange={f.set("signer")} options={opt.signer} className="w-48" />
         <FilterSelect all="Any payment" value={f.values.pay} onChange={f.set("pay")} options={opt.pay} />
+        <FilterSelect all="Paid to anyone" value={f.values.recipient} onChange={f.set("recipient")} options={opt.recipient} className="w-48" />
         <FilterSelect all="No flag" value={f.values.flag} onChange={f.set("flag")} options={opt.flag} className="w-48" />
         <Input className="w-28" type="number" inputMode="decimal" placeholder="₱ from" value={minAmount} onChange={(e) => setMinAmount(e.target.value)} aria-label="Amount from" />
         <Input className="w-28" type="number" inputMode="decimal" placeholder="₱ to" value={maxAmount} onChange={(e) => setMaxAmount(e.target.value)} aria-label="Amount to" />

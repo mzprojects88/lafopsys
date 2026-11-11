@@ -71,7 +71,7 @@ export default async function RequestPrintPage({ params }: { params: Promise<{ i
           </div>
         </header>
         <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
-          <div><dt className="text-neutral-500">Pay to</dt><dd className="font-medium">{payee ?? v.payee_text ?? person(v.requested_by)}</dd></div>
+          <div><dt className="text-neutral-500">Pay to</dt><dd className="font-medium">{v.to_person ? v.recipient_name : (payee ?? v.payee_text ?? person(v.requested_by))}</dd></div>
           <div><dt className="text-neutral-500">Kind</dt><dd>{KIND_LABEL[v.kind as VoucherKind]} · {PAY_LABEL[v.pay_method]}</dd></div>
           <div className="col-span-2"><dt className="text-neutral-500">For</dt><dd>{v.purpose}</dd></div>
           <div><dt className="text-neutral-500">Fund (T2)</dt><dd>{code(v.t2_id) || "—"}</dd></div>

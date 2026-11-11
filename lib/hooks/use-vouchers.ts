@@ -35,6 +35,11 @@ export interface Voucher {
   legacyLink: string | null;
   payeeText: string | null;
   needsCleanup: boolean;
+  /** Paid to a person (0135): their category and name as given (a patient picked, or typed). */
+  toPerson: boolean;
+  recipientCategoryId: string | null;
+  patientId: string | null;
+  recipientName: string | null;
   createdAt: string;
 }
 export interface VoucherLine {
@@ -101,6 +106,10 @@ const toVoucher = (r: Row): Voucher => ({
   legacyLink: s(r.legacy_link),
   payeeText: s(r.payee_text),
   needsCleanup: Boolean(r.needs_cleanup),
+  toPerson: Boolean(r.to_person),
+  recipientCategoryId: s(r.recipient_category_id),
+  patientId: s(r.patient_id),
+  recipientName: s(r.recipient_name),
   createdAt: String(r.created_at),
 });
 
@@ -189,6 +198,10 @@ export interface DraftHeader {
   needed_by: string | null;
   urgent: boolean;
   urgent_reason: string | null;
+  to_person: boolean;
+  recipient_category_id: string | null;
+  patient_id: string | null;
+  recipient_name: string | null;
 }
 /** Saves a draft (new when id is null); returns its id. */
 export const saveVoucher = (id: string | null, header: DraftHeader, lines: DraftLine[]) => call<string>("voucher_save", { p_id: id, p_voucher: header, p_lines: lines });

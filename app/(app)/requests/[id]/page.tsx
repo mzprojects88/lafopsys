@@ -44,6 +44,7 @@ export default function RequestDetailPage() {
   const { vouchers, lines: allLines, events: allEvents, queue, loading, linesLoading } = useVouchers();
   const { data: codes } = useSetupRows("fin_codes");
   const { data: accounts } = useSetupRows("coa_accounts");
+  const { data: categories } = useSetupRows("recipient_categories");
   const { staff } = useStaffRoster();
   const [canAttach, setCanAttach] = React.useState(false);
   const [preparing, setPreparing] = React.useState(false);
@@ -118,6 +119,7 @@ export default function RequestDetailPage() {
         <dl className="grid gap-x-6 gap-y-2 text-theme-sm sm:grid-cols-2 lg:grid-cols-3">
           {[
             ["Kind", KIND_LABEL[v.kind]],
+            ...(v.toPerson ? [["Pay to (a person)", `${v.recipientName ?? "—"} · ${String(categories.find((c) => c.id === v.recipientCategoryId)?.name ?? "")}`]] : []),
             ["Requested by", name(v.requestedBy) !== "—" ? name(v.requestedBy) : (v.payeeText ?? "—")],
             ["Fund", code(v.t2Id) || "—"],
             ["Paid by", PAY_LABEL[v.payMethod]],

@@ -9,7 +9,7 @@ import { createCollection, useCollection, type Collection } from "@/lib/data/col
  * plus the change log and the setup checklist. Writes go straight to the tables; the database allows them
  * only to holders of "Sets up Finance" and logs each one.
  */
-export type SetupTable = "coa_accounts" | "fin_codes" | "expense_types" | "finance_settings" | "voucher_authority" | "cash_funds" | "ewt_rates" | "payees";
+export type SetupTable = "coa_accounts" | "fin_codes" | "expense_types" | "finance_settings" | "voucher_authority" | "cash_funds" | "ewt_rates" | "payees" | "recipient_categories";
 export type SetupRow = Record<string, unknown> & { id?: string; review_note?: string | null };
 
 const ORDER: Record<SetupTable, string> = {
@@ -21,6 +21,7 @@ const ORDER: Record<SetupTable, string> = {
   cash_funds: "name",
   ewt_rates: "atc",
   payees: "name",
+  recipient_categories: "sort",
 };
 const KEY: Partial<Record<SetupTable, string>> = { ewt_rates: "atc" };
 export const keyOf = (table: SetupTable, row: SetupRow) => String(row[KEY[table] ?? "id"]);
