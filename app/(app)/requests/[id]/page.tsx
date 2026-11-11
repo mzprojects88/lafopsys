@@ -157,7 +157,7 @@ export default function RequestDetailPage() {
             ["Kind", KIND_LABEL[v.kind]],
             ...(v.toPerson ? [["Pay to (a person)", `${v.recipientName ?? "—"} · ${String(categories.find((c) => c.id === v.recipientCategoryId)?.name ?? "")}`]] : []),
             ["Requested by", name(v.requestedBy) !== "—" ? name(v.requestedBy) : (v.payeeText ?? "—")],
-            ["Fund", code(v.t2Id) || "—"],
+            ["Fund", code(v.t2Id) || (v.source === "app" && !v.voucherNumber ? "Finance picks it" : "—")],
             ["Paid by", PAY_LABEL[v.payMethod]],
             ["Needed by", v.neededBy ? formatDate(v.neededBy) : "—"],
             ["Total", formatCurrency(v.total, "PHP", true)],

@@ -245,7 +245,8 @@ export interface DraftHeader {
   kind: VoucherKind;
   purpose: string;
   payee_id: string | null;
-  t2_id: string;
+  /** Ignored for a requester since 0140: Finance picks the fund when it prepares the voucher. */
+  t2_id: string | null;
   pay_method: Voucher["payMethod"];
   needed_by: string | null;
   urgent: boolean;

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, Plus, Send, Trash2 } from "lucide-react";
+import { Plus, Send, Trash2 } from "lucide-react";
 import { SectionCard } from "@/components/patterns/section-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,7 @@ import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { actOnVoucher, saveVoucher, type DraftHeader, type DraftLine, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
 import { formatCurrency } from "@/lib/utils/currency";
-import { fundAllows, KIND_LABEL, PAY_LABEL, REQUESTABLE } from "@/lib/utils/vouchers";
+import { KIND_LABEL, PAY_LABEL, REQUESTABLE } from "@/lib/utils/vouchers";
 import { todayIso } from "@/lib/utils/date";
 
 /** Suppliers by name only (ops.payee_choices: TINs stay with Finance). */
@@ -58,9 +58,9 @@ function PatientPick({ value, onChange }: { value: string | null; onChange: (id:
 const blankLine = (): LineDraft => ({ label: "", expense_type_id: "", description: "", qty: "1", unit_cost: "", or_number: "" });
 
 /**
- * Step 1: what a staff member asks for. They answer plain questions (what kind, what for, who it serves, which
- * fund); the database codes each item from its expense type, and Finance confirms the coding when it prepares
- * the voucher. Used for a new request and for a draft or a request sent back.
+ * Step 1: what a staff member asks for. They answer plain questions (what kind, what for, who it serves); the
+ * database codes each item from its expense type, and Finance confirms the coding and picks the fund (0140) when
+ * it prepares the voucher. Used for a new request and for a draft or a request sent back.
  */
 export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: VoucherLine[] }) {
   const router = useRouter();
@@ -72,13 +72,12 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
   const { data: categories } = useSetupRows("recipient_categories");
   const { canView } = useModuleAccess();
 
-  const funds = codes.filter((c) => c.tier === "T2" && c.active);
   const typeById = (id: string) => types.find((t) => t.id === id);
   const [header, setHeader] = React.useState<DraftHeader>(() => ({
     kind: voucher?.kind ?? "reimbursement",
     purpose: voucher?.purpose ?? "",
     payee_id: voucher?.payeeId ?? null,
-    t2_id: voucher?.t2Id ?? "",
+    t2_id: null,
     pay_method: voucher?.payMethod ?? "cash",
     needed_by: voucher?.neededBy ?? null,
     urgent: voucher?.urgent ?? false,
@@ -95,9 +94,6 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
   );
   const [busy, setBusy] = React.useState(false);
 
-  // Unrestricted unless the requester picks a donor's fund.
-  const fundId = header.t2_id || String(funds.find((f) => f.code === "UNR")?.id ?? funds.find((f) => !f.restricted)?.id ?? "");
-  const fund = funds.find((f) => f.id === fundId);
   // Paying a person: only the purposes Finance marks for it (burial aid, financial aid...).
   // A person is paid directly: a supplier payment or petty cash (an advance or a reimbursement pays the requester).
   const toPerson = header.to_person && (header.kind === "supplier" || header.kind === "petty_cash");
@@ -122,7 +118,7 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
     const person = toPerson
       ? { to_person: true, recipient_category_id: header.recipient_category_id, patient_id: category?.kind === "patient" && readsPatients ? header.patient_id : null, recipient_name: header.recipient_name }
       : { to_person: false, recipient_category_id: null, patient_id: null, recipient_name: null };
-    const saved = await saveVoucher(voucher?.id ?? null, { ...header, ...person, t2_id: fundId, payee_id: header.kind === "supplier" && !toPerson ? header.payee_id : null }, items.map((i) => ({ description: i.description, qty: Number(i.qty) || 0, unit_cost: Number(i.unit_cost), or_number: i.or_number, expense_type_id: i.expense_type_id })));
+    const saved = await saveVoucher(voucher?.id ?? null, { ...header, ...person, t2_id: null, payee_id: header.kind === "supplier" && !toPerson ? header.payee_id : null }, items.map((i) => ({ description: i.description, qty: Number(i.qty) || 0, unit_cost: Number(i.unit_cost), or_number: i.or_number, expense_type_id: i.expense_type_id })));
     if (!saved.ok) {
       setBusy(false);
       return void toast.error(saved.error);
@@ -144,7 +140,7 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
 
   return (
     <div className="flex flex-col gap-4">
-      <SectionCard title="The request">
+      <SectionCard title="The request" description="Finance picks the fund that pays when it prepares the voucher.">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field className="sm:col-span-2">
             <FieldLabel>What kind of request?</FieldLabel>
@@ -219,18 +215,6 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
             </Field>
           ) : null}
           <Field>
-            <FieldLabel htmlFor="req-fund">Which fund pays?</FieldLabel>
-            <Select value={fundId} onValueChange={(v) => set("t2_id", v)}>
-              <SelectTrigger id="req-fund" className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {funds.map((f) => (
-                  <SelectItem key={String(f.id)} value={String(f.id)}>{String(f.name)}{f.restricted ? " (restricted)" : ""}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <FieldDescription>Finance can change it.</FieldDescription>
-          </Field>
-          <Field>
             <FieldLabel htmlFor="req-pay">How should it be paid?</FieldLabel>
             <Select value={header.pay_method} onValueChange={(v) => set("pay_method", v as DraftHeader["pay_method"])}>
               <SelectTrigger id="req-pay" className="w-full"><SelectValue /></SelectTrigger>
@@ -261,7 +245,6 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
             const label = labelOf(item);
             const uses = label ? usesOf(label) : [];
             const account = item.expense_type_id ? accountOf(item.expense_type_id) : undefined;
-            const blocked = fund?.restricted && account && !fundAllows((fund.account_prefixes as string[]) ?? [], String(account.code ?? ""));
             return (
               <div key={n} className="grid gap-3 rounded-xl border border-border p-3 sm:grid-cols-12">
                 <Field className="sm:col-span-4">
@@ -319,11 +302,6 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
                     </Button>
                   ) : null}
                 </div>
-                {blocked ? (
-                  <p className="flex items-center gap-2 text-theme-xs text-warning-foreground sm:col-span-12">
-                    <AlertTriangle className="size-4 text-warning" /> {String(fund?.name)} is restricted and may not pay for account {String(account?.code)}. Pick another fund, or Finance will.
-                  </p>
-                ) : null}
               </div>
             );
           })}

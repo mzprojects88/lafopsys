@@ -42,7 +42,9 @@ const UNR = "md5('code:T2:UNR')";
 
 try {
   await c.query("begin");
-  for (const m of ["0134_vouchers.sql", "0135_pay_a_person.sql", "0136_voucher_history_fixes.sql", "0138_funds_advances_ewt.sql", "0139_payment_books_quickbooks.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${m}`, import.meta.url), "utf8"));
+  // 0139 changed advances_open's columns; re-applying 0138 over a database that has 0139 needs it gone first.
+  await c.query("drop function if exists ops.advances_open()");
+  for (const m of ["0134_vouchers.sql", "0135_pay_a_person.sql", "0136_voucher_history_fixes.sql", "0138_funds_advances_ewt.sql", "0139_payment_books_quickbooks.sql", "0140_finance_picks_fund_ledger.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${m}`, import.meta.url), "utf8"));
   const ids = (await c.query(`select
     (select id from shared.staff where role = 'admin' and active order by id limit 1) admin1,
     (select id from shared.staff where role = 'admin' and active order by id offset 1 limit 1) admin2,
@@ -66,6 +68,7 @@ try {
     `select a.code, t3.code t3, t1.code t1, l.amount, v.total, v.status from ops.voucher_lines l join ops.vouchers v on v.id = l.voucher_id join ops.coa_accounts a on a.id = l.account_id
      left join ops.fin_codes t3 on t3.id = l.t3_id join ops.fin_codes t1 on t1.id = l.t1_id where l.voucher_id = $1`, [vid],
     (r) => r.ok && r.rows[0].code === "5303" && r.rows[0].t3 === "TRN" && r.rows[0].t1 === "PRG" && Number(r.rows[0].total) === 3000 && r.rows[0].status === "draft");
+  await step("the requester's fund is ignored: Finance picks it (0140)", null, `select t2_id is null ok from ops.vouchers where id = $1`, [vid], (r) => r.ok && r.rows[0].ok === true);
   await step("sending it is refused while Financial Settings is open", ids.sw, `select ops.voucher_act($1, 'submit')`, [vid], refused("23514"), false);
   await step("nobody writes the tables directly", ids.sw, `update ops.vouchers set total = 1 where id = $1`, [vid], refused("42501"), false);
   if (ids.board) await step("a board member (view only) can't file a request", ids.board, `select ops.voucher_save(null, $1::jsonb, $2::jsonb)`, [header(), lines], (r) => (ids.board ? refused("42501")(r) : true), false);
@@ -116,6 +119,7 @@ try {
   const lineId = (await c.query(`select id from ops.voucher_lines where voucher_id = $1`, [vid])).rows[0].id;
   const codeLines = async (code, t1, t3) =>
     JSON.stringify([{ id: lineId, account_id: (await c.query(`select id from ops.coa_accounts where code = $1 and review_note is null`, [code])).rows[0].id, t1_id: (await c.query(`select md5('code:T1:' || $1)::uuid id`, [t1])).rows[0].id, t3_id: t3 ? (await c.query(`select md5('code:T3:' || $1)::uuid id`, [t3])).rows[0].id : null }]);
+  await step("Finance can't prepare without picking the fund", ids.finance, `select ops.voucher_prepare($1, null, null, '[]'::jsonb)`, [vid], (r) => !r.ok && /fund/.test(r.error), false);
   await c.query(`update ops.fin_codes set account_prefixes = '{52}' where code = 'OC'`);
   await step("One Child (restricted to 52xx) may not pay for 5303", ids.finance, `select ops.voucher_prepare($1, $2, null, $3::jsonb)`, [vid, ids.oc, await codeLines("5303", "PRG", "TRN")], (r) => !r.ok && /may not pay/.test(r.error), false);
   await step("a heading account is refused", ids.finance, `select ops.voucher_prepare($1, $2, null, $3::jsonb)`, [vid, ids.unr, await codeLines("5300", "PRG", "TRN")], (r) => !r.ok && /usable account/.test(r.error), false);
