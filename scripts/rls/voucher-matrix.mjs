@@ -42,7 +42,7 @@ const UNR = "md5('code:T2:UNR')";
 
 try {
   await c.query("begin");
-  for (const m of ["0134_vouchers.sql", "0135_pay_a_person.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${m}`, import.meta.url), "utf8"));
+  for (const m of ["0134_vouchers.sql", "0135_pay_a_person.sql", "0136_voucher_history_fixes.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${m}`, import.meta.url), "utf8"));
   const ids = (await c.query(`select
     (select id from shared.staff where role = 'admin' and active order by id limit 1) admin1,
     (select id from shared.staff where role = 'admin' and active order by id offset 1 limit 1) admin2,
@@ -219,6 +219,17 @@ try {
   await step("... is flagged as a possible duplicate (same patient, same total)", ids.driver, `select ops.voucher_similar($1) n`, [twin], (r) => r.ok && r.rows[0].n >= 1);
   await step("usage counts are for whoever sets up Finance only", ids.sw, `select count(*)::int n from ops.voucher_line_counts()`, [], (r) => r.ok && r.rows[0].n === 0);
   await step("... the Super Admin gets counts per account", ids.admin1, `select count(*)::int n from ops.voucher_line_counts()`, [], (r) => r.ok && r.rows[0].n > 0);
+  // Correcting a voucher from the registers (0136).
+  const hist = (await c.query(`insert into ops.vouchers (source, voucher_type, voucher_number, legacy_number, kind, status, purpose, total, needs_cleanup)
+    values ('sheet', 'PV', 'PV LAF-TEST-1', 'LAF-TEST-1', 'supplier', 'approved', 'Register row', 100, true) returning id`)).rows[0].id;
+  const hline = (await c.query(`insert into ops.voucher_lines (voucher_id, sort, description, qty, unit_cost, amount, legacy_code) values ($1, 1, 'Item', 1, 100, 100, '59521') returning id`, [hist])).rows[0].id;
+  const fixLines = async (code, t1) => JSON.stringify([{ id: hline, account_id: code ? (await c.query(`select id from ops.coa_accounts where code = $1 and review_note is null`, [code])).rows[0].id : null, t1_id: t1 ? (await c.query(`select md5('code:T1:' || $1)::uuid id`, [t1])).rows[0].id : null, t3_id: null }]);
+  await step("a driver can't correct a register voucher", ids.driver, `select ops.voucher_fix_history($1, $2, $3::jsonb)`, [hist, ids.unr, await fixLines("5956", "ADM")], refused("42501"), false);
+  await step("a heading account is refused in a correction", ids.finance, `select ops.voucher_fix_history($1, $2, $3::jsonb)`, [hist, ids.unr, await fixLines("5950", "ADM")], refused("23514"), false);
+  await step("Finance corrects the fund and the account: cleaned up", ids.finance, `select ops.voucher_fix_history($1, $2, $3::jsonb, 'Bank fee') ok`, [hist, ids.unr, await fixLines("5956", "ADM")], (r) => r.ok && r.rows[0].ok === true);
+  await step("... the flag is off and the correction is in the history, signed", null, `select v.needs_cleanup, (select count(*)::int from ops.voucher_events e where e.voucher_id = v.id and e.action = 'history' and e.actor = $2) n from ops.vouchers v where v.id = $1`, [hist, ids.finance],
+    (r) => r.ok && r.rows[0].needs_cleanup === false && r.rows[0].n === 1);
+  await step("a request filed in the app can't be 'corrected' as history", ids.finance, `select ops.voucher_fix_history($1, $2, '[]'::jsonb)`, [vid, ids.unr], refused("P0002"), false);
   await step("the categories are in the setup checklist", null, `select ops.finance_setup_checklist()->'items'->2->>'label' l`, [], (r) => r.ok && /recipient categories/.test(r.rows[0].l));
   await step("functions run as callers only where granted", null,
     `select has_function_privilege('authenticated', 'ops.voucher_may_sign(ops.vouchers, text, uuid)', 'execute') may, has_function_privilege('authenticated', 'ops.voucher_act(uuid, text, text)', 'execute') act`, [], (r) => r.ok && r.rows[0].may === false && r.rows[0].act === true);

@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSetupRows } from "@/lib/hooks/use-finance-setup";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
-import { prepareVoucher, similarCount, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
+import { fixHistory, prepareVoucher, similarCount, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
 import { formatCurrency } from "@/lib/utils/currency";
 import { fundAllows } from "@/lib/utils/vouchers";
 
@@ -22,7 +22,7 @@ const NONE = "__none";
  * and each item's account and cost center / program, and gives it its number. The database refuses an unusable
  * account, a restricted fund paying what it may not, or someone who doesn't prepare vouchers for this amount.
  */
-export function PrepareDialog({ voucher, lines, open, onOpenChange }: { voucher: Voucher; lines: VoucherLine[]; open: boolean; onOpenChange: (o: boolean) => void }) {
+export function PrepareDialog({ voucher, lines, open, onOpenChange, history = false }: { voucher: Voucher; lines: VoucherLine[]; open: boolean; onOpenChange: (o: boolean) => void; /** A voucher from the registers (0136): correct its coding, nothing else. */ history?: boolean }) {
   const { data: accounts } = useSetupRows("coa_accounts");
   const { data: codes } = useSetupRows("fin_codes");
   const { staff } = useStaffRoster();
@@ -34,8 +34,8 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange }: { voucher:
   const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
-    if (open) void similarCount(voucher.id).then(setSimilar);
-  }, [open, voucher.id]);
+    if (open && !history) void similarCount(voucher.id).then(setSimilar);
+  }, [open, voucher.id, history]);
 
   const usable = accounts.filter((a) => !a.is_header && a.active !== false && a.code && !a.review_note);
   const t1 = codes.filter((c) => c.tier === "T1" && c.active);
@@ -47,6 +47,13 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange }: { voucher:
 
   async function prepare() {
     setBusy(true);
+    if (history) {
+      const r = await fixHistory(voucher.id, fund || null, coding, note);
+      setBusy(false);
+      if (!r.ok) return void toast.error(r.error);
+      toast.success(r.value ? "Corrected: cleaned up" : "Corrected; something is still to clean up");
+      return void onOpenChange(false);
+    }
     const r = await prepareVoucher(voucher.id, fund, t4 === NONE ? null : t4, coding, note);
     setBusy(false);
     if (!r.ok) return void toast.error(r.error);
@@ -58,7 +65,7 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange }: { voucher:
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Prepare the voucher · {voucher.requestNumber}</DialogTitle>
+          <DialogTitle>{history ? `Correct the coding · ${voucher.voucherNumber}` : `Prepare the voucher · ${voucher.requestNumber}`}</DialogTitle>
           <DialogDescription>
             Check the request and its papers, confirm the coding, then prepare: it gets its {voucher.kind === "petty_cash" ? "PCV" : voucher.payMethod === "gcash" ? "GCV" : "PV"} number and goes to the reviewer.
             The budget for the month is on <Link href="/finance/budget" className="text-primary hover:underline">Budget vs Actual</Link>.
@@ -140,7 +147,7 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange }: { voucher:
         </Field>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={busy || !fund} onClick={() => void prepare()}>{busy ? "Preparing…" : "Prepare voucher"}</Button>
+          <Button disabled={busy || (!fund && !history)} onClick={() => void prepare()}>{busy ? "Saving…" : history ? "Save corrections" : "Prepare voucher"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

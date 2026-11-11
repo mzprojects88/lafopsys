@@ -37,7 +37,8 @@ export default async function RequestPrintPage({ params }: { params: Promise<{ i
   ]);
   const evs = (events ?? []) as { action: string; actor: string | null; signer_text: string | null; at: string }[];
   const start = evs.map((e) => e.action).lastIndexOf("submit");
-  const round = start < 0 ? [] : evs.slice(start);
+  // A voucher from the registers has no submit: its signatures are the register's.
+  const round = start < 0 ? evs : evs.slice(start);
   const actorIds = [...new Set([v.requested_by, ...round.map((e) => e.actor)].filter(Boolean))] as string[];
   const { data: people } = actorIds.length ? await supabase.schema("shared").from("staff").select("id, first_name, last_name").in("id", actorIds) : { data: [] };
   const person = (sid: string | null) => {

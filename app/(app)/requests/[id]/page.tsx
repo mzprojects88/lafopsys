@@ -48,6 +48,7 @@ export default function RequestDetailPage() {
   const { staff } = useStaffRoster();
   const [canAttach, setCanAttach] = React.useState(false);
   const [preparing, setPreparing] = React.useState(false);
+  const [fixing, setFixing] = React.useState(false);
   const [asking, setAsking] = React.useState<null | "return" | "reject" | "cancel">(null);
   const [busy, setBusy] = React.useState(false);
   const now = useNow().getTime();
@@ -100,6 +101,7 @@ export default function RequestDetailPage() {
           <div className="flex flex-wrap gap-2">
             {waitingStep && SIGN[waitingStep] ? <Button disabled={busy} onClick={() => void act(SIGN[waitingStep].action)}>{SIGN[waitingStep].label}</Button> : null}
             {waitingStep === "validate" ? <Button onClick={() => setPreparing(true)}>Prepare voucher</Button> : null}
+            {v.source === "sheet" && canEdit("finance") ? <Button variant={v.needsCleanup ? "default" : "outline"} onClick={() => setFixing(true)}>Correct the coding</Button> : null}
             {waitingStep ? <Button variant="outline" disabled={busy} onClick={() => setAsking("return")}>Send back</Button> : null}
             {waitingStep ? <Button variant="outline" className="text-destructive" disabled={busy} onClick={() => setAsking("reject")}>Reject</Button> : null}
             {canCancel ? <Button variant="ghost" disabled={busy} onClick={() => setAsking("cancel")}>Cancel request</Button> : null}
@@ -145,6 +147,12 @@ export default function RequestDetailPage() {
           ) : null}
           <RequestForm key={lines.map((l) => l.id).join()} voucher={v} lines={lines} />
         </>
+      ) : v.source === "sheet" ? (
+        <SectionCard title="From the registers">
+          <p className="text-theme-sm text-muted-foreground">
+            Imported from the {v.voucherType} register{v.needsCleanup ? "; Finance still has something to clean up (see History)" : ""}. Its signatures are as the register gives them.
+          </p>
+        </SectionCard>
       ) : (
         <SectionCard title="Where it is">
           <ol className="flex flex-col">
@@ -235,6 +243,7 @@ export default function RequestDetailPage() {
         </SectionCard>
       ) : null}
 
+      {v.source === "sheet" && fixing ? <PrepareDialog key={`fix-${lines.map((l) => l.id).join()}`} history voucher={v} lines={lines} open={fixing} onOpenChange={setFixing} /> : null}
       {waitingStep === "validate" && preparing ? <PrepareDialog key={lines.map((l) => l.id).join()} voucher={v} lines={lines} open={preparing} onOpenChange={setPreparing} /> : null}
       <ReasonDialog
         open={!!asking}
