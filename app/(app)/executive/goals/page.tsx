@@ -21,7 +21,7 @@ import { useVouchers } from "@/lib/hooks/use-vouchers";
 import { useRole } from "@/lib/rbac/use-role";
 import { GOAL_MEASURES, MEASURES, measureTotal, type GoalMeasure, type Measure } from "@/lib/utils/budgets";
 import { formatCurrency } from "@/lib/utils/currency";
-import { countedDay } from "@/lib/utils/vouchers";
+import { countedDay, settledAdvances } from "@/lib/utils/vouchers";
 import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 
 const NONE = "__org";
@@ -49,7 +49,8 @@ export default function GoalsPage() {
   const impact = useProgramImpact({ from: `${from}-01-01`, to: `${to}-12-31` }, "month");
   // Spending counts on the day Finance prepared it (the same rule as Budgets and the prepare dialog).
   const preparedOn = new Map(events.filter((e) => e.action === "prepare").map((e) => [e.voucherId, e.at]));
-  const yearOf = new Map(vouchers.map((v) => [v.id, countedDay(v, preparedOn.get(v.id))?.slice(0, 4) ?? null]));
+  const settled = settledAdvances(vouchers);
+  const yearOf = new Map(vouchers.map((v) => [v.id, countedDay(v, preparedOn.get(v.id), settled)?.slice(0, 4) ?? null]));
 
   const actual = (g: Goal, year: number): number | null => {
     if (g.measure === "none") return null;

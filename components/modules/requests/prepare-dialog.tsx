@@ -15,7 +15,7 @@ import { fixHistory, prepareVoucher, similarCount, useVouchers, type Voucher, ty
 import { useBudgets } from "@/lib/hooks/use-budgets";
 import { todayIso } from "@/lib/utils/date";
 import { formatCurrency } from "@/lib/utils/currency";
-import { countedDay, fundAllows } from "@/lib/utils/vouchers";
+import { countedDay, fundAllows, settledAdvances } from "@/lib/utils/vouchers";
 
 const NONE = "__none";
 
@@ -27,7 +27,10 @@ const NONE = "__none";
 export function PrepareDialog({ voucher, lines, open, onOpenChange, history = false }: { voucher: Voucher; lines: VoucherLine[]; open: boolean; onOpenChange: (o: boolean) => void; /** A voucher from the registers (0136): correct its coding, nothing else. */ history?: boolean }) {
   const { data: accounts } = useSetupRows("coa_accounts");
   const { data: codes } = useSetupRows("fin_codes");
+  const { data: payees } = useSetupRows("payees");
+  const { data: rates } = useSetupRows("ewt_rates");
   const { staff } = useStaffRoster();
+  const [payee, setPayee] = React.useState(voucher.payeeId ?? NONE);
   const [fund, setFund] = React.useState(voucher.t2Id ?? "");
   const [t4, setT4] = React.useState(voucher.t4StaffId ?? NONE);
   const [coding, setCoding] = React.useState(() => lines.map((l) => ({ id: l.id, account_id: l.accountId, t1_id: l.t1Id, t3_id: l.t3Id })));
@@ -49,6 +52,10 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
   const chosenFund = funds.find((f) => f.id === fund);
   const set = (n: number, patch: Partial<(typeof coding)[number]>) => setCoding((c) => c.map((x, i) => (i === n ? { ...x, ...patch } : x)));
   const codeOf = (id: string | null) => String(accounts.find((a) => a.id === id)?.code ?? "");
+  // Withholding (0138): the linked payee's ATC rate on each line, as the database will compute it.
+  const atc = String(payees.find((p) => p.id === payee)?.ewt_atc ?? "");
+  const rate = Number(rates.find((r) => r.atc === atc && r.active !== false)?.rate ?? 0);
+  const withheld = lines.reduce((s, l) => s + Math.round(l.amount * rate) / 100, 0);
 
   // Budget left this month per program (0137): the approved budget's amounts against what other vouchers prepared
   // this month already took. Shown only once the CEO has approved the year's budget.
@@ -58,7 +65,8 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
   const approved = budgets.find((b) => b.status === "approved" && b.year === Number(today.slice(0, 4)));
   const month = Number(today.slice(5, 7));
   const preparedOn = new Map(events.filter((e) => e.action === "prepare").map((e) => [e.voucherId, e.at]));
-  const thisMonth = new Set(vouchers.filter((v) => v.id !== voucher.id && countedDay(v, preparedOn.get(v.id))?.slice(0, 7) === today.slice(0, 7)).map((v) => v.id));
+  const settled = settledAdvances(vouchers);
+  const thisMonth = new Set(vouchers.filter((v) => v.id !== voucher.id && countedDay(v, preparedOn.get(v.id), settled)?.slice(0, 7) === today.slice(0, 7)).map((v) => v.id));
   const programs = [...new Set(coding.map((c) => c.t3_id).filter((x): x is string => !!x))];
   const left = approved && !history
     ? programs.map((p) => {
@@ -78,7 +86,7 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
       toast.success(r.value ? "Corrected: cleaned up" : "Corrected; something is still to clean up");
       return void onOpenChange(false);
     }
-    const r = await prepareVoucher(voucher.id, fund, t4 === NONE ? null : t4, coding, note);
+    const r = await prepareVoucher(voucher.id, fund, t4 === NONE ? null : t4, coding, note, payee === NONE ? null : payee);
     setBusy(false);
     if (!r.ok) return void toast.error(r.error);
     toast.success(`Prepared as ${r.value}`);
@@ -92,7 +100,7 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
           <DialogTitle>{history ? `Correct the coding · ${voucher.voucherNumber}` : `Prepare the voucher · ${voucher.requestNumber}`}</DialogTitle>
           <DialogDescription>
             {history ? `From the ${voucher.voucherType} register. Correct the fund and each item's coding; amounts and the register's words stay as they are.` : <>
-            Check the request and its papers, confirm the coding, then prepare: it gets its {voucher.kind === "petty_cash" ? "PCV" : voucher.payMethod === "gcash" ? "GCV" : "PV"} number and goes to the reviewer.
+            Check the request and its papers, confirm the coding, then prepare: it gets its {voucher.kind === "liquidation" ? "JV" : voucher.kind === "petty_cash" ? "PCV" : voucher.payMethod === "gcash" ? "GCV" : "PV"} number and goes to the reviewer.
             The budget for the month is on <Link href="/finance/budget" className="text-primary hover:underline">Budget vs Actual</Link>.
             </>}
           </DialogDescription>
@@ -126,6 +134,23 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
                 ))}
               </SelectContent>
             </Select>
+          </Field>
+          )}
+          {history ? null : (
+          <Field className="sm:col-span-2">
+            <FieldLabel>Payee for withholding (a supplier, or the person paid)</FieldLabel>
+            <Select value={payee} onValueChange={setPayee}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>None: nothing withheld</SelectItem>
+                {payees.filter((p) => p.active !== false).map((p) => (
+                  <SelectItem key={String(p.id)} value={String(p.id)}>{String(p.name)}{p.ewt_atc ? ` · ${String(p.ewt_atc)}` : ""}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-theme-xs text-muted-foreground">
+              {rate ? `${atc} ${rate}%: ${formatCurrency(withheld, "PHP", true)} withheld; pays ${formatCurrency(voucher.total - withheld, "PHP", true)}.` : "No withholding: pays the full amount."}
+            </p>
           </Field>
           )}
         </div>

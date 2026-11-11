@@ -12,7 +12,7 @@ import type { TrackEvent, VoucherAction, VoucherKind, VoucherStatus } from "@/li
 export interface Voucher {
   id: string;
   requestNumber: string | null;
-  voucherType: "PV" | "PCV" | "GCV" | null;
+  voucherType: "PV" | "PCV" | "GCV" | "JV" | null;
   voucherNumber: string | null;
   kind: VoucherKind;
   status: VoucherStatus;
@@ -42,6 +42,10 @@ export interface Voucher {
   recipientCategoryId: string | null;
   patientId: string | null;
   recipientName: string | null;
+  /** 0138: the advance a liquidation settles; the top-up that refills a slip; what Finance withheld. */
+  advanceOf: string | null;
+  replenishedBy: string | null;
+  ewtTotal: number;
   createdAt: string;
 }
 export interface VoucherLine {
@@ -58,6 +62,9 @@ export interface VoucherLine {
   t1Id: string | null;
   t3Id: string | null;
   legacyCode: string | null;
+  ewtAtc: string | null;
+  ewtRate: number | null;
+  ewtAmount: number;
 }
 export interface VoucherEvent extends TrackEvent {
   id: string;
@@ -113,6 +120,9 @@ const toVoucher = (r: Row): Voucher => ({
   recipientCategoryId: s(r.recipient_category_id),
   patientId: s(r.patient_id),
   recipientName: s(r.recipient_name),
+  advanceOf: s(r.advance_of),
+  replenishedBy: s(r.replenished_by),
+  ewtTotal: num(r.ewt_total),
   createdAt: String(r.created_at),
 });
 
@@ -134,6 +144,7 @@ export const voucherLinesStore = createCollection<VoucherLine[]>({
   fetch: all("voucher_lines", "sort", (r) => ({
     id: String(r.id), voucherId: String(r.voucher_id), sort: num(r.sort), description: String(r.description), qty: num(r.qty), unitCost: num(r.unit_cost),
     amount: num(r.amount), orNumber: s(r.or_number), expenseTypeId: s(r.expense_type_id), accountId: s(r.account_id), t1Id: s(r.t1_id), t3Id: s(r.t3_id), legacyCode: s(r.legacy_code),
+    ewtAtc: s(r.ewt_atc), ewtRate: r.ewt_rate == null ? null : num(r.ewt_rate), ewtAmount: num(r.ewt_amount),
   })),
 });
 export const voucherEventsStore = createCollection<VoucherEvent[]>({
@@ -167,6 +178,32 @@ export const voucherQueueStore = createCollection<{ voucherId: string; step: str
   },
 });
 
+/** A list a database function returns, refetched when vouchers, their events or the settings change. */
+const rpcStore = <T>(fn: string, map: (r: Row) => T, tables: string[]) =>
+  createCollection<T[]>({
+    key: `ops.${fn}`,
+    empty: [],
+    tables: tables.map((table) => ({ schema: "ops", table })),
+    fetch: async () => {
+      const { data, error } = await createClient().schema("ops").rpc(fn);
+      if (error) throw new Error(error.message);
+      return ((data ?? []) as Row[]).map(map);
+    },
+  });
+export interface FundStatus { fundId: string; name: string; kind: "petty_cash" | "gcash"; float: number | null; topUpBelow: number | null; custodianId: string | null; openCount: number; openAmount: number; cashOnHand: number; low: boolean }
+export interface OpenAdvance { voucherId: string; requestedBy: string; amount: number; approvedAt: string; due: string; overdue: boolean; liquidationId: string | null; liquidationStatus: string | null }
+/** Each fund's cash on hand and open slips (ops.fund_status): Finance's viewers and the fund's custodian. */
+export const fundStatusStore = rpcStore<FundStatus>("fund_status", (r) => ({
+  fundId: String(r.fund_id), name: String(r.name), kind: r.kind as FundStatus["kind"], float: r.float_amount == null ? null : num(r.float_amount),
+  topUpBelow: r.top_up_below == null ? null : num(r.top_up_below), custodianId: s(r.custodian_staff_id), openCount: num(r.open_count), openAmount: num(r.open_amount),
+  cashOnHand: num(r.cash_on_hand), low: Boolean(r.low),
+}), ["vouchers", "cash_funds"]);
+/** Approved advances not yet settled (ops.advances_open): one's own; all of them for Finance's viewers. */
+export const advancesOpenStore = rpcStore<OpenAdvance>("advances_open", (r) => ({
+  voucherId: String(r.voucher_id), requestedBy: String(r.requested_by), amount: num(r.amount), approvedAt: String(r.approved_at), due: String(r.due),
+  overdue: Boolean(r.overdue), liquidationId: s(r.liquidation_id), liquidationStatus: s(r.liquidation_status),
+}), ["vouchers", "voucher_events", "finance_settings"]);
+
 export function useVouchers() {
   const { data: vouchers, loading } = useCollection(vouchersStore);
   const { data: lines, loading: linesLoading } = useCollection(voucherLinesStore);
@@ -176,7 +213,8 @@ export function useVouchers() {
 }
 
 type Result<T = null> = { ok: true; value: T } | { ok: false; error: string };
-const refresh = () => Promise.all([vouchersStore.refetch(), voucherLinesStore.refetch(), voucherEventsStore.refetch(), voucherQueueStore.refetch()]);
+const refresh = () =>
+  Promise.all([vouchersStore.refetch(), voucherLinesStore.refetch(), voucherEventsStore.refetch(), voucherQueueStore.refetch(), fundStatusStore.refetch(), advancesOpenStore.refetch()]);
 
 async function call<T>(fn: string, args: Record<string, unknown>): Promise<Result<T>> {
   const { data, error } = await createClient().schema("ops").rpc(fn, args);
@@ -211,8 +249,12 @@ export const saveVoucher = (id: string | null, header: DraftHeader, lines: Draft
 /** submit, endorse, review, approve, return, reject, cancel or discard; returns the new status. */
 export const actOnVoucher = (id: string, action: string, note?: string) => call<string>("voucher_act", { p_id: id, p_action: action, p_note: note ?? null });
 /** Finance prepares: the fund, the employee code and each line's coding; returns the voucher number. */
-export const prepareVoucher = (id: string, t2Id: string, t4StaffId: string | null, lines: { id: string; account_id: string | null; t1_id: string | null; t3_id: string | null }[], note?: string) =>
-  call<string>("voucher_prepare", { p_id: id, p_t2: t2Id, p_t4_staff: t4StaffId, p_lines: lines, p_note: note ?? null });
+export const prepareVoucher = (id: string, t2Id: string, t4StaffId: string | null, lines: { id: string; account_id: string | null; t1_id: string | null; t3_id: string | null }[], note?: string, payeeId?: string | null) =>
+  call<string>("voucher_prepare", { p_id: id, p_t2: t2Id, p_t4_staff: t4StaffId, p_lines: lines, p_note: note ?? null, p_payee: payeeId ?? null });
+/** The requester starts liquidating their approved advance: a draft with its lines; returns the new id. */
+export const liquidateAdvance = (advanceId: string) => call<string>("voucher_liquidate", { p_advance: advanceId });
+/** Finance or the custodian asks for a fund's top-up from its open slips; returns the draft's id. */
+export const createTopUp = (fundId: string) => call<string>("fund_topup_create", { p_fund: fundId });
 /** Finance corrects a voucher from the registers (0136): the fund and each line's coding; true once it is clean. */
 export const fixHistory = (id: string, t2Id: string | null, lines: { id: string; account_id: string | null; t1_id: string | null; t3_id: string | null }[], note?: string, othersChecked = false) =>
   call<boolean>("voucher_fix_history", { p_id: id, p_t2: t2Id, p_lines: lines, p_note: note ?? null, p_others_checked: othersChecked });

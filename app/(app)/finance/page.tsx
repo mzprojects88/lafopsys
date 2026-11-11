@@ -21,6 +21,7 @@ import {
   Upload,
   Fuel,
   Settings2,
+  Banknote,
 } from "lucide-react";
 import { FinanceSetupBanner } from "@/components/modules/finance/setup-banner";
 import { useRole } from "@/lib/rbac/use-role";
@@ -51,6 +52,7 @@ const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/finance/registers", label: "Registers", icon: BookOpen },
   { href: "/finance/vehicle-costs", label: "Vehicle Costs", icon: Fuel },
   { href: "/finance/budgets", label: "Budgets", icon: Wallet },
+  { href: "/finance/funds", label: "Funds & Advances", icon: Banknote },
   { href: "/finance/settings", label: "Financial Settings", icon: Settings2 },
 ];
 import type { CashEntry } from "@/lib/types/finance";

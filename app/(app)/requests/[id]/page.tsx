@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Check, CircleDashed, Clock, Printer, SkipForward } from "lucide-react";
@@ -15,7 +16,8 @@ import { VoucherFiles } from "@/components/modules/requests/voucher-files";
 import { VoucherStatusBadge } from "@/components/modules/requests/status-badge";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { actOnVoucher, useVouchers, voucherFilesStore } from "@/lib/hooks/use-vouchers";
+import { actOnVoucher, advancesOpenStore, liquidateAdvance, useVouchers, voucherFilesStore } from "@/lib/hooks/use-vouchers";
+import { useCollection } from "@/lib/data/collection-store";
 import { useSetupRows } from "@/lib/hooks/use-finance-setup";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
@@ -23,7 +25,7 @@ import { useNow } from "@/lib/hooks/use-now";
 import { useRole } from "@/lib/rbac/use-role";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
-import { durationWords, KIND_LABEL, OPEN, PAY_LABEL, trackSteps } from "@/lib/utils/vouchers";
+import { durationWords, KIND_LABEL, OPEN, PAY_LABEL, settlement, trackSteps } from "@/lib/utils/vouchers";
 import { cn } from "@/lib/utils";
 
 const ACTION_WORDS: Record<string, string> = {
@@ -46,6 +48,7 @@ export default function RequestDetailPage() {
   const { data: accounts } = useSetupRows("coa_accounts");
   const { data: categories } = useSetupRows("recipient_categories");
   const { staff } = useStaffRoster();
+  const { data: openAdvances } = useCollection(advancesOpenStore);
   const [canAttach, setCanAttach] = React.useState(false);
   const [preparing, setPreparing] = React.useState(false);
   const [fixing, setFixing] = React.useState(false);
@@ -78,6 +81,23 @@ export default function RequestDetailPage() {
   const waitingStep = queued === "returned" ? null : queued;
   const canCancel = v.source === "app" && (OPEN.includes(v.status) || v.status === "returned") ? (mine && ["returned", "submitted", "endorsed"].includes(v.status)) || canEdit("finance") : false;
   const steps = trackSteps(v.status, events, now);
+  // 0138: an advance and its liquidation point at each other; a top-up lists the slips it refills.
+  const ref = (x: { id: string; voucherNumber: string | null; requestNumber: string | null } | undefined, fallback: string) =>
+    x ? <Link className="text-primary hover:underline" href={`/requests/${x.id}`}>{x.voucherNumber ?? x.requestNumber ?? "Draft"}</Link> : fallback;
+  const liquidation = vouchers.find((x) => x.advanceOf === v.id && !["rejected", "cancelled"].includes(x.status));
+  const advance = v.advanceOf ? vouchers.find((x) => x.id === v.advanceOf) : undefined;
+  const open = openAdvances.find((a) => a.voucherId === v.id);
+  const left = advance ? settlement(advance.total, v.total) : null;
+  const refills = vouchers.filter((x) => x.replenishedBy === v.id).length;
+
+  async function liquidate() {
+    setBusy(true);
+    const r = await liquidateAdvance(v!.id);
+    setBusy(false);
+    if (!r.ok) return void toast.error(r.error);
+    toast.success("Liquidation started: change the items to what was really spent");
+    router.push(`/requests/${r.value}`);
+  }
 
   async function act(action: string, note?: string) {
     setBusy(true);
@@ -101,6 +121,7 @@ export default function RequestDetailPage() {
           <div className="flex flex-wrap gap-2">
             {waitingStep && SIGN[waitingStep] ? <Button disabled={busy} onClick={() => void act(SIGN[waitingStep].action)}>{SIGN[waitingStep].label}</Button> : null}
             {waitingStep === "validate" ? <Button onClick={() => setPreparing(true)}>Prepare voucher</Button> : null}
+            {mine && v.kind === "cash_advance" && v.status === "approved" && !liquidation ? <Button disabled={busy} onClick={() => void liquidate()}>Liquidate</Button> : null}
             {v.source === "sheet" && canEdit("finance") ? <Button variant={v.needsCleanup ? "default" : "outline"} onClick={() => setFixing(true)}>Correct the coding</Button> : null}
             {waitingStep ? <Button variant="outline" disabled={busy} onClick={() => setAsking("return")}>Send back</Button> : null}
             {waitingStep ? <Button variant="outline" className="text-destructive" disabled={busy} onClick={() => setAsking("reject")}>Reject</Button> : null}
@@ -127,10 +148,16 @@ export default function RequestDetailPage() {
             ["Paid by", PAY_LABEL[v.payMethod]],
             ["Needed by", v.neededBy ? formatDate(v.neededBy) : "—"],
             ["Total", formatCurrency(v.total, "PHP", true)],
+            ...(v.ewtTotal > 0 ? [["Withheld (EWT)", formatCurrency(v.ewtTotal, "PHP", true)], ["Net to pay", formatCurrency(v.total - v.ewtTotal, "PHP", true)]] : []),
+            ...(v.kind === "cash_advance" && liquidation ? [["Liquidation", ref(liquidation, "")]] : []),
+            ...(open && !liquidation ? [["Liquidate by", `${formatDate(open.due)}${open.overdue ? " (overdue)" : ""}`]] : []),
+            ...(v.advanceOf ? [["Settles the advance", ref(advance, "—")]] : []),
+            ...(advance && left ? [["Advanced", formatCurrency(advance.total, "PHP", true)], ["What is left", left.kind === "even" ? "Nothing: spent exactly" : `${formatCurrency(left.amount, "PHP", true)} ${left.kind === "return" ? "to return" : "to reimburse"}`]] : []),
+            ...(refills ? [["Refills", `${refills} slip${refills === 1 ? "" : "s"}`]] : []),
             ...(v.t4Code ? [["Employee (T4)", v.t4Code]] : []),
             ...(v.legacyLink ? [["Papers (register)", v.legacyLink]] : []),
           ].map(([k, val]) => (
-            <div key={k} className="flex flex-col">
+            <div key={String(k)} className="flex flex-col">
               <dt className="text-theme-xs text-muted-foreground">{k}</dt>
               <dd className="break-words font-medium">{val}</dd>
             </div>
@@ -212,7 +239,10 @@ export default function RequestDetailPage() {
                     <td className="px-4 py-2.5">{l.orNumber ?? "—"}</td>
                     <td className="px-4 py-2.5">{[account(l.accountId)?.code ?? l.legacyCode, account(l.accountId)?.name].filter(Boolean).join(" ") || "—"}</td>
                     <td className="px-4 py-2.5">{[code(l.t1Id), code(l.t3Id)].filter(Boolean).join(":") || "—"}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{formatCurrency(l.amount, "PHP", true)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">
+                      {formatCurrency(l.amount, "PHP", true)}
+                      {l.ewtAmount > 0 ? <span className="block text-theme-xs text-muted-foreground">EWT {l.ewtAtc} {l.ewtRate}%: −{formatCurrency(l.ewtAmount, "PHP", true)}</span> : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>

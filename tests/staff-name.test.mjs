@@ -24,7 +24,7 @@ describe("document names", () => {
 describe("pages and powers (0093)", () => {
   it("the migrations seed exactly the catalogue's levelled pages", () => {
     // 0093 seeded the first pages; later pages are seeded by the migration that adds them.
-    const sql = ["0093_roles_pages_powers.sql", "0095_gift_totals_and_meals_served.sql", "0106_house_stocks.sql", "0112_program_impact.sql", "0128_program_impact_range.sql", "0120_diet_instructions_weekly_menu.sql", "0124_case_files.sql", "0134_vouchers.sql", "0137_budgets_goals.sql"]
+    const sql = ["0093_roles_pages_powers.sql", "0095_gift_totals_and_meals_served.sql", "0106_house_stocks.sql", "0112_program_impact.sql", "0128_program_impact_range.sql", "0120_diet_instructions_weekly_menu.sql", "0124_case_files.sql", "0134_vouchers.sql", "0137_budgets_goals.sql", "0138_funds_advances_ewt.sql"]
       .map((f) => readFileSync(new URL(`../supabase/migrations/${f}`, import.meta.url), "utf8"))
       .join("\n");
     const seeded = [...sql.matchAll(/\('([a-z_]+\.[a-z_]+)'\)/g)].map((m) => m[1]).sort();

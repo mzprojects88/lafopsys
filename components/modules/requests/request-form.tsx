@@ -18,7 +18,7 @@ import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { actOnVoucher, saveVoucher, type DraftHeader, type DraftLine, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
 import { formatCurrency } from "@/lib/utils/currency";
-import { fundAllows, KIND_LABEL, PAY_LABEL, type VoucherKind } from "@/lib/utils/vouchers";
+import { fundAllows, KIND_LABEL, PAY_LABEL, REQUESTABLE } from "@/lib/utils/vouchers";
 import { todayIso } from "@/lib/utils/date";
 
 /** Suppliers by name only (ops.payee_choices: TINs stay with Finance). */
@@ -148,8 +148,11 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
         <div className="grid gap-4 sm:grid-cols-2">
           <Field className="sm:col-span-2">
             <FieldLabel>What kind of request?</FieldLabel>
+            {header.kind === "liquidation" ? (
+              <FieldDescription>Liquidation of an advance: list what was really spent, with the OR numbers. What is left is returned; an overspend is reimbursed.</FieldDescription>
+            ) : (
             <div className="grid gap-2 sm:grid-cols-2">
-              {(Object.keys(KIND_LABEL) as VoucherKind[]).map((k) => (
+              {REQUESTABLE.map((k) => (
                 <button
                   key={k}
                   type="button"
@@ -161,6 +164,7 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
                 </button>
               ))}
             </div>
+            )}
           </Field>
           <Field className="sm:col-span-2">
             <FieldLabel htmlFor="req-purpose">What is it for?</FieldLabel>

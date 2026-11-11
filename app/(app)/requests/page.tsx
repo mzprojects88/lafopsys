@@ -17,7 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCollection } from "@/lib/data/collection-store";
-import { useVouchers, voucherFilesStore, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
+import { createTopUp, fundStatusStore, useVouchers, voucherFilesStore, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
+import { toast } from "sonner";
 import { useSetupRows } from "@/lib/hooks/use-finance-setup";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
@@ -39,6 +40,35 @@ export default function RequestsPage() {
     <React.Suspense fallback={<LoadingState />}>
       <RequestsContent />
     </React.Suspense>
+  );
+}
+
+/** The funds this person keeps (0138): cash on hand, and the top-up from the open slips. Nothing for anyone else. */
+function CustodianFunds() {
+  const router = useRouter();
+  const { staffId: me } = useRole();
+  const { data } = useCollection(fundStatusStore);
+  const [busy, setBusy] = React.useState(false);
+  const mine = data.filter((f) => f.custodianId === me);
+  if (!mine.length) return null;
+  async function topUp(id: string) {
+    setBusy(true);
+    const r = await createTopUp(id);
+    setBusy(false);
+    if (!r.ok) return void toast.error(r.error);
+    toast.success("Top-up drafted: check it and send it");
+    router.push(`/requests/${r.value}`);
+  }
+  return (
+    <KpiGrid>
+      {mine.map((f) => (
+        <div key={f.fundId} className="flex flex-col gap-2">
+          <KpiCard label={`${f.name} (you keep it)`} value={formatCurrency(f.cashOnHand, "PHP", true)} icon={Wallet} tone={f.low ? "warning" : "default"}
+            sublabel={`on hand · ${f.openCount} slip${f.openCount === 1 ? "" : "s"} to refill${f.low ? " · below the top-up point" : ""}`} />
+          <Button size="sm" variant={f.low ? "default" : "outline"} disabled={busy || f.openCount === 0} onClick={() => void topUp(f.fundId)}>Ask for a top-up</Button>
+        </div>
+      ))}
+    </KpiGrid>
   );
 }
 
@@ -207,6 +237,8 @@ function RequestsContent() {
           </>
         }
       />
+
+      <CustodianFunds />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as "waiting" | "all")}>
         <TabsList>

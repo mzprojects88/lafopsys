@@ -25,7 +25,7 @@ import { useRole } from "@/lib/rbac/use-role";
 import { MEASURES, measureTotal, spreadYear, type Measure } from "@/lib/utils/budgets";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate, todayIso } from "@/lib/utils/date";
-import { countedDay } from "@/lib/utils/vouchers";
+import { countedDay, settledAdvances } from "@/lib/utils/vouchers";
 import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -75,7 +75,8 @@ export default function BudgetsPage() {
   // Actuals for Budget vs actual: the vouchers' lines (prepared and on), by program and month of preparing; and the measures.
   const impact = useProgramImpact({ from: `${year}-01-01`, to: `${year}-12-31` }, "month");
   const preparedOn = new Map(events.filter((e) => e.action === "prepare").map((e) => [e.voucherId, e.at]));
-  const monthOf = new Map(vouchers.map((v) => [v.id, countedDay(v, preparedOn.get(v.id))]));
+  const settled = settledAdvances(vouchers);
+  const monthOf = new Map(vouchers.map((v) => [v.id, countedDay(v, preparedOn.get(v.id), settled)]));
   const spent = (pick: (l: (typeof lines)[number]) => boolean, upTo: number, only?: number) =>
     lines.filter((l) => {
       const d = monthOf.get(l.voucherId);

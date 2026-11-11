@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/app/(print)/hr/payslips/[id]/print/print-button";
 import { KIND_LABEL, PAY_LABEL, STATUS_LABEL, type VoucherKind, type VoucherStatus } from "@/lib/utils/vouchers";
 
-const TITLE: Record<string, string> = { PV: "Payment Voucher", PCV: "Petty Cash Voucher", GCV: "GCash Fund Voucher" };
+const TITLE: Record<string, string> = { PV: "Payment Voucher", PCV: "Petty Cash Voucher", GCV: "GCash Fund Voucher", JV: "Journal Voucher (liquidation)" };
 const SIGNS = [
   { action: "submit", label: "Requested by" },
   { action: "endorse", label: "Endorsed by" },
@@ -48,7 +48,9 @@ export default async function RequestPrintPage({ params }: { params: Promise<{ i
   const code = (cid: string | null) => (codes ?? []).find((c) => c.id === cid)?.code ?? "";
   const account = (aid: string | null) => (accounts ?? []).find((a) => a.id === aid);
   const payee = v.payee_id ? ((payees ?? []) as { id: string; name: string }[]).find((p) => p.id === v.payee_id)?.name : null;
-  const items = (lines ?? []) as { id: string; description: string; qty: number; unit_cost: number; amount: number; or_number: string | null; account_id: string | null; t1_id: string | null; t3_id: string | null; legacy_code: string | null }[];
+  const items = (lines ?? []) as { id: string; description: string; qty: number; unit_cost: number; amount: number; or_number: string | null; account_id: string | null; t1_id: string | null; t3_id: string | null; legacy_code: string | null; ewt_atc: string | null; ewt_rate: number | null }[];
+  const ewt = Number(v.ewt_total ?? 0);
+  const atcs = [...new Set(items.filter((l) => l.ewt_atc).map((l) => `${l.ewt_atc} ${Number(l.ewt_rate)}%`))].join(", ");
 
   return (
     <div className="mx-auto max-w-3xl p-6 text-sm text-neutral-900 print:max-w-none print:p-0">
@@ -102,6 +104,18 @@ export default async function RequestPrintPage({ params }: { params: Promise<{ i
               <td colSpan={4} className="py-2 text-right font-semibold">Total</td>
               <td className="py-2 text-right font-semibold tabular-nums">{peso(Number(v.total))}</td>
             </tr>
+            {ewt > 0 ? (
+              <>
+                <tr>
+                  <td colSpan={4} className="py-1 text-right text-neutral-600">Less tax withheld ({atcs})</td>
+                  <td className="py-1 text-right tabular-nums">({peso(ewt)})</td>
+                </tr>
+                <tr>
+                  <td colSpan={4} className="py-1 text-right font-semibold">Net to pay</td>
+                  <td className="py-1 text-right font-semibold tabular-nums">{peso(Number(v.total) - ewt)}</td>
+                </tr>
+              </>
+            ) : null}
           </tbody>
         </table>
         <section className="mt-8 grid grid-cols-2 gap-6 text-xs sm:grid-cols-3 print:grid-cols-3">

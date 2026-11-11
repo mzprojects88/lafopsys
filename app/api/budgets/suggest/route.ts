@@ -6,7 +6,7 @@ import { suggestBudget } from "@/lib/ai/openai";
 import { fetchAll } from "@/lib/supabase/fetch-all";
 import { MEASURES, measureTotal, type Measure } from "@/lib/utils/budgets";
 import type { ImpactLine } from "@/lib/utils/program-impact";
-import { countedDay, type VoucherStatus } from "@/lib/utils/vouchers";
+import { countedDay, settledAdvances, type VoucherKind, type VoucherStatus } from "@/lib/utils/vouchers";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 90;
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     // lines and preparing dates, in parallel batches of ids.
     const [gifts, vouchers] = await Promise.all([
       fetchAll<Record<string, unknown>>((from, to) => ops().from("donations").select("id, date, total_value").gte("date", start).order("id").range(from, to)),
-      fetchAll<Record<string, unknown>>((from, to) => ops().from("vouchers").select("id, status, submitted_at, created_at").in("status", ["prepared", "reviewed", "approved"]).or(`submitted_at.gte.${start},created_at.gte.${start}`).order("id").range(from, to)),
+      fetchAll<Record<string, unknown>>((from, to) => ops().from("vouchers").select("id, kind, status, advance_of, submitted_at, created_at").in("status", ["prepared", "reviewed", "approved"]).or(`submitted_at.gte.${start},created_at.gte.${start}`).order("id").range(from, to)),
     ]);
     const ids = vouchers.map((v) => String(v.id));
     const batches = Array.from({ length: Math.ceil(ids.length / 150) }, (_, i) => ids.slice(i * 150, i * 150 + 150));
@@ -62,7 +62,9 @@ export async function POST(req: Request) {
     const codeOfT3 = new Map(t3.map((c) => [String(c.id), String(c.code)]));
     const codeOfAccount = new Map(accounts.map((a) => [String(a.id), String(a.code)]));
     // The same rule as the Budgets page: the Manila day Finance prepared it.
-    const monthOf = new Map(vouchers.map((v) => [String(v.id), countedDay({ status: v.status as VoucherStatus, submittedAt: (v.submitted_at as string | null) ?? null, createdAt: String(v.created_at) }, preparedOn.get(String(v.id)))?.slice(0, 7)]));
+    const counted = vouchers.map((v) => ({ id: String(v.id), kind: v.kind as VoucherKind, status: v.status as VoucherStatus, advanceOf: (v.advance_of as string | null) ?? null, submittedAt: (v.submitted_at as string | null) ?? null, createdAt: String(v.created_at) }));
+    const settled = settledAdvances(counted);
+    const monthOf = new Map(counted.map((v) => [v.id, countedDay(v, preparedOn.get(v.id), settled)?.slice(0, 7)]));
     const spend = new Map<string, number>();
     for (const l of lines) {
       const m = monthOf.get(String(l.voucher_id));

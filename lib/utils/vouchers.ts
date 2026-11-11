@@ -5,7 +5,7 @@
  */
 import { dayKey } from "./dtr.ts";
 
-export type VoucherKind = "reimbursement" | "cash_advance" | "supplier" | "petty_cash";
+export type VoucherKind = "reimbursement" | "cash_advance" | "supplier" | "petty_cash" | "fund_topup" | "liquidation";
 export type VoucherStatus = "draft" | "submitted" | "endorsed" | "prepared" | "reviewed" | "approved" | "returned" | "rejected" | "cancelled";
 export type VoucherAction = "submit" | "skip_endorse" | "endorse" | "prepare" | "review" | "approve" | "return" | "reject" | "cancel" | "history";
 
@@ -14,7 +14,11 @@ export const KIND_LABEL: Record<VoucherKind, string> = {
   cash_advance: "Cash advance (I need cash first)",
   supplier: "Pay a supplier",
   petty_cash: "Petty cash",
+  fund_topup: "Fund top-up",
+  liquidation: "Liquidation of an advance",
 };
+/** What a staff member picks on a new request (a top-up comes from its fund, a liquidation from its advance). */
+export const REQUESTABLE: readonly VoucherKind[] = ["reimbursement", "cash_advance", "supplier", "petty_cash"];
 export const STATUS_LABEL: Record<VoucherStatus, string> = {
   draft: "Draft",
   submitted: "Waiting for endorsement",
@@ -98,19 +102,41 @@ export function durationWords(ms: number): string {
   return `${days} ${days === 1 ? "day" : "days"}`;
 }
 
-/** Whole days a request has waited at its current step (0 on the day it arrived). */
 /** Statuses whose lines are spending: Finance has prepared the voucher (or it came from the registers so). */
 export const SPENDING: readonly VoucherStatus[] = ["prepared", "reviewed", "approved"];
 
+type Counted = { id: string; kind: VoucherKind; status: VoucherStatus; advanceOf?: string | null; submittedAt: string | null; createdAt: string };
+
+/** The advances whose liquidation Finance has prepared: from then on the liquidation's lines are the spending. */
+export const settledAdvances = (vouchers: readonly Counted[]) =>
+  new Set(vouchers.filter((v) => v.kind === "liquidation" && v.advanceOf && SPENDING.includes(v.status)).map((v) => v.advanceOf as string));
+
 /**
  * The Manila day a voucher's spending counts on (budgets, goals, budget left): when Finance prepared it, else when
- * it was sent, else when it was made; null while it isn't spending (before preparing, or stopped). One rule for
+ * it was sent, else when it was made; null while it isn't spending (before preparing, or stopped), for a top-up
+ * (it refills cash the slips already spent) and for an advance once its liquidation counts instead. One rule for
  * every screen.
  */
-export function countedDay(v: { status: VoucherStatus; submittedAt: string | null; createdAt: string }, preparedAt: string | undefined): string | null {
+export function countedDay(v: Counted, preparedAt: string | undefined, settled: ReadonlySet<string>): string | null {
+  if (v.kind === "fund_topup" || (v.kind === "cash_advance" && settled.has(v.id))) return null;
   return SPENDING.includes(v.status) ? dayKey(preparedAt ?? v.submittedAt ?? v.createdAt) : null;
 }
 
+/** What settling an advance leaves: the requester returns the change, or LAF reimburses the overspend. */
+export function settlement(advanced: number, spent: number): { kind: "return" | "reimburse" | "even"; amount: number } {
+  const d = Math.round((advanced - spent) * 100) / 100;
+  return d > 0 ? { kind: "return", amount: d } : d < 0 ? { kind: "reimburse", amount: -d } : { kind: "even", amount: 0 };
+}
+
+/** The calendar quarter of a day, for the 2307 ("2026-Q4"), and its first and last days. */
+export function quarterOf(day: string): { key: string; from: string; to: string } {
+  const y = Number(day.slice(0, 4));
+  const q = Math.floor((Number(day.slice(5, 7)) - 1) / 3) + 1;
+  const last = new Date(Date.UTC(y, q * 3, 0)).getUTCDate();
+  return { key: `${y}-Q${q}`, from: `${y}-${String(q * 3 - 2).padStart(2, "0")}-01`, to: `${y}-${String(q * 3).padStart(2, "0")}-${last}` };
+}
+
+/** Whole days a request has waited at its current step (0 on the day it arrived). */
 export const daysWaiting = (since: string, now: number) => Math.max(0, Math.floor((now - Date.parse(since)) / 86_400_000));
 
 /**

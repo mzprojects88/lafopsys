@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { countedDay, daysWaiting, durationWords, fundAllows, shownAmount, trackSteps } from "../lib/utils/vouchers.ts";
+import { countedDay, daysWaiting, durationWords, fundAllows, quarterOf, settledAdvances, settlement, shownAmount, trackSteps } from "../lib/utils/vouchers.ts";
 import { escapeCsv } from "../lib/utils/csv.ts";
 
 const ev = (action, at, actor = "a") => ({ action, at, actor, note: null });
@@ -35,10 +35,25 @@ describe("vouchers: words and sums", () => {
     assert.equal(daysWaiting("2026-11-10T09:00:00Z", now), 1);
   });
   it("spending counts on the Manila day Finance prepared it, and not before", () => {
-    const v = { status: "approved", submittedAt: "2026-11-30T10:00:00Z", createdAt: "2026-11-29T10:00:00Z" };
-    assert.equal(countedDay(v, "2026-12-31T18:00:00Z"), "2027-01-01");
-    assert.equal(countedDay(v, undefined), "2026-11-30");
-    assert.equal(countedDay({ ...v, status: "submitted" }, undefined), null);
+    const none = new Set();
+    const v = { id: "a", kind: "cash_advance", status: "approved", submittedAt: "2026-11-30T10:00:00Z", createdAt: "2026-11-29T10:00:00Z" };
+    assert.equal(countedDay(v, "2026-12-31T18:00:00Z", none), "2027-01-01");
+    assert.equal(countedDay(v, undefined, none), "2026-11-30");
+    assert.equal(countedDay({ ...v, status: "submitted" }, undefined, none), null);
+    // A top-up never counts; an advance stops counting once its liquidation is prepared.
+    assert.equal(countedDay({ ...v, kind: "fund_topup" }, undefined, none), null);
+    const settled = settledAdvances([v, { ...v, id: "l", kind: "liquidation", advanceOf: "a", status: "prepared" }]);
+    assert.equal(countedDay(v, undefined, settled), null);
+    assert.equal(settledAdvances([v, { ...v, id: "l", kind: "liquidation", advanceOf: "a", status: "draft" }]).size, 0);
+  });
+  it("settles an advance: change returned, overspend reimbursed", () => {
+    assert.deepEqual(settlement(3000, 2600), { kind: "return", amount: 400 });
+    assert.deepEqual(settlement(3000, 3150.5), { kind: "reimburse", amount: 150.5 });
+    assert.deepEqual(settlement(3000, 3000), { kind: "even", amount: 0 });
+  });
+  it("names the quarter for the 2307", () => {
+    assert.deepEqual(quarterOf("2026-11-12"), { key: "2026-Q4", from: "2026-10-01", to: "2026-12-31" });
+    assert.deepEqual(quarterOf("2028-02-29"), { key: "2028-Q1", from: "2028-01-01", to: "2028-03-31" });
   });
   it("a restricted fund pays only its accounts; an empty list allows any", () => {
     assert.equal(fundAllows(["52", "5503"], "5202"), true);

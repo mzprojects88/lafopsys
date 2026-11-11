@@ -100,6 +100,7 @@ export const PAGES: PageDef[] = [
   p("finance", "entry", "/finance/entry", "New Cash Entry"),
   p("finance", "settings", "/finance/settings", "Financial Settings", "finance_setup"),
   p("finance", "budgets", "/finance/budgets", "Budgets"),
+  p("finance", "funds", "/finance/funds", "Funds & Advances"),
   p("requests", "all", "/requests", "Payment Requests"),
   p("analytics", "dashboard", "/analytics", "Analytics"),
   p("reports", "catalogue", "/reports", "Reports"),
