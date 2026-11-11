@@ -7,7 +7,7 @@ import { sanitiseSegment } from "@/lib/utils/file-paths";
 export const dynamic = "force-dynamic";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const KINDS = ["receipt", "invoice", "quotation", "other"] as const;
+const KINDS = ["receipt", "invoice", "quotation", "proof", "other"] as const;
 /** Under Vercel's 4.5 MB request limit once base64-encoded. */
 const MAX_BYTES = 3 * 1024 * 1024;
 const TYPES: Record<string, (b: Uint8Array) => boolean> = {

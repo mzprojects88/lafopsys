@@ -46,6 +46,12 @@ export interface Voucher {
   advanceOf: string | null;
   replenishedBy: string | null;
   ewtTotal: number;
+  /** 0139: paid from (a cash or bank account), the check or transfer reference, when paid, exported, the bank debit. */
+  paidFromAccountId: string | null;
+  payReference: string | null;
+  releasedAt: string | null;
+  exportedAt: string | null;
+  bankTransactionId: string | null;
   createdAt: string;
 }
 export interface VoucherLine {
@@ -123,6 +129,11 @@ const toVoucher = (r: Row): Voucher => ({
   advanceOf: s(r.advance_of),
   replenishedBy: s(r.replenished_by),
   ewtTotal: num(r.ewt_total),
+  paidFromAccountId: s(r.paid_from_account_id),
+  payReference: s(r.pay_reference),
+  releasedAt: s(r.released_at),
+  exportedAt: s(r.exported_at),
+  bankTransactionId: s(r.bank_transaction_id),
   createdAt: String(r.created_at),
 });
 
@@ -191,7 +202,7 @@ const rpcStore = <T>(fn: string, map: (r: Row) => T, tables: string[]) =>
     },
   });
 export interface FundStatus { fundId: string; name: string; kind: "petty_cash" | "gcash"; float: number | null; topUpBelow: number | null; custodianId: string | null; openCount: number; openAmount: number; cashOnHand: number; toRefill: number; topUpPending: boolean; low: boolean }
-export interface OpenAdvance { voucherId: string; requestedBy: string; amount: number; approvedAt: string; due: string; overdue: boolean; liquidationId: string | null; liquidationStatus: string | null }
+export interface OpenAdvance { voucherId: string; requestedBy: string; amount: number; releasedAt: string; due: string; overdue: boolean; liquidationId: string | null; liquidationStatus: string | null }
 /** Each fund's cash on hand and open slips (ops.fund_status): Finance's viewers and the fund's custodian. */
 export const fundStatusStore = rpcStore<FundStatus>("fund_status", (r) => ({
   fundId: String(r.fund_id), name: String(r.name), kind: r.kind as FundStatus["kind"], float: r.float_amount == null ? null : num(r.float_amount),
@@ -200,7 +211,7 @@ export const fundStatusStore = rpcStore<FundStatus>("fund_status", (r) => ({
 }), ["vouchers", "cash_funds"]);
 /** Approved advances not yet settled (ops.advances_open): one's own; all of them for Finance's viewers. */
 export const advancesOpenStore = rpcStore<OpenAdvance>("advances_open", (r) => ({
-  voucherId: String(r.voucher_id), requestedBy: String(r.requested_by), amount: num(r.amount), approvedAt: String(r.approved_at), due: String(r.due),
+  voucherId: String(r.voucher_id), requestedBy: String(r.requested_by), amount: num(r.amount), releasedAt: String(r.released_at), due: String(r.due),
   overdue: Boolean(r.overdue), liquidationId: s(r.liquidation_id), liquidationStatus: s(r.liquidation_status),
 }), ["vouchers", "finance_settings"]);
 
@@ -251,6 +262,19 @@ export const actOnVoucher = (id: string, action: string, note?: string) => call<
 /** Finance prepares: the fund, the employee code and each line's coding; returns the voucher number. */
 export const prepareVoucher = (id: string, t2Id: string, t4StaffId: string | null, lines: { id: string; account_id: string | null; t1_id: string | null; t3_id: string | null }[], note?: string, payeeId?: string | null) =>
   call<string>("voucher_prepare", { p_id: id, p_t2: t2Id, p_t4_staff: t4StaffId, p_lines: lines, p_note: note ?? null, p_payee: payeeId ?? null });
+/** A payment step (0139): prepare the payment (from an account, with its reference), approve it, or release it. */
+export const payVoucher = (id: string, action: "prepare_payment" | "approve_payment" | "release", accountId?: string | null, reference?: string, note?: string) =>
+  call<string>("voucher_pay", { p_id: id, p_action: action, p_account: accountId ?? null, p_reference: reference ?? null, p_note: note ?? null });
+/** Finance links a paid voucher to its bank debit (null unlinks it). */
+export const matchToBank = (id: string, transactionId: string | null) => call<null>("voucher_bank_match", { p_id: id, p_tx: transactionId });
+export interface JournalRow { voucher_id: string; journal_no: string; journal_date: string; account: string; debit: number | null; credit: number | null; description: string; name: string; class: string | null; already_exported: boolean }
+/** The QuickBooks journal for vouchers paid between two days (the export power); with mark, they are marked exported. */
+export async function quickBooksJournal(from: string, to: string, mark: boolean): Promise<Result<JournalRow[]>> {
+  const { data, error } = await createClient().schema("ops").rpc("voucher_qb_export", { p_from: from, p_to: to, p_mark: mark });
+  if (error) return { ok: false, error: error.message };
+  if (mark) await vouchersStore.refetch();
+  return { ok: true, value: (data ?? []) as JournalRow[] };
+}
 /** The requester starts liquidating their approved advance: a draft with its lines; returns the new id. */
 export const liquidateAdvance = (advanceId: string) => call<string>("voucher_liquidate", { p_advance: advanceId });
 /** Finance or the custodian asks for a fund's top-up from its open slips; returns the draft's id. */

@@ -10,7 +10,7 @@ import { useRole } from "@/lib/rbac/use-role";
 import { voucherFilesStore } from "@/lib/hooks/use-vouchers";
 import { formatBytes } from "@/lib/utils/file-paths";
 
-const KINDS = { receipt: "Receipt / OR", invoice: "Invoice / billing", quotation: "Quotation", other: "Other" } as const;
+const KINDS = { receipt: "Receipt / OR", invoice: "Invoice / billing", quotation: "Quotation", proof: "Proof of payment", other: "Other" } as const;
 type Kind = keyof typeof KINDS;
 const MAX = 3 * 1024 * 1024;
 

@@ -12,6 +12,8 @@ const SIGNS = [
   { action: "prepare", label: "Prepared by" },
   { action: "review", label: "Reviewed by" },
   { action: "approve", label: "Approved by" },
+  { action: "approve_payment", label: "Payment approved by" },
+  { action: "release", label: "Released by" },
 ];
 const peso = (n: number) => `₱${n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 /** Manila time whatever the server's clock zone (12-hour, as every time in the apps). */
@@ -71,6 +73,7 @@ export default async function RequestPrintPage({ params }: { params: Promise<{ i
             <p className="text-base font-semibold text-neutral-900">{v.voucher_number ?? v.legacy_number ?? v.request_number}</p>
             {v.voucher_number && v.request_number ? <p>Request {v.request_number}</p> : null}
             <p>{STATUS_LABEL[v.status as VoucherStatus]}{v.urgent ? " · Urgent" : ""}</p>
+            {v.status === "released" ? <p className="mt-1 inline-block rotate-[-4deg] rounded border-2 border-emerald-700 px-2 py-0.5 text-sm font-bold tracking-widest text-emerald-700">PAID {v.released_at ? manila(v.released_at).split(",").slice(0, 2).join(",") : ""}</p> : null}
           </div>
         </header>
         <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
@@ -79,6 +82,7 @@ export default async function RequestPrintPage({ params }: { params: Promise<{ i
           <div className="col-span-2"><dt className="text-neutral-500">For</dt><dd>{v.purpose}</dd></div>
           <div><dt className="text-neutral-500">Fund (T2)</dt><dd>{code(v.t2_id) || "—"}</dd></div>
           <div><dt className="text-neutral-500">Employee (T4)</dt><dd>{v.t4_code ?? "—"}</dd></div>
+          {v.pay_reference ? <div><dt className="text-neutral-500">Check / reference</dt><dd>{v.pay_reference}</dd></div> : null}
         </dl>
         <table className="mt-4 w-full border-collapse text-xs">
           <thead>

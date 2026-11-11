@@ -387,6 +387,8 @@ export default function FinancialSettingsPage() {
               { key: "budget_due_month", label: "Next year's budget is due by: month (1-12)", kind: "number", hint: "Of the year before: 12 and 31 mean December 31." },
               { key: "budget_due_day", label: "... and day", kind: "number" },
               { key: "budget_remind_days", label: "Remind from (days before it is due)", kind: "number" },
+              { key: "advances_account_id", label: "Account for cash advances (QuickBooks journal)", kind: "select", optional: true, options: postable },
+              { key: "ewt_payable_account_id", label: "Account for withholding tax payable (QuickBooks journal)", kind: "select", optional: true, options: postable },
               { key: "payer_name", label: "Payer on the 2307: registered name", kind: "text", hint: "As the BIR registration gives it." },
               { key: "payer_tin", label: "Payer's TIN", kind: "text", hint: "Digits only: 9, or 9 plus the branch code." },
               { key: "payer_address", label: "Payer's registered address", kind: "textarea" },

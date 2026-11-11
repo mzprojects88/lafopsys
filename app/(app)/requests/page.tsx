@@ -17,7 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCollection } from "@/lib/data/collection-store";
-import { createTopUp, fundStatusStore, useVouchers, voucherFilesStore, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
+import { createTopUp, fundStatusStore, quickBooksJournal, useVouchers, voucherFilesStore, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useSetupRows } from "@/lib/hooks/use-finance-setup";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
@@ -30,7 +31,8 @@ import { csvLines, downloadCsv } from "@/lib/utils/csv";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
 import { dayKey } from "@/lib/utils/dtr";
-import { daysWaiting, KIND_LABEL, OPEN, PAY_LABEL, shownAmount, STATUS_LABEL } from "@/lib/utils/vouchers";
+import { APPROVED, daysWaiting, KIND_LABEL, OPEN, PAY_LABEL, shownAmount, STATUS_LABEL } from "@/lib/utils/vouchers";
+import { todayIso } from "@/lib/utils/date";
 
 type Basis = "requested" | "prepared" | "approved";
 const BASIS: Record<Basis, string> = { requested: "Requested on", prepared: "Voucher date", approved: "Approved on" };
@@ -40,6 +42,45 @@ export default function RequestsPage() {
     <React.Suspense fallback={<LoadingState />}>
       <RequestsContent />
     </React.Suspense>
+  );
+}
+
+/**
+ * Export for QuickBooks (0139), for whoever holds the export power: the vouchers paid in the page's period as a
+ * QuickBooks journal (one balanced entry each) and a register; marking them exported warns on the next export.
+ * The exact columns are confirmed with one test import by the accountant.
+ */
+function QuickBooksExport({ from, to, vouchers, open, onOpenChange }: { from: string; to: string; vouchers: Voucher[]; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const [mark, setMark] = React.useState(true);
+  const [busy, setBusy] = React.useState(false);
+  const paid = vouchers.filter((v) => v.status === "released" && v.source === "app" && v.releasedAt && dayKey(v.releasedAt) >= from && dayKey(v.releasedAt) <= to);
+  const before = paid.filter((v) => v.exportedAt).length;
+  async function go() {
+    setBusy(true);
+    const r = await quickBooksJournal(from, to, mark);
+    setBusy(false);
+    if (!r.ok) return void toast.error(r.error);
+    const amount = (n: number | null) => (n == null ? "" : n.toFixed(2));
+    downloadCsv(csvLines(["Journal No", "Journal Date", "Account", "Debits", "Credits", "Description", "Name", "Class"], r.value.map((x) => [x.journal_no, x.journal_date, x.account, amount(x.debit), amount(x.credit), x.description, x.name, x.class ?? ""])), `quickbooks-journal-${from}-to-${to}.csv`);
+    downloadCsv(csvLines(["Voucher", "Paid on", "Kind", "Pay to", "Total", "Withheld", "Net", "Method", "Reference", "Exported before"], paid.map((v) => [v.voucherNumber ?? "", dayKey(v.releasedAt!), KIND_LABEL[v.kind], r.value.find((x) => x.voucher_id === v.id)?.name ?? "", v.total.toFixed(2), v.ewtTotal.toFixed(2), (v.total - v.ewtTotal).toFixed(2), PAY_LABEL[v.payMethod], v.payReference ?? "", v.exportedAt ? "yes" : "no"])), `voucher-register-${from}-to-${to}.csv`);
+    toast.success(`${paid.length} voucher${paid.length === 1 ? "" : "s"} exported`);
+    onOpenChange(false);
+  }
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Export for QuickBooks</DialogTitle>
+          <DialogDescription>Vouchers paid from {formatDate(from)} to {formatDate(to)} (the period above): a journal to import and a register.</DialogDescription>
+        </DialogHeader>
+        <p className="text-theme-sm">{paid.length} paid voucher{paid.length === 1 ? "" : "s"}{before ? `; ${before} exported before: importing them again would count them twice in QuickBooks.` : "."}</p>
+        <label className="flex items-center gap-2 text-theme-sm"><input type="checkbox" checked={mark} onChange={(e) => setMark(e.target.checked)} /> Mark them exported</label>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button disabled={busy || paid.length === 0} onClick={() => void go()}>{busy ? "Exporting…" : "Download"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -167,7 +208,7 @@ function RequestsContent() {
   const shownLines = shown.flatMap((v) => (linesOf.get(v.id) ?? []).filter((l) => !codeFilter || lineOk(l)).map((l) => ({ v, l })));
 
   const total = shown.reduce((s, v) => s + amountOf(v), 0);
-  const approved = shown.filter((v) => v.status === "approved").reduce((s, v) => s + amountOf(v), 0);
+  const approved = shown.filter((v) => APPROVED.includes(v.status)).reduce((s, v) => s + amountOf(v), 0);
   const moving = shown.filter((v) => v.source === "app" && OPEN.includes(v.status));
 
   const opt = {
@@ -214,6 +255,7 @@ function RequestsContent() {
   ];
 
   const canExport = holdsPower(roles, "finance_export");
+  const [exporting, setExporting] = React.useState(false);
   function exportCsv() {
     const header = ["No.", "Request no.", "Voucher type", BASIS[basis], "Status", "Kind", "Purpose", "Requested by", "Fund", "Item", "Account", "Account name", "Class", "OR / invoice", "Amount"];
     const rows = shownLines.map(({ v, l }) => [
@@ -233,12 +275,14 @@ function RequestsContent() {
         action={
           <>
             {canExport ? <Button variant="outline" onClick={exportCsv}><Download /> CSV</Button> : null}
+            {canExport ? <Button variant="outline" onClick={() => setExporting(true)}><Download /> QuickBooks</Button> : null}
             {canEdit("requests") ? <Button asChild><Link href="/requests/new"><Plus /> New request</Link></Button> : null}
           </>
         }
       />
 
       <CustodianFunds />
+      {exporting ? <QuickBooksExport from={w?.from ?? "2000-01-01"} to={w?.to ?? todayIso()} vouchers={vouchers} open={exporting} onOpenChange={setExporting} /> : null}
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as "waiting" | "all")}>
         <TabsList>
@@ -252,7 +296,7 @@ function RequestsContent() {
       <KpiGrid>
         <KpiCard label="Requests" value={shown.length} sublabel={period.label} icon={Inbox} />
         <KpiCard label={codeFilter ? "Amount (matching items)" : "Amount"} value={formatCurrency(total, "PHP", true)} sublabel={period.label} icon={Wallet} />
-        <KpiCard label="Approved" value={formatCurrency(approved, "PHP", true)} sublabel={`${shown.filter((v) => v.status === "approved").length} requests`} icon={FileCheck2} tone="positive" />
+        <KpiCard label="Approved" value={formatCurrency(approved, "PHP", true)} sublabel={`${shown.filter((v) => APPROVED.includes(v.status)).length} requests, ${shown.filter((v) => v.status === "released").length} paid`} icon={FileCheck2} tone="positive" />
         <KpiCard
           label="Still moving"
           value={moving.length}

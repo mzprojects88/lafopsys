@@ -102,7 +102,7 @@ export default function FundsPage() {
         )}
       </SectionCard>
 
-      <SectionCard flush title="Cash advances to liquidate" description="Approved advances not yet settled by an approved liquidation, due within the days set in Financial Settings.">
+      <SectionCard flush title="Cash advances to liquidate" description="Advances paid out and not yet settled by a liquidation, due within the days set in Financial Settings from the day they were paid.">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-theme-sm">
             <thead>

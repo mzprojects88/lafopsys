@@ -12,6 +12,8 @@ import { EmptyState } from "@/components/patterns/empty-state";
 import { ReasonDialog } from "@/components/patterns/reason-dialog";
 import { RequestForm } from "@/components/modules/requests/request-form";
 import { PrepareDialog } from "@/components/modules/requests/prepare-dialog";
+import { PayDialog, type PayStep } from "@/components/modules/requests/pay-dialog";
+import { BankMatchDialog } from "@/components/modules/requests/bank-match-dialog";
 import { VoucherFiles } from "@/components/modules/requests/voucher-files";
 import { VoucherStatusBadge } from "@/components/modules/requests/status-badge";
 import { Button } from "@/components/ui/button";
@@ -25,13 +27,15 @@ import { useNow } from "@/lib/hooks/use-now";
 import { useRole } from "@/lib/rbac/use-role";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
-import { durationWords, KIND_LABEL, OPEN, PAY_LABEL, settlement, trackSteps } from "@/lib/utils/vouchers";
+import { durationWords, KIND_LABEL, OPEN, paidDirect, PAY_LABEL, settlement, trackSteps } from "@/lib/utils/vouchers";
 import { cn } from "@/lib/utils";
 
 const ACTION_WORDS: Record<string, string> = {
   submit: "sent it", skip_endorse: "Endorsement not needed", endorse: "endorsed it", prepare: "prepared the voucher", review: "reviewed it", approve: "approved it",
   return: "sent it back", reject: "rejected it", cancel: "cancelled it", history: "recorded in the register",
+  prepare_payment: "prepared the payment", approve_payment: "approved the payment", release: "released the payment", bank_match: "matched it to the bank",
 };
+const PAY_LABELS: Record<PayStep, string> = { prepare_payment: "Prepare payment", approve_payment: "Approve payment", release: "Release payment" };
 const SIGN: Record<string, { action: string; label: string }> = { endorse: { action: "endorse", label: "Endorse" }, review: { action: "review", label: "Mark reviewed" }, approve: { action: "approve", label: "Approve" } };
 
 /**
@@ -52,6 +56,8 @@ export default function RequestDetailPage() {
   const [canAttach, setCanAttach] = React.useState(false);
   const [preparing, setPreparing] = React.useState(false);
   const [fixing, setFixing] = React.useState(false);
+  const [paying, setPaying] = React.useState<PayStep | null>(null);
+  const [matching, setMatching] = React.useState(false);
   const [asking, setAsking] = React.useState<null | "return" | "reject" | "cancel">(null);
   const [busy, setBusy] = React.useState(false);
   const now = useNow().getTime();
@@ -81,14 +87,17 @@ export default function RequestDetailPage() {
   const queued = queue.find((q) => q.voucherId === v.id)?.step ?? null;
   const waitingStep = queued === "returned" ? null : queued;
   const canCancel = v.source === "app" && (OPEN.includes(v.status) || v.status === "returned") ? (mine && ["returned", "submitted", "endorsed"].includes(v.status)) || canEdit("finance") : false;
-  const steps = trackSteps(v.status, events, now);
+  const steps = trackSteps(v.status, events, now, paidDirect(v));
+  const payStep = waitingStep && waitingStep in PAY_LABELS ? (waitingStep as PayStep) : null;
   // 0138: an advance and its liquidation point at each other; a top-up lists the slips it refills.
   const ref = (x: { id: string; voucherNumber: string | null; requestNumber: string | null } | undefined, fallback: string) =>
     x ? <Link className="text-primary hover:underline" href={`/requests/${x.id}`}>{x.voucherNumber ?? x.requestNumber ?? "Draft"}</Link> : fallback;
   const liquidation = vouchers.find((x) => x.advanceOf === v.id && !["rejected", "cancelled"].includes(x.status));
   const advance = v.advanceOf ? vouchers.find((x) => x.id === v.advanceOf) : undefined;
   const open = openAdvances.find((a) => a.voucherId === v.id);
-  const left = advance ? settlement(advance.total, v.total) : null;
+  const left = advance ? settlement(advance.total, v.total - v.ewtTotal) : null;
+  const settles = left ? (left.kind === "return" ? left.amount : -left.amount) : 0;
+  const paidFrom = accounts.find((a) => a.id === v.paidFromAccountId);
   const refills = vouchers.filter((x) => x.replenishedBy === v.id).length;
 
   async function liquidate() {
@@ -122,11 +131,13 @@ export default function RequestDetailPage() {
           <div className="flex flex-wrap gap-2">
             {waitingStep && SIGN[waitingStep] ? <Button disabled={busy} onClick={() => void act(SIGN[waitingStep].action)}>{SIGN[waitingStep].label}</Button> : null}
             {waitingStep === "validate" ? <Button onClick={() => setPreparing(true)}>Prepare voucher</Button> : null}
+            {payStep ? <Button onClick={() => setPaying(payStep)}>{v.kind === "liquidation" && payStep === "release" ? "Settle" : PAY_LABELS[payStep]}</Button> : null}
+            {v.status === "released" && v.kind !== "liquidation" && v.source === "app" && canEdit("finance") ? <Button variant="outline" onClick={() => setMatching(true)}>{v.bankTransactionId ? "Bank match" : "Match to the bank"}</Button> : null}
             {sendTopUp ? <Button disabled={busy} onClick={() => void act("submit")}>Send the top-up</Button> : null}
-            {mine && v.kind === "cash_advance" && v.status === "approved" && !liquidation ? <Button disabled={busy} onClick={() => void liquidate()}>Liquidate</Button> : null}
+            {mine && v.kind === "cash_advance" && v.status === "released" && !liquidation ? <Button disabled={busy} onClick={() => void liquidate()}>Liquidate</Button> : null}
             {v.source === "sheet" && canEdit("finance") ? <Button variant={v.needsCleanup ? "default" : "outline"} onClick={() => setFixing(true)}>Correct the coding</Button> : null}
-            {waitingStep ? <Button variant="outline" disabled={busy} onClick={() => setAsking("return")}>Send back</Button> : null}
-            {waitingStep ? <Button variant="outline" className="text-destructive" disabled={busy} onClick={() => setAsking("reject")}>Reject</Button> : null}
+            {waitingStep && !payStep ? <Button variant="outline" disabled={busy} onClick={() => setAsking("return")}>Send back</Button> : null}
+            {waitingStep && !payStep ? <Button variant="outline" className="text-destructive" disabled={busy} onClick={() => setAsking("reject")}>Reject</Button> : null}
             {canCancel ? <Button variant="ghost" disabled={busy} onClick={() => setAsking("cancel")}>Cancel request</Button> : null}
             {mine && v.status === "draft" && !v.requestNumber ? <Button variant="ghost" className="text-destructive" disabled={busy} onClick={() => confirm("Discard this draft?") && void act("discard")}>Discard draft</Button> : null}
             {v.status !== "draft" ? (
@@ -156,6 +167,10 @@ export default function RequestDetailPage() {
             ...(v.advanceOf ? [["Settles the advance", ref(advance, "—")]] : []),
             ...(advance && left ? [["Advanced", formatCurrency(advance.total, "PHP", true)], ["What is left", left.kind === "even" ? "Nothing: spent exactly" : `${formatCurrency(left.amount, "PHP", true)} ${left.kind === "return" ? "to return" : "to reimburse"}`]] : []),
             ...(refills ? [["Refills", `${refills} slip${refills === 1 ? "" : "s"}`]] : []),
+            ...(paidFrom ? [["Paid from", `${String(paidFrom.code)} ${String(paidFrom.name)}${v.payReference ? ` · ${v.payReference}` : ""}`]] : []),
+            ...(v.releasedAt ? [["Paid on", formatDate(v.releasedAt, "MMM d, yyyy h:mm a")]] : []),
+            ...(v.releasedAt && v.kind !== "liquidation" ? [["Bank", v.bankTransactionId ? "Matched to its debit" : "Not matched yet"]] : []),
+            ...(v.exportedAt ? [["QuickBooks", `Exported ${formatDate(v.exportedAt)}`]] : []),
             ...(v.t4Code ? [["Employee (T4)", v.t4Code]] : []),
             ...(v.legacyLink ? [["Papers (register)", v.legacyLink]] : []),
           ].map(([k, val]) => (
@@ -276,6 +291,8 @@ export default function RequestDetailPage() {
       ) : null}
 
       {v.source === "sheet" && fixing ? <PrepareDialog key={`fix-${lines.map((l) => l.id).join()}`} history voucher={v} lines={lines} open={fixing} onOpenChange={setFixing} /> : null}
+      {payStep && paying ? <PayDialog key={payStep} voucher={v} step={payStep} settles={settles} open onOpenChange={(o) => !o && setPaying(null)} /> : null}
+      {matching ? <BankMatchDialog voucher={v} open={matching} onOpenChange={setMatching} /> : null}
       {waitingStep === "validate" && preparing ? <PrepareDialog key={lines.map((l) => l.id).join()} voucher={v} lines={lines} open={preparing} onOpenChange={setPreparing} /> : null}
       <ReasonDialog
         open={!!asking}

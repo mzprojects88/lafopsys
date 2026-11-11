@@ -9,13 +9,13 @@ const now = Date.parse("2026-11-12T08:00:00Z");
 describe("vouchers: the step line", () => {
   it("marks the done steps, the one it waits for and how long it has waited", () => {
     const s = trackSteps("endorsed", [ev("submit", "2026-11-10T08:00:00Z"), ev("endorse", "2026-11-11T08:00:00Z", "b")], now);
-    assert.deepEqual(s.map((x) => x.state), ["done", "done", "current", "todo", "todo"]);
+    assert.deepEqual(s.map((x) => x.state), ["done", "done", "current", "todo", "todo", "todo", "todo", "todo"]);
     assert.equal(s[1].tookMs, 86_400_000);
     assert.equal(s[2].waitingMs, 86_400_000);
   });
   it("starts over after a request is sent back and sent again", () => {
     const s = trackSteps("submitted", [ev("submit", "2026-11-01T00:00:00Z"), ev("endorse", "2026-11-02T00:00:00Z"), ev("return", "2026-11-03T00:00:00Z"), ev("submit", "2026-11-04T00:00:00Z")], now);
-    assert.deepEqual(s.map((x) => x.state), ["done", "current", "todo", "todo", "todo"]);
+    assert.deepEqual(s.map((x) => x.state), ["done", "current", "todo", "todo", "todo", "todo", "todo", "todo"]);
   });
   it("shows a skipped endorsement, and nothing current once it is final", () => {
     const s = trackSteps("rejected", [ev("submit", "2026-11-10T00:00:00Z"), ev("skip_endorse", "2026-11-10T00:00:00Z", null), ev("reject", "2026-11-11T00:00:00Z")], now);
@@ -23,7 +23,12 @@ describe("vouchers: the step line", () => {
     assert.ok(s.every((x) => x.state !== "current"));
   });
   it("a draft has no steps done", () => {
-    assert.deepEqual(trackSteps("draft", [], now).map((x) => x.state), ["todo", "todo", "todo", "todo", "todo"]);
+    assert.deepEqual(trackSteps("draft", [], now).map((x) => x.state), ["todo", "todo", "todo", "todo", "todo", "todo", "todo", "todo"]);
+    // Approved and waiting to be paid: the payment is current; a slip from a fund skips the two payment steps.
+    const road = ["submit", "endorse", "prepare", "review", "approve"].map((a, n) => ev(a, `2026-11-0${n + 1}T00:00:00Z`));
+    assert.equal(trackSteps("approved", road, now).find((x) => x.state === "current")?.label, "Payment prepared");
+    assert.equal(trackSteps("approved", road, now, true).find((x) => x.state === "current")?.label, "Paid (released)");
+    assert.equal(trackSteps("approved", road, now, true).length, 6);
   });
 });
 

@@ -6,8 +6,8 @@
 import { dayKey } from "./dtr.ts";
 
 export type VoucherKind = "reimbursement" | "cash_advance" | "supplier" | "petty_cash" | "fund_topup" | "liquidation";
-export type VoucherStatus = "draft" | "submitted" | "endorsed" | "prepared" | "reviewed" | "approved" | "returned" | "rejected" | "cancelled";
-export type VoucherAction = "submit" | "skip_endorse" | "endorse" | "prepare" | "review" | "approve" | "return" | "reject" | "cancel" | "history";
+export type VoucherStatus = "draft" | "submitted" | "endorsed" | "prepared" | "reviewed" | "approved" | "payment_prepared" | "payment_approved" | "released" | "returned" | "rejected" | "cancelled";
+export type VoucherAction = "submit" | "skip_endorse" | "endorse" | "prepare" | "review" | "approve" | "prepare_payment" | "approve_payment" | "release" | "bank_match" | "return" | "reject" | "cancel" | "history";
 
 export const KIND_LABEL: Record<VoucherKind, string> = {
   reimbursement: "Reimbursement (I paid)",
@@ -25,14 +25,19 @@ export const STATUS_LABEL: Record<VoucherStatus, string> = {
   endorsed: "With Finance",
   prepared: "Waiting for review",
   reviewed: "Waiting for approval",
-  approved: "Approved",
+  approved: "Approved: payment to prepare",
+  payment_prepared: "Payment waiting for approval",
+  payment_approved: "Payment waiting for release",
+  released: "Paid",
   returned: "Sent back to the requester",
   rejected: "Rejected",
   cancelled: "Cancelled",
 };
 export const PAY_LABEL: Record<string, string> = { cash: "Cash", check: "Check", bank_transfer: "Bank transfer", gcash: "GCash" };
 /** Statuses still moving along the road (someone has to act). */
-export const OPEN: readonly VoucherStatus[] = ["submitted", "endorsed", "prepared", "reviewed"];
+export const OPEN: readonly VoucherStatus[] = ["submitted", "endorsed", "prepared", "reviewed", "approved", "payment_prepared", "payment_approved"];
+/** Approved, whether paid yet or not (0139). */
+export const APPROVED: readonly VoucherStatus[] = ["approved", "payment_prepared", "payment_approved", "released"];
 
 /** The road, in order: the event that completes each step. */
 const ROAD: { action: VoucherAction; label: string }[] = [
@@ -41,6 +46,9 @@ const ROAD: { action: VoucherAction; label: string }[] = [
   { action: "prepare", label: "Prepared by Finance" },
   { action: "review", label: "Reviewed" },
   { action: "approve", label: "Approved" },
+  { action: "prepare_payment", label: "Payment prepared" },
+  { action: "approve_payment", label: "Payment approved" },
+  { action: "release", label: "Paid (released)" },
 ];
 
 export interface TrackEvent {
@@ -63,16 +71,17 @@ export interface TrackStep {
 /**
  * The step line, read from the events of the latest round (a request sent back and sent again starts the road
  * over; the earlier rounds stay in the full history). The step the request waits for is "current"; nothing is
- * current once it is approved, sent back, rejected or cancelled.
+ * current once it is paid, sent back, rejected or cancelled. A `direct` voucher (a slip paid from a fund, a
+ * liquidation) is released straight after approval, without the two payment steps.
  */
-export function trackSteps(status: VoucherStatus, events: readonly TrackEvent[], now: number): TrackStep[] {
+export function trackSteps(status: VoucherStatus, events: readonly TrackEvent[], now: number, direct = false): TrackStep[] {
   const sorted = [...events].sort((a, b) => a.at.localeCompare(b.at));
   const start = sorted.map((e) => e.action).lastIndexOf("submit");
   const round = start < 0 ? [] : sorted.slice(start);
   const steps: TrackStep[] = [];
   let previous: string | undefined;
   let waiting = OPEN.includes(status);
-  for (const step of ROAD) {
+  for (const step of ROAD.filter((s) => !direct || (s.action !== "prepare_payment" && s.action !== "approve_payment"))) {
     const done = round.find((e) => e.action === step.action || (step.action === "endorse" && e.action === "skip_endorse"));
     if (done) {
       steps.push({
@@ -103,7 +112,10 @@ export function durationWords(ms: number): string {
 }
 
 /** Statuses whose lines are spending: Finance has prepared the voucher (or it came from the registers so). */
-export const SPENDING: readonly VoucherStatus[] = ["prepared", "reviewed", "approved"];
+export const SPENDING: readonly VoucherStatus[] = ["prepared", "reviewed", ...APPROVED];
+
+/** Paid straight after approval (0139): a slip from a petty cash or GCash fund, or a liquidation. */
+export const paidDirect = (v: { kind: VoucherKind; fundId: string | null }) => v.kind === "liquidation" || (!!v.fundId && v.kind !== "fund_topup");
 
 type Counted = { id: string; kind: VoucherKind; status: VoucherStatus; advanceOf?: string | null; submittedAt: string | null; createdAt: string };
 
