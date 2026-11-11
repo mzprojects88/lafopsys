@@ -190,19 +190,19 @@ const rpcStore = <T>(fn: string, map: (r: Row) => T, tables: string[]) =>
       return ((data ?? []) as Row[]).map(map);
     },
   });
-export interface FundStatus { fundId: string; name: string; kind: "petty_cash" | "gcash"; float: number | null; topUpBelow: number | null; custodianId: string | null; openCount: number; openAmount: number; cashOnHand: number; low: boolean }
+export interface FundStatus { fundId: string; name: string; kind: "petty_cash" | "gcash"; float: number | null; topUpBelow: number | null; custodianId: string | null; openCount: number; openAmount: number; cashOnHand: number; toRefill: number; topUpPending: boolean; low: boolean }
 export interface OpenAdvance { voucherId: string; requestedBy: string; amount: number; approvedAt: string; due: string; overdue: boolean; liquidationId: string | null; liquidationStatus: string | null }
 /** Each fund's cash on hand and open slips (ops.fund_status): Finance's viewers and the fund's custodian. */
 export const fundStatusStore = rpcStore<FundStatus>("fund_status", (r) => ({
   fundId: String(r.fund_id), name: String(r.name), kind: r.kind as FundStatus["kind"], float: r.float_amount == null ? null : num(r.float_amount),
   topUpBelow: r.top_up_below == null ? null : num(r.top_up_below), custodianId: s(r.custodian_staff_id), openCount: num(r.open_count), openAmount: num(r.open_amount),
-  cashOnHand: num(r.cash_on_hand), low: Boolean(r.low),
+  cashOnHand: num(r.cash_on_hand), toRefill: num(r.to_refill), topUpPending: Boolean(r.topup_pending), low: Boolean(r.low),
 }), ["vouchers", "cash_funds"]);
 /** Approved advances not yet settled (ops.advances_open): one's own; all of them for Finance's viewers. */
 export const advancesOpenStore = rpcStore<OpenAdvance>("advances_open", (r) => ({
   voucherId: String(r.voucher_id), requestedBy: String(r.requested_by), amount: num(r.amount), approvedAt: String(r.approved_at), due: String(r.due),
   overdue: Boolean(r.overdue), liquidationId: s(r.liquidation_id), liquidationStatus: s(r.liquidation_status),
-}), ["vouchers", "voucher_events", "finance_settings"]);
+}), ["vouchers", "finance_settings"]);
 
 export function useVouchers() {
   const { data: vouchers, loading } = useCollection(vouchersStore);

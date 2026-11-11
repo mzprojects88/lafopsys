@@ -71,8 +71,8 @@ try {
   const item = (amount, extra = {}) => JSON.stringify([{ description: "Item", qty: 1, unit_cost: amount, expense_type_id: gas, ...extra }]);
   const header = (extra = {}) => JSON.stringify({ purpose: "Test", t2_id: ids.unr, pay_method: "cash", ...extra });
   /** Sends a saved request along: endorsed, prepared (optionally linking a payee), reviewed, approved. */
-  async function walk(label, id, who, payee = null) {
-    await step(`${label}: sent`, who, `select ops.voucher_act($1, 'submit')`, [id], (r) => r.ok);
+  async function walk(label, id, who, payee = null, sent = false) {
+    if (!sent) await step(`${label}: sent`, who, `select ops.voucher_act($1, 'submit')`, [id], (r) => r.ok);
     await step(`${label}: endorsed`, ids.office, `select ops.voucher_act($1, 'endorse')`, [id], (r) => r.ok);
     await step(`${label}: prepared`, ids.finance, `select ops.voucher_prepare($1, $2, null, '[]'::jsonb, null, $3) n`, [id, ids.unr, payee], (r) => r.ok);
     await step(`${label}: reviewed`, ids.office, `select ops.voucher_act($1, 'review')`, [id], (r) => r.ok);
@@ -100,12 +100,16 @@ try {
   const liq = val(await step("the driver starts the liquidation: a draft with the advance's lines", ids.driver, `select ops.voucher_liquidate($1)`, [adv], (r) => r.ok));
   await step("... linked to its advance, 3,000, the driver's T4", null, `select v.advance_of = $2 linked, v.total, v.kind, v.t4_staff_id = $3 t4 from ops.vouchers v where v.id = $1`, [liq, adv, ids.driver],
     (r) => r.ok && r.rows[0].linked && Number(r.rows[0].total) === 3000 && r.rows[0].kind === "liquidation" && r.rows[0].t4);
+  await step("a staff member without Requests edit can't start one", ids.chef, `select ops.voucher_liquidate($1)`, [adv], refused("42501"), false);
   await step("only one liquidation per advance", ids.driver, `select ops.voucher_liquidate($1)`, [adv], refused("23514"), false);
   await step("the driver corrects it to what was spent: 2,600 with the OR", ids.driver, `select ops.voucher_save($1, $2::jsonb, $3::jsonb)`, [liq, header({ kind: "liquidation", purpose: "Liquidation" }), item(2600, { or_number: "OR-77" })],
     (r) => r.ok);
   await step("... still linked, now 2,600", null, `select advance_of = $2 linked, total from ops.vouchers where id = $1`, [liq, adv], (r) => r.ok && r.rows[0].linked && Number(r.rows[0].total) === 2600);
   await step("its kind can't change", ids.driver, `select ops.voucher_save($1, $2::jsonb, $3::jsonb)`, [liq, header({ kind: "reimbursement" }), item(2600)], refused("23514"), false);
-  await walk("liquidation (the overdue rule holds advances only)", liq, ids.driver);
+  await step("... a draft liquidation still leaves the advance overdue", ids.driver, `select overdue from ops.advances_open() where voucher_id = $1`, [adv], (r) => r.ok && r.rows[0].overdue === true);
+  await step("the driver sends the liquidation", ids.driver, `select ops.voucher_act($1, 'submit')`, [liq], (r) => r.ok);
+  await step("... once sent, the advance is no longer overdue (it waits for the signers)", ids.driver, `select overdue from ops.advances_open() where voucher_id = $1`, [adv], (r) => r.ok && r.rows[0].overdue === false);
+  await walk("liquidation", liq, ids.driver, null, true);
   await step("the liquidation is a JV", null, `select voucher_type, voucher_number from ops.vouchers where id = $1`, [liq], (r) => r.ok && r.rows[0].voucher_type === "JV" && /^JV-/.test(r.rows[0].voucher_number));
   await step("the advance is settled: no longer open", ids.finance, `select count(*)::int n from ops.advances_open() where voucher_id = $1`, [adv], (r) => r.ok && r.rows[0].n === 0);
 
@@ -124,7 +128,9 @@ try {
   await step("... a 7,500 draft, both slips linked to it", null, `select v.total, v.kind, (select count(*)::int from ops.vouchers s where s.replenished_by = v.id) slips from ops.vouchers v where v.id = $1`, [top],
     (r) => r.ok && Number(r.rows[0].total) === 7500 && r.rows[0].kind === "fund_topup" && r.rows[0].slips === 2);
   await step("no second top-up for the same slips", ids.sw, `select ops.fund_topup_create($1)`, [fund], (r) => !r.ok && /No slips/.test(r.error), false);
-  await step("until it is approved, the cash on hand stays 2,500", ids.sw, `select cash_on_hand from ops.fund_status() where fund_id = $1`, [fund], (r) => r.ok && Number(r.rows[0].cash_on_hand) === 2500);
+  await step("until it is approved, the cash on hand stays 2,500; nothing left to refill, a top-up on its way, not flagged low", ids.sw,
+    `select cash_on_hand, to_refill, topup_pending, low from ops.fund_status() where fund_id = $1`, [fund],
+    (r) => r.ok && Number(r.rows[0].cash_on_hand) === 2500 && r.rows[0].to_refill === 0 && r.rows[0].topup_pending === true && r.rows[0].low === false);
   await step("a top-up can't be edited as a request", ids.sw, `select ops.voucher_save($1, $2::jsonb, $3::jsonb)`, [top, header({ kind: "petty_cash" }), item(1)], refused(), false);
   await walk("top-up", top, ids.sw);
   await step("approved: the fund is full again, nothing open", ids.sw, `select open_count, cash_on_hand, low from ops.fund_status() where fund_id = $1`, [fund],
@@ -139,13 +145,21 @@ try {
   // 3. Withholding.
   await c.query(`insert into ops.ewt_rates (atc, description, rate) values ('WC158', 'Goods', 1), ('WC160', 'Services', 2) on conflict (atc) do update set rate = excluded.rate, active = true`);
   const sup = await one(`insert into ops.payees (name, kind, tin, ewt_atc) values ('Test Supplier', 'supplier', '123456789', 'WC160') returning id`);
+  const s4 = val(await step("a 1,000 petty cash slip to the supplier", ids.driver, `select ops.voucher_save(null, $1::jsonb, $2::jsonb)`, [header({ kind: "petty_cash" }), item(1000)], (r) => r.ok));
+  await walk("slip 4 (Finance links the supplier: 2% withheld)", s4, ids.driver, sup);
+  await step("the fund paid the net: 9,200 - 980 = 8,220 on hand", ids.sw, `select cash_on_hand from ops.fund_status() where fund_id = $1`, [fund], (r) => r.ok && Number(r.rows[0].cash_on_hand) === 8220);
+  const top3 = val(await step("... and its top-up refills the net", ids.sw, `select ops.fund_topup_create($1)`, [fund], (r) => r.ok));
+  await step("... 800 + 980 = 1,780", null, `select total from ops.vouchers where id = $1`, [top3], (r) => r.ok && Number(r.rows[0].total) === 1780);
   const person = await one(`insert into ops.payees (name, kind, ewt_atc) values ('Test Person', 'person', 'WC158') returning id`);
   const gone = await one(`insert into ops.payees (name, kind, active) values ('Old Supplier', 'supplier', false) returning id`);
   const pay = val(await step("a 10,000 supplier payment", ids.sw, `select ops.voucher_save(null, $1::jsonb, $2::jsonb)`, [header({ kind: "supplier", payee_id: sup }), item(10000)], (r) => r.ok));
   await step("... sent", ids.sw, `select ops.voucher_act($1, 'submit')`, [pay], (r) => r.ok);
   await step("... endorsed", ids.office, `select ops.voucher_act($1, 'endorse')`, [pay], (r) => r.ok);
   await step("Finance can't link a payee no longer in use", ids.finance, `select ops.voucher_prepare($1, $2, null, '[]'::jsonb, null, $3)`, [pay, ids.unr, gone], refused("23514"), false);
-  await step("Finance prepares it: 2% withheld (WC160)", ids.finance, `select ops.voucher_prepare($1, $2, null, '[]'::jsonb) n`, [pay, ids.unr], (r) => r.ok);
+  await step("Finance picks no payee: nothing withheld, the supplier kept", ids.finance,
+    `select ops.voucher_prepare($1, $2, null, '[]'::jsonb), (select ewt_total from ops.vouchers where id = $1) ewt, (select payee_id = $3 from ops.vouchers where id = $1) kept`, [pay, ids.unr, sup],
+    (r) => r.ok && Number(r.rows[0].ewt) === 0 && r.rows[0].kept === true, false);
+  await step("Finance prepares it with the supplier linked: 2% withheld (WC160)", ids.finance, `select ops.voucher_prepare($1, $2, null, '[]'::jsonb, null, $3) n`, [pay, ids.unr, sup], (r) => r.ok);
   await step("... 200 withheld; the net is 9,800", null, `select v.ewt_total, l.ewt_atc, l.ewt_rate, l.ewt_amount from ops.vouchers v join ops.voucher_lines l on l.voucher_id = v.id where v.id = $1`, [pay],
     (r) => r.ok && Number(r.rows[0].ewt_total) === 200 && r.rows[0].ewt_atc === "WC160" && Number(r.rows[0].ewt_amount) === 200);
   const cat = await one(`select id from ops.recipient_categories where active order by sort limit 1`);

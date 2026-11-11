@@ -7,7 +7,7 @@ import { advancesOpenStore, fundStatusStore, voucherQueueStore } from "@/lib/hoo
 import { budgetsStore } from "@/lib/hooks/use-budgets";
 import { useSetupRows } from "@/lib/hooks/use-finance-setup";
 import { budgetReminder } from "@/lib/utils/budgets";
-import { todayIso } from "@/lib/utils/date";
+import { formatDate, todayIso } from "@/lib/utils/date";
 import { useOpenCaseRecords, usePlansDue } from "@/lib/hooks/use-case-files";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
@@ -104,7 +104,7 @@ export function NotificationCenter() {
   const popover = (r: Reminder[]) =>
     caseRole ? <CaseReminders>{(c) => <BellPopover reminders={[...r, ...c]} />}</CaseReminders> : <BellPopover reminders={r} />;
   const bell = (more: Reminder[]) => (
-    <RequestReminders>
+    <RequestReminders funds={budgetRole}>
       {(q) => (budgetRole ? <BudgetDue>{(b) => popover([...reminders, ...more, ...q, ...b])}</BudgetDue> : popover([...reminders, ...more, ...q]))}
     </RequestReminders>
   );
@@ -122,10 +122,10 @@ export function NotificationCenter() {
 /** Payment Requests (0134): what waits for this person to sign, and their own requests sent back to them; (0138)
  * their advance due within 3 days or overdue, Finance's overdue advances, and a fund below its top-up point (both
  * functions return only what the person may see: their own advance, the funds they keep or Finance's). */
-function RequestReminders({ children }: { children: (reminders: Reminder[]) => React.ReactNode }) {
+function RequestReminders({ funds: seesFunds, children }: { funds: boolean; children: (reminders: Reminder[]) => React.ReactNode }) {
   const { staffId: me } = useRole();
+  // Anyone may hold an advance, so everyone asks (it returns only their own; all of them for Finance).
   const { data: advances } = useCollection(advancesOpenStore);
-  const { data: funds } = useCollection(fundStatusStore);
   const { data: all } = useCollection(voucherQueueStore);
   const queue = all.filter((q) => q.step !== "returned");
   const returned = all.filter((q) => q.step === "returned");
@@ -135,15 +135,20 @@ function RequestReminders({ children }: { children: (reminders: Reminder[]) => R
   if (returned.length)
     out.push({ id: "requests-returned", title: `${returned.length} of your requests ${returned.length === 1 ? "was" : "were"} sent back`, body: "Read why, change it and send it again.", href: returned.length === 1 ? `/requests/${returned[0].voucherId}` : "/requests", icon: Receipt });
   const soon = new Date(Date.parse(`${todayIso()}T00:00:00Z`) + 3 * 86_400_000).toISOString().slice(0, 10);
-  const mine = advances.filter((a) => a.requestedBy === me && !a.liquidationStatus && a.due <= soon);
+  // Not yet liquidated: no liquidation sent (none, a draft, or one sent back).
+  const mine = advances.filter((a) => a.requestedBy === me && [null, "draft", "returned"].includes(a.liquidationStatus) && a.due <= soon);
   if (mine.length)
-    out.push({ id: "advance-due", title: mine.some((a) => a.overdue) ? "Your cash advance is overdue" : `Liquidate your cash advance by ${mine[0].due}`, body: "Open it and press Liquidate: list what was spent, with the ORs.", href: `/requests/${mine[0].voucherId}`, icon: Receipt });
+    out.push({ id: "advance-due", title: mine.some((a) => a.overdue) ? "Your cash advance is overdue" : `Liquidate your cash advance by ${formatDate(mine[0].due)}`, body: "Open it and press Liquidate: list what was spent, with the ORs.", href: `/requests/${mine[0].voucherId}`, icon: Receipt });
   const overdue = advances.filter((a) => a.overdue && a.requestedBy !== me);
   if (overdue.length)
     out.push({ id: "advances-overdue", title: `${overdue.length} cash advance${overdue.length === 1 ? " is" : "s are"} overdue`, body: "Not liquidated within the set days.", href: "/finance/funds", icon: Receipt });
-  for (const f of funds.filter((x) => x.low))
-    out.push({ id: `fund-low-${f.fundId}`, title: `${f.name} is low: top it up`, body: `${f.openCount} slip${f.openCount === 1 ? "" : "s"} to refill.`, href: f.custodianId === me ? "/requests" : "/finance/funds", icon: Receipt });
-  return <>{children(out)}</>;
+  return seesFunds ? <LowFunds>{(f) => children([...out, ...f])}</LowFunds> : <>{children(out)}</>;
+}
+
+/** A fund below its top-up point with none on its way (0138); only for those who see Finance. */
+function LowFunds({ children }: { children: (reminders: Reminder[]) => React.ReactNode }) {
+  const { data: funds } = useCollection(fundStatusStore);
+  return <>{children(funds.filter((x) => x.low).map((f) => ({ id: `fund-low-${f.fundId}`, title: `${f.name} is low: top it up`, body: `${f.toRefill} slip${f.toRefill === 1 ? "" : "s"} to refill.`, href: "/finance/funds", icon: Receipt })))}</>;
 }
 
 /** A budget due soon, or a running year without an approved one (Financial Settings › General); rendered only for

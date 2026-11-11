@@ -44,7 +44,8 @@ returns table (voucher_id uuid, requested_by uuid, amount numeric, approved_at t
 language sql stable security definer set search_path = ops, shared, pg_temp as $$
   select v.id, v.requested_by, v.total, a.at,
          ((a.at at time zone 'Asia/Manila')::date + coalesce(s.liquidation_days, 15)),
-         (now() at time zone 'Asia/Manila')::date > ((a.at at time zone 'Asia/Manila')::date + coalesce(s.liquidation_days, 15)),
+         (now() at time zone 'Asia/Manila')::date > ((a.at at time zone 'Asia/Manila')::date + coalesce(s.liquidation_days, 15))
+           and coalesce(l.status, 'draft') in ('draft', 'returned'),
          l.id, l.status
   from ops.vouchers v
   cross join ops.finance_settings s
@@ -66,8 +67,11 @@ declare
   a ops.vouchers;
   v_id uuid;
 begin
+  if shared.current_staff_roles() is null or shared.module_level('requests') <> 'edit' then
+    raise exception 'Your role can''t file payment requests.' using errcode = '42501';
+  end if;
   select * into a from ops.vouchers where id = p_advance for update;
-  if not found or a.requested_by is distinct from auth.uid() or a.kind <> 'cash_advance' or a.status <> 'approved' then
+  if not found or a.requested_by is distinct from auth.uid() or a.kind <> 'cash_advance' or a.status <> 'approved' or a.source <> 'app' then
     raise exception 'Only your own approved cash advance is liquidated.' using errcode = '42501';
   end if;
   if exists (select 1 from ops.vouchers where advance_of = a.id and status not in ('rejected', 'cancelled')) then
@@ -87,12 +91,16 @@ grant execute on function ops.voucher_liquidate(uuid) to authenticated;
 
 -- 4. Funds: cash on hand and the slips not yet refilled; for Finance's viewers and each fund's custodian.
 create or replace function ops.fund_status()
-returns table (fund_id uuid, name text, kind text, float_amount numeric, top_up_below numeric, custodian_staff_id uuid, open_count integer, open_amount numeric, cash_on_hand numeric, low boolean)
+returns table (fund_id uuid, name text, kind text, float_amount numeric, top_up_below numeric, custodian_staff_id uuid, open_count integer, open_amount numeric, cash_on_hand numeric, to_refill integer, topup_pending boolean, low boolean)
 language sql stable security definer set search_path = ops, shared, pg_temp as $$
   select f.id, f.name, f.kind, f.float_amount, f.top_up_below, f.custodian_staff_id,
-         count(v.id)::integer, coalesce(sum(v.total), 0),
-         coalesce(f.float_amount, 0) - coalesce(sum(v.total), 0),
-         f.top_up_below is not null and coalesce(f.float_amount, 0) - coalesce(sum(v.total), 0) < f.top_up_below
+         count(v.id)::integer, coalesce(sum(v.total - v.ewt_total), 0),
+         coalesce(f.float_amount, 0) - coalesce(sum(v.total - v.ewt_total), 0),
+         (count(v.id) filter (where v.replenished_by is null))::integer,
+         bool_or(v.replenished_by is not null) is true,
+         -- Low = needs a top-up: below its point, and none on its way yet.
+         f.top_up_below is not null and coalesce(f.float_amount, 0) - coalesce(sum(v.total - v.ewt_total), 0) < f.top_up_below
+           and not (bool_or(v.replenished_by is not null) is true)
   from ops.cash_funds f
   left join ops.vouchers v on v.fund_id = f.id and v.status = 'approved' and v.kind <> 'fund_topup'
     and (v.replenished_by is null or not exists (select 1 from ops.vouchers t where t.id = v.replenished_by and t.status = 'approved'))
@@ -111,7 +119,8 @@ declare
   v_id uuid;
   v_n integer;
 begin
-  select * into f from ops.cash_funds where id = p_fund and active;
+  -- Locked: two top-ups asked at the same moment must not both take the same slips.
+  select * into f from ops.cash_funds where id = p_fund and active for update;
   if not found then
     raise exception 'No such fund in use.' using errcode = 'P0002';
   end if;
@@ -128,7 +137,7 @@ begin
           case when f.kind = 'gcash' then 'bank_transfer' else 'cash' end, f.id)
   returning id into v_id;
   insert into ops.voucher_lines (voucher_id, sort, description, qty, unit_cost, amount, account_id, t1_id, t3_id)
-  select v_id, row_number() over (order by a.code), coalesce(a.name, 'Uncoded') || ' (' || count(*) || ' line' || case when count(*) = 1 then '' else 's' end || ')', 1, sum(l.amount), sum(l.amount), l.account_id, l.t1_id, l.t3_id
+  select v_id, row_number() over (order by a.code), coalesce(a.name, 'Uncoded') || ' (' || count(*) || ' line' || case when count(*) = 1 then '' else 's' end || ')', 1, sum(l.amount - l.ewt_amount), sum(l.amount - l.ewt_amount), l.account_id, l.t1_id, l.t3_id
   from ops.voucher_lines l join ops.vouchers v on v.id = l.voucher_id left join ops.coa_accounts a on a.id = l.account_id
   where v.fund_id = f.id and v.status = 'approved' and v.kind <> 'fund_topup' and v.replenished_by is null
   group by l.account_id, a.code, a.name, l.t1_id, l.t3_id;
@@ -475,12 +484,12 @@ begin
     status = 'prepared'
   where id = v.id returning * into v;
   -- 0138: the payee Finance links (a supplier, or the person paid) and each line's withholding from its ATC.
+  -- "None" (null) withholds nothing and keeps the requester's supplier on the voucher.
   update ops.vouchers set payee_id = coalesce(p_payee, payee_id) where id = v.id returning * into v;
+  update ops.voucher_lines set ewt_atc = null, ewt_rate = null, ewt_amount = 0 where voucher_id = v.id;
   update ops.voucher_lines l set ewt_atc = r.atc, ewt_rate = r.rate, ewt_amount = round(l.amount * r.rate / 100, 2)
   from ops.payees p join ops.ewt_rates r on r.atc = p.ewt_atc and r.active
-  where l.voucher_id = v.id and p.id = v.payee_id;
-  update ops.voucher_lines set ewt_atc = null, ewt_rate = null, ewt_amount = 0
-  where voucher_id = v.id and (v.payee_id is null or not exists (select 1 from ops.payees p join ops.ewt_rates r on r.atc = p.ewt_atc and r.active where p.id = v.payee_id));
+  where l.voucher_id = v.id and p.id = p_payee;
   update ops.vouchers set ewt_total = (select coalesce(sum(ewt_amount), 0) from ops.voucher_lines where voucher_id = v.id) where id = v.id;
   insert into ops.voucher_events (voucher_id, action, from_status, to_status, actor, note) values (v.id, 'prepare', 'endorsed', 'prepared', me, nullif(btrim(coalesce(p_note, '')), ''));
   return v.voucher_number;

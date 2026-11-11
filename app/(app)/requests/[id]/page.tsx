@@ -76,7 +76,8 @@ export default function RequestDetailPage() {
   const code = (cid: string | null) => String(codes.find((c) => c.id === cid)?.code ?? "");
   const account = (aid: string | null) => accounts.find((a) => a.id === aid);
   const mine = v.requestedBy === me;
-  const editable = mine && (v.status === "draft" || v.status === "returned") && v.source === "app";
+  const editable = mine && (v.status === "draft" || v.status === "returned") && v.source === "app" && v.kind !== "fund_topup";
+  const sendTopUp = mine && v.kind === "fund_topup" && (v.status === "draft" || v.status === "returned");
   const queued = queue.find((q) => q.voucherId === v.id)?.step ?? null;
   const waitingStep = queued === "returned" ? null : queued;
   const canCancel = v.source === "app" && (OPEN.includes(v.status) || v.status === "returned") ? (mine && ["returned", "submitted", "endorsed"].includes(v.status)) || canEdit("finance") : false;
@@ -121,6 +122,7 @@ export default function RequestDetailPage() {
           <div className="flex flex-wrap gap-2">
             {waitingStep && SIGN[waitingStep] ? <Button disabled={busy} onClick={() => void act(SIGN[waitingStep].action)}>{SIGN[waitingStep].label}</Button> : null}
             {waitingStep === "validate" ? <Button onClick={() => setPreparing(true)}>Prepare voucher</Button> : null}
+            {sendTopUp ? <Button disabled={busy} onClick={() => void act("submit")}>Send the top-up</Button> : null}
             {mine && v.kind === "cash_advance" && v.status === "approved" && !liquidation ? <Button disabled={busy} onClick={() => void liquidate()}>Liquidate</Button> : null}
             {v.source === "sheet" && canEdit("finance") ? <Button variant={v.needsCleanup ? "default" : "outline"} onClick={() => setFixing(true)}>Correct the coding</Button> : null}
             {waitingStep ? <Button variant="outline" disabled={busy} onClick={() => setAsking("return")}>Send back</Button> : null}

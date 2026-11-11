@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 import { PrintButton } from "@/app/(print)/hr/payslips/[id]/print/print-button";
 import { dayKey } from "@/lib/utils/dtr";
 import { quarterOf, SPENDING } from "@/lib/utils/vouchers";
@@ -21,23 +22,29 @@ export default async function Form2307Page({ searchParams }: { searchParams: Pro
   const year = Number(q.slice(0, 4));
   const first = (Number(q.slice(-1)) - 1) * 3 + 1;
   const supabase = await createClient();
-  const [{ data: payee }, { data: settings }, { data: vouchers }] = await Promise.all([
-    supabase.schema("ops").from("payees").select("name, tin, address").eq("id", payeeId).maybeSingle(),
-    supabase.schema("ops").from("finance_settings").select("payer_name, payer_tin, payer_address").maybeSingle(),
-    supabase.schema("ops").from("vouchers").select("id, voucher_number, submitted_at, created_at").eq("payee_id", payeeId).gt("ewt_total", 0).in("status", [...SPENDING]),
+  const ops = () => supabase.schema("ops");
+  const period = quarterOf(`${year}-${String(first).padStart(2, "0")}-01`);
+  type V = { id: string; voucher_number: string | null; submitted_at: string | null; created_at: string };
+  const [{ data: payee }, { data: settings }, vouchers] = await Promise.all([
+    ops().from("payees").select("name, tin, address").eq("id", payeeId).maybeSingle(),
+    ops().from("finance_settings").select("payer_name, payer_tin, payer_address").maybeSingle(),
+    // Only vouchers made by the quarter's end can have been prepared in it; paged past the 1,000-row cap.
+    fetchAll<V>((from, to) => ops().from("vouchers").select("id, voucher_number, submitted_at, created_at").eq("payee_id", payeeId).gt("ewt_total", 0).in("status", [...SPENDING]).lte("created_at", `${period.to}T23:59:59+08:00`).order("id").range(from, to)),
   ]);
   if (!payee) notFound();
-  const ids = (vouchers ?? []).map((v) => v.id);
-  const [{ data: lines }, { data: prepares }] = ids.length
-    ? await Promise.all([
-        supabase.schema("ops").from("voucher_lines").select("voucher_id, amount, ewt_atc, ewt_rate, ewt_amount").in("voucher_id", ids).gt("ewt_amount", 0),
-        supabase.schema("ops").from("voucher_events").select("voucher_id, at").eq("action", "prepare").in("voucher_id", ids),
-      ])
-    : [{ data: [] }, { data: [] }];
+  // Lines and preparing dates by batches of ids (a long id list breaks the request URL).
+  const ids = vouchers.map((v) => v.id);
+  const batches = Array.from({ length: Math.ceil(ids.length / 150) }, (_, i) => ids.slice(i * 150, i * 150 + 150));
+  type L = { id: string; voucher_id: string; amount: number; ewt_atc: string; ewt_rate: number; ewt_amount: number };
+  type E = { id: string; voucher_id: string; at: string };
+  const [lines, prepares] = await Promise.all([
+    Promise.all(batches.map((b) => fetchAll<L>((from, to) => ops().from("voucher_lines").select("id, voucher_id, amount, ewt_atc, ewt_rate, ewt_amount").in("voucher_id", b).gt("ewt_amount", 0).order("id").range(from, to)))).then((x) => x.flat()),
+    Promise.all(batches.map((b) => fetchAll<E>((from, to) => ops().from("voucher_events").select("id, voucher_id, at").eq("action", "prepare").in("voucher_id", b).order("id").range(from, to)))).then((x) => x.flat()),
+  ]);
   // Each voucher's month: the Manila day Finance prepared it (as on the Funds page).
   const monthOf = new Map(
-    (vouchers ?? []).map((v) => {
-      const day = dayKey((prepares ?? []).filter((e) => e.voucher_id === v.id).map((e) => e.at).sort().at(-1) ?? v.submitted_at ?? v.created_at);
+    vouchers.map((v) => {
+      const day = dayKey(prepares.filter((e) => e.voucher_id === v.id).map((e) => e.at).sort().at(-1) ?? v.submitted_at ?? v.created_at);
       return [v.id, quarterOf(day).key === q ? Number(day.slice(5, 7)) - first : -1];
     })
   );
@@ -52,7 +59,7 @@ export default async function Form2307Page({ searchParams }: { searchParams: Pro
   }
   const total = (xs: number[]) => xs.reduce((s, x) => s + x, 0);
   const rows = [...byAtc.entries()].sort(([a], [b]) => a.localeCompare(b));
-  const { from, to } = quarterOf(`${year}-${String(first).padStart(2, "0")}-01`);
+  const { from, to } = period;
 
   return (
     <div className="mx-auto max-w-3xl p-6 text-sm text-neutral-900 print:max-w-none print:p-0">
@@ -105,7 +112,7 @@ export default async function Form2307Page({ searchParams }: { searchParams: Pro
             </tr>
           </tbody>
         </table>
-        <p className="mt-6 text-xs text-neutral-500">Vouchers: {(vouchers ?? []).filter((v) => (monthOf.get(v.id) ?? -1) >= 0).map((v) => v.voucher_number).join(", ") || "none"}.</p>
+        <p className="mt-6 text-xs text-neutral-500">Vouchers: {vouchers.filter((v) => (monthOf.get(v.id) ?? -1) >= 0).map((v) => v.voucher_number).join(", ") || "none"}.</p>
       </div>
     </div>
   );
