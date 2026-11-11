@@ -99,6 +99,7 @@ export const PAGES: PageDef[] = [
   p("finance", "vehicle_costs", "/finance/vehicle-costs", "Vehicle costs"),
   p("finance", "entry", "/finance/entry", "New Cash Entry"),
   p("finance", "settings", "/finance/settings", "Financial Settings", "finance_setup"),
+  p("finance", "budgets", "/finance/budgets", "Budgets"),
   p("requests", "all", "/requests", "Payment Requests"),
   p("analytics", "dashboard", "/analytics", "Analytics"),
   p("reports", "catalogue", "/reports", "Reports"),
@@ -109,6 +110,7 @@ export const PAGES: PageDef[] = [
   p("reports", "programs", "/reports/programs", "Programs report"),
   p("reports", "generate", "/reports/generate", "Report generator"),
   p("executive", "overview", "/executive", "Executive Overview"),
+  p("executive", "goals", "/executive/goals", "Goals"),
 ];
 
 /** Menus whose pages are looked at, never changed, here (the Dashboard, Inventory, HR's own pages, Analytics, Executive). */
