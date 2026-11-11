@@ -42,7 +42,7 @@ const UNR = "md5('code:T2:UNR')";
 
 try {
   await c.query("begin");
-  await c.query(readFileSync(new URL("../../supabase/migrations/0134_vouchers.sql", import.meta.url), "utf8"));
+  for (const m of ["0134_vouchers.sql", "0135_pay_a_person.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${m}`, import.meta.url), "utf8"));
   const ids = (await c.query(`select
     (select id from shared.staff where role = 'admin' and active order by id limit 1) admin1,
     (select id from shared.staff where role = 'admin' and active order by id offset 1 limit 1) admin2,
@@ -50,6 +50,7 @@ try {
     (select id from shared.staff where role = 'office_admin' and active limit 1) office,
     (select id from shared.staff where role = 'social_worker' and active limit 1) sw,
     (select id from shared.staff where role = 'driver' and active limit 1) driver,
+    (select id from shared.staff where role = 'chef' and active and extra_roles = '{}' limit 1) chef,
     (select id from shared.staff where role = 'partner_viewer' and active limit 1) partner,
     (select id from shared.staff where active and role = 'board' limit 1) board,
     (select md5('code:T2:UNR')::uuid) unr, (select md5('code:T2:OC')::uuid) oc`)).rows[0];
@@ -75,6 +76,7 @@ try {
   await c.query(`update ops.coa_accounts set review_note = null`);
   await c.query(`update ops.fin_codes set review_note = null`);
   await c.query(`update ops.expense_types set review_note = null`);
+  await c.query(`update ops.recipient_categories set review_note = null`);
   await c.query(`insert into ops.coa_accounts (code, name, parent_id) values ('1105', 'GCash Fund', md5('coa:6')::uuid)`);
   await c.query(`update ops.cash_funds set float_amount = 10000, top_up_below = 3000, custodian_staff_id = $1, account_id = coalesce(account_id, (select id from ops.coa_accounts where code = '1105'))`, [ids.finance]);
   await c.query(`update ops.finance_settings set start_date = (now() at time zone 'Asia/Manila')::date, liquidation_days = 15`);
@@ -185,6 +187,30 @@ try {
   await step("... sent", ids.sw, `select ops.voucher_act($1, 'submit')`, [back], (r) => r.ok);
   await step("... sent back", ids.office, `select ops.voucher_act($1, 'return', 'Wrong amount')`, [back], (r) => r.ok);
   await step("the requester's queue holds it as returned", ids.sw, `select count(*)::int n from ops.voucher_queue() where voucher_id = $1 and step = 'returned'`, [back], (r) => r.ok && r.rows[0].n === 1);
+  // Paying a person (0135).
+  await c.query(`update ops.recipient_categories set review_note = null`);
+  const burial = (await c.query(`select md5('exp:Burial and bereavement:code:T3:NWB')::uuid id`)).rows[0].id;
+  const pt = (await c.query(`select id from ops.patients order by created_at limit 1`)).rows[0]?.id;
+  const catId = async (k) => (await c.query(`select md5('recipient:' || $1)::uuid id`, [k])).rows[0].id;
+  const person = (extra) => header({ kind: "supplier", purpose: "Burial aid", to_person: true, ...extra });
+  const burialLine = JSON.stringify([{ description: "Burial assistance", qty: 1, unit_cost: 5000, expense_type_id: burial }]);
+  const pp = val(await step("the social worker files burial aid for a patient's family (patient picked)", ids.sw, `select ops.voucher_save(null, $1::jsonb, $2::jsonb) id`,
+    [person({ recipient_category_id: await catId("patient"), patient_id: pt, recipient_name: "" }), burialLine], (r) => r.ok));
+  await step("... the name comes from the patient record; no supplier", null, `select to_person, recipient_name is not null as named, payee_id is null as no_payee from ops.vouchers where id = $1`, [pp],
+    (r) => r.ok && r.rows[0].to_person && r.rows[0].named && r.rows[0].no_payee);
+  await step("a chef (no Patients or House Ops access) can't pick a patient", ids.chef, `select ops.voucher_save(null, $1::jsonb, $2::jsonb)`,
+    [person({ recipient_category_id: await catId("patient"), patient_id: pt }), burialLine], refused("42501"), false);
+  await step("... but can type the person's name", ids.driver, `select ops.voucher_save(null, $1::jsonb, $2::jsonb) id`,
+    [person({ recipient_category_id: await catId("other"), recipient_name: "A neighbour" }), burialLine], (r) => r.ok);
+  await step("paying a person needs a person purpose (gasoline refused)", ids.sw, `select ops.voucher_save(null, $1::jsonb, $2::jsonb)`,
+    [person({ recipient_category_id: await catId("other"), recipient_name: "Someone" }), lines], (r) => !r.ok && /purpose for paying a person/.test(r.error), false);
+  await step("paying a person needs a category and a name", ids.sw, `select ops.voucher_save(null, $1::jsonb, $2::jsonb)`,
+    [person({ recipient_category_id: null, recipient_name: "Someone" }), burialLine], refused("23514"), false);
+  await step("a person-paid request moves like any other: sent", ids.sw, `select ops.voucher_act($1, 'submit')`, [pp], (r) => r.ok);
+  await step("... endorsed", ids.office, `select ops.voucher_act($1, 'endorse')`, [pp], (r) => r.ok);
+  await step("... prepared (5501)", ids.finance, `select ops.voucher_prepare($1, $2, null, '[]'::jsonb) n`, [pp, ids.unr], (r) => r.ok && /^PV-/.test(val(r)));
+  await step("a driver can't read the patient-family voucher", ids.driver, `select count(*)::int n from ops.vouchers where id = $1`, [pp], (r) => r.ok && r.rows[0].n === 0);
+  await step("the categories are in the setup checklist", null, `select ops.finance_setup_checklist()->'items'->2->>'label' l`, [], (r) => r.ok && /recipient categories/.test(r.rows[0].l));
   await step("functions run as callers only where granted", null,
     `select has_function_privilege('authenticated', 'ops.voucher_may_sign(ops.vouchers, text, uuid)', 'execute') may, has_function_privilege('authenticated', 'ops.voucher_act(uuid, text, text)', 'execute') act`, [], (r) => r.ok && r.rows[0].may === false && r.rows[0].act === true);
 } finally {
