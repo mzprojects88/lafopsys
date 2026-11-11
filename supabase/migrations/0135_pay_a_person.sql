@@ -41,10 +41,14 @@ create trigger log_finance_setup after insert or update or delete on ops.recipie
 -- 2. The purposes: the expense types Finance marks "paid to a person" (proposed: the Nurture assistance accounts
 -- and volunteers' allowances; their review notes from 0133 still stand).
 alter table ops.expense_types add column if not exists for_person boolean not null default false;
+-- The seed is not a person's change: kept out of the change log (each database would log it under its own ids,
+-- and the hourly sync would then copy both sets to both).
+alter table ops.expense_types disable trigger log_finance_setup;
 update ops.expense_types set for_person = true
 where id in (select md5('exp:' || l || ':code:T3:' || u)::uuid from (values
   ('Burial and bereavement', 'NWB'), ('Counselling fee', 'NWB'), ('Emergency financial or medical assistance', 'NWB'),
   ('Recovery assistance: tuition, uniforms, books', 'NWB'), ('Volunteer allowance and transport', 'CCT')) x(l, u));
+alter table ops.expense_types enable trigger log_finance_setup;
 
 -- 3. The request: the switch, who the person is, and their name as it was given.
 alter table ops.vouchers
