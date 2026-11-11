@@ -72,6 +72,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   budgets: "Budgets",
   goals: "Goals",
   funds: "Funds & Advances",
+  ledger: "Ledger",
   requests: "Payment Requests",
   close: "Monthly Close",
   registers: "AR / Donee Cert Registers",
