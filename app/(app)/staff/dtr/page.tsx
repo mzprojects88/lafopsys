@@ -3,7 +3,12 @@
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { format, parseISO } from "date-fns";
-import { CalendarDays, CalendarRange, Clock, Download, LogIn, MapPinOff, PencilLine, ShieldCheck } from "lucide-react";
+import { CalendarDays, CalendarRange, Clock, Download, LogIn, MapPinOff, PencilLine, ShieldCheck, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { ReasonDialog } from "@/components/patterns/reason-dialog";
+import { createClient } from "@/lib/supabase/client";
+import { createCollection, useCollection } from "@/lib/data/collection-store";
+import { timePunchesStore } from "@/lib/hooks/use-time-punches-collection";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
@@ -188,8 +193,40 @@ const sessionColumns: ColumnDef<SessionRow>[] = [
   },
 ];
 
-/** The photo column is added for admins and HR only (0060); everyone else sees times and places. */
-const punchColumnsFor = (canSeePhotos: boolean): ColumnDef<PunchRow>[] => [
+/** Punches the Super Admin deleted as mistakes (0141): a copy of each, with who and why. HR and the Super Admin read it. */
+const punchDeletionsStore = createCollection<{ id: string; staffId: string | null; punchedAt: string; punchType: string; reason: string; deletedBy: string | null; deletedAt: string }[]>({
+  key: "ops.time_punch_deletions",
+  empty: [],
+  tables: [{ schema: "ops", table: "time_punch_deletions" }],
+  fetch: async () => {
+    const { data, error } = await createClient().schema("ops").from("time_punch_deletions").select("id, staff_id, punched_at, punch, reason, deleted_by, deleted_at").order("deleted_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r) => ({ id: r.id, staffId: r.staff_id, punchedAt: r.punched_at, punchType: String((r.punch as { punch_type?: string })?.punch_type ?? ""), reason: r.reason, deletedBy: r.deleted_by, deletedAt: r.deleted_at }));
+  },
+});
+
+/** Deleted punches (0141), for HR and the Super Admin: rendered only for them, so nobody else loads the log. */
+function DeletedPunches({ staffName }: { staffName: (id: string) => string }) {
+  const { data } = useCollection(punchDeletionsStore);
+  if (!data.length) return null;
+  return (
+    <SectionCard flush title="Deleted punches" description="Punches the Super Admin removed as mistakes, with the reason. Kept for the record.">
+      <ul className="divide-y divide-border">
+        {data.map((d) => (
+          <li key={d.id} className="flex flex-wrap gap-x-3 gap-y-1 px-5 py-2.5 text-theme-sm">
+            <span className="font-medium">{d.staffId ? staffName(d.staffId) : "—"}</span>
+            <span>{d.punchType === "clock_out" ? "Out" : "In"} · {format(parseISO(d.punchedAt), "MMM d, yyyy")} {timeLabel12(d.punchedAt)}</span>
+            <span className="text-muted-foreground">deleted {format(parseISO(d.deletedAt), "MMM d, yyyy")} {timeLabel12(d.deletedAt)} by {d.deletedBy ? staffName(d.deletedBy) : "the system"}: {d.reason}</span>
+          </li>
+        ))}
+      </ul>
+    </SectionCard>
+  );
+}
+
+/** The photo column is added for admins and HR only (0060); everyone else sees times and places. The Super Admin
+ * also gets a delete button for a punch made by mistake (0141). */
+const punchColumnsFor = (canSeePhotos: boolean, onDelete?: (p: PunchRow) => void): ColumnDef<PunchRow>[] => [
   {
     id: "staff",
     header: "Staff",
@@ -258,6 +295,20 @@ const punchColumnsFor = (canSeePhotos: boolean): ColumnDef<PunchRow>[] => [
       <span className="font-mono text-theme-xs">{row.original.ipAddress ?? "—"}</span>
     ),
   },
+  ...(onDelete
+    ? [
+        {
+          id: "delete",
+          header: "",
+          enableSorting: false,
+          cell: ({ row }: { row: { original: PunchRow } }) => (
+            <Button variant="ghost" size="icon-sm" className="text-destructive" aria-label="Delete this punch" onClick={(e) => (e.stopPropagation(), onDelete(row.original))}>
+              <Trash2 />
+            </Button>
+          ),
+        } satisfies ColumnDef<PunchRow>,
+      ]
+    : []),
 ];
 
 function punchesToCsv(rows: PunchRow[]): string {
@@ -308,7 +359,18 @@ function DtrContent() {
   // Admins and HR: requests waiting on them (not their own); everyone else: their own still waiting.
   const pendingRequests = requests.filter((r) => r.status === "pending" && (canManageHr(role, isHr) ? r.staffId !== myId : true)).length;
   const canSeePhotos = canManageHr(role, isHr);
-  const punchColumns = React.useMemo(() => punchColumnsFor(canSeePhotos), [canSeePhotos]);
+  // Only the Super Admin deletes a punch, and only with a reason (0141; the database checks both).
+  const superAdmin = roles.includes("admin");
+  const [deleting, setDeleting] = React.useState<PunchRow | null>(null);
+  const punchColumns = React.useMemo(() => punchColumnsFor(canSeePhotos, superAdmin ? setDeleting : undefined), [canSeePhotos, superAdmin]);
+  async function deletePunch(p: PunchRow, reason: string) {
+    const res = await fetch("/api/dtr/punch/delete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ punchId: p.id, reason }) }).catch(() => null);
+    const body = (await res?.json().catch(() => null)) as { ok: boolean; error?: string; warning?: string | null } | null;
+    if (!body?.ok) return void toast.error(body?.error ?? "No connection: try again.");
+    if (body.warning) toast.warning(body.warning);
+    else toast.success("Punch deleted; the deletion is logged");
+    await Promise.all([timePunchesStore.refetch(), punchDeletionsStore.refetch()]);
+  }
 
   const staffIds = React.useMemo(() => (staffFilter === "all" ? undefined : [staffFilter]), [staffFilter]);
   const { sessions, totals, punches, loading, now } = useDtrSessions({ staffIds });
@@ -458,8 +520,8 @@ function DtrContent() {
         <ShieldCheck className="size-4 shrink-0 text-primary" />
         <span>
           Staff see their own record here. Admin and Finance see everyone&apos;s — Finance because payroll is
-          reconciled against it. Punches cannot be edited or deleted after the fact by anyone; an admin supplying a missing
-          clock-out adds a punch marked Added, signed with their name. Times are Manila time; a session that crosses midnight counts toward the day it started.
+          reconciled against it. Punches cannot be edited after the fact by anyone; an admin supplying a missing
+          clock-out adds a punch marked Added, signed with their name. Only the Super Admin can delete a punch made by mistake, and every deletion is logged with its reason. Times are Manila time; a session that crosses midnight counts toward the day it started.
         </span>
       </div>
 
@@ -566,9 +628,25 @@ function DtrContent() {
                   <span>{row.deviceLabel ?? "Unknown device"}</span>
                   {row.ipAddress && <span className="font-mono">{row.ipAddress}</span>}
                 </div>
+                {superAdmin ? <Button variant="ghost" size="sm" className="self-start text-destructive" onClick={() => setDeleting(row)}><Trash2 /> Delete this punch</Button> : null}
               </div>
             )}
           />}
+          {canSeePhotos ? <DeletedPunches staffName={staffName} /> : null}
+          <ReasonDialog
+            open={!!deleting}
+            onOpenChange={(o) => !o && setDeleting(null)}
+            title="Delete this punch"
+            description={deleting ? `${deleting.staffName}, ${deleting.punchType === "clock_in" ? "in" : "out"} at ${deleting.dateLabel} ${deleting.timeLabel}. Only for a punch made by mistake: it leaves the record, its photo is removed, and the deletion is logged with your reason.` : ""}
+            confirmLabel="Delete punch"
+            requireReason
+            destructive
+            onConfirm={(reason) => {
+              const p = deleting;
+              setDeleting(null);
+              if (p) void deletePunch(p, reason);
+            }}
+          />
         </TabsContent>
       </Tabs>
     </div>
