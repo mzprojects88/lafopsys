@@ -142,8 +142,17 @@ const MONTHS: Record<string, string> = {
 };
 
 /** `2026-01-02`, `1/2/2026`, `01/02/2026`, `02-Jan-2026`, `Jan 2, 2026` -> `2026-01-02`.
- * Slash dates are read month-first, which is what BDO's export uses. */
+ * Slash dates are read month-first, which is what BDO's export uses. A day that doesn't exist (2/30, a 13th month,
+ * a day-first 25/8) gives null rather than a date the database would refuse (Nov 2026). */
 export function parseDate(raw: string | undefined): string | null {
+  const day = readDate(raw);
+  if (!day) return null;
+  const [y, m, d] = day.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d ? day : null;
+}
+
+function readDate(raw: string | undefined): string | null {
   if (!raw) return null;
   const s = raw.trim();
   let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T].*)?$/);

@@ -4,8 +4,10 @@
  * is guessed silently: what doesn't fit the chart, the funds or the register's own totals is flagged for Finance
  * to clean up, with the reason.
  */
+import { parseAmount, parseDate } from "./bank-statement.ts";
+
 export type HistoryType = "PV" | "PCV" | "GCV";
-export type CleanupReason = "no_fund" | "unknown_code" | "name_differs" | "duplicate_number" | "total_differs" | "unknown_status" | "no_date";
+export type CleanupReason = "no_fund" | "unknown_code" | "name_differs" | "duplicate_number" | "total_differs" | "unknown_status" | "no_date" | "negative_amount";
 
 export interface HistoryContext {
   /** The chart's accounts by code (5204 has two). */
@@ -53,29 +55,9 @@ export interface HistoryVoucher {
   reasons: CleanupReason[];
 }
 
-const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-const pad = (n: number) => String(n).padStart(2, "0");
-
-/** "2026-08-02", "8/2/2026" (month first, as the sheet writes it) or "Aug 2, 2026" -> "2026-08-02"; null otherwise. */
-export function parseDay(raw: string): string | null {
-  const s = raw.trim();
-  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
-  if (m) return `${m[1]}-${pad(+m[2])}-${pad(+m[3])}`;
-  m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
-  if (m) return `${m[3]}-${pad(+m[1])}-${pad(+m[2])}`;
-  m = /^([A-Za-z]{3})[a-z]*\.? (\d{1,2}),? (\d{4})$/.exec(s);
-  if (m && MONTHS.includes(m[1].toLowerCase())) return `${m[3]}-${pad(MONTHS.indexOf(m[1].toLowerCase()) + 1)}-${pad(+m[2])}`;
-  return null;
-}
-
-/** "₱1,234.50", "1234.5", "(250)" -> a number; blank or unreadable -> null. */
-export function parseMoney(raw: string): number | null {
-  const s = raw.replace(/[₱,\s]/g, "").replace(/^PHP/i, "");
-  if (!s) return null;
-  const neg = /^\(.*\)$/.test(s);
-  const n = Number(s.replace(/[()]/g, ""));
-  return Number.isFinite(n) ? (neg ? -n : n) : null;
-}
+// The bank import's readers (month-first slash dates, days that exist; pesos, commas, brackets for negatives).
+const parseDay = (raw: string) => parseDate(raw);
+const parseMoney = (raw: string) => parseAmount(raw);
 
 const same = (a: string, b: string) => a.trim().toLowerCase().replace(/\s+/g, " ") === b.trim().toLowerCase().replace(/\s+/g, " ");
 
@@ -137,7 +119,10 @@ export function readHistory(type: HistoryType, register: readonly string[][], de
     const fundId = fundLabel ? ctx.fundOf(fundLabel) : null;
     if (!fundId) reasons.add("no_fund");
     const purpose = (get(r, col.purpose) || "(no purpose in the register)").slice(0, 500);
-    const registerTotal = parseMoney(get(r, col.total)) ?? 0;
+    const rawTotal = parseMoney(get(r, col.total)) ?? 0;
+    // A refund or reversal (a negative total) is kept at zero and flagged: vouchers pay out.
+    if (rawTotal < 0) reasons.add("negative_amount");
+    const registerTotal = Math.max(0, rawTotal);
 
     const line = (sort: number, description: string, code: string, name: string, qty: number, unit: number, amount: number, ref: string | null): HistoryLine => {
       const account = code ? accountFor(ctx, code, name) : null;
@@ -153,7 +138,8 @@ export function readHistory(type: HistoryType, register: readonly string[][], de
           const qty = parseMoney(get(d, dcol.qty)) || 1;
           const amount = parseMoney(get(d, dcol.amount)) ?? qty * (parseMoney(get(d, dcol.unit)) ?? 0);
           const unit = parseMoney(get(d, dcol.unit)) ?? Math.round((amount / qty) * 100) / 100;
-          return line(i + 1, get(d, dcol.text), get(d, dcol.code), get(d, dcol.account), qty, unit, Math.round(amount * 100) / 100, get(d, dcol.ref) || null);
+          if (amount < 0 || unit < 0) reasons.add("negative_amount");
+          return line(i + 1, get(d, dcol.text), get(d, dcol.code), get(d, dcol.account), Math.abs(qty), Math.max(0, unit), Math.max(0, Math.round(amount * 100) / 100), get(d, dcol.ref) || null);
         })
       : [line(1, purpose, get(r, col.code), get(r, col.account), 1, registerTotal, registerTotal, null)];
     const total = Math.round(lines.reduce((s, l) => s + l.amount, 0) * 100) / 100;
@@ -174,7 +160,7 @@ export function readHistory(type: HistoryType, register: readonly string[][], de
       if (statusText) reasons.add("unknown_status");
     }
 
-    vouchers.push({ key: `${type}:${number}:${occ}`, type, number, date, payee: get(r, col.payee).slice(0, 200) || null, purpose, fundId, total, link: get(r, col.link).slice(0, 500) || null,
+    vouchers.push({ key: `${type}:${number}:${occ}`, type, number: number.slice(0, 40), date, payee: get(r, col.payee).slice(0, 200) || null, purpose, fundId, total, link: get(r, col.link).slice(0, 500) || null,
       status, paidOn, signers, lines, reasons: [...reasons] });
   }
   // Detail rows whose number the register doesn't have: reported, not guessed into a voucher.

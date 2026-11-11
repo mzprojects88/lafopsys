@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseDay, parseMoney, readHistory } from "../lib/utils/voucher-history.ts";
+import { readHistory } from "../lib/utils/voucher-history.ts";
+import { parseAmount as parseMoney, parseDate as parseDay } from "../lib/utils/bank-statement.ts";
 
 const ctx = {
   accountsByCode: new Map([
@@ -26,6 +27,8 @@ describe("voucher history: reading the registers", () => {
     assert.equal(parseDay("8/2/2026"), "2026-08-02");
     assert.equal(parseDay("Aug 2, 2026"), "2026-08-02");
     assert.equal(parseDay("soon"), null);
+    assert.equal(parseDay("2/30/2026"), null);
+    assert.equal(parseDay("25/8/2026"), null);
     assert.equal(parseMoney("₱1,234.50"), 1234.5);
     assert.equal(parseMoney("(250)"), -250);
     assert.equal(parseMoney(""), null);
@@ -56,6 +59,12 @@ describe("voucher history: reading the registers", () => {
     assert.deepEqual(new Set(vouchers[2].reasons), new Set(["unknown_status", "name_differs", "total_differs"]));
     assert.equal(vouchers[2].status, "prepared");
     assert.equal(vouchers[2].total, 800);
+  });
+
+  it("a negative register total is kept at zero and flagged", () => {
+    const { vouchers } = readHistory("PV", [PV_HEAD, pv("R-1", { "Total Amount": "(250)" })], [DET_HEAD], ctx);
+    assert.equal(vouchers[0].total, 0);
+    assert.ok(vouchers[0].reasons.includes("negative_amount"));
   });
 
   it("5204 picks the account by the name the register gives; a voucher without details gets one line", () => {

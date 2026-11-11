@@ -220,15 +220,18 @@ try {
   await step("usage counts are for whoever sets up Finance only", ids.sw, `select count(*)::int n from ops.voucher_line_counts()`, [], (r) => r.ok && r.rows[0].n === 0);
   await step("... the Super Admin gets counts per account", ids.admin1, `select count(*)::int n from ops.voucher_line_counts()`, [], (r) => r.ok && r.rows[0].n > 0);
   // Correcting a voucher from the registers (0136).
-  const hist = (await c.query(`insert into ops.vouchers (source, voucher_type, voucher_number, legacy_number, kind, status, purpose, total, needs_cleanup)
-    values ('sheet', 'PV', 'PV LAF-TEST-1', 'LAF-TEST-1', 'supplier', 'approved', 'Register row', 100, true) returning id`)).rows[0].id;
+  const hist = (await c.query(`insert into ops.vouchers (source, voucher_type, voucher_number, legacy_number, kind, status, purpose, total, needs_cleanup, cleanup_reasons)
+    values ('sheet', 'PV', 'PV LAF-TEST-1', 'LAF-TEST-1', 'supplier', 'approved', 'Register row', 100, true, '{unknown_code,total_differs}') returning id`)).rows[0].id;
   const hline = (await c.query(`insert into ops.voucher_lines (voucher_id, sort, description, qty, unit_cost, amount, legacy_code) values ($1, 1, 'Item', 1, 100, 100, '59521') returning id`, [hist])).rows[0].id;
   const fixLines = async (code, t1) => JSON.stringify([{ id: hline, account_id: code ? (await c.query(`select id from ops.coa_accounts where code = $1 and review_note is null`, [code])).rows[0].id : null, t1_id: t1 ? (await c.query(`select md5('code:T1:' || $1)::uuid id`, [t1])).rows[0].id : null, t3_id: null }]);
   await step("a driver can't correct a register voucher", ids.driver, `select ops.voucher_fix_history($1, $2, $3::jsonb)`, [hist, ids.unr, await fixLines("5956", "ADM")], refused("42501"), false);
   await step("a heading account is refused in a correction", ids.finance, `select ops.voucher_fix_history($1, $2, $3::jsonb)`, [hist, ids.unr, await fixLines("5950", "ADM")], refused("23514"), false);
-  await step("Finance corrects the fund and the account: cleaned up", ids.finance, `select ops.voucher_fix_history($1, $2, $3::jsonb, 'Bank fee') ok`, [hist, ids.unr, await fixLines("5956", "ADM")], (r) => r.ok && r.rows[0].ok === true);
-  await step("... the flag is off and the correction is in the history, signed", null, `select v.needs_cleanup, (select count(*)::int from ops.voucher_events e where e.voucher_id = v.id and e.action = 'history' and e.actor = $2) n from ops.vouchers v where v.id = $1`, [hist, ids.finance],
-    (r) => r.ok && r.rows[0].needs_cleanup === false && r.rows[0].n === 1);
+  await step("One Child (restricted to 52xx) may not take a 5956 bank fee in a correction", ids.finance, `select ops.voucher_fix_history($1, $2, $3::jsonb)`, [hist, ids.oc, await fixLines("5956", "ADM")], (r) => !r.ok && /may not pay/.test(r.error), false);
+  await step("Finance corrects the coding: the coding flag goes, the total flag stays", ids.finance, `select ops.voucher_fix_history($1, $2, $3::jsonb, 'Bank fee') ok`, [hist, ids.unr, await fixLines("5956", "ADM")], (r) => r.ok && r.rows[0].ok === false);
+  await step("... reasons left: total_differs", null, `select cleanup_reasons::text r, needs_cleanup from ops.vouchers where id = $1`, [hist], (r) => r.ok && r.rows[0].r === "{total_differs}" && r.rows[0].needs_cleanup === true);
+  await step("Finance checks the total against the papers: cleaned up", ids.finance, `select ops.voucher_fix_history($1, $2, $3::jsonb, 'Total checked', true) ok`, [hist, ids.unr, await fixLines("5956", "ADM")], (r) => r.ok && r.rows[0].ok === true);
+  await step("... the flag is off and both corrections are in the history, signed", null, `select v.needs_cleanup, (select count(*)::int from ops.voucher_events e where e.voucher_id = v.id and e.action = 'history' and e.actor = $2) n from ops.vouchers v where v.id = $1`, [hist, ids.finance],
+    (r) => r.ok && r.rows[0].needs_cleanup === false && r.rows[0].n === 2);
   await step("a request filed in the app can't be 'corrected' as history", ids.finance, `select ops.voucher_fix_history($1, $2, '[]'::jsonb)`, [vid, ids.unr], refused("P0002"), false);
   await step("the categories are in the setup checklist", null, `select ops.finance_setup_checklist()->'items'->2->>'label' l`, [], (r) => r.ok && /recipient categories/.test(r.rows[0].l));
   await step("functions run as callers only where granted", null,

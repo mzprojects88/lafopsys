@@ -40,7 +40,7 @@ const c = new pg.Client({ connectionString: pgUrl(), ssl: { rejectUnauthorized: 
 await c.connect();
 try {
   // One client runs one query at a time.
-  const { rows: accounts } = await c.query("select id, code, name from ops.coa_accounts where code is not null");
+  const { rows: accounts } = await c.query("select id, code, name from ops.coa_accounts where code is not null and not is_header and active and review_note is null");
   const { rows: codes } = await c.query("select id, tier, code, parent_id, account_prefixes from ops.fin_codes");
   const { rows: staff } = await c.query("select id, first_name, last_name from shared.staff");
   const { rows: [settings] } = await c.query("select history_to_cash_book from ops.finance_settings");
@@ -78,11 +78,12 @@ try {
   }
 
   // Cash book: what a posting would add, and what it would skip as already there (same date and amount).
-  const paid = all.filter((v) => v.paidOn || (v.status === "approved" && v.date));
+  // Only what the register says was paid: an approval alone is not money out.
+  const paid = all.filter((v) => v.paidOn);
   const { rows: book } = await c.query("select date::text d, amount::numeric a from ops.cash_entries where direction = 'outflow'");
   const inBook = new Set(book.map((b) => `${b.d}|${Number(b.a).toFixed(2)}`));
   const overlap = paid.filter((v) => inBook.has(`${v.paidOn ?? v.date}|${v.total.toFixed(2)}`));
-  console.log(`cash book: ${paid.length} approved/paid vouchers could post; ${overlap.length} look already there (would be skipped). Setting history_to_cash_book is ${settings.history_to_cash_book ? "ON" : "OFF"}.`);
+  console.log(`cash book: ${paid.length} paid vouchers could post; ${overlap.length} look already there (would be skipped). Setting history_to_cash_book is ${settings.history_to_cash_book ? "ON" : "OFF"}.`);
 
   if (!commit && !tryRun) {
     console.log("\nDry run: nothing written. Add --commit (production, with approval) to write.");
@@ -94,11 +95,11 @@ try {
       const id = (await c.query("select md5($1)::uuid id", [`hist:${v.key}`])).rows[0].id;
       const occ = v.key.split(":").at(-1);
       const r = await c.query(
-        `insert into ops.vouchers (id, source, voucher_type, voucher_number, legacy_number, kind, status, purpose, payee_text, t2_id, total, legacy_link, needs_cleanup, pay_method, created_at, submitted_at)
-         values ($1, 'sheet', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, coalesce(($14::date)::timestamp at time zone 'Asia/Manila', now()), ($14::date)::timestamp at time zone 'Asia/Manila')
+        `insert into ops.vouchers (id, source, voucher_type, voucher_number, legacy_number, kind, status, purpose, payee_text, t2_id, total, legacy_link, needs_cleanup, pay_method, created_at, submitted_at, cleanup_reasons)
+         values ($1, 'sheet', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, coalesce(($14::date)::timestamp at time zone 'Asia/Manila', now()), ($14::date)::timestamp at time zone 'Asia/Manila', $15)
          on conflict (id) do nothing`,
         [id, v.type, `${v.type} ${v.number}${occ === "1" ? "" : ` (${occ})`}`, v.number, v.type === "PCV" ? "petty_cash" : "supplier", v.status, v.purpose, v.payee, v.fundId, v.total, v.link,
-         v.reasons.length > 0, v.type === "GCV" ? "gcash" : "cash", v.date]
+         v.reasons.length > 0, v.type === "GCV" ? "gcash" : "cash", v.date, v.reasons]
       );
       if (!r.rowCount) continue;
       vIn++;
@@ -118,11 +119,11 @@ try {
       await c.query(`insert into ops.voucher_events (voucher_id, action, note, source, at) values ($1, 'history', $2, 'sheet', coalesce(($3::date)::timestamp at time zone 'Asia/Manila', now()))`,
         [id, `From the ${v.type} register${v.paidOn ? `; paid ${v.paidOn}` : ""}${v.reasons.length ? `; to clean up: ${v.reasons.join(", ")}` : ""}.`, v.paidOn ?? at]);
       eIn++;
-      if (cashBook && (v.paidOn || v.status === "approved") && !inBook.has(`${v.paidOn ?? v.date}|${v.total.toFixed(2)}`) && (v.paidOn ?? v.date)) {
+      if (cashBook && v.paidOn && !inBook.has(`${v.paidOn}|${v.total.toFixed(2)}`)) {
         const b = await c.query(
           `insert into ops.cash_entries (source_id, date, direction, source, entity, currency, amount, description, approval_status)
            values ($1, $2, 'outflow', 'voucher_history', 'PH_SEC', 'PHP', $3, $4, 'approved') on conflict (source_id) do nothing`,
-          [`voucher:${v.key}`, v.paidOn ?? v.date, v.total, `${v.type} ${v.number}: ${v.purpose}`.slice(0, 500)]
+          [`voucher:${v.key}`, v.paidOn, v.total, `${v.type} ${v.number}: ${v.purpose}`.slice(0, 500)]
         );
         bIn += b.rowCount;
       }

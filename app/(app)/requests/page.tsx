@@ -138,7 +138,7 @@ function RequestsContent() {
 
   const total = shown.reduce((s, v) => s + amountOf(v), 0);
   const approved = shown.filter((v) => v.status === "approved").reduce((s, v) => s + amountOf(v), 0);
-  const moving = shown.filter((v) => OPEN.includes(v.status));
+  const moving = shown.filter((v) => v.source === "app" && OPEN.includes(v.status));
 
   const opt = {
     type: optionsOf(vouchers, (v) => v.voucherType ?? "none", (x) => (x === "none" ? "Not yet a voucher" : x)),
@@ -168,8 +168,8 @@ function RequestsContent() {
     {
       id: "waiting",
       header: "Waiting",
-      accessorFn: (v) => (OPEN.includes(v.status) ? daysWaiting(lastMove(v), now) : -1),
-      cell: ({ row }) => (OPEN.includes(row.original.status) ? `${daysWaiting(lastMove(row.original), now)} d` : "—"),
+      accessorFn: (v) => (v.source === "app" && OPEN.includes(v.status) ? daysWaiting(lastMove(v), now) : -1),
+      cell: ({ row }) => (row.original.source === "app" && OPEN.includes(row.original.status) ? `${daysWaiting(lastMove(row.original), now)} d` : "—"),
     },
   ];
   type LineRow = { v: Voucher; l: VoucherLine };

@@ -31,6 +31,9 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
   const [coding, setCoding] = React.useState(() => lines.map((l) => ({ id: l.id, account_id: l.accountId, t1_id: l.t1Id, t3_id: l.t3Id })));
   const [note, setNote] = React.useState("");
   const [similar, setSimilar] = React.useState(0);
+  const [othersChecked, setOthersChecked] = React.useState(false);
+  // A register voucher's flags that coding can't settle (0136): Finance checks them and says so.
+  const others = voucher.cleanupReasons.filter((r) => !["no_fund", "unknown_code", "name_differs"].includes(r));
   const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
@@ -48,7 +51,7 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
   async function prepare() {
     setBusy(true);
     if (history) {
-      const r = await fixHistory(voucher.id, fund || null, coding, note);
+      const r = await fixHistory(voucher.id, fund || null, coding, note, othersChecked);
       setBusy(false);
       if (!r.ok) return void toast.error(r.error);
       toast.success(r.value ? "Corrected: cleaned up" : "Corrected; something is still to clean up");
@@ -67,8 +70,10 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
         <DialogHeader>
           <DialogTitle>{history ? `Correct the coding · ${voucher.voucherNumber}` : `Prepare the voucher · ${voucher.requestNumber}`}</DialogTitle>
           <DialogDescription>
+            {history ? `From the ${voucher.voucherType} register. Correct the fund and each item's coding; amounts and the register's words stay as they are.` : <>
             Check the request and its papers, confirm the coding, then prepare: it gets its {voucher.kind === "petty_cash" ? "PCV" : voucher.payMethod === "gcash" ? "GCV" : "PV"} number and goes to the reviewer.
             The budget for the month is on <Link href="/finance/budget" className="text-primary hover:underline">Budget vs Actual</Link>.
+            </>}
           </DialogDescription>
         </DialogHeader>
         {similar > 0 ? (
@@ -88,6 +93,7 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
               </SelectContent>
             </Select>
           </Field>
+          {history ? null : (
           <Field>
             <FieldLabel>Employee (T4), for staff costs and advances</FieldLabel>
             <Select value={t4} onValueChange={setT4}>
@@ -100,7 +106,14 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
               </SelectContent>
             </Select>
           </Field>
+          )}
         </div>
+        {history && others.length ? (
+          <label className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-theme-sm">
+            <input type="checkbox" className="mt-1" checked={othersChecked} onChange={(e) => setOthersChecked(e.target.checked)} />
+            <span>Also flagged: {others.map((r) => r.replace(/_/g, " ")).join(", ")}. Tick once you have checked them against the papers.</span>
+          </label>
+        ) : null}
         <div className="flex flex-col gap-3">
           {lines.map((l, n) => {
             const c = coding[n];

@@ -76,7 +76,7 @@ export default function RequestDetailPage() {
   const editable = mine && (v.status === "draft" || v.status === "returned") && v.source === "app";
   const queued = queue.find((q) => q.voucherId === v.id)?.step ?? null;
   const waitingStep = queued === "returned" ? null : queued;
-  const canCancel = OPEN.includes(v.status) || v.status === "returned" ? (mine && ["returned", "submitted", "endorsed"].includes(v.status)) || canEdit("finance") : false;
+  const canCancel = v.source === "app" && (OPEN.includes(v.status) || v.status === "returned") ? (mine && ["returned", "submitted", "endorsed"].includes(v.status)) || canEdit("finance") : false;
   const steps = trackSteps(v.status, events, now);
 
   async function act(action: string, note?: string) {

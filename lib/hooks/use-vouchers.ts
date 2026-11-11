@@ -35,6 +35,8 @@ export interface Voucher {
   legacyLink: string | null;
   payeeText: string | null;
   needsCleanup: boolean;
+  /** Why a voucher from the registers needs cleaning up (0136). */
+  cleanupReasons: string[];
   /** Paid to a person (0135): their category and name as given (a patient picked, or typed). */
   toPerson: boolean;
   recipientCategoryId: string | null;
@@ -106,6 +108,7 @@ const toVoucher = (r: Row): Voucher => ({
   legacyLink: s(r.legacy_link),
   payeeText: s(r.payee_text),
   needsCleanup: Boolean(r.needs_cleanup),
+  cleanupReasons: (r.cleanup_reasons as string[] | null) ?? [],
   toPerson: Boolean(r.to_person),
   recipientCategoryId: s(r.recipient_category_id),
   patientId: s(r.patient_id),
@@ -211,8 +214,8 @@ export const actOnVoucher = (id: string, action: string, note?: string) => call<
 export const prepareVoucher = (id: string, t2Id: string, t4StaffId: string | null, lines: { id: string; account_id: string | null; t1_id: string | null; t3_id: string | null }[], note?: string) =>
   call<string>("voucher_prepare", { p_id: id, p_t2: t2Id, p_t4_staff: t4StaffId, p_lines: lines, p_note: note ?? null });
 /** Finance corrects a voucher from the registers (0136): the fund and each line's coding; true once it is clean. */
-export const fixHistory = (id: string, t2Id: string | null, lines: { id: string; account_id: string | null; t1_id: string | null; t3_id: string | null }[], note?: string) =>
-  call<boolean>("voucher_fix_history", { p_id: id, p_t2: t2Id, p_lines: lines, p_note: note ?? null });
+export const fixHistory = (id: string, t2Id: string | null, lines: { id: string; account_id: string | null; t1_id: string | null; t3_id: string | null }[], note?: string, othersChecked = false) =>
+  call<boolean>("voucher_fix_history", { p_id: id, p_t2: t2Id, p_lines: lines, p_note: note ?? null, p_others_checked: othersChecked });
 /** How many other live requests look like this one (same OR number, or same payee and total within 30 days). */
 export async function similarCount(id: string): Promise<number> {
   const { data } = await createClient().schema("ops").rpc("voucher_similar", { p_id: id });
