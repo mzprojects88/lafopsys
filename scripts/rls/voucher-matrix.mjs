@@ -42,7 +42,7 @@ const UNR = "md5('code:T2:UNR')";
 
 try {
   await c.query("begin");
-  for (const m of ["0134_vouchers.sql", "0135_pay_a_person.sql", "0136_voucher_history_fixes.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${m}`, import.meta.url), "utf8"));
+  for (const m of ["0134_vouchers.sql", "0135_pay_a_person.sql", "0136_voucher_history_fixes.sql", "0138_funds_advances_ewt.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${m}`, import.meta.url), "utf8"));
   const ids = (await c.query(`select
     (select id from shared.staff where role = 'admin' and active order by id limit 1) admin1,
     (select id from shared.staff where role = 'admin' and active order by id offset 1 limit 1) admin2,
