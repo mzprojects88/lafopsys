@@ -715,3 +715,65 @@ export async function suggestPaymentLists(f: PaymentListFacts): Promise<PaymentL
     clearTimeout(timer);
   }
 }
+
+const BUDGET_TIMEOUT_MS = 60_000;
+
+/** What the budget suggestion is shown: goals and totals only (no person, no case, no donor). */
+export interface BudgetFacts {
+  year: number;
+  programs: { code: string; name: string }[];
+  measures: { key: string; label: string; unit: string }[];
+  goals: { title: string; horizon: number; startYear: number; program: string | null; measure: string; target: number | null; narrative: string | null }[];
+  spendingByMonth: { month: string; program: string | null; account: string | null; amount: number }[];
+  countedByMonth: { month: string; measure: string; quantity: number }[];
+  giftsByMonth: { month: string; amount: number }[];
+}
+export interface BudgetSuggestion {
+  items: { program: string | null; label: string; unit: string | null; measure: string | null; accountCode: string | null; yearQuantity: number | null; yearAmount: number | null; reason: string }[];
+  summary: string;
+}
+
+const budgetSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        program: z.string().max(8).nullable(),
+        label: z.string().max(120),
+        unit: z.string().max(40).nullable(),
+        measure: z.string().max(20).nullable(),
+        accountCode: z.string().max(4).nullable(),
+        yearQuantity: z.number().nonnegative().nullable(),
+        yearAmount: z.number().nonnegative().nullable(),
+        reason: z.string().max(240),
+      })
+    )
+    .max(24),
+  summary: z.string().max(600),
+});
+
+/**
+ * Suggests a year's budget items by program from the CEO's goals and the last twelve months of spending, counted
+ * services and gifts (Budgets, 0137). Totals only leave the system; the person adds each suggestion, or not.
+ */
+export async function suggestBudget(f: BudgetFacts): Promise<BudgetSuggestion> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), BUDGET_TIMEOUT_MS);
+  try {
+    const { object } = await generateObject({
+      model: model(),
+      schema: budgetSchema,
+      system:
+        "You help the CEO of a Philippine foundation that houses, transports and feeds children with cancer and their carers draft next year's budget. " +
+        "Propose budget ITEMS grouped by program (use the program codes given, or null for the whole foundation): each with a plain label, a unit for its quantity, " +
+        "the measure key it should be compared with when one fits (from the measures given), an account code from the spending data when one fits, a yearly quantity and/or a yearly amount in PHP, and a one-sentence reason. " +
+        "Base quantities on the counted services and the goals' targets for the year; base amounts on the last twelve months' spending per program, scaled to the targets. " +
+        "Be conservative and explicit about assumptions in the summary. Never invent programs, measures or account codes.",
+      prompt: JSON.stringify(f),
+      abortSignal: controller.signal,
+      providerOptions: { openai: { reasoningEffort: "low" } },
+    });
+    return object;
+  } finally {
+    clearTimeout(timer);
+  }
+}

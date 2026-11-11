@@ -85,6 +85,9 @@ export default function BudgetPage() {
   return (
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader title="Budget vs Actual" description="A month's budget per expense purpose, against what the bank paid out with that purpose." />
+      <p className="rounded-xl border border-border bg-muted/40 px-4 py-3 text-theme-sm">
+        Budgets by program, with their items, quantities and amounts, are kept on <a href="/finance/budgets" className="font-medium text-primary hover:underline">Budgets</a> once payment requests start; this page stays for the months before.
+      </p>
       <SectionCard
         flush
         className="overflow-hidden"

@@ -377,11 +377,15 @@ export default function FinancialSettingsPage() {
               { label: "Requests start", render: (r) => (r.start_date ? formatDate(str(r.start_date), "MMMM d, yyyy") : "Not set") },
               { label: "Liquidate advances within", render: (r) => (r.liquidation_days ? `${str(r.liquidation_days)} days` : "Not set") },
               { label: "History to the cash book", render: (r) => (r.history_to_cash_book ? "On" : "Off") },
+              { label: "Next year's budget due", render: (r) => `${str(r.budget_due_day)}/${str(r.budget_due_month)} (day/month), reminded ${str(r.budget_remind_days)} days before` },
             ]}
             fields={[
               { key: "start_date", label: "Payment requests start on", kind: "date", hint: "Vouchers before this date come from the registers (history)." },
               { key: "liquidation_days", label: "Liquidate a cash advance within (days)", kind: "number" },
               { key: "history_to_cash_book", label: "Imported (history) vouchers post to the cash book", kind: "switch", hint: "Off until the accountant decides. When on, entries already in the cash book are skipped, not counted twice." },
+              { key: "budget_due_month", label: "Next year's budget is due by: month (1-12)", kind: "number", hint: "Of the year before: 12 and 31 mean December 31." },
+              { key: "budget_due_day", label: "... and day", kind: "number" },
+              { key: "budget_remind_days", label: "Remind from (days before it is due)", kind: "number" },
             ]}
           />
           <SectionCard flush title="Changes" description="The last 100 changes to these settings, with who made them.">

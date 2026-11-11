@@ -1,6 +1,10 @@
 "use client";
 
+import Link from "next/link";
+import { Target } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
+import { Button } from "@/components/ui/button";
+import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { MonthlySummary } from "@/components/modules/finance/monthly-summary";
 import { CalendarSnapshot } from "@/components/modules/calendar/calendar-snapshot";
 
@@ -14,9 +18,15 @@ import { CalendarSnapshot } from "@/components/modules/calendar/calendar-snapsho
  * reload. /dashboard is untouched for everyone else.
  */
 export default function ExecutivePage() {
+  // Goals (0137): the CEO, the Trustees and the Super Admin.
+  const goals = useModuleAccess().levelOfPath("/executive/goals") !== "none";
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <PageHeader title="Executive Overview" description="Where the money stands, and what is happening this week." />
+      <PageHeader
+        title="Executive Overview"
+        description="Where the money stands, and what is happening this week."
+        action={goals ? <Button asChild variant="outline"><Link href="/executive/goals"><Target /> Goals</Link></Button> : null}
+      />
       <MonthlySummary compact />
       <CalendarSnapshot />
     </div>

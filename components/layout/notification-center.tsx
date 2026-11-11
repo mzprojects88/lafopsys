@@ -4,6 +4,10 @@ import Link from "next/link";
 import { BedDouble, Bell, ClipboardList, CloudOff, Fuel, Mail, MapPin, PenLine, Receipt, Wrench, type LucideIcon } from "lucide-react";
 import { useCollection } from "@/lib/data/collection-store";
 import { voucherQueueStore } from "@/lib/hooks/use-vouchers";
+import { budgetsStore } from "@/lib/hooks/use-budgets";
+import { useSetupRows } from "@/lib/hooks/use-finance-setup";
+import { budgetReminder } from "@/lib/utils/budgets";
+import { todayIso } from "@/lib/utils/date";
 import { useOpenCaseRecords, usePlansDue } from "@/lib/hooks/use-case-files";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
@@ -95,8 +99,10 @@ export function NotificationCenter() {
   const admissions = roles.includes("admin") || roles.includes("social_worker") || roles.includes("inventory_lead");
   // Case files (0124): the social worker's sessions, and the CEO's records to sign.
   const caseRole = roles.includes("social_worker") || roles.includes("ceo");
+  // Budgets (0137): next year's budget is due; for those who key it in and the CEO who approves it.
+  const budgetRole = roles.includes("admin") || roles.includes("ceo") || roles.includes("finance") || roles.includes("office_admin");
   const bell = (more: Reminder[]) => (
-    <RequestReminders>
+    <RequestReminders budgets={budgetRole}>
       {(r) => (caseRole ? <CaseReminders>{(c) => <BellPopover reminders={[...reminders, ...more, ...r, ...c]} />}</CaseReminders> : <BellPopover reminders={[...reminders, ...more, ...r]} />)}
     </RequestReminders>
   );
@@ -112,7 +118,8 @@ export function NotificationCenter() {
 }
 
 /** Payment Requests (0134): what waits for this person to sign, and their own requests sent back to them. */
-function RequestReminders({ children }: { children: (reminders: Reminder[]) => React.ReactNode }) {
+function RequestReminders({ budgets, children }: { budgets: boolean; children: (reminders: Reminder[]) => React.ReactNode }) {
+  const due = useBudgetDue(budgets);
   const { data: all } = useCollection(voucherQueueStore);
   const queue = all.filter((q) => q.step !== "returned");
   const returned = all.filter((q) => q.step === "returned");
@@ -121,7 +128,18 @@ function RequestReminders({ children }: { children: (reminders: Reminder[]) => R
     out.push({ id: "requests-waiting", title: `${queue.length} payment request${queue.length === 1 ? "" : "s"} wait for you`, body: "To endorse, prepare, review or approve.", href: "/requests", icon: Receipt });
   if (returned.length)
     out.push({ id: "requests-returned", title: `${returned.length} of your requests ${returned.length === 1 ? "was" : "were"} sent back`, body: "Read why, change it and send it again.", href: returned.length === 1 ? `/requests/${returned[0].voucherId}` : "/requests", icon: Receipt });
+  if (due)
+    out.push({ id: "budget-due", title: due.overdue ? `The ${due.year} budget is late` : `The ${due.year} budget is due ${due.due}`, body: "Key it in on Financial › Budgets; the CEO approves it.", href: "/finance/budgets", icon: Receipt });
   return <>{children(out)}</>;
+}
+
+/** Whether next year's budget is due soon or late and not yet approved (Financial Settings › General). */
+function useBudgetDue(enabled: boolean) {
+  const { data: settings } = useSetupRows("finance_settings");
+  const { data: budgets } = useCollection(budgetsStore);
+  const s = settings[0];
+  if (!enabled || !s) return null;
+  return budgetReminder(todayIso(), { month: Number(s.budget_due_month ?? 12), day: Number(s.budget_due_day ?? 31), remindDays: Number(s.budget_remind_days ?? 30) }, budgets.filter((b) => b.status === "approved").map((b) => b.year));
 }
 
 const manilaDay = (iso: string) => new Date(new Date(iso).getTime() + 8 * 3600_000).toISOString().slice(0, 10);

@@ -11,7 +11,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSetupRows } from "@/lib/hooks/use-finance-setup";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
-import { fixHistory, prepareVoucher, similarCount, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
+import { fixHistory, prepareVoucher, similarCount, useVouchers, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
+import { useBudgets } from "@/lib/hooks/use-budgets";
+import { todayIso } from "@/lib/utils/date";
+import { dayKey } from "@/lib/utils/dtr";
 import { formatCurrency } from "@/lib/utils/currency";
 import { fundAllows } from "@/lib/utils/vouchers";
 
@@ -47,6 +50,25 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
   const chosenFund = funds.find((f) => f.id === fund);
   const set = (n: number, patch: Partial<(typeof coding)[number]>) => setCoding((c) => c.map((x, i) => (i === n ? { ...x, ...patch } : x)));
   const codeOf = (id: string | null) => String(accounts.find((a) => a.id === id)?.code ?? "");
+
+  // Budget left this month per program (0137): the approved budget's amounts against what other vouchers prepared
+  // this month already took. Shown only once the CEO has approved the year's budget.
+  const { budgets, items, values } = useBudgets();
+  const { vouchers, lines: allLines, events } = useVouchers();
+  const today = todayIso();
+  const approved = budgets.find((b) => b.status === "approved" && b.year === Number(today.slice(0, 4)));
+  const month = Number(today.slice(5, 7));
+  const preparedOn = new Map(events.filter((e) => e.action === "prepare").map((e) => [e.voucherId, e.at]));
+  const thisMonth = new Set(vouchers.filter((v) => v.id !== voucher.id && ["prepared", "reviewed", "approved"].includes(v.status) && dayKey(preparedOn.get(v.id) ?? v.submittedAt ?? v.createdAt).slice(0, 7) === today.slice(0, 7)).map((v) => v.id));
+  const programs = [...new Set(coding.map((c) => c.t3_id).filter((x): x is string => !!x))];
+  const left = approved && !history
+    ? programs.map((p) => {
+        const budget = items.filter((i) => i.budgetId === approved.id && i.t3Id === p).reduce((s, i) => s + (values.find((v) => v.itemId === i.id && v.month === month)?.amount ?? 0), 0);
+        const used = allLines.filter((l) => thisMonth.has(l.voucherId) && l.t3Id === p).reduce((s, l) => s + l.amount, 0);
+        const adds = lines.filter((_, n) => coding[n]?.t3_id === p).reduce((s, l) => s + l.amount, 0);
+        return { p, budget, used, adds };
+      })
+    : [];
 
   async function prepare() {
     setBusy(true);
@@ -108,6 +130,15 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
           </Field>
           )}
         </div>
+        {left.length ? (
+          <div className="flex flex-col gap-1 rounded-xl border border-border px-3 py-2 text-theme-sm">
+            {left.map((x) => (
+              <p key={x.p} className={x.used + x.adds > x.budget ? "text-warning-foreground" : ""}>
+                {String(codes.find((c) => c.id === x.p)?.name ?? "")}: budget {formatCurrency(x.budget, "PHP", true)} this month, {formatCurrency(x.used, "PHP", true)} used; this voucher adds {formatCurrency(x.adds, "PHP", true)}{x.used + x.adds > x.budget ? " (over the budget)" : ""}.
+              </p>
+            ))}
+          </div>
+        ) : null}
         {history && others.length ? (
           <label className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-theme-sm">
             <input type="checkbox" className="mt-1" checked={othersChecked} onChange={(e) => setOthersChecked(e.target.checked)} />

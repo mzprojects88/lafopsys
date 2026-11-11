@@ -50,6 +50,7 @@ const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/finance/close", label: "Monthly Close", icon: ClipboardCheck },
   { href: "/finance/registers", label: "Registers", icon: BookOpen },
   { href: "/finance/vehicle-costs", label: "Vehicle Costs", icon: Fuel },
+  { href: "/finance/budgets", label: "Budgets", icon: Wallet },
   { href: "/finance/settings", label: "Financial Settings", icon: Settings2 },
 ];
 import type { CashEntry } from "@/lib/types/finance";
