@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SetupRows, type SetupColumn, type SetupField } from "@/components/modules/finance/setup-rows";
+import { PersonListSuggestions } from "@/components/modules/finance/person-list-suggestions";
 import { createClient } from "@/lib/supabase/client";
 import { useCollection } from "@/lib/data/collection-store";
 import { setupChecklistStore, setupLogStore, useSetupRows, type SetupRow } from "@/lib/hooks/use-finance-setup";
@@ -220,6 +221,10 @@ export default function FinancialSettingsPage() {
         </TabsContent>
 
         <TabsContent value="expense" className="mt-4 flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border bg-card px-4 py-3">
+            <p className="text-theme-sm text-muted-foreground">Paying a person: the purposes are the expense types switched to &ldquo;paying a person&rdquo;, and the recipient categories are below. AI can suggest more from LAF&apos;s programs and accounts.</p>
+            <PersonListSuggestions />
+          </div>
           <SetupRows
             table="expense_types"
             title="Expense types"

@@ -668,3 +668,50 @@ export async function readCaseDocument(file: Uint8Array, mediaType: string, pape
     clearTimeout(timer);
   }
 }
+
+const LISTS_TIMEOUT_MS = 45_000;
+
+/** What the payment-list suggestion is shown: LAF's own words and totals, never a name or a case. */
+export interface PaymentListFacts {
+  programs: string[];
+  accounts: { code: string; name: string; description: string | null }[];
+  categories: string[];
+  purposes: string[];
+  linesByAccount: { code: string; lines: number }[];
+}
+export interface PaymentListSuggestion {
+  categories: { name: string; kind: "patient" | "provider" | "other"; reason: string }[];
+  purposes: { label: string; accountCode: string; reason: string }[];
+}
+
+const listsSchema = z.object({
+  categories: z.array(z.object({ name: z.string().max(80), kind: z.enum(["patient", "provider", "other"]), reason: z.string().max(200) })).max(8),
+  purposes: z.array(z.object({ label: z.string().max(80), accountCode: z.string().max(4), reason: z.string().max(200) })).max(8),
+});
+
+/**
+ * Suggests recipient categories and purposes for paying a person (Financial Settings, 0135) from LAF's programs,
+ * its chart of accounts and how often each account was used. Only those words and counts leave the system; Finance
+ * adds a suggestion with one click, or not.
+ */
+export async function suggestPaymentLists(f: PaymentListFacts): Promise<PaymentListSuggestion> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LISTS_TIMEOUT_MS);
+  try {
+    const { object } = await generateObject({
+      model: model(),
+      schema: listsSchema,
+      system:
+        "You help the finance officer of a Philippine foundation that houses and feeds children with cancer and their families set up its payment requests. " +
+        "Payments to a PERSON (not a business) need (1) recipient categories: who the person is, kind 'patient' for a patient or their family, 'provider' for an individual providing a service (counsellor, tutor, driver), 'other' otherwise; and " +
+        "(2) purposes: program-related reasons for paying a person, each mapped to ONE account code from the chart given (prefer the Nurture and Well Being 55xx, Board & Lodging 52xx, transport 53xx and feeding 54xx accounts). " +
+        "Suggest only what is missing from the current lists, at most 6 of each, each with a one-sentence reason grounded in the programs, the account descriptions or the usage counts. Never invent account codes.",
+      prompt: JSON.stringify(f),
+      abortSignal: controller.signal,
+      providerOptions: { openai: { reasoningEffort: "low" } },
+    });
+    return object;
+  } finally {
+    clearTimeout(timer);
+  }
+}
