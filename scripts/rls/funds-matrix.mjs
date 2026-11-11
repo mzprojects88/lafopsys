@@ -1,6 +1,7 @@
-// The 0138 pre-flight (funds, cash advances and their liquidation, withholding), on the development database and
-// ALWAYS rolled back: applies the migration in a transaction, completes Financial Settings there, and walks
-// advances, petty cash slips, top-ups and withheld payments through their steps.
+// The 0138 + 0139 pre-flight (funds, cash advances and their liquidation, withholding; paying, the books, QuickBooks
+// and the bank), on the development database and ALWAYS rolled back: applies the migrations in a transaction,
+// completes Financial Settings there, and walks advances, petty cash slips, top-ups, withheld and paid vouchers
+// through their steps.
 //   node --env-file=.env.local scripts/rls/funds-matrix.mjs
 import { readFileSync } from "node:fs";
 import pg from "pg";
@@ -38,7 +39,7 @@ const one = async (sql, params = []) => Object.values((await c.query(sql, params
 
 try {
   await c.query("begin");
-  await c.query(readFileSync(new URL("../../supabase/migrations/0138_funds_advances_ewt.sql", import.meta.url), "utf8"));
+  for (const m of ["0138_funds_advances_ewt.sql", "0139_payment_books_quickbooks.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${m}`, import.meta.url), "utf8"));
   const ids = (await c.query(`select
     (select id from shared.staff where role = 'admin' and active order by id limit 1) admin1,
     (select id from shared.staff where role = 'admin' and active order by id offset 1 limit 1) admin2,
@@ -58,7 +59,7 @@ try {
   await c.query(`update ops.cash_funds set float_amount = 10000, top_up_below = 3000, custodian_staff_id = $1, account_id = coalesce(account_id, (select id from ops.coa_accounts where code = '1105'))`, [ids.sw]);
   await c.query(`update ops.finance_settings set start_date = (now() at time zone 'Asia/Manila')::date, liquidation_days = 15, block_advance_when_overdue = true`);
   await c.query(`delete from ops.voucher_authority`);
-  await c.query(`insert into ops.voucher_authority (step, staff_id) values ('validate', $1), ('review', $2), ('approve_payment', $3), ('release', $1)`, [ids.finance, ids.office, ids.admin2]);
+  await c.query(`insert into ops.voucher_authority (step, staff_id) values ('validate', $1), ('review', $2), ('approve_payment', $3), ('release', $2)`, [ids.finance, ids.office, ids.admin2]);
   await c.query(`insert into ops.voucher_authority (step, max_amount, staff_id) values ('approve', 5000, $1)`, [ids.admin1]);
   await c.query(`insert into ops.voucher_authority (step, min_amount, staff_id) values ('approve', 5000, $1)`, [ids.admin2]);
   await c.query(`insert into ops.voucher_authority (step, requester_role, staff_id)
@@ -70,14 +71,26 @@ try {
   const gas = await one(`select md5('exp:Gasoline / fuel:code:T3:TRN')::uuid`);
   const item = (amount, extra = {}) => JSON.stringify([{ description: "Item", qty: 1, unit_cost: amount, expense_type_id: gas, ...extra }]);
   const header = (extra = {}) => JSON.stringify({ purpose: "Test", t2_id: ids.unr, pay_method: "cash", ...extra });
-  /** Sends a saved request along: endorsed, prepared (optionally linking a payee), reviewed, approved. */
-  async function walk(label, id, who, payee = null, sent = false) {
+  const bdo = await one(`select id from ops.coa_accounts where code = '1101'`);
+  /** Pays an approved voucher: its payment prepared (from BDO) and approved, then released, or released straight. */
+  async function payOut(label, id) {
+    for (;;) {
+      const st = await one(`select ops.voucher_pay_step(v) from ops.vouchers v where v.id = $1`, [id]);
+      if (!st) return;
+      const who = st === "prepare_payment" ? ids.finance : st === "approve_payment" ? ids.admin2 : ids.office;
+      const r = await step(`${label}: ${st.replace("_", " ")}`, who, `select ops.voucher_pay($1, $2, $3, 'REF-1')`, [id, st, st === "approve_payment" ? null : bdo], (r) => r.ok);
+      if (!r.ok) return;
+    }
+  }
+  /** Sends a saved request along: endorsed, prepared (optionally linking a payee), reviewed, approved; then paid. */
+  async function walk(label, id, who, payee = null, sent = false, paid = true) {
     if (!sent) await step(`${label}: sent`, who, `select ops.voucher_act($1, 'submit')`, [id], (r) => r.ok);
     await step(`${label}: endorsed`, ids.office, `select ops.voucher_act($1, 'endorse')`, [id], (r) => r.ok);
     await step(`${label}: prepared`, ids.finance, `select ops.voucher_prepare($1, $2, null, '[]'::jsonb, null, $3) n`, [id, ids.unr, payee], (r) => r.ok);
     await step(`${label}: reviewed`, ids.office, `select ops.voucher_act($1, 'review')`, [id], (r) => r.ok);
     const total = Number(await one(`select total from ops.vouchers where id = $1`, [id]));
     await step(`${label}: approved`, total < 5000 ? ids.admin1 : ids.admin2, `select ops.voucher_act($1, 'approve')`, [id], (r) => r.ok && val(r) === "approved");
+    if (paid) await payOut(label, id);
   }
 
   // 1. A cash advance and its liquidation.
@@ -87,7 +100,7 @@ try {
     (r) => r.ok && r.n === 1 && r.rows[0].overdue === false);
   await step("Finance sees it too", ids.finance, `select count(*)::int n from ops.advances_open() where voucher_id = $1`, [adv], (r) => r.ok && r.rows[0].n === 1);
   await step("a chef sees no one's advances", ids.chef, `select count(*)::int n from ops.advances_open()`, [], (r) => r.ok && r.rows[0].n === 0);
-  await c.query(`update ops.voucher_events set at = now() - interval '20 days' where voucher_id = $1 and action = 'approve'`, [adv]);
+  await c.query(`update ops.voucher_events set at = now() - interval '20 days' where voucher_id = $1 and action = 'release'`, [adv]);
   await step("twenty days on, it is overdue", ids.driver, `select overdue from ops.advances_open() where voucher_id = $1`, [adv], (r) => r.ok && r.rows[0].overdue === true);
   const adv2 = val(await step("the driver drafts another advance", ids.driver, `select ops.voucher_save(null, $1::jsonb, $2::jsonb)`, [header({ kind: "cash_advance" }), item(500)], (r) => r.ok));
   await step("... sending it waits for the overdue one", ids.driver, `select ops.voucher_act($1, 'submit')`, [adv2], (r) => !r.ok && /overdue cash advance/.test(r.error), false);
@@ -173,6 +186,76 @@ try {
   await step("... 15 withheld, the person still named", null, `select ewt_total, recipient_name is not null named, payee_id = $2 linked from ops.vouchers where id = $1`, [toPerson, person],
     (r) => r.ok && Number(r.rows[0].ewt_total) === 15 && r.rows[0].named && r.rows[0].linked);
   await step("a payee without an ATC withholds nothing", null, `select ewt_total from ops.vouchers where id = $1`, [s1], (r) => r.ok && Number(r.rows[0].ewt_total) === 0);
+  // 4. Paying.
+  const reim = val(await step("a 2,000 reimbursement paid by check", ids.driver, `select ops.voucher_save(null, $1::jsonb, $2::jsonb)`, [header({ kind: "reimbursement", pay_method: "check" }), item(2000)], (r) => r.ok));
+  await walk("reimbursement", reim, ids.driver, null, false, false);
+  await step("Finance has its payment to prepare", ids.finance, `select count(*)::int n from ops.voucher_queue() where voucher_id = $1 and step = 'prepare_payment'`, [reim], (r) => r.ok && r.rows[0].n === 1);
+  await step("the requester can't prepare their own payment", ids.driver, `select ops.voucher_pay($1, 'prepare_payment', $2, 'CHK-1')`, [reim, bdo], refused("42501"), false);
+  await step("a payment from an expense account is refused", ids.finance, `select ops.voucher_pay($1, 'prepare_payment', (select id from ops.coa_accounts where code = '5303'), 'CHK-1')`, [reim], refused("23514"), false);
+  await step("a check needs its number", ids.finance, `select ops.voucher_pay($1, 'prepare_payment', $2)`, [reim, bdo], refused("23514"), false);
+  await step("approving the payment waits for it to be prepared", ids.admin2, `select ops.voucher_pay($1, 'approve_payment')`, [reim], refused("23514"), false);
+  await step("Finance prepares the payment: BDO, check 1001", ids.finance, `select ops.voucher_pay($1, 'prepare_payment', $2, 'CHK-1001')`, [reim, bdo], (r) => r.ok && val(r) === "payment_prepared");
+  await c.query(`insert into ops.voucher_authority (step, staff_id) values ('approve_payment', $1), ('release', $1)`, [ids.finance]);
+  await step("the payment's preparer can't also approve it", ids.finance, `select ops.voucher_pay($1, 'approve_payment')`, [reim], refused("42501"), false);
+  await step("the signatory approves the payment", ids.admin2, `select ops.voucher_pay($1, 'approve_payment')`, [reim], (r) => r.ok && val(r) === "payment_approved");
+  await step("the payment's preparer can't release it either", ids.finance, `select ops.voucher_pay($1, 'release')`, [reim], refused("42501"), false);
+  await c.query(`delete from ops.voucher_authority where staff_id = $1 and step in ('approve_payment', 'release')`, [ids.finance]);
+  await step("the releaser releases it", ids.office, `select ops.voucher_pay($1, 'release')`, [reim], (r) => r.ok && val(r) === "released");
+  await step("... posted to the cash book: 2,000 out, by program", null, `select sum(amount)::numeric t, count(*)::int n, bool_and(direction = 'outflow' and source = 'voucher') ok from ops.cash_entries where source_id like 'voucher:' || $1 || '%'`, [reim],
+    (r) => r.ok && Number(r.rows[0].t) === 2000 && r.rows[0].ok);
+  await step("released once only", ids.office, `select ops.voucher_pay($1, 'release')`, [reim], refused("23514"), false);
+  const stop = val(await step("another reimbursement, approved", ids.driver, `select ops.voucher_save(null, $1::jsonb, $2::jsonb)`, [header({ kind: "reimbursement" }), item(300)], (r) => r.ok));
+  await walk("to cancel", stop, ids.driver, null, false, false);
+  await step("the requester can't cancel it once approved", ids.driver, `select ops.voucher_act($1, 'cancel', 'not needed')`, [stop], refused(), false);
+  await step("Finance can, before it is paid", ids.finance, `select ops.voucher_act($1, 'cancel', 'Paid another way')`, [stop], (r) => r.ok && val(r) === "cancelled");
+  const adv3 = val(await step("a 500 advance", ids.driver, `select ops.voucher_save(null, $1::jsonb, $2::jsonb)`, [header({ kind: "cash_advance" }), item(500)], (r) => r.ok));
+  await c.query(`update ops.finance_settings set block_advance_when_overdue = false`);
+  await walk("advance 3", adv3, ids.driver, null, false, false);
+  await step("approved but not yet paid: not open, and not to liquidate yet", ids.driver, `select (select count(*)::int from ops.advances_open() where voucher_id = $1) n`, [adv3], (r) => r.ok && r.rows[0].n === 0);
+  await step("... liquidating waits for the cash", ids.driver, `select ops.voucher_liquidate($1)`, [adv3], refused("42501"), false);
+  await payOut("advance 3", adv3);
+  await step("paid: open, due from the release", ids.driver, `select count(*)::int n from ops.advances_open() where voucher_id = $1`, [adv3], (r) => r.ok && r.rows[0].n === 1);
+  const liq3 = val(await step("the driver liquidates: nothing spent", ids.driver, `select ops.voucher_liquidate($1)`, [adv3], (r) => r.ok));
+  await step("... the item at 0", ids.driver, `select ops.voucher_save($1, $2::jsonb, $3::jsonb)`, [liq3, header({ kind: "liquidation", purpose: "Trip cancelled" }), item(0)], (r) => r.ok);
+  await walk("zero liquidation", liq3, ids.driver, null, false, false);
+  await step("settling needs the account the change goes back to", ids.office, `select ops.voucher_pay($1, 'release')`, [liq3], refused("23514"), false);
+  await step("settled into BDO", ids.office, `select ops.voucher_pay($1, 'release', $2)`, [liq3, bdo], (r) => r.ok && val(r) === "released");
+  await step("... 500 back into the cash book", null, `select direction, amount from ops.cash_entries where source_id = 'voucher:' || $1`, [liq3], (r) => r.ok && r.rows[0].direction === "inflow" && Number(r.rows[0].amount) === 500);
+  await step("... and the advance is settled", ids.driver, `select count(*)::int n from ops.advances_open() where voucher_id = $1`, [adv3], (r) => r.ok && r.rows[0].n === 0);
+  await step("a top-up posts nothing to the cash book (the slips did)", null, `select count(*)::int n from ops.cash_entries where source_id like 'voucher:' || $1 || '%'`, [top], (r) => r.ok && r.rows[0].n === 0);
+
+  // 5. QuickBooks.
+  const today = await one(`select (now() at time zone 'Asia/Manila')::date::text`);
+  await step("a driver can't export", ids.driver, `select count(*) from ops.voucher_qb_export($1, $1)`, [today], refused("42501"), false);
+  const qb = await step("Finance exports today's journal", ids.finance, `select * from ops.voucher_qb_export($1, $1)`, [today], (r) => r.ok && r.n > 0);
+  const byJournal = new Map();
+  for (const row of qb.rows ?? []) {
+    const j = byJournal.get(row.journal_no) ?? { d: 0, c: 0 };
+    j.d += Number(row.debit ?? 0);
+    j.c += Number(row.credit ?? 0);
+    byJournal.set(row.journal_no, j);
+  }
+  await step("every entry balances (debits = credits)", null, `select 1`, [], () => byJournal.size > 0 && [...byJournal.values()].every((j) => Math.abs(j.d - j.c) < 0.005));
+  const jv = (qb.rows ?? []).filter((r) => r.voucher_id === liq);
+  await step("the 2,600 liquidation: lines debited, 1401 credited 3,000, 400 change debited to BDO", null, `select 1`, [],
+    () => jv.some((r) => r.account.startsWith("1401") && Number(r.credit) === 3000) && jv.some((r) => r.account.startsWith("1101") && Number(r.debit) === 400));
+  const paidCheck = (qb.rows ?? []).filter((r) => r.voucher_id === reim);
+  await step("the check: 2,000 credited to BDO with its number", null, `select 1`, [], () => paidCheck.some((r) => r.account.startsWith("1101") && Number(r.credit) === 2000 && /CHK-1001/.test(r.description)));
+  await step("Finance exports and marks them", ids.finance, `select count(*)::int n from ops.voucher_qb_export($1, $1, true)`, [today], (r) => r.ok && r.rows[0].n > 0);
+  await step("a second export says they were exported before", ids.finance, `select bool_and(already_exported) ok from ops.voucher_qb_export($1, $1)`, [today], (r) => r.ok && r.rows[0].ok === true);
+
+  // 6. The bank.
+  const tx = await one(`insert into ops.bank_transactions (account_id, import_id, row_seq, posting_date, description, debit, running_balance, check_number)
+    select account_id, import_id, 999999, (now() at time zone 'Asia/Manila')::date, 'TEST CHECK 1001', 2000, 0, 'CHK-1001' from ops.bank_transactions limit 1 returning id`);
+  const wrong = await one(`insert into ops.bank_transactions (account_id, import_id, row_seq, posting_date, description, debit, running_balance)
+    select account_id, import_id, 999998, (now() at time zone 'Asia/Manila')::date, 'TEST OTHER', 1999, 0 from ops.bank_transactions limit 1 returning id`);
+  await step("a driver can't match to the bank", ids.driver, `select ops.voucher_bank_match($1, $2)`, [reim, tx], refused("42501"), false);
+  await step("a debit of another amount is refused", ids.finance, `select ops.voucher_bank_match($1, $2)`, [reim, wrong], refused("23514"), false);
+  await step("Finance matches the check to its bank debit", ids.finance, `select ops.voucher_bank_match($1, $2)`, [reim, tx], (r) => r.ok);
+  await step("... the debit is marked matched to the voucher's cash entry", null, `select t.matched_cash_entry_id is not null m, v.bank_transaction_id = t.id linked from ops.bank_transactions t, ops.vouchers v where t.id = $1 and v.id = $2`, [tx, reim],
+    (r) => r.ok && r.rows[0].m && r.rows[0].linked);
+  await step("the same debit can't serve another voucher", ids.finance, `select ops.voucher_bank_match($1, $2)`, [liq3, tx], refused("23514"), false);
+  await step("unmatching frees the debit", ids.finance, `select ops.voucher_bank_match($1, null), (select matched_cash_entry_id is null from ops.bank_transactions where id = $2) freed`, [reim, tx], (r) => r.ok, false);
   await step("the funds page is seeded: Finance edits, the CEO views", null, `select string_agg(role || '=' || level, ',' order by role) s from shared.role_page_access where page = 'finance.funds'`, [],
     (r) => r.ok && /finance=edit/.test(r.rows[0].s) && /ceo=view/.test(r.rows[0].s));
 } finally {

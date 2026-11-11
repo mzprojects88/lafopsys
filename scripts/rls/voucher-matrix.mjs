@@ -42,7 +42,7 @@ const UNR = "md5('code:T2:UNR')";
 
 try {
   await c.query("begin");
-  for (const m of ["0134_vouchers.sql", "0135_pay_a_person.sql", "0136_voucher_history_fixes.sql", "0138_funds_advances_ewt.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${m}`, import.meta.url), "utf8"));
+  for (const m of ["0134_vouchers.sql", "0135_pay_a_person.sql", "0136_voucher_history_fixes.sql", "0138_funds_advances_ewt.sql", "0139_payment_books_quickbooks.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${m}`, import.meta.url), "utf8"));
   const ids = (await c.query(`select
     (select id from shared.staff where role = 'admin' and active order by id limit 1) admin1,
     (select id from shared.staff where role = 'admin' and active order by id offset 1 limit 1) admin2,
@@ -179,7 +179,8 @@ try {
   await c.query(`insert into ops.voucher_files (id, voucher_id, kind, object_key, file_name, content_type, bytes, uploaded_by) values (gen_random_uuid(), $1, 'receipt', 'test/' || gen_random_uuid(), 'or.jpg', 'image/jpeg', 10, $2)`, [fd, ids.sw]);
   await step("a draft with files can't be discarded (they would stay in the store)", ids.sw, `select ops.voucher_act($1, 'discard')`, [fd], refused("23514"), false);
   await step("Finance can't attach to someone's draft", ids.finance, `select ops.voucher_can_attach($1) ok`, [fd], (r) => r.ok && r.rows[0].ok === false);
-  await step("Finance can't attach after approval", ids.finance, `select ops.voucher_can_attach($1) ok`, [vid], (r) => r.ok && r.rows[0].ok === false);
+  await step("Finance attaches after approval (the proof of payment, 0139)", ids.finance, `select ops.voucher_can_attach($1) ok`, [vid], (r) => r.ok && r.rows[0].ok === true);
+  await step("... the requester can't", ids.sw, `select ops.voucher_can_attach($1) ok`, [vid], (r) => r.ok && r.rows[0].ok === false);
   await c.query(`update ops.voucher_authority set alternate_staff_id = null where step = 'endorse' and requester_role = 'office_admin'`);
   await c.query(`update ops.voucher_authority set staff_id = $1 where step = 'endorse' and requester_role = 'office_admin'`, [ids.office]);
   const own = val(await step("the office admin (sole endorser for their role) drafts a request", ids.office, `select ops.voucher_save(null, $1::jsonb, $2::jsonb) id`, [header(), lines], (r) => r.ok));
