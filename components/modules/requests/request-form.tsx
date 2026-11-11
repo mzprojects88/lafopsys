@@ -77,7 +77,6 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
     kind: voucher?.kind ?? "reimbursement",
     purpose: voucher?.purpose ?? "",
     payee_id: voucher?.payeeId ?? null,
-    t2_id: null,
     pay_method: voucher?.payMethod ?? "cash",
     needed_by: voucher?.neededBy ?? null,
     urgent: voucher?.urgent ?? false,
@@ -118,7 +117,7 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
     const person = toPerson
       ? { to_person: true, recipient_category_id: header.recipient_category_id, patient_id: category?.kind === "patient" && readsPatients ? header.patient_id : null, recipient_name: header.recipient_name }
       : { to_person: false, recipient_category_id: null, patient_id: null, recipient_name: null };
-    const saved = await saveVoucher(voucher?.id ?? null, { ...header, ...person, t2_id: null, payee_id: header.kind === "supplier" && !toPerson ? header.payee_id : null }, items.map((i) => ({ description: i.description, qty: Number(i.qty) || 0, unit_cost: Number(i.unit_cost), or_number: i.or_number, expense_type_id: i.expense_type_id })));
+    const saved = await saveVoucher(voucher?.id ?? null, { ...header, ...person, payee_id: header.kind === "supplier" && !toPerson ? header.payee_id : null }, items.map((i) => ({ description: i.description, qty: Number(i.qty) || 0, unit_cost: Number(i.unit_cost), or_number: i.or_number, expense_type_id: i.expense_type_id })));
     if (!saved.ok) {
       setBusy(false);
       return void toast.error(saved.error);

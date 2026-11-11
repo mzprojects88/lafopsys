@@ -146,6 +146,12 @@ end $$;
 revoke all on function ops.voucher_save(uuid, jsonb, jsonb) from public;
 grant execute on function ops.voucher_save(uuid, jsonb, jsonb) to authenticated;
 
+-- Funds requesters picked before 0140, on requests Finance has not prepared yet, are cleared (none on 12 Nov; for
+-- safety). A liquidation keeps its advance's; a top-up keeps the one Finance gave it.
+update ops.vouchers set t2_id = null
+where source = 'app' and voucher_number is null and kind not in ('liquidation', 'fund_topup')
+  and status in ('draft', 'submitted', 'returned', 'endorsed') and t2_id is not null;
+
 -- 2. Financial › Ledger.
 insert into shared.role_page_access (role, page, level)
 select r.role, p.page, r.level from (values ('finance.ledger')) p(page)

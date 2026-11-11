@@ -26,7 +26,7 @@ import { optionsOf } from "@/lib/utils/filters";
 import { csvLines, downloadCsv } from "@/lib/utils/csv";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate, todayIso } from "@/lib/utils/date";
-import { KIND_LABEL, STATUS_LABEL } from "@/lib/utils/vouchers";
+import { KIND_LABEL, settledAdvances, STATUS_LABEL } from "@/lib/utils/vouchers";
 import { BASIS_LABEL, ledgerDay, ledgerTotals, STAGE_LABEL, STAGES, stageOf, type Basis, type Stage } from "@/lib/utils/voucher-ledger";
 
 const peso = (n: number) => formatCurrency(n, "PHP", true);
@@ -58,6 +58,8 @@ function LedgerContent() {
   const [view, setView] = React.useState<"accounts" | "items">("accounts");
   const [basis, setBasis] = React.useState<Basis>("voucher");
   const [query, setQuery] = React.useState("");
+  const [minAmount, setMinAmount] = React.useState("");
+  const [maxAmount, setMaxAmount] = React.useState("");
   const [exporting, setExporting] = React.useState(false);
   const f = useFilters("stage", "account", "group", "t1", "t3", "t2", "t4", "type", "kind", "payto", "requester", "state", "source");
 
@@ -70,12 +72,13 @@ function LedgerContent() {
   const accountName = (id: string | null, legacy: string | null) => [account(id)?.code ?? legacy, account(id)?.name].filter(Boolean).join(" ") || "Uncoded";
   const groupOf = (id: unknown) => String(account(account(id)?.parent_id)?.code ?? "");
   // Who is paid: the person, the supplier Finance linked, the register's payee, else the requester (their own advance or reimbursement).
-  const payTo = (v: Voucher) => (v.toPerson ? v.recipientName : null) ?? (payees.find((p) => p.id === v.payeeId)?.name as string | undefined) ?? v.payeeText ?? name(v.requestedBy) ?? "";
+  const payeeName = React.useMemo(() => new Map(payees.map((p) => [String(p.id), String(p.name)])), [payees]);
+  const payTo = (v: Voucher) => (v.toPerson ? v.recipientName : null) ?? (v.payeeId ? payeeName.get(v.payeeId) : undefined) ?? v.payeeText ?? name(v.requestedBy);
   const states = (v: Voucher) =>
     v.status === "released" ? ["paid", v.exportedAt ? "exported" : "not_exported", v.bankTransactionId ? "matched" : "unmatched"] : ["unpaid"];
   const eventsOf = React.useMemo(() => {
     const m = new Map<string, typeof events>();
-    for (const e of events) m.set(e.voucherId, [...(m.get(e.voucherId) ?? []), e]);
+    for (const e of events) (m.get(e.voucherId) ?? m.set(e.voucherId, []).get(e.voucherId)!).push(e);
     return m;
   }, [events]);
 
@@ -88,10 +91,18 @@ function LedgerContent() {
     });
   }, [vouchers, lines, basis, eventsOf]);
 
+  // Spending counted once: a top-up refills what its slips spent, and an advance gives way to its liquidation once
+  // that counts. Both show when their kind is picked.
+  const settled = React.useMemo(() => settledAdvances(vouchers), [vouchers]);
   const w = period.window;
   const q = query.trim().toLowerCase();
-  const shown = all.filter(({ v, l, stage, day }) =>
+  const min = Number(minAmount) || 0;
+  const max = maxAmount ? Number(maxAmount) : Infinity;
+  const shown = React.useMemo(() => all.filter(({ v, l, stage, day }) =>
     (f.values.stage === "all" ? stage !== "stopped" : stage === f.values.stage) &&
+    (f.values.kind === "all" ? v.kind !== "fund_topup" && !(v.kind === "cash_advance" && settled.has(v.id)) : v.kind === f.values.kind) &&
+    l.amount >= min &&
+    l.amount <= max &&
     (!w || (!!day && day >= w.from && day <= w.to)) &&
     f.ok("account", l.accountId) &&
     f.ok("group", groupOf(l.accountId)) &&
@@ -100,16 +111,23 @@ function LedgerContent() {
     f.ok("t2", v.t2Id ?? "none") &&
     f.ok("t4", v.t4Code) &&
     f.ok("type", v.voucherType ?? "none") &&
-    f.ok("kind", v.kind) &&
     f.ok("payto", payTo(v)) &&
     f.ok("requester", v.requestedBy) &&
     (f.values.state === "all" || states(v).includes(f.values.state)) &&
     f.ok("source", v.source) &&
     (!q || [v.requestNumber, v.voucherNumber, v.legacyNumber, v.purpose, l.description, l.orNumber, v.payReference].some((x) => x?.toLowerCase().includes(q)))
-  );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the helpers read accounts, payees and staff, listed here
+  ), [all, f.values, w, q, min, max, settled, payeeName, accounts, staff]);
   const sum = ledgerTotals(shown.map((r) => r.l));
-  const sections = [...shown.reduce((m, r) => m.set(r.l.accountId ?? r.l.legacyCode ?? "", [...(m.get(r.l.accountId ?? r.l.legacyCode ?? "") ?? []), r]), new Map<string, Row[]>()).values()]
-    .sort((a, b) => accountName(a[0].l.accountId, a[0].l.legacyCode).localeCompare(accountName(b[0].l.accountId, b[0].l.legacyCode)));
+  const sections = React.useMemo(() => {
+    const m = new Map<string, Row[]>();
+    for (const r of shown) {
+      const key = r.l.accountId ?? r.l.legacyCode ?? "";
+      (m.get(key) ?? m.set(key, []).get(key)!).push(r);
+    }
+    return [...m.values()].sort((a, b) => accountName(a[0].l.accountId, a[0].l.legacyCode).localeCompare(accountName(b[0].l.accountId, b[0].l.legacyCode)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- accountName reads accounts, listed here
+  }, [shown, accounts]);
 
   const opt = {
     stage: STAGES.map((s) => ({ value: s.key, label: s.label })),
@@ -200,12 +218,14 @@ function LedgerContent() {
         <FilterSelect all="All funds" value={f.values.t2} onChange={f.set("t2")} options={opt.t2} />
         <FilterSelect all="All employees" value={f.values.t4} onChange={f.set("t4")} options={opt.t4} />
         <FilterSelect all="All voucher types" value={f.values.type} onChange={f.set("type")} options={opt.type} />
-        <FilterSelect all="All kinds" value={f.values.kind} onChange={f.set("kind")} options={opt.kind} className="w-48" />
+        <FilterSelect all="All spending" value={f.values.kind} onChange={f.set("kind")} options={opt.kind} className="w-48" />
         <FilterSelect all="Paid to anyone" value={f.values.payto} onChange={f.set("payto")} options={opt.payto} className="w-48" />
         <FilterSelect all="Everyone who asked" value={f.values.requester} onChange={f.set("requester")} options={opt.requester} className="w-48" />
         <FilterSelect all="Paid or not" value={f.values.state} onChange={f.set("state")} options={opt.state} className="w-52" />
         <FilterSelect all="App and registers" value={f.values.source} onChange={f.set("source")} options={opt.source} />
-        <ClearFilters active={f.active + (query ? 1 : 0)} onClear={() => (f.clear(), setQuery(""))} />
+        <Input className="w-28" type="number" inputMode="decimal" placeholder="₱ from" value={minAmount} onChange={(e) => setMinAmount(e.target.value)} aria-label="Item amount from" />
+        <Input className="w-28" type="number" inputMode="decimal" placeholder="₱ to" value={maxAmount} onChange={(e) => setMaxAmount(e.target.value)} aria-label="Item amount to" />
+        <ClearFilters active={f.active + (query ? 1 : 0) + (minAmount ? 1 : 0) + (maxAmount ? 1 : 0)} onClear={() => (f.clear(), setQuery(""), setMinAmount(""), setMaxAmount(""))} />
       </div>
 
       <Tabs value={view} onValueChange={(v) => setView(v as "accounts" | "items")}>

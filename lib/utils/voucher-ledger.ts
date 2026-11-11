@@ -3,7 +3,7 @@
  * chosen date, and the totals of a set of coded items. The page filters and groups; nothing here reads data.
  */
 import { dayKey } from "./dtr.ts";
-import type { VoucherAction, VoucherStatus } from "./vouchers.ts";
+import { APPROVED, type VoucherAction, type VoucherStatus } from "./vouchers.ts";
 
 export type Stage = "payment_request" | "approved_request" | "payment_voucher" | "approved_voucher" | "paid" | "stopped";
 /** The stages in order (decided 12 Nov 2026: Paid on its own after Approved Voucher). */
@@ -48,22 +48,22 @@ export const BASIS_LABEL: Record<Basis, string> = { requested: "Requested on", v
 
 /**
  * The Manila day a request counts on for a basis, or null when it hasn't got there (not approved, not paid). The
- * voucher date falls back to the day it was sent while Finance hasn't prepared it. A voucher from the registers
- * has its register date (its history event) wherever its own steps are missing.
+ * voucher date falls back to the day it was sent while Finance hasn't prepared it. A voucher from the registers was
+ * "sent" on its register date and paid on its paid day; one approved without an approver's name counts on its
+ * register date. Corrections (history events) never move a date.
  */
 export function ledgerDay(
   basis: Basis,
-  v: { submittedAt: string | null; createdAt: string; releasedAt: string | null },
+  v: { status: VoucherStatus; submittedAt: string | null; createdAt: string; releasedAt: string | null },
   events: readonly { action: VoucherAction; at: string }[]
 ): string | null {
   const last = (action: VoucherAction) => events.filter((e) => e.action === action).map((e) => e.at).sort().at(-1);
-  const register = last("history");
-  const sent = v.submittedAt ?? register ?? v.createdAt;
+  const sent = v.submittedAt ?? v.createdAt;
   const at =
     basis === "requested" ? sent
     : basis === "voucher" ? (last("prepare") ?? sent)
-    : basis === "approved" ? (last("approve") ?? register)
-    : (v.releasedAt ?? last("release") ?? null);
+    : basis === "approved" ? (last("approve") ?? (APPROVED.includes(v.status) ? sent : null))
+    : (v.releasedAt ?? null);
   return at ? dayKey(at) : null;
 }
 

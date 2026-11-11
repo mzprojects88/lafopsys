@@ -27,11 +27,9 @@ import { useRole } from "@/lib/rbac/use-role";
 import { optionsOf, words } from "@/lib/utils/filters";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
-import { dayKey } from "@/lib/utils/dtr";
+import { BASIS_LABEL as BASIS, ledgerDay, type Basis } from "@/lib/utils/voucher-ledger";
 import { APPROVED, daysWaiting, KIND_LABEL, OPEN, PAY_LABEL, STATUS_LABEL } from "@/lib/utils/vouchers";
 
-type Basis = "requested" | "prepared" | "approved";
-const BASIS: Record<Basis, string> = { requested: "Requested on", prepared: "Voucher date", approved: "Approved on" };
 
 export default function RequestsPage() {
   return (
@@ -85,7 +83,7 @@ function RequestsContent() {
   const [tab, setTab] = React.useState<"waiting" | "all">("all");
   const [basis, setBasis] = React.useState<Basis>("requested");
   const [query, setQuery] = React.useState("");
-  const f = useFilters("type", "kind", "status", "requester", "pay", "flag", "recipient");
+  const f = useFilters("type", "kind", "status", "requester", "signer", "pay", "flag", "recipient");
   const seesLedger = levelOfPath("/finance/ledger") !== "none";
   const { data: categories } = useSetupRows("recipient_categories");
   const now = useNow().getTime();
@@ -102,16 +100,12 @@ function RequestsContent() {
   }, [lines]);
   const eventsOf = React.useMemo(() => {
     const m = new Map<string, typeof events>();
-    for (const e of events) m.set(e.voucherId, [...(m.get(e.voucherId) ?? []), e]);
+    for (const e of events) (m.get(e.voucherId) ?? m.set(e.voucherId, []).get(e.voucherId)!).push(e);
     return m;
   }, [events]);
   const filesOf = new Set(files.map((x) => x.voucherId));
-  const dateOf = (v: Voucher): string | null => {
-    // The Manila day: a request sent at 7:30 AM on the 1st belongs to the 1st, not the 30th (UTC).
-    if (basis === "requested") return dayKey(v.submittedAt ?? v.createdAt);
-    const ev = (eventsOf.get(v.id) ?? []).filter((e) => e.action === (basis === "prepared" ? "prepare" : "approve")).at(-1);
-    return ev ? dayKey(ev.at) : null;
-  };
+  // The same Manila day as on the Ledger, for the same basis.
+  const dateOf = (v: Voucher) => ledgerDay(basis, v, eventsOf.get(v.id) ?? []);
   const lastMove = (v: Voucher) => (eventsOf.get(v.id) ?? []).at(-1)?.at ?? v.createdAt;
   const flags = (v: Voucher) => {
     const out: string[] = [];
@@ -136,6 +130,7 @@ function RequestsContent() {
       f.ok("kind", v.kind) &&
       f.ok("status", v.status) &&
       f.ok("requester", v.requestedBy) &&
+      (f.values.signer === "all" || (eventsOf.get(v.id) ?? []).some((e) => e.actor === f.values.signer)) &&
       f.ok("pay", v.payMethod) &&
       f.ok("recipient", v.toPerson ? v.recipientCategoryId : "none") &&
       (f.values.flag === "all" || flags(v).includes(f.values.flag)) &&
@@ -153,6 +148,7 @@ function RequestsContent() {
     kind: optionsOf(vouchers, (v) => v.kind, (k) => KIND_LABEL[k as keyof typeof KIND_LABEL] ?? words(k)),
     status: optionsOf(vouchers, (v) => v.status, (s) => STATUS_LABEL[s as keyof typeof STATUS_LABEL] ?? words(s)),
     requester: optionsOf(vouchers, (v) => v.requestedBy, (id) => name(id) || "—"),
+    signer: optionsOf(events, (e) => e.actor, (id) => name(id) || "—"),
     pay: optionsOf(vouchers, (v) => v.payMethod, (p) => PAY_LABEL[p] ?? p),
     recipient: optionsOf(vouchers, (v) => (v.toPerson ? v.recipientCategoryId : "none"), (id) => (id === "none" ? "Not to a person" : `To: ${String(categories.find((c) => c.id === id)?.name ?? "a person")}`)),
     flag: optionsOf(vouchers.flatMap((v) => flags(v)), (x) => x, (x) => FLAG_LABEL[x] ?? x),
@@ -227,6 +223,7 @@ function RequestsContent() {
         <FilterSelect all="All kinds" value={f.values.kind} onChange={f.set("kind")} options={opt.kind} className="w-48" />
         <FilterSelect all="All statuses" value={f.values.status} onChange={f.set("status")} options={opt.status} className="w-48" />
         <FilterSelect all="Everyone who asked" value={f.values.requester} onChange={f.set("requester")} options={opt.requester} className="w-48" />
+        <FilterSelect all="Signed by anyone" value={f.values.signer} onChange={f.set("signer")} options={opt.signer} className="w-48" />
         <FilterSelect all="Any payment" value={f.values.pay} onChange={f.set("pay")} options={opt.pay} />
         <FilterSelect all="Paid to anyone" value={f.values.recipient} onChange={f.set("recipient")} options={opt.recipient} className="w-48" />
         <FilterSelect all="No flag" value={f.values.flag} onChange={f.set("flag")} options={opt.flag} className="w-48" />

@@ -72,6 +72,6 @@ describe("voucher history: reading the registers", () => {
     assert.equal(vouchers[0].lines.length, 1);
     assert.equal(vouchers[0].lines[0].accountId, "a5204h");
     assert.equal(vouchers[0].paidOn, "2026-08-10");
-    assert.equal(vouchers[0].status, "approved");
+    assert.equal(vouchers[0].status, "released");
   });
 });

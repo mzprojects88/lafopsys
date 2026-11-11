@@ -158,7 +158,3 @@ export const daysWaiting = (since: string, now: number) => Math.max(0, Math.floo
 export const fundAllows = (prefixes: readonly string[], code: string | null | undefined) =>
   prefixes.length === 0 || (!!code && prefixes.some((p) => code.startsWith(p)));
 
-/** What a list shows for a request: its total, or with a code filter on, only the lines that match it. */
-export function shownAmount<L extends { amount: number }>(total: number, lines: readonly L[], match: ((line: L) => boolean) | null): number {
-  return match ? lines.filter(match).reduce((s, l) => s + l.amount, 0) : total;
-}

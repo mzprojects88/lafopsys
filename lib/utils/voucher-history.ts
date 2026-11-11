@@ -48,7 +48,7 @@ export interface HistoryVoucher {
   fundId: string | null;
   total: number;
   link: string | null;
-  status: "prepared" | "approved" | "cancelled";
+  status: "prepared" | "approved" | "released" | "cancelled";
   paidOn: string | null;
   signers: HistorySigner[];
   lines: HistoryLine[];
@@ -153,7 +153,8 @@ export function readHistory(type: HistoryType, register: readonly string[][], de
     const statusText = get(r, col.status).toLowerCase();
     const paidOn = statusText === "paid" ? (parseDay(get(r, col.paid)) ?? date) : null;
     let status: HistoryVoucher["status"];
-    if (statusText === "paid" || (!statusText && signers.some((s) => s.action === "approve"))) status = "approved";
+    if (statusText === "paid") status = "released";
+    else if (!statusText && signers.some((s) => s.action === "approve")) status = "approved";
     else if (/^(cancel|void)/.test(statusText)) status = "cancelled";
     else {
       status = "prepared";

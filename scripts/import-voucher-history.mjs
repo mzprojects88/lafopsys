@@ -72,7 +72,7 @@ try {
     const signers = vouchers.flatMap((v) => v.signers);
     console.log(`${type}: ${vouchers.length} vouchers (${skipped} rows without a number skipped; ${orphanDetails} detail rows whose number isn't in the register left out), ${vouchers.reduce((s, v) => s + v.lines.length, 0)} lines, ` +
       `PHP ${vouchers.reduce((s, v) => s + v.total, 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}, ${dates[0] ?? "?"} to ${dates.at(-1) ?? "?"}`);
-    console.log(`   status: ${["prepared", "approved", "cancelled"].map((s) => `${s} ${vouchers.filter((v) => v.status === s).length}`).join(", ")}; paid ${vouchers.filter((v) => v.paidOn).length}`);
+    console.log(`   status: ${["prepared", "approved", "released", "cancelled"].map((s) => `${s} ${vouchers.filter((v) => v.status === s).length}`).join(", ")}; paid ${vouchers.filter((v) => v.paidOn).length}`);
     console.log(`   to clean up: ${vouchers.filter((v) => v.reasons.length).length} vouchers; by reason: ${Object.entries(reasons).map(([k, n]) => `${k} ${n}`).join(", ") || "none"}`);
     if (signers.length) console.log(`   signers: ${signers.length}, matched to a staff account ${signers.filter((s) => s.staffId).length}`);
   }
@@ -95,11 +95,12 @@ try {
       const id = (await c.query("select md5($1)::uuid id", [`hist:${v.key}`])).rows[0].id;
       const occ = v.key.split(":").at(-1);
       const r = await c.query(
-        `insert into ops.vouchers (id, source, voucher_type, voucher_number, legacy_number, kind, status, purpose, payee_text, t2_id, total, legacy_link, needs_cleanup, pay_method, created_at, submitted_at, cleanup_reasons)
-         values ($1, 'sheet', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, coalesce(($14::date)::timestamp at time zone 'Asia/Manila', now()), ($14::date)::timestamp at time zone 'Asia/Manila', $15)
+        `insert into ops.vouchers (id, source, voucher_type, voucher_number, legacy_number, kind, status, purpose, payee_text, t2_id, total, legacy_link, needs_cleanup, pay_method, created_at, submitted_at, cleanup_reasons, released_at)
+         values ($1, 'sheet', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, coalesce(($14::date)::timestamp at time zone 'Asia/Manila', now()), ($14::date)::timestamp at time zone 'Asia/Manila', $15,
+                 ($16::date)::timestamp at time zone 'Asia/Manila')
          on conflict (id) do nothing`,
         [id, v.type, `${v.type} ${v.number}${occ === "1" ? "" : ` (${occ})`}`, v.number, v.type === "PCV" ? "petty_cash" : "supplier", v.status, v.purpose, v.payee, v.fundId, v.total, v.link,
-         v.reasons.length > 0, v.type === "GCV" ? "gcash" : "cash", v.date, v.reasons]
+         v.reasons.length > 0, v.type === "GCV" ? "gcash" : "cash", v.date, v.reasons, v.status === "released" ? v.paidOn : null]
       );
       if (!r.rowCount) continue;
       vIn++;

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { countedDay, daysWaiting, durationWords, fundAllows, quarterOf, settledAdvances, settlement, shownAmount, trackSteps } from "../lib/utils/vouchers.ts";
+import { countedDay, daysWaiting, durationWords, fundAllows, quarterOf, settledAdvances, settlement, trackSteps } from "../lib/utils/vouchers.ts";
 import { escapeCsv } from "../lib/utils/csv.ts";
 
 const ev = (action, at, actor = "a") => ({ action, at, actor, note: null });
@@ -65,11 +65,6 @@ describe("vouchers: words and sums", () => {
     assert.equal(fundAllows(["52", "5503"], "5303"), false);
     assert.equal(fundAllows([], "5303"), true);
     assert.equal(fundAllows(["52"], null), false);
-  });
-  it("with a code filter, a request counts only its matching lines", () => {
-    const lines = [{ amount: 100, code: "5303" }, { amount: 50, code: "5934" }];
-    assert.equal(shownAmount(150, lines, null), 150);
-    assert.equal(shownAmount(150, lines, (l) => l.code === "5303"), 100);
   });
 });
 
