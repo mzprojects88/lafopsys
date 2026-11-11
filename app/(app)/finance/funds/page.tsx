@@ -87,11 +87,11 @@ export default function FundsPage() {
                   value={peso(f.cashOnHand)}
                   icon={f.kind === "gcash" ? Smartphone : Banknote}
                   tone={f.low ? "warning" : "default"}
-                  sublabel={`of ${f.float == null ? "no float set" : peso(f.float)} · ${f.openCount} open slip${f.openCount === 1 ? "" : "s"} (${peso(f.openAmount)})${f.topUpPending ? " · a top-up is on its way" : f.low ? " · below the top-up point" : ""}`}
+                  sublabel={`${f.float == null ? "No float set yet" : `of ${peso(f.float)}`} · ${f.openCount} open slip${f.openCount === 1 ? "" : "s"} (${peso(f.openAmount)})${f.topUpPending ? " · a top-up is on its way" : f.low ? " · below the top-up point" : ""}`}
                 />
                 {canEdit("finance") ? (
                   <Button variant={f.low ? "default" : "outline"} size="sm" disabled={busy === f.fundId || f.toRefill === 0} onClick={() => void topUp(f.fundId)}>
-                    Top up from the open slips
+                    Top up
                   </Button>
                 ) : null}
               </div>
