@@ -3,6 +3,8 @@
  * shows (who signed what, when, how long it took, who it waits for), and the amount a list shows when it is
  * filtered by a code. The database decides who may sign; nothing here does.
  */
+import { dayKey } from "./dtr.ts";
+
 export type VoucherKind = "reimbursement" | "cash_advance" | "supplier" | "petty_cash";
 export type VoucherStatus = "draft" | "submitted" | "endorsed" | "prepared" | "reviewed" | "approved" | "returned" | "rejected" | "cancelled";
 export type VoucherAction = "submit" | "skip_endorse" | "endorse" | "prepare" | "review" | "approve" | "return" | "reject" | "cancel" | "history";
@@ -97,6 +99,18 @@ export function durationWords(ms: number): string {
 }
 
 /** Whole days a request has waited at its current step (0 on the day it arrived). */
+/** Statuses whose lines are spending: Finance has prepared the voucher (or it came from the registers so). */
+export const SPENDING: readonly VoucherStatus[] = ["prepared", "reviewed", "approved"];
+
+/**
+ * The Manila day a voucher's spending counts on (budgets, goals, budget left): when Finance prepared it, else when
+ * it was sent, else when it was made; null while it isn't spending (before preparing, or stopped). One rule for
+ * every screen.
+ */
+export function countedDay(v: { status: VoucherStatus; submittedAt: string | null; createdAt: string }, preparedAt: string | undefined): string | null {
+  return SPENDING.includes(v.status) ? dayKey(preparedAt ?? v.submittedAt ?? v.createdAt) : null;
+}
+
 export const daysWaiting = (since: string, now: number) => Math.max(0, Math.floor((now - Date.parse(since)) / 86_400_000));
 
 /**

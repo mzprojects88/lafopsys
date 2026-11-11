@@ -21,6 +21,7 @@ import { useVouchers } from "@/lib/hooks/use-vouchers";
 import { useRole } from "@/lib/rbac/use-role";
 import { GOAL_MEASURES, MEASURES, measureTotal, type GoalMeasure, type Measure } from "@/lib/utils/budgets";
 import { formatCurrency } from "@/lib/utils/currency";
+import { countedDay } from "@/lib/utils/vouchers";
 import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 
 const NONE = "__org";
@@ -38,7 +39,7 @@ export default function GoalsPage() {
   const { goals, targets, loading } = useGoals();
   const { programs } = useProgramsData();
   const { donations } = useDonorsData();
-  const { vouchers, lines } = useVouchers();
+  const { vouchers, lines, events } = useVouchers();
   const [editing, setEditing] = React.useState<Draft | null>(null);
   const [busy, setBusy] = React.useState(false);
 
@@ -46,13 +47,18 @@ export default function GoalsPage() {
   const from = years.length ? Math.min(...years) : new Date().getFullYear();
   const to = years.length ? Math.max(...years) : from;
   const impact = useProgramImpact({ from: `${from}-01-01`, to: `${to}-12-31` }, "month");
-  const counted = new Set(vouchers.filter((v) => ["prepared", "reviewed", "approved"].includes(v.status)).map((v) => v.id));
-  const yearOf = new Map(vouchers.map((v) => [v.id, (v.submittedAt ?? v.createdAt).slice(0, 4)]));
+  // Spending counts on the day Finance prepared it (the same rule as Budgets and the prepare dialog).
+  const preparedOn = new Map(events.filter((e) => e.action === "prepare").map((e) => [e.voucherId, e.at]));
+  const yearOf = new Map(vouchers.map((v) => [v.id, countedDay(v, preparedOn.get(v.id))?.slice(0, 4) ?? null]));
 
   const actual = (g: Goal, year: number): number | null => {
     if (g.measure === "none") return null;
     if (g.measure === "donations") return donations.filter((d) => String(d.date ?? "").startsWith(String(year))).reduce((s, d) => s + Number(d.totalValue ?? 0), 0);
-    if (g.measure === "spending") return lines.filter((l) => counted.has(l.voucherId) && yearOf.get(l.voucherId) === String(year)).reduce((s, l) => s + l.amount, 0);
+    if (g.measure === "spending") {
+      // A program's goal counts the spending coded to its voucher program (T3); a foundation goal, all of it.
+      const t3 = g.programId ? (programs.find((p) => p.id === g.programId)?.t3Id ?? null) : null;
+      return lines.filter((l) => yearOf.get(l.voucherId) === String(year) && (!g.programId || l.t3Id === t3)).reduce((s, l) => s + l.amount, 0);
+    }
     return measureTotal(impact.rows.filter((r) => r.bucket.startsWith(String(year))), g.measure as Measure);
   };
   const show = (g: Goal, v: number | null) => (v == null ? "—" : money(g.measure) ? formatCurrency(v) : v.toLocaleString("en-PH"));

@@ -6,6 +6,7 @@ import { suggestBudget } from "@/lib/ai/openai";
 import { fetchAll } from "@/lib/supabase/fetch-all";
 import { MEASURES, measureTotal, type Measure } from "@/lib/utils/budgets";
 import type { ImpactLine } from "@/lib/utils/program-impact";
+import { countedDay, type VoucherStatus } from "@/lib/utils/vouchers";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 90;
@@ -40,17 +41,28 @@ export async function POST(req: Request) {
       ops().from("goal_targets").select("goal_id, year, target").eq("year", year),
       ops().from("programs").select("id, name"),
       ops().rpc("program_impact_range", { p_from: start, p_to: today, p_grain: "month" }),
-      ops().from("donations").select("date, total_value").gte("date", start),
     ]);
     const failed = reads.find((r) => r.error);
     if (failed) return NextResponse.json({ ok: false, error: failed.error!.message }, { status: 500 });
-    const [t3, accounts, goals, targets, programs, impact, gifts] = reads.map((r) => (r.data ?? []) as Record<string, unknown>[]);
-    const vouchers = await fetchAll<Record<string, unknown>>((from, to) => ops().from("vouchers").select("id, status, submitted_at, created_at").in("status", ["prepared", "reviewed", "approved"]).order("id").range(from, to));
-    const lines = await fetchAll<Record<string, unknown>>((from, to) => ops().from("voucher_lines").select("voucher_id, amount, t3_id, account_id").order("id").range(from, to));
+    const [t3, accounts, goals, targets, programs, impact] = reads.map((r) => (r.data ?? []) as Record<string, unknown>[]);
+    // Only the last twelve months: the gifts (paged past the 1,000-row cap), the spending vouchers, and then their
+    // lines and preparing dates, in parallel batches of ids.
+    const [gifts, vouchers] = await Promise.all([
+      fetchAll<Record<string, unknown>>((from, to) => ops().from("donations").select("id, date, total_value").gte("date", start).order("id").range(from, to)),
+      fetchAll<Record<string, unknown>>((from, to) => ops().from("vouchers").select("id, status, submitted_at, created_at").in("status", ["prepared", "reviewed", "approved"]).or(`submitted_at.gte.${start},created_at.gte.${start}`).order("id").range(from, to)),
+    ]);
+    const ids = vouchers.map((v) => String(v.id));
+    const batches = Array.from({ length: Math.ceil(ids.length / 150) }, (_, i) => ids.slice(i * 150, i * 150 + 150));
+    const [lines, prepares] = await Promise.all([
+      Promise.all(batches.map((b) => fetchAll<Record<string, unknown>>((from, to) => ops().from("voucher_lines").select("id, voucher_id, amount, t3_id, account_id").in("voucher_id", b).order("id").range(from, to)))).then((x) => x.flat()),
+      Promise.all(batches.map((b) => fetchAll<Record<string, unknown>>((from, to) => ops().from("voucher_events").select("id, voucher_id, at").eq("action", "prepare").in("voucher_id", b).order("id").range(from, to)))).then((x) => x.flat()),
+    ]);
+    const preparedOn = new Map(prepares.map((e) => [String(e.voucher_id), String(e.at)]));
 
     const codeOfT3 = new Map(t3.map((c) => [String(c.id), String(c.code)]));
     const codeOfAccount = new Map(accounts.map((a) => [String(a.id), String(a.code)]));
-    const monthOf = new Map(vouchers.map((v) => [String(v.id), String(v.submitted_at ?? v.created_at).slice(0, 7)]));
+    // The same rule as the Budgets page: the Manila day Finance prepared it.
+    const monthOf = new Map(vouchers.map((v) => [String(v.id), countedDay({ status: v.status as VoucherStatus, submittedAt: (v.submitted_at as string | null) ?? null, createdAt: String(v.created_at) }, preparedOn.get(String(v.id)))?.slice(0, 7)]));
     const spend = new Map<string, number>();
     for (const l of lines) {
       const m = monthOf.get(String(l.voucher_id));

@@ -184,6 +184,70 @@ end $$;
 revoke all on function ops.budget_revise(uuid, text) from public;
 grant execute on function ops.budget_revise(uuid, text) to authenticated;
 
+-- Saving is one transaction: a goal with its targets, a budget item with its twelve months; never half of it.
+create or replace function ops.goal_save(p_id uuid, p_goal jsonb, p_targets jsonb)
+returns uuid language plpgsql security definer set search_path = ops, shared, pg_temp as $$
+declare v_id uuid;
+begin
+  if not shared.has_role('ceo', 'admin') then
+    raise exception 'Only the CEO or the Super Admin sets goals.' using errcode = '42501';
+  end if;
+  if p_id is null then
+    insert into ops.goals (title, horizon, start_year, program_id, measure, narrative, status, sort)
+    values (btrim(p_goal->>'title'), (p_goal->>'horizon')::smallint, (p_goal->>'start_year')::integer, nullif(p_goal->>'program_id', ''),
+            coalesce(p_goal->>'measure', 'none'), nullif(btrim(coalesce(p_goal->>'narrative', '')), ''), coalesce(p_goal->>'status', 'active'), coalesce((p_goal->>'sort')::integer, 0))
+    returning id into v_id;
+  else
+    update ops.goals set title = btrim(p_goal->>'title'), horizon = (p_goal->>'horizon')::smallint, start_year = (p_goal->>'start_year')::integer,
+      program_id = nullif(p_goal->>'program_id', ''), measure = coalesce(p_goal->>'measure', 'none'), narrative = nullif(btrim(coalesce(p_goal->>'narrative', '')), ''),
+      status = coalesce(p_goal->>'status', 'active'), sort = coalesce((p_goal->>'sort')::integer, 0)
+    where id = p_id returning id into v_id;
+    if v_id is null then
+      raise exception 'No such goal.' using errcode = 'P0002';
+    end if;
+    delete from ops.goal_targets where goal_id = v_id;
+  end if;
+  insert into ops.goal_targets (goal_id, year, target)
+  select v_id, (t->>'year')::integer, (t->>'target')::numeric from jsonb_array_elements(coalesce(p_targets, '[]'::jsonb)) t;
+  return v_id;
+end $$;
+revoke all on function ops.goal_save(uuid, jsonb, jsonb) from public;
+grant execute on function ops.goal_save(uuid, jsonb, jsonb) to authenticated;
+
+create or replace function ops.budget_save_item(p_id uuid, p_item jsonb, p_months jsonb)
+returns uuid language plpgsql security definer set search_path = ops, shared, pg_temp as $$
+declare
+  v_budget uuid := (p_item->>'budget_id')::uuid;
+  v_id uuid;
+begin
+  if not ops.budget_editor() then
+    raise exception 'Only Finance or the CEO keys in budgets.' using errcode = '42501';
+  end if;
+  if not ops.budget_is_draft(v_budget) or (p_id is not null and not exists (select 1 from ops.budget_items where id = p_id and budget_id = v_budget)) then
+    raise exception 'Only a draft budget''s items change.' using errcode = '23514';
+  end if;
+  if jsonb_typeof(p_months) is distinct from 'array' or jsonb_array_length(p_months) <> 12 then
+    raise exception 'Give the twelve months.' using errcode = '23514';
+  end if;
+  if p_id is null then
+    insert into ops.budget_items (budget_id, t3_id, label, unit, measure, account_id, sort)
+    values (v_budget, nullif(p_item->>'t3_id', '')::uuid, btrim(p_item->>'label'), nullif(btrim(coalesce(p_item->>'unit', '')), ''), nullif(p_item->>'measure', ''),
+            nullif(p_item->>'account_id', '')::uuid, coalesce((p_item->>'sort')::integer, 0))
+    returning id into v_id;
+  else
+    update ops.budget_items set t3_id = nullif(p_item->>'t3_id', '')::uuid, label = btrim(p_item->>'label'), unit = nullif(btrim(coalesce(p_item->>'unit', '')), ''),
+      measure = nullif(p_item->>'measure', ''), account_id = nullif(p_item->>'account_id', '')::uuid, sort = coalesce((p_item->>'sort')::integer, 0)
+    where id = p_id returning id into v_id;
+  end if;
+  insert into ops.budget_values (item_id, month, quantity, amount)
+  select v_id, m.ord::smallint, nullif(m.v->>'quantity', '')::numeric, nullif(m.v->>'amount', '')::numeric
+  from jsonb_array_elements(p_months) with ordinality m(v, ord)
+  on conflict (item_id, month) do update set quantity = excluded.quantity, amount = excluded.amount;
+  return v_id;
+end $$;
+revoke all on function ops.budget_save_item(uuid, jsonb, jsonb) from public;
+grant execute on function ops.budget_save_item(uuid, jsonb, jsonb) to authenticated;
+
 -- 3. When the next year's budget is due, and from when the bell reminds (Financial Settings › General).
 alter table ops.finance_settings
   add column if not exists budget_due_month smallint not null default 12 check (budget_due_month between 1 and 12),

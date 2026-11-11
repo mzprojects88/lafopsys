@@ -25,7 +25,7 @@ import { useRole } from "@/lib/rbac/use-role";
 import { MEASURES, measureTotal, spreadYear, type Measure } from "@/lib/utils/budgets";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate, todayIso } from "@/lib/utils/date";
-import { dayKey } from "@/lib/utils/dtr";
+import { countedDay } from "@/lib/utils/vouchers";
 import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -75,7 +75,7 @@ export default function BudgetsPage() {
   // Actuals for Budget vs actual: the vouchers' lines (prepared and on), by program and month of preparing; and the measures.
   const impact = useProgramImpact({ from: `${year}-01-01`, to: `${year}-12-31` }, "month");
   const preparedOn = new Map(events.filter((e) => e.action === "prepare").map((e) => [e.voucherId, e.at]));
-  const monthOf = new Map(vouchers.filter((v) => ["prepared", "reviewed", "approved"].includes(v.status)).map((v) => [v.id, dayKey(preparedOn.get(v.id) ?? v.submittedAt ?? v.createdAt)]));
+  const monthOf = new Map(vouchers.map((v) => [v.id, countedDay(v, preparedOn.get(v.id))]));
   const spent = (pick: (l: (typeof lines)[number]) => boolean, upTo: number, only?: number) =>
     lines.filter((l) => {
       const d = monthOf.get(l.voucherId);
@@ -223,7 +223,7 @@ export default function BudgetsPage() {
                               <>
                                 <td className="px-3 py-2.5 text-right tabular-nums">{vs[month - 1].quantity != null ? `${num(vs[month - 1].quantity ?? 0)} / ${i.measure ? num(measureActual(i.measure, month, month)) : "—"}` : "—"}</td>
                                 <td className="px-3 py-2.5 text-right tabular-nums">{vs.some((v) => v.quantity != null) && i.measure ? `${num(sum(vs.slice(0, month).map((v) => v.quantity)))} / ${num(measureActual(i.measure, month))}` : "—"}</td>
-                                <td className="px-3 py-2.5 text-right tabular-nums">{vs[month - 1].amount != null ? `${peso(vs[month - 1].amount ?? 0)} / ${i.accountId ? peso(spent((l) => l.accountId === i.accountId && (!i.t3Id || l.t3Id === i.t3Id), month, month)) : "by program"}` : "—"}</td>
+                                <td className="px-3 py-2.5 text-right tabular-nums">{vs[month - 1].amount != null ? `${peso(vs[month - 1].amount ?? 0)} / ${i.accountId ? peso(spent((l) => l.accountId === i.accountId && (i.t3Id ? l.t3Id === i.t3Id : !l.t3Id), month, month)) : "by program"}` : "—"}</td>
                               </>
                             )}
                           </tr>

@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { createCollection, useCollection, type Collection } from "@/lib/data/collection-store";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 import type { GoalMeasure, Measure } from "@/lib/utils/budgets";
 
 /**
@@ -55,31 +56,31 @@ export interface BudgetValue {
 type Row = Record<string, unknown>;
 const n = (v: unknown) => (v == null ? null : Number(v));
 const s = (v: unknown) => (v == null ? null : String(v));
-const store = <T>(table: string, order: string, map: (r: Row) => T): Collection<T[]> =>
+/** Every row, a page of 1,000 at a time (the API's cap), in an order that pages the same way each time. */
+const store = <T>(table: string, order: string[], map: (r: Row) => T): Collection<T[]> =>
   createCollection<T[]>({
     key: `ops.${table}`,
     empty: [],
     tables: [{ schema: "ops", table }],
     fetch: async () => {
-      const { data, error } = await createClient().schema("ops").from(table).select("*").order(order);
-      if (error) throw new Error(error.message);
-      return ((data ?? []) as Row[]).map(map);
+      const rows = await fetchAll<Row>((from, to) => order.reduce((q, col) => q.order(col), createClient().schema("ops").from(table).select("*")).range(from, to));
+      return rows.map(map);
     },
   });
 
-export const goalsStore = store<Goal>("goals", "sort", (r) => ({
+export const goalsStore = store<Goal>("goals", ["sort", "id"], (r) => ({
   id: String(r.id), title: String(r.title), horizon: Number(r.horizon) as Goal["horizon"], startYear: Number(r.start_year), programId: s(r.program_id),
   measure: r.measure as GoalMeasure, narrative: s(r.narrative), status: r.status as Goal["status"], sort: Number(r.sort ?? 0),
 }));
-export const goalTargetsStore = store<GoalTarget>("goal_targets", "year", (r) => ({ goalId: String(r.goal_id), year: Number(r.year), target: Number(r.target) }));
-export const budgetsStore = store<Budget>("budgets", "version", (r) => ({
+export const goalTargetsStore = store<GoalTarget>("goal_targets", ["goal_id", "year"], (r) => ({ goalId: String(r.goal_id), year: Number(r.year), target: Number(r.target) }));
+export const budgetsStore = store<Budget>("budgets", ["year", "version"], (r) => ({
   id: String(r.id), year: Number(r.year), version: Number(r.version), status: r.status as Budget["status"], note: s(r.note), revisionReason: s(r.revision_reason),
   approvedBy: s(r.approved_by), approvedAt: s(r.approved_at),
 }));
-export const budgetItemsStore = store<BudgetItem>("budget_items", "sort", (r) => ({
+export const budgetItemsStore = store<BudgetItem>("budget_items", ["sort", "id"], (r) => ({
   id: String(r.id), budgetId: String(r.budget_id), t3Id: s(r.t3_id), label: String(r.label), unit: s(r.unit), measure: (r.measure as Measure | null) ?? null, accountId: s(r.account_id), sort: Number(r.sort ?? 0),
 }));
-export const budgetValuesStore = store<BudgetValue>("budget_values", "month", (r) => ({ itemId: String(r.item_id), month: Number(r.month), quantity: n(r.quantity), amount: n(r.amount) }));
+export const budgetValuesStore = store<BudgetValue>("budget_values", ["item_id", "month"], (r) => ({ itemId: String(r.item_id), month: Number(r.month), quantity: n(r.quantity), amount: n(r.amount) }));
 
 export function useGoals() {
   const { data: goals, loading } = useCollection(goalsStore);
@@ -101,35 +102,23 @@ const done = async <T>(r: { data: unknown; error: { message: string } | null }, 
   return { ok: true, value: r.data as T };
 };
 
-/** Saves a goal and its yearly targets (the targets replace the goal's earlier ones). */
-export async function saveGoal(id: string | null, goal: Omit<Goal, "id">, targets: { year: number; target: number }[]): Promise<Result<string>> {
-  const row = { title: goal.title, horizon: goal.horizon, start_year: goal.startYear, program_id: goal.programId, measure: goal.measure, narrative: goal.narrative, status: goal.status, sort: goal.sort };
-  const saved = id ? await ops().from("goals").update(row).eq("id", id).select("id").single() : await ops().from("goals").insert(row).select("id").single();
-  if (saved.error) return { ok: false, error: saved.error.message };
-  const goalId = String((saved.data as Row).id);
-  const del = await ops().from("goal_targets").delete().eq("goal_id", goalId);
-  if (del.error) return { ok: false, error: del.error.message };
-  if (targets.length) {
-    const ins = await ops().from("goal_targets").insert(targets.map((t) => ({ goal_id: goalId, year: t.year, target: t.target })));
-    if (ins.error) return { ok: false, error: ins.error.message };
-  }
-  await Promise.all([goalsStore.refetch(), goalTargetsStore.refetch()]);
-  return { ok: true, value: goalId };
-}
+/** Saves a goal and its yearly targets in one transaction (ops.goal_save; the targets replace the earlier ones). */
+export const saveGoal = async (id: string | null, goal: Omit<Goal, "id">, targets: { year: number; target: number }[]) =>
+  done<string>(await ops().rpc("goal_save", {
+    p_id: id,
+    p_goal: { title: goal.title, horizon: goal.horizon, start_year: goal.startYear, program_id: goal.programId, measure: goal.measure, narrative: goal.narrative, status: goal.status, sort: goal.sort },
+    p_targets: targets,
+  }), [goalsStore, goalTargetsStore]);
 export const removeGoal = async (id: string) => done(await ops().from("goals").delete().eq("id", id), [goalsStore, goalTargetsStore]);
 
 export const startBudget = async (year: number) => done<{ id: string }>(await ops().from("budgets").insert({ year }).select("id").single(), [budgetsStore]);
-/** Adds or changes an item of a draft and sets its 12 months (quantity and/or amount, null where it doesn't apply). */
-export async function saveBudgetItem(id: string | null, item: Omit<BudgetItem, "id">, months: { quantity: number | null; amount: number | null }[]): Promise<Result<string>> {
-  const row = { budget_id: item.budgetId, t3_id: item.t3Id, label: item.label, unit: item.unit, measure: item.measure, account_id: item.accountId, sort: item.sort };
-  const saved = id ? await ops().from("budget_items").update(row).eq("id", id).select("id").single() : await ops().from("budget_items").insert(row).select("id").single();
-  if (saved.error) return { ok: false, error: saved.error.message };
-  const itemId = String((saved.data as Row).id);
-  const up = await ops().from("budget_values").upsert(months.map((m, i) => ({ item_id: itemId, month: i + 1, quantity: m.quantity, amount: m.amount })), { onConflict: "item_id,month" });
-  if (up.error) return { ok: false, error: up.error.message };
-  await Promise.all([budgetItemsStore.refetch(), budgetValuesStore.refetch()]);
-  return { ok: true, value: itemId };
-}
+/** Adds or changes a draft's item with its 12 months in one transaction (ops.budget_save_item): all of it, or none. */
+export const saveBudgetItem = async (id: string | null, item: Omit<BudgetItem, "id">, months: { quantity: number | null; amount: number | null }[]) =>
+  done<string>(await ops().rpc("budget_save_item", {
+    p_id: id,
+    p_item: { budget_id: item.budgetId, t3_id: item.t3Id, label: item.label, unit: item.unit, measure: item.measure, account_id: item.accountId, sort: item.sort },
+    p_months: months,
+  }), [budgetItemsStore, budgetValuesStore]);
 export const removeBudgetItem = async (id: string) => done(await ops().from("budget_items").delete().eq("id", id), [budgetItemsStore, budgetValuesStore]);
 export const approveBudget = async (id: string) => done(await ops().rpc("budget_approve", { p_id: id }), [budgetsStore]);
 export const reviseBudget = async (id: string, reason: string) => done<string>(await ops().rpc("budget_revise", { p_id: id, p_reason: reason }), [budgetsStore, budgetItemsStore, budgetValuesStore]);

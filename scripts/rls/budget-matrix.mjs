@@ -73,6 +73,22 @@ try {
   await step("... version 2 holds the copied item and its 12 months", null, `select b.version, (select count(*)::int from ops.budget_values v join ops.budget_items i on i.id = v.item_id where i.budget_id = b.id) n from ops.budgets b where b.id = $1`, [rev], (r) => r.ok && r.rows[0].version === 2 && r.rows[0].n === 12);
   await step("the CEO approves the revision: version 1 is superseded", ids.ceo, `select ops.budget_approve($1)`, [rev], (r) => r.ok);
   await step("... one approved version stands for 2027", null, `select string_agg(version || '=' || status, ',' order by version) s from ops.budgets where year = 2027`, [], (r) => r.ok && r.rows[0].s === "1=superseded,2=approved");
+  // Saving in one step (code review, 12 Nov): all of an item or a goal, or none of it.
+  const months = (amount) => JSON.stringify(Array.from({ length: 12 }, (_, m) => ({ quantity: 10, amount: m === 5 ? amount : 100 })));
+  const d3 = val(await step("Finance starts 2028", ids.finance, `insert into ops.budgets (year) values (2028) returning id`, [], (r) => r.ok));
+  await step("an item with a negative month is refused whole: no item left behind", ids.finance,
+    `select ops.budget_save_item(null, $1::jsonb, $2::jsonb)`, [JSON.stringify({ budget_id: d3, t3_id: hsg, label: "Meals", measure: "meals" }), months(-5)], refused("23514"), false);
+  await step("... the draft still has no items", null, `select count(*)::int n from ops.budget_items where budget_id = $1`, [d3], (r) => r.ok && r.rows[0].n === 0);
+  const it3 = val(await step("a good item is saved with its 12 months at once", ids.finance,
+    `select ops.budget_save_item(null, $1::jsonb, $2::jsonb) id`, [JSON.stringify({ budget_id: d3, t3_id: hsg, label: "Meals", measure: "meals" }), months(100)], (r) => r.ok));
+  await step("... 12 months stored", null, `select count(*)::int n from ops.budget_values where item_id = $1`, [it3], (r) => r.ok && r.rows[0].n === 12);
+  await step("an approved budget's item can't be saved through the function either", ids.finance,
+    `select ops.budget_save_item(null, $1::jsonb, $2::jsonb)`, [JSON.stringify({ budget_id: rev, label: "Late item" }), months(100)], refused("23514"), false);
+  await step("a driver can't save an item", ids.driver, `select ops.budget_save_item(null, $1::jsonb, $2::jsonb)`, [JSON.stringify({ budget_id: d3, label: "x" }), months(1)], refused("42501"), false);
+  await step("Finance can't save a goal through the function", ids.finance, `select ops.goal_save(null, '{"title":"x","horizon":1,"start_year":2027}'::jsonb, '[]'::jsonb)`, [], refused("42501"), false);
+  await step("the CEO saves a goal and its targets at once; a bad target refuses all of it", ids.ceo,
+    `select ops.goal_save($1, '{"title":"House more families","horizon":3,"start_year":2027,"program_id":"prog-housing","measure":"housing"}'::jsonb, '[{"year":2027,"target":-1}]'::jsonb)`, [g], refused("23514"), false);
+  await step("... the earlier targets are still there", null, `select count(*)::int n from ops.goal_targets where goal_id = $1`, [g], (r) => r.ok && r.rows[0].n === 3);
   await step("the due-date settings default to 31 December, 30 days' notice", null, `select budget_due_month, budget_due_day, budget_remind_days from ops.finance_settings`, [], (r) => r.ok && r.rows[0].budget_due_month === 12 && r.rows[0].budget_due_day === 31 && r.rows[0].budget_remind_days === 30);
 } finally {
   await c.query("rollback");

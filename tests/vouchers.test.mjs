@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { daysWaiting, durationWords, fundAllows, shownAmount, trackSteps } from "../lib/utils/vouchers.ts";
+import { countedDay, daysWaiting, durationWords, fundAllows, shownAmount, trackSteps } from "../lib/utils/vouchers.ts";
 import { escapeCsv } from "../lib/utils/csv.ts";
 
 const ev = (action, at, actor = "a") => ({ action, at, actor, note: null });
@@ -33,6 +33,12 @@ describe("vouchers: words and sums", () => {
     assert.equal(durationWords(3_600_000), "1 hour");
     assert.equal(durationWords(3 * 86_400_000), "3 days");
     assert.equal(daysWaiting("2026-11-10T09:00:00Z", now), 1);
+  });
+  it("spending counts on the Manila day Finance prepared it, and not before", () => {
+    const v = { status: "approved", submittedAt: "2026-11-30T10:00:00Z", createdAt: "2026-11-29T10:00:00Z" };
+    assert.equal(countedDay(v, "2026-12-31T18:00:00Z"), "2027-01-01");
+    assert.equal(countedDay(v, undefined), "2026-11-30");
+    assert.equal(countedDay({ ...v, status: "submitted" }, undefined), null);
   });
   it("a restricted fund pays only its accounts; an empty list allows any", () => {
     assert.equal(fundAllows(["52", "5503"], "5202"), true);

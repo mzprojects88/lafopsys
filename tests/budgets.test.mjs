@@ -27,9 +27,13 @@ describe("budgets", () => {
   });
   it("the bell reminds from the notice period until approval, and says when it is late", () => {
     const s = { month: 12, day: 31, remindDays: 30 };
-    assert.equal(budgetReminder("2026-11-30", s, []), null);
-    assert.deepEqual(budgetReminder("2026-12-01", s, []), { year: 2027, due: "2026-12-31", overdue: false });
-    assert.equal(budgetReminder("2026-12-15", s, [2027]), null);
-    assert.equal(budgetReminder("2026-12-31", s, [])?.overdue, false);
+    assert.equal(budgetReminder("2026-11-30", s, [], null), null);
+    assert.deepEqual(budgetReminder("2026-12-01", s, [], 2027), { year: 2027, due: "2026-12-31", overdue: false });
+    assert.equal(budgetReminder("2026-12-15", s, [2027], 2027), null);
+    assert.equal(budgetReminder("2026-12-31", s, [], 2027)?.overdue, false);
+    // A running year with no approved budget stays late, past January 1.
+    assert.deepEqual(budgetReminder("2027-01-05", s, [], 2027), { year: 2027, due: "2026-12-31", overdue: true });
+    // Before LAF budgets at all, a year without one is not late.
+    assert.equal(budgetReminder("2027-01-05", s, [], null), null);
   });
 });

@@ -14,9 +14,8 @@ import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { fixHistory, prepareVoucher, similarCount, useVouchers, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
 import { useBudgets } from "@/lib/hooks/use-budgets";
 import { todayIso } from "@/lib/utils/date";
-import { dayKey } from "@/lib/utils/dtr";
 import { formatCurrency } from "@/lib/utils/currency";
-import { fundAllows } from "@/lib/utils/vouchers";
+import { countedDay, fundAllows } from "@/lib/utils/vouchers";
 
 const NONE = "__none";
 
@@ -59,7 +58,7 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
   const approved = budgets.find((b) => b.status === "approved" && b.year === Number(today.slice(0, 4)));
   const month = Number(today.slice(5, 7));
   const preparedOn = new Map(events.filter((e) => e.action === "prepare").map((e) => [e.voucherId, e.at]));
-  const thisMonth = new Set(vouchers.filter((v) => v.id !== voucher.id && ["prepared", "reviewed", "approved"].includes(v.status) && dayKey(preparedOn.get(v.id) ?? v.submittedAt ?? v.createdAt).slice(0, 7) === today.slice(0, 7)).map((v) => v.id));
+  const thisMonth = new Set(vouchers.filter((v) => v.id !== voucher.id && countedDay(v, preparedOn.get(v.id))?.slice(0, 7) === today.slice(0, 7)).map((v) => v.id));
   const programs = [...new Set(coding.map((c) => c.t3_id).filter((x): x is string => !!x))];
   const left = approved && !history
     ? programs.map((p) => {

@@ -33,20 +33,29 @@ export function BudgetSuggestions({ budgetId, year, sortFrom }: { budgetId: stri
   const [busy, setBusy] = React.useState(false);
   const [result, setResult] = React.useState<{ summary: string; items: Suggested[] } | null>(null);
   const [added, setAdded] = React.useState<Set<number>>(new Set());
+  // Items being added right now: a second click waits for the first instead of adding a twin.
+  const pending = React.useRef(new Set<number>());
 
   async function ask() {
     setOpen(true);
     setBusy(true);
     setResult(null);
     setAdded(new Set());
-    const res = await fetch("/api/budgets/suggest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ year }) });
-    const body = (await res.json().catch(() => null)) as ({ ok: true; summary: string; items: Suggested[] } | { ok: false; error: string }) | null;
+    let body: ({ ok: true; summary: string; items: Suggested[] } | { ok: false; error: string }) | null = null;
+    try {
+      const res = await fetch("/api/budgets/suggest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ year }) });
+      body = await res.json().catch(() => null);
+    } catch {
+      body = { ok: false, error: "No connection: try again." };
+    }
     setBusy(false);
     if (!body?.ok) return void toast.error(body && "error" in body ? body.error : "No suggestions this time.");
     setResult({ summary: body.summary, items: body.items });
   }
 
   async function add(n: number, s: Suggested) {
+    if (pending.current.has(n) || added.has(n)) return;
+    pending.current.add(n);
     const q = s.yearQuantity != null ? spreadYear(s.yearQuantity) : null;
     const a = s.yearAmount != null ? spreadYear(s.yearAmount) : null;
     const r = await saveBudgetItem(null, {
@@ -58,6 +67,7 @@ export function BudgetSuggestions({ budgetId, year, sortFrom }: { budgetId: stri
       accountId: s.accountCode ? (accounts.find((x) => x.code === s.accountCode && !x.is_header && !x.review_note)?.id as string | undefined) ?? null : null,
       sort: sortFrom + n + 1,
     }, Array.from({ length: 12 }, (_, m) => ({ quantity: q ? q[m] : null, amount: a ? a[m] : null })));
+    pending.current.delete(n);
     if (!r.ok) return void toast.error(r.error);
     setAdded((x) => new Set(x).add(n));
   }

@@ -43,11 +43,14 @@ export function budgetDue(year: number, month: number, day: number): string {
 }
 
 /**
- * Whether the bell reminds about next year's budget on `today`: from `remindDays` before it is due until it is
- * approved (overdue after the due day). Null when there is nothing to remind.
+ * Whether the bell reminds on `today`: a running year without an approved budget (once LAF budgets at all, from
+ * `firstYear`) is late; otherwise next year's budget from `remindDays` before it is due until it is approved
+ * (late after the due day). Null when there is nothing to remind.
  */
-export function budgetReminder(today: string, settings: { month: number; day: number; remindDays: number }, approvedYears: readonly number[]): { year: number; due: string; overdue: boolean } | null {
-  const year = Number(today.slice(0, 4)) + 1;
+export function budgetReminder(today: string, settings: { month: number; day: number; remindDays: number }, approvedYears: readonly number[], firstYear: number | null): { year: number; due: string; overdue: boolean } | null {
+  const running = Number(today.slice(0, 4));
+  if (firstYear != null && running >= firstYear && !approvedYears.includes(running)) return { year: running, due: budgetDue(running, settings.month, settings.day), overdue: true };
+  const year = running + 1;
   if (approvedYears.includes(year)) return null;
   const due = budgetDue(year, settings.month, settings.day);
   const from = new Date(`${due}T00:00:00Z`);
