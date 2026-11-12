@@ -13,16 +13,18 @@ export function AdmissionTimes() {
   const { admissions, loading, refetch } = useAppSettings();
   const [resetAt, setResetAt] = React.useState<string | null>(null);
   const [finalizeBy, setFinalizeBy] = React.useState<string | null>(null);
+  const [mealsBy, setMealsBy] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
 
   async function save() {
     setSaving(true);
-    const result = await updateAdmissionTimes({ resetAt: resetAt ?? admissions.resetAt, finalizeBy: finalizeBy ?? admissions.finalizeBy });
+    const result = await updateAdmissionTimes({ resetAt: resetAt ?? admissions.resetAt, finalizeBy: finalizeBy ?? admissions.finalizeBy, mealsBy: mealsBy ?? admissions.mealsBy });
     setSaving(false);
     if (!result.ok) return void toast.error(result.error ?? "Couldn't save the times.");
     toast.success("Admission times saved.");
     setResetAt(null);
     setFinalizeBy(null);
+    setMealsBy(null);
     await refetch();
   }
 
@@ -36,12 +38,14 @@ export function AdmissionTimes() {
         <Input type="time" aria-label="Reset at" className="w-32" value={resetAt ?? admissions.resetAt} onChange={(e) => setResetAt(e.target.value)} disabled={loading} />
         finalize beds by
         <Input type="time" aria-label="Finalize beds by" className="w-32" value={finalizeBy ?? admissions.finalizeBy} onChange={(e) => setFinalizeBy(e.target.value)} disabled={loading} />
-        <Button size="sm" onClick={() => void save()} disabled={saving || (resetAt === null && finalizeBy === null)}>
+        meals ticked by
+        <Input type="time" aria-label="Meals ticked by" className="w-32" value={mealsBy ?? admissions.mealsBy} onChange={(e) => setMealsBy(e.target.value)} disabled={loading} />
+        <Button size="sm" onClick={() => void save()} disabled={saving || (resetAt === null && finalizeBy === null && mealsBy === null)}>
           {saving ? "Saving…" : "Save"}
         </Button>
       </div>
       <span className="text-xs text-muted-foreground">
-        Today: reset at {formatTime12(resetAt ?? admissions.resetAt)}, beds finalized by {formatTime12(finalizeBy ?? admissions.finalizeBy)}.
+        Today: reset at {formatTime12(resetAt ?? admissions.resetAt)}, beds finalized by {formatTime12(finalizeBy ?? admissions.finalizeBy)}, meals ticked by {formatTime12(mealsBy ?? admissions.mealsBy)} (the social worker is reminded after it).
       </span>
     </div>
   );

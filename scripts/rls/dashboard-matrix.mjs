@@ -71,11 +71,24 @@ try {
   await c.query("update shared.staff set is_hr = true where id = $1", [ids.driver]);
   await step("a driver with the HR switch still gets no money figure", ids.driver, fig, [], (r) => r.ok && !("cash" in r.rows[0].r) && !("expenses" in r.rows[0].r));
   await c.query("update shared.staff set is_hr = false where id = $1", [ids.driver]);
-  // 0148: a night the Programs sheet lacks and nobody finalized counts from the House Sheet (child + carer per row).
-  const gapNight = await one(`select max(sn.night)::text d from ops.sheet_nights sn where not exists (select 1 from ops.sheet_meals sm where sm.date = sn.night) and not exists (select 1 from ops.bed_nights b where b.night = sn.night)`);
-  const rowsThatNight = await one(`select sum(1 + (nullif(btrim(carer_name), '') is not null)::int)::int v from ops.sheet_nights where night = $1`, [gapNight]);
-  await step(`an unfinalized night (${gapNight}) counts from the House Sheet`, ids.driver, `select ops.dashboard_figures($1, $1)->'lines'->>'housing' v`, [gapNight], (r) => r.ok && Number(r.rows[0].v) === rowsThatNight && rowsThatNight > 0);
-  await step("... and is listed as not finalized", ids.driver, `select count(*)::int n from ops.unfinalized_nights($1, $1)`, [gapNight], n(1));
+  // 0148: a past night that neither the app nor the Programs sheet has counts from the House Sheet, each child once
+  // (dismissed names aside) with their carer; added to whichever source a period shows, so a month keeps both.
+  const gap = (await c.query(`select sn.night::text d from ops.sheet_nights sn
+      where sn.night < (now() at time zone 'Asia/Manila')::date
+        and not exists (select 1 from ops.sheet_meals sm where sm.date = sn.night) and not exists (select 1 from ops.bed_nights b where b.night = sn.night)
+      order by 1 desc limit 1`)).rows[0]?.d;
+  if (!gap) throw new Error("fixture missing: a past unfinalized night the Programs sheet lacks");
+  const people = await one(`select coalesce(sum(p), 0)::int v from (select max(1 + (nullif(btrim(sn.carer_name), '') is not null)::int) p
+      from ops.sheet_nights sn left join ops.house_sheet_people hp on hp.name_key = sn.name_key
+     where sn.night = $1 and coalesce(hp.match_status, 'unmatched') <> 'dismissed' group by coalesce(hp.matched_patient_id::text, sn.name_key)) x`, [gap]);
+  await step(`an unfinalized past night (${gap}) counts from the House Sheet, each child once`, ids.driver, `select ops.dashboard_figures($1, $1)->'lines'->>'housing' v`, [gap], (r) => r.ok && Number(r.rows[0].v) === people && people > 0);
+  await step("... it is listed as not finalized and filled", ids.driver, `select count(*)::int n from ops.unfinalized_nights($1, $1) where filled`, [gap], n(1));
+  await step("tonight is never filled before it has passed", ids.driver, `select count(*)::int n from ops.unfinalized_nights(current_date, current_date + 1)`, [], n(0));
+  const monthOf = gap.slice(0, 8) + "01";
+  await step("the month keeps the app's nights and adds the filled ones (no night lost, none twice)", null,
+    `select (select coalesce(sum(native), 0) from ops.program_impact_range_rows($1::date, ($1::date + interval '1 month' - interval '1 day')::date, 'month') where line = 'housing') >=
+            (select coalesce(sum(1 + s.people_with_child), 0) from ops.bed_nights b join ops.stays s on s.id = b.stay_id where b.night between $1::date and ($1::date + interval '1 month' - interval '1 day')::date) + $2 ok`,
+    [monthOf, people], (r) => r.ok && r.rows[0].ok === true);
   await step("a range over ten years is refused", ids.driver, "select ops.dashboard_figures('2000-01-01', '2026-01-01')", [], refused("22023"), false);
   await c.query("select set_config('request.jwt.claims', '', true)");
   await step("signed out: refused", null, "select ops.dashboard_figures('2026-01-01', '2026-02-01')", [], refused("42501"), false);

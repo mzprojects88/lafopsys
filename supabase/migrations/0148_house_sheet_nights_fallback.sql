@@ -1,10 +1,10 @@
 -- 0148 House Sheet nights fill the gaps (user, 12 Nov 2026).
 --
--- Housing came from the nights finalized in the app or, before that, the Programs sheet's BN column. On a night
--- nobody finalized that the Programs sheet doesn't have yet, it read 0 although the House Sheet listed who stayed
--- (18 on 11 Nov). Now such a night is counted from the House Sheet (each row a child and their carer), as a sheet
--- figure. The goal stays every night finalized in the app: ops.unfinalized_nights lists the nights the House Sheet
--- had to fill, for the social worker's reminder, and the dashboard says how many it used.
+-- Housing came from the nights finalized in the app or, before that, the Programs sheet's BN column. A night nobody
+-- finalized that the Programs sheet doesn't have read 0 although the House Sheet listed who stayed (18 on 11 Nov). Now
+-- a past night that neither has counts from the House Sheet. The goal stays every night finalized in the app:
+-- ops.unfinalized_nights lists the past nights not finalized (and which ones the House Sheet filled), for the social
+-- worker's reminder and the Housing card; the meal reminder's time is a setting beside the finalize time.
 
 CREATE OR REPLACE FUNCTION ops.program_impact_range_rows(p_from date, p_to date, p_grain text)
  RETURNS TABLE(line text, bucket date, native numeric, from_sheet numeric)
@@ -51,14 +51,7 @@ AS $function$
      where p.caf_billing and bn.night between p_from and p_to group by 2
   ),
   from_sheet as (
-    -- A day's bed nights from the Programs sheet (BN), or, for a day it doesn't have, from the House Sheet: each row
-    -- a child and their carer (0148, user 12 Nov 2026: fill the gaps until every night is finalized in the app).
-    select 'housing' as l, date_trunc(p_grain, x.d)::date as m, sum(x.v)::numeric as v from (
-      select sm.date as d, coalesce(sm.bn, 0) as v from ops.sheet_meals sm where sm.date between p_from and p_to
-      union all
-      select sn.night, 1 + (nullif(btrim(sn.carer_name), '') is not null)::int from ops.sheet_nights sn
-       where sn.night between p_from and p_to and not exists (select 1 from ops.sheet_meals sm where sm.date = sn.night)
-    ) x group by 2
+    select 'housing' as l, date_trunc(p_grain, sm.date)::date as m, sum(coalesce(sm.bn, 0))::numeric as v from ops.sheet_meals sm where sm.date between p_from and p_to group by 2
     union all
     select 'transport_to_nch', date_trunc(p_grain, sr.date)::date, sum(sr.to_nch)::numeric from ops.sheet_rides sr where sr.date between p_from and p_to group by 2
     union all
@@ -87,23 +80,49 @@ AS $function$
     select 'caf_nights', date_trunc(p_grain, r.night)::date, count(*)::numeric
       from ops.nightly_record r join ops.patients p on p.id = r.patient_id
      where r.source = 'sheet' and p.caf_billing and r.night between p_from and p_to group by 2
+  ),
+  -- 0148: a past night the House Sheet lists that neither the app (bed_nights) nor the Programs sheet (sheet_meals)
+  -- has: each child once (dismissed names left out), with their carer. Added to both columns below, so it counts
+  -- whichever of them the report shows, and never twice (those nights are in neither).
+  fill as (
+    select date_trunc(p_grain, x.night)::date as m, sum(x.people)::numeric as v from (
+      select sn.night, max(1 + (nullif(btrim(sn.carer_name), '') is not null)::int) as people
+        from ops.sheet_nights sn left join ops.house_sheet_people hp on hp.name_key = sn.name_key
+       where sn.night between p_from and least(p_to, (now() at time zone 'Asia/Manila')::date - 1)
+         and coalesce(hp.match_status, 'unmatched') <> 'dismissed'
+         and not exists (select 1 from ops.sheet_meals sm where sm.date = sn.night)
+         and not exists (select 1 from ops.bed_nights b where b.night = sn.night)
+       group by sn.night, coalesce(hp.matched_patient_id::text, sn.name_key)
+    ) x group by 1
   )
-  select lines.l, months.m, coalesce(n.v, 0), coalesce(f.v, 0)
+  select lines.l, months.m,
+         coalesce(n.v, 0) + case when lines.l = 'housing' then coalesce(fl.v, 0) else 0 end,
+         coalesce(f.v, 0) + case when lines.l = 'housing' then coalesce(fl.v, 0) else 0 end
     from lines cross join months
     left join native n on n.l = lines.l and n.m = months.m
     left join from_sheet f on f.l = lines.l and f.m = months.m
+    left join fill fl on fl.m = months.m
    order by lines.l, months.m;
 $function$;
 
--- The nights in a range the House Sheet lists and the app has no finalized bed night for (dates only).
+-- The past nights in a range the House Sheet lists (dismissed names aside) that nobody finalized in the app, and
+-- whether the House Sheet filled them (the Programs sheet doesn't have them). Dates only.
+drop function if exists ops.unfinalized_nights(date, date);
 create or replace function ops.unfinalized_nights(p_from date, p_to date)
-returns setof date language sql stable security definer set search_path = ops, pg_temp as $$
-  select distinct sn.night from ops.sheet_nights sn
-   where sn.night between p_from and p_to and shared.current_staff_roles() is not null
+returns table (night date, filled boolean) language sql stable security definer set search_path = ops, pg_temp as $$
+  select sn.night, not exists (select 1 from ops.sheet_meals sm where sm.date = sn.night)
+    from ops.sheet_nights sn left join ops.house_sheet_people hp on hp.name_key = sn.name_key
+   where shared.current_staff_roles() is not null
+     and sn.night between p_from and least(p_to, (now() at time zone 'Asia/Manila')::date - 1)
+     and coalesce(hp.match_status, 'unmatched') <> 'dismissed'
      and not exists (select 1 from ops.bed_nights b where b.night = sn.night)
+   group by sn.night
    order by 1;
 $$;
 revoke all on function ops.unfinalized_nights(date, date) from public, anon;
 grant execute on function ops.unfinalized_nights(date, date) to authenticated;
+
+-- The time by which the day's meals should be ticked (the social worker's reminder), a setting like the finalize time.
+alter table shared.app_settings add column if not exists admission_meals_by time not null default '20:00';
 
 notify pgrst, 'reload schema';

@@ -121,14 +121,15 @@ export function DashboardCard({ k, f, period, window, now }: { k: CardKey; f: Da
   }
 }
 
-/** Housing, saying how many of its nights the House Sheet filled because nobody finalized them in the app (0148). */
+/** Housing, saying how many of its nights the House Sheet filled: past nights nobody finalized in the app that the
+ * Programs sheet doesn't have either (0148). */
 function HousingCard({ value, period, window }: { value: string; period: string; window: DayWindow }) {
   const [filled, setFilled] = React.useState<{ key: string; n: number } | null>(null);
   const key = `${window.from}|${window.to}`;
   React.useEffect(() => {
     let live = true;
     void createClient().schema("ops").rpc("unfinalized_nights", { p_from: window.from, p_to: window.to })
-      .then(({ data }) => live && setFilled({ key, n: ((data ?? []) as unknown[]).length }));
+      .then(({ data }) => live && setFilled({ key, n: ((data ?? []) as { filled: boolean }[]).filter((r) => r.filled).length }));
     return () => {
       live = false;
     };
