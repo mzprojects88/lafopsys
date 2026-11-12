@@ -45,6 +45,10 @@ drop policy if exists "punch managers and the person read punch changes" on ops.
 create policy "punch managers and the person read punch changes" on ops.time_punch_deletions
   for select to authenticated using (ops.manages_punches() or staff_id = auth.uid());
 
+-- 3b. A changed punch says so on itself (the DTR, its print and every export), not only in the log.
+alter table ops.time_punches add column if not exists edited_at timestamptz;
+alter table ops.time_punches add column if not exists edited_by uuid references shared.staff(id) on delete set null deferrable initially immediate;
+
 -- 4. Add a punch: a clock-in on a day (its day is made if it has none, marked missed_punch), or a clock-out for a
 -- day's session. Signed and marked Added, never in the future, never over a request still to decide.
 create or replace function ops.time_punch_add(p_staff uuid, p_type text, p_at timestamptz, p_entry uuid, p_reason text, p_actor uuid)
@@ -65,6 +69,9 @@ begin
   if p_at is null or p_at > now() then
     raise exception 'A punch can''t be in the future.' using errcode = '23514';
   end if;
+  if p_staff = p_actor and not shared.has_role('admin') then
+    raise exception 'Someone else changes your own punches.' using errcode = '42501';
+  end if;
   if p_type = 'clock_in' then
     if not exists (select 1 from shared.staff where id = p_staff and active) then
       raise exception 'No such staff member.' using errcode = 'P0002';
@@ -81,6 +88,11 @@ begin
     end if;
     if exists (select 1 from ops.dtr_correction_requests where time_entry_id = e.id and status = 'pending') then
       raise exception 'This day has a request waiting: approve or reject it instead.' using errcode = '23514';
+    end if;
+    -- Under the lock: the day's last session has no clock-out yet (two people adding the same OUT, or a device OUT).
+    if exists (select 1 from ops.time_punches o where o.time_entry_id = e.id and o.punch_type = 'clock_out'
+               and o.punched_at > coalesce((select max(i.punched_at) from ops.time_punches i where i.time_entry_id = e.id and i.punch_type = 'clock_in'), '-infinity')) then
+      raise exception 'This day already has its clock-out.' using errcode = '23514';
     end if;
   else
     raise exception 'A punch is a clock-in or a clock-out.' using errcode = '22023';
@@ -123,6 +135,13 @@ begin
   if not found or e.id is null then
     raise exception 'No such punch.' using errcode = 'P0002';
   end if;
+  if p.staff_id = p_actor and not shared.has_role('admin') then
+    raise exception 'Someone else changes your own punches.' using errcode = '42501';
+  end if;
+  -- As with deleting (0141): a punch a request made, or a day with a request still to decide, is settled through the request.
+  if exists (select 1 from ops.dtr_correction_requests r where r.adjustment_punch_id = p.id or (r.time_entry_id = e.id and r.status = 'pending')) then
+    raise exception 'This day has a correction request: settle it through the request instead.' using errcode = '23514';
+  end if;
   if p.punched_at = p_at then
     raise exception 'That is the time it has already.' using errcode = '23514';
   end if;
@@ -131,7 +150,7 @@ begin
   end if;
   insert into ops.time_punch_deletions (action, punch_id, staff_id, punched_at, new_punched_at, punch, reason, deleted_by)
   values ('edited', p.id, p.staff_id, p.punched_at, p_at, to_jsonb(p), v_reason, p_actor);
-  update ops.time_punches set punched_at = p_at where id = p.id;
+  update ops.time_punches set punched_at = p_at, edited_at = now(), edited_by = p_actor where id = p.id;
   return jsonb_build_object('staff_id', p.staff_id, 'time_entry_id', e.id, 'day', e.date);
 end $$;
 revoke all on function ops.time_punch_edit(uuid, timestamptz, text, uuid) from public, anon, authenticated;
@@ -166,6 +185,10 @@ begin
   select * into p from ops.time_punches where id = p_punch for update;
   if not found then
     raise exception 'No such punch.' using errcode = 'P0002';
+  end if;
+  -- Your own punches are someone else's to change, as your own request is someone else's to decide (the Super Admin excepted).
+  if p.staff_id = p_actor and not shared.has_role('admin') then
+    raise exception 'Someone else changes your own punches.' using errcode = '42501';
   end if;
   select count(*) into v_left from ops.time_punches where time_entry_id = p.time_entry_id and id <> p.id;
   -- A clock-in that a clock-out closes: its clock-out would be left alone and pair with another day.

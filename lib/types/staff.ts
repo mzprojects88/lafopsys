@@ -66,6 +66,9 @@ export interface TimePunch {
   /** Set only on an adjustment: the admin who supplied it, from their session
    * rather than from the request. */
   adjustedBy?: string;
+  /** Its time was changed afterwards (0146): when and by whom; the original is in the punch log. */
+  editedAt?: string;
+  editedBy?: string;
   /** What happened to the punch's photo (0060). The photo itself is only for admins and HR. */
   photoStatus: "captured" | "denied" | "unavailable" | "upload_failed" | "none";
   /** At LAF House or not, judged when punched (0063). */

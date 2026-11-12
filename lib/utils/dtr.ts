@@ -237,8 +237,14 @@ export function orderProblems(punches: readonly PunchLike[]): Set<string> {
   return bad;
 }
 
-/** Why a change to someone's punches can't stand (a problem it makes that wasn't there), or null. */
+/** Why a change to someone's punches can't stand, or null: a problem it makes that wasn't there, or an IN and OUT
+ * that were a pair no longer being one (an OUT moved into another session, an IN put inside one). */
 export function orderBroken(before: readonly PunchLike[], after: readonly PunchLike[]): string | null {
+  const pairsOf = (ps: readonly PunchLike[]) => new Set(pairSessions(ps).filter((s) => s.status === "closed").map((s) => `${s.id}|${s.clockOutId}`));
+  const kept = pairsOf(after);
+  for (const k of pairsOf(before)) {
+    if (!kept.has(k)) return "That time takes an IN and OUT apart: a punch can't move past another one, or into another session.";
+  }
   const was = orderProblems(before);
   for (const k of orderProblems(after)) {
     if (!was.has(k)) return "That time puts this person's punches out of order: two INs on one day, two OUTs in a row, an OUT before its IN, or a session over 25 hours. Pick a time between their other punches.";

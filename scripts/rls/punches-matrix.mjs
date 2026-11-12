@@ -93,8 +93,9 @@ try {
   await step("... the punch has the new time", null, `select count(*)::int n from ops.time_punches where id = $1 and punched_at = '2099-02-01T00:10:00Z'`, [pIn], n(1));
   await step("... and the log the original, with who and why", null,
     `select count(*)::int n from ops.time_punch_deletions where punch_id = $1 and action = 'edited' and punched_at = '2099-02-01T00:00:00Z' and new_punched_at = '2099-02-01T00:10:00Z' and deleted_by = $2 and reason = 'Wrong time'`, [pIn, ids.finance], n(1));
-  await step("the OUT may move to the morning after", null, ...edit(ids.finance, pOut, "2099-02-01T17:00:00Z"), (r) => r.ok);
-  await step("the driver reads the changes to their own punches", ids.driver, `select count(*)::int n from ops.time_punch_deletions where staff_id = $1`, [ids.driver], n(2));
+  await step("... and the punch itself says it was changed, and by whom", null, `select count(*)::int n from ops.time_punches where id = $1 and edited_at is not null and edited_by = $2`, [pIn, ids.finance], n(1));
+  await step("an OUT an approved request made is settled through the request, not edited", null, ...edit(ids.finance, pOut, "2099-02-01T17:00:00Z"), refused("23514"), false);
+  await step("the driver reads the changes to their own punches", ids.driver, `select count(*)::int n from ops.time_punch_deletions where staff_id = $1`, [ids.driver], n(1));
   await step("the social worker doesn't", ids.sw, `select count(*)::int n from ops.time_punch_deletions where staff_id = $1`, [ids.driver], n(0));
 
   await step("Finance adds a clock-in on a day with none: the day is made, marked missed_punch", null, ...add(ids.finance, ids.driver, "clock_in", "2099-02-05T00:00:00Z", null), (r) => r.ok && r.rows[0].r.day === "2099-02-05");
@@ -102,6 +103,13 @@ try {
     `select count(*)::int n from ops.time_punches p join ops.time_entries e on e.id = p.time_entry_id where e.staff_id = $1 and e.date = '2099-02-05' and e.flag = 'missed_punch' and p.source = 'adjustment' and p.adjusted_by = $2`, [ids.driver, ids.finance], n(1));
   const eB = await one(`select id from ops.time_entries where staff_id = $1 and date = '2099-02-05'`, [ids.driver]);
   await step("... and its OUT", null, ...add(ids.finance, ids.driver, "clock_out", "2099-02-05T09:00:00Z", eB), (r) => r.ok && r.rows[0].r.time_entry_id === eB);
+  await step("a second OUT for the same session is refused (under the lock)", null, ...add(ids.finance, ids.driver, "clock_out", "2099-02-05T09:30:00Z", eB), (r) => !r.ok && /already has its clock-out/.test(r.error), false);
+  // Your own punches are someone else's to change.
+  const eF = await one(`insert into ops.time_entries (staff_id, date, clock_in) values ($1, '2099-02-08', '08:00') returning id`, [ids.finance]);
+  const pF = await one(`insert into ops.time_punches (time_entry_id, staff_id, punch_type, punched_at, location_status, source) values ($1, $2, 'clock_in', '2099-02-08T00:00:00Z', 'captured', 'device') returning id`, [eF, ids.finance]);
+  await step("Finance can't add their own OUT", null, ...add(ids.finance, ids.finance, "clock_out", "2099-02-08T09:00:00Z", eF), refused("42501"), false);
+  await step("... nor change their own IN", null, ...edit(ids.finance, pF, "2099-02-07T23:00:00Z"), refused("42501"), false);
+  await step("... nor delete it", null, `select ops.time_punch_delete($1, 'mistake', $2)`, [pF, ids.finance], refused("42501"), false);
   await step("a clock-out on another person's day is refused", null, ...add(ids.finance, ids.sw, "clock_out", "2099-02-05T09:00:00Z", eB), refused("P0002"), false);
 
   const pOutB = await one(`select id from ops.time_punches where time_entry_id = $1 and punch_type = 'clock_out'`, [eB]);

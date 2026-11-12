@@ -28,3 +28,12 @@ it("judges only the problems a change makes, and each person apart", () => {
 it("gives a session the id of its clock-out", () => {
   assert.equal(pairSessions(day)[0].clockOutId, "o1");
 });
+
+it("refuses a move or add that takes an IN and its OUT apart", () => {
+  // Mon 8:00-17:00, Tue 8:00 still open: Monday's OUT moved to Tue 9:00 would close Tuesday instead.
+  const week = [P("m1", "clock_in", "2026-11-09T00:00:00Z"), P("m2", "clock_out", "2026-11-09T09:00:00Z"), P("t1", "clock_in", "2026-11-10T00:00:00Z")];
+  assert.ok(orderBroken(week, [week[0], P("m2", "clock_out", "2026-11-10T01:00:00Z"), week[2]]));
+  // Overnight Mon 20:00 to Tue 6:00: an IN put at Tue 1:00 would steal the OUT.
+  const night = [P("n1", "clock_in", "2026-11-09T12:00:00Z"), P("n2", "clock_out", "2026-11-09T22:00:00Z")];
+  assert.ok(orderBroken(night, [...night, P("x", "clock_in", "2026-11-09T17:00:00Z")]));
+});

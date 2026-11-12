@@ -25,6 +25,8 @@ interface TimePunchRow {
   site_status: TimePunch["siteStatus"];
   site_distance_m: number | null;
   adjusted_by: string | null;
+  edited_at: string | null;
+  edited_by: string | null;
 }
 
 function toTimePunch(row: TimePunchRow): TimePunch {
@@ -49,6 +51,8 @@ function toTimePunch(row: TimePunchRow): TimePunch {
     siteStatus: row.site_status,
     siteDistanceM: row.site_distance_m ?? undefined,
     adjustedBy: row.adjusted_by ?? undefined,
+    editedAt: row.edited_at ?? undefined,
+    editedBy: row.edited_by ?? undefined,
   };
 }
 
@@ -73,7 +77,7 @@ export const timePunchesStore = createCollection<TimePunch[]>({
       .schema("ops")
       .from("time_punches")
       .select(
-        "id, time_entry_id, staff_id, punch_type, punched_at, latitude, longitude, accuracy_meters, address_label, location_status, ip_address, user_agent, device_label, device_type, source, adjustment_reason, adjusted_by, photo_status, site_status, site_distance_m"
+        "id, time_entry_id, staff_id, punch_type, punched_at, latitude, longitude, accuracy_meters, address_label, location_status, ip_address, user_agent, device_label, device_type, source, adjustment_reason, adjusted_by, edited_at, edited_by, photo_status, site_status, site_distance_m"
       )
       .order("punched_at", { ascending: false });
     if (error) throw new Error(error.message);

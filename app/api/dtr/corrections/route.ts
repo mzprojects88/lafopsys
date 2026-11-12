@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { addDays, planClockOut, timeLabel, zonedDayStart } from "@/lib/utils/dtr";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { addDays, planClockOut, zonedDayStart } from "@/lib/utils/dtr";
+import { refreshDay } from "@/lib/server/dtr-day";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * An admin or HR person decides a DTR correction request (0061/0062).
+ * Someone who manages punches decides a DTR correction request (0061/0062; 0146).
  *
  * Approve: check the requested clock-out closes that day's own session
  * (planClockOut, the same rule as an admin's direct fix), then
@@ -72,11 +74,8 @@ export async function POST(request: Request) {
 
   // The day's summary follows its punches. `flag` stays missed_punch, as with an
   // admin's direct fix (0029): the day WAS missed, and the punch says who fixed it.
-  const { error: summaryError } = await supabase
-    .schema("ops")
-    .from("time_entries")
-    .update({ clock_out: timeLabel(at), total_minutes: plan.totalMinutes, session_count: plan.sessionCount })
-    .eq("id", entry.id);
-  if (summaryError) return NextResponse.json({ ok: false, error: `Approved, but the day's summary failed: ${summaryError.message}` }, { status: 500 });
+  // Written by the server (0146): those who manage punches may not hold a time_entries update policy.
+  const warning = await refreshDay(createAdminClient(), entry.id as string);
+  if (warning) return NextResponse.json({ ok: false, error: `Approved, but ${warning}.` }, { status: 500 });
   return NextResponse.json({ ok: true, totalMinutes: plan.totalMinutes });
 }

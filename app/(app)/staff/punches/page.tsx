@@ -16,7 +16,7 @@ import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/fi
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { LocationCell } from "@/components/modules/staff/punch-cells";
+import { LOCATION_STATUS_LABELS, LocationCell } from "@/components/modules/staff/punch-cells";
 import { PunchPhotoCell } from "@/components/modules/staff/punch-photo-cell";
 import { PunchTimeDialog, type PunchTimeValue } from "@/components/modules/staff/punch-time-dialog";
 import { decideCorrection } from "@/components/modules/staff/correction-requests-panel";
@@ -102,6 +102,8 @@ function Punches() {
   const manages = holdsPower(roles, "manage_punches") || isHr;
   const readsAll = manages || holdsPower(roles, "finance_work");
   const canSeePhotos = canManageHr(role, isHr);
+  // Your own punches are someone else's to change (0146), the Super Admin excepted.
+  const superAdmin = roles.includes("admin");
   const period = usePeriodPresets("punches", "today", true);
   const from = period.window?.from ?? "";
   const to = period.window?.to ?? "";
@@ -156,7 +158,7 @@ function Punches() {
   const count = (s: PairStatus) => rows.filter((r) => r.status === s).length;
   const actions = (row: PairRow) => {
     const items: { label: string; open: Dialog; destructive?: boolean }[] = [];
-    if (manages) {
+    if (manages && (row.staffId !== myId || superAdmin)) {
       if (row.inPunch) items.push({ label: "Change the IN time", open: { kind: "edit", row, punch: row.inPunch } });
       if (row.outPunch) items.push({ label: "Change the OUT time", open: { kind: "edit", row, punch: row.outPunch } });
       if (row.request && row.staffId !== myId) {
@@ -170,20 +172,22 @@ function Punches() {
   };
   const mayRequest = (row: PairRow) => row.staffId === myId && row.status === "missing" && !!row.session.timeEntryId;
 
-  function PunchCell({ row, punch, side }: { row: PairRow; punch?: TimePunch; side: "in" | "out" }) {
+  // Plain functions, not components: the page re-renders every minute and a component made here would remount.
+  function punchCell(row: PairRow, punch: TimePunch | undefined, side: "in" | "out") {
     if (!punch) {
       if (side === "in") return <span className="text-muted-foreground">—</span>;
       if (row.request) return <span className="text-warning-foreground dark:text-warning">Asked: {timeLabel12(row.request.requestedAt)}</span>;
       return row.status === "open" ? <span className="text-muted-foreground">Still in</span> : <span className="font-medium text-destructive">Missing</span>;
     }
     const edited = editedFrom.get(punch.id);
+    const editedTitle = edited ? `Was ${timeLabel12(edited.was)}: ${edited.reason}` : "Time changed afterwards; the original is in the punch log";
     return (
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="font-medium tabular-nums">{timeLabel12(punch.punchedAt)}</span>
           {dayKey(punch.punchedAt) !== row.session.dayKey ? <span className="text-theme-xs text-muted-foreground">next day</span> : null}
           {punch.source === "adjustment" ? <Badge variant="outline" className="gap-1" title={punch.adjustmentReason}><PencilLine className="size-3" />Added</Badge> : null}
-          {edited ? <Badge variant="outline" title={`Was ${timeLabel12(edited.was)}: ${edited.reason}`}>Edited</Badge> : null}
+          {punch.editedAt ? <Badge variant="outline" title={editedTitle}>Edited</Badge> : null}
         </div>
         <div className="text-theme-xs"><LocationCell punch={punch} isDriver={row.isDriver} /></div>
         {canSeePhotos ? <PunchPhotoCell punch={punch} caption={`${row.staffName} · ${row.dateLabel} ${timeLabel12(punch.punchedAt)}`} /> : null}
@@ -191,7 +195,7 @@ function Punches() {
     );
   }
 
-  function RowActions({ row }: { row: PairRow }) {
+  function rowActions(row: PairRow) {
     const items = actions(row);
     return (
       <div className="flex items-center justify-end gap-1">
@@ -225,17 +229,17 @@ function Punches() {
       ),
     },
     { id: "date", header: "Date", accessorFn: (r) => r.session.dayKey, cell: ({ row }) => row.original.dateLabel },
-    { id: "in", header: "IN", accessorFn: (r) => r.session.clockInAt ?? "", cell: ({ row }) => <PunchCell row={row.original} punch={row.original.inPunch} side="in" /> },
-    { id: "out", header: "OUT", accessorFn: (r) => r.session.clockOutAt ?? "", cell: ({ row }) => <PunchCell row={row.original} punch={row.original.outPunch} side="out" /> },
+    { id: "in", header: "IN", accessorFn: (r) => r.session.clockInAt ?? "", cell: ({ row }) => punchCell(row.original, row.original.inPunch, "in") },
+    { id: "out", header: "OUT", accessorFn: (r) => r.session.clockOutAt ?? "", cell: ({ row }) => punchCell(row.original, row.original.outPunch, "out") },
     { id: "hours", header: "Hours", accessorFn: (r) => r.minutes, cell: ({ row }) => <span className="tabular-nums">{formatMinutes(row.original.minutes)}</span> },
     { id: "status", header: "Status", accessorFn: (r) => STATUS[r.status].label, cell: ({ row }) => <Badge className={STATUS[row.original.status].className}>{STATUS[row.original.status].label}</Badge> },
-    { id: "actions", header: "", enableSorting: false, cell: ({ row }) => <RowActions row={row.original} /> },
+    { id: "actions", header: "", enableSorting: false, cell: ({ row }) => rowActions(row.original) },
   ];
 
   function exportCsv() {
     downloadCsv(
       csvLines(
-        ["Staff", "Date", "IN", "OUT", "Hours", "Minutes", "Status"],
+        ["Staff", "Date", "IN", "OUT", "Hours", "Minutes", "Status", ...["IN", "OUT"].flatMap((s) => [`${s} record`, `${s} added/changed because`, `${s} site`, `${s} location`, `${s} device`, `${s} network address`])],
         rows.map((r) => [
           r.staffName,
           r.session.dayKey,
@@ -244,6 +248,18 @@ function Punches() {
           formatMinutes(r.minutes),
           String(r.minutes),
           STATUS[r.status].label,
+          ...[r.inPunch, r.outPunch].flatMap((p) =>
+            p
+              ? [
+                  [p.source === "adjustment" ? "Added" : "Device", p.editedAt ? "Edited" : ""].filter(Boolean).join(", "),
+                  [p.adjustmentReason, editedFrom.get(p.id) ? `was ${timeLabel12(editedFrom.get(p.id)!.was)}: ${editedFrom.get(p.id)!.reason}` : ""].filter(Boolean).join("; "),
+                  p.siteStatus === "on_site" ? "LAF House" : p.siteStatus === "off_site" ? `Off-site${p.siteDistanceM !== undefined ? ` (${p.siteDistanceM} m)` : ""}` : "",
+                  p.addressLabel ?? LOCATION_STATUS_LABELS[p.locationStatus],
+                  p.deviceLabel ?? "",
+                  p.ipAddress ?? "",
+                ]
+              : ["", "", "", "", "", ""]
+          ),
         ])
       ),
       `punches-${from || "all"}-${to || "all"}.csv`
@@ -258,7 +274,10 @@ function Punches() {
       const first = await send("/api/dtr/adjust", { type: "clock_in", staffId: v.staffId, date: v.date, time: v.time, reason: v.reason }, v.outTime ? "" : "IN added");
       if (!first.ok || !v.outTime) return first.ok;
       const date = v.outTime < v.time ? addDays(v.date, 1) : v.date;
-      return (await send("/api/dtr/adjust", { timeEntryId: first.timeEntryId, date, time: v.outTime, reason: v.reason }, "IN and OUT added")).ok;
+      const second = await send("/api/dtr/adjust", { timeEntryId: first.timeEntryId, date, time: v.outTime, reason: v.reason }, "IN and OUT added");
+      // The IN stands either way: say so and close, so nobody adds it twice; the OUT can be added from its row.
+      if (!second.ok) toast.warning("The IN is added, but not its OUT: add the OUT from its row.");
+      return true;
     }
     if (d.kind === "add_out") return (await send("/api/dtr/adjust", { timeEntryId: d.row.session.timeEntryId, date: v.date, time: v.time, reason: v.reason }, "OUT added")).ok;
     if (d.kind === "edit") return (await send("/api/dtr/punch/edit", { punchId: d.punch.id, date: v.date, time: v.time, reason: v.reason }, "Time changed; the original is in the log")).ok;
@@ -320,10 +339,10 @@ function Punches() {
               </div>
               <div className="text-theme-xs text-muted-foreground">{row.dateLabel} · {formatMinutes(row.minutes)}</div>
               <div className="grid grid-cols-2 gap-3">
-                <div><div className="mb-1 text-theme-xs text-muted-foreground">IN</div><PunchCell row={row} punch={row.inPunch} side="in" /></div>
-                <div><div className="mb-1 text-theme-xs text-muted-foreground">OUT</div><PunchCell row={row} punch={row.outPunch} side="out" /></div>
+                <div><div className="mb-1 text-theme-xs text-muted-foreground">IN</div>{punchCell(row, row.inPunch, "in")}</div>
+                <div><div className="mb-1 text-theme-xs text-muted-foreground">OUT</div>{punchCell(row, row.outPunch, "out")}</div>
               </div>
-              <RowActions row={row} />
+              {rowActions(row)}
             </div>
           )}
         />

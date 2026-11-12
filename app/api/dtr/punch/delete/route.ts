@@ -16,6 +16,8 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, error: "Sign in first." }, { status: 401 });
+  const { data: may } = await supabase.schema("ops").rpc("manages_punches");
+  if (may !== true) return NextResponse.json({ ok: false, error: "Only those who manage punches delete one." }, { status: 403 });
   const body = (await request.json().catch(() => null)) as { punchId?: unknown; reason?: unknown } | null;
   const punchId = typeof body?.punchId === "string" && /^[0-9a-f-]{36}$/i.test(body.punchId) ? body.punchId : null;
   const reason = typeof body?.reason === "string" ? body.reason : "";
