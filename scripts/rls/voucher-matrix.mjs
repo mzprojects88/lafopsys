@@ -31,14 +31,14 @@ async function step(name, who, sql, params, expect, keep = true) {
   await c.query("reset role");
   if (r.ok && keep) await c.query("release savepoint s");
   const good = expect(r);
-  good ? pass++ : fail++;
+  if (good) pass++;
+  else fail++;
   console.log(`${good ? "PASS" : "FAIL"}  ${name}  ${r.ok ? `rows=${r.n} ${JSON.stringify(r.rows?.[0] ?? "").slice(0, 110)}` : `${r.code} ${r.error.slice(0, 120)}`}`);
   return r;
 }
 const refused = (code) => (r) => !r.ok && (!code || r.code === code);
 const val = (r) => (r.ok ? Object.values(r.rows[0])[0] : undefined);
 const GAS_TRN = "md5('exp:Gasoline / fuel:code:T3:TRN')::uuid";
-const UNR = "md5('code:T2:UNR')";
 
 try {
   await c.query("begin");

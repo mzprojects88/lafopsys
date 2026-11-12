@@ -29,7 +29,8 @@ async function check(name, who, sql, expect) {
   await c.query("rollback to savepoint s");
   await c.query("reset role");
   const good = expect(r);
-  good ? pass++ : fail++;
+  if (good) pass++;
+  else fail++;
   console.log(`${good ? "PASS" : "FAIL"}  ${name}  ${r.ok ? `rows=${r.n} ${JSON.stringify(r.rows?.[0] ?? "").slice(0, 160)}` : `${r.code} ${r.error.slice(0, 140)}`}`);
 }
 const checklist = (r) => (r.ok ? r.rows[0].j : null);
@@ -82,7 +83,8 @@ try {
   await c.query("rollback to savepoint lg");
   await c.query("reset role");
   const logOk = log.n === 1 && log.by_me && log.diff;
-  logOk ? pass++ : fail++;
+  if (logOk) pass++;
+  else fail++;
   console.log(`${logOk ? "PASS" : "FAIL"}  the change log holds the change with who and before/after  ${JSON.stringify(log)}`);
   await check("settling both 5204s without renumbering is refused", ids.admin, `update ops.coa_accounts set review_note = null where code = '5204'`, (r) => !r.ok && r.code === "23505");
   await check("a TIN must be digits", ids.admin, `insert into ops.payees (name, tin) values ('x', '123-456-789')`, (r) => !r.ok && r.code === "23514");

@@ -28,7 +28,8 @@ async function step(name, who, sql, params, expect, keep = true) {
   await c.query("reset role");
   if (r.ok && keep) await c.query("release savepoint s");
   const good = expect(r);
-  good ? pass++ : fail++;
+  if (good) pass++;
+  else fail++;
   console.log(`${good ? "PASS" : "FAIL"}  ${name}  ${r.ok ? `rows=${r.n} ${JSON.stringify(r.rows?.[0] ?? "").slice(0, 110)}` : `${r.code} ${r.error.slice(0, 120)}`}`);
   return r;
 }
