@@ -71,6 +71,10 @@ try {
   await step("nights ahead aren't counted", ids.finance, "select (ops.report_extra((now() at time zone 'Asia/Manila')::date + 1, (now() at time zone 'Asia/Manila')::date + 30)->'occupancy'->>'family_nights')::int n", [], n(0));
   await step("tonight counts only once finalized in the app (never from the House Sheet)", ids.finance,
     "select (ops.report_extra(d, d)->'occupancy'->>'family_nights')::int = (select count(distinct s.patient_id) from ops.bed_nights b join ops.stays s on s.id = b.stay_id where b.night = d)::int ok from (select (now() at time zone 'Asia/Manila')::date d) x", [], (r) => r.ok && r.rows[0].ok === true);
+  await step("the Executive summary keeps its comparison tables (YTD and goals)", null, "select count(*)::int n from ops.report_profiles where name = 'Executive summary' and not (charts::text like '%figures%')", [], n(1));
+  // The budget needs the Budget card too: Finance without it gets the expenses but no budget line.
+  await c.query("delete from shared.role_dashboard_cards where role = 'finance' and card = 'budget'");
+  await step("Expenses without the Budget card: no budget figure", ids.finance, "select ops.report_extra('2026-10-01', '2026-10-31')->'expenses' e", [], (r) => r.ok && r.rows[0].e && r.rows[0].e.budget === null);
   await step("the Report generator page row is retired", null, "select count(*)::int n from shared.role_page_access where page = 'reports.generate'", [], n(0));
 } finally {
   await c.query("rollback");

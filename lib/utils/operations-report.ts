@@ -28,7 +28,7 @@ export const GENERATOR_SECTIONS: { key: GeneratorSectionKey; label: string }[] =
 function headingsOf(key: GeneratorSectionKey): string[] {
   const extra: Partial<Record<GeneratorSectionKey, string[]>> = {
     transportation: ["Transport & fuel"], caf: ["NCH billing"], headline: ["Headline figures"], occupancy: ["Occupancy & beds"],
-    expenses: ["Expenses", "Expenses by fund"], donations: ["Donations"], staff: ["Staff hours"], inventory: ["Inventory & gifts in kind"],
+    expenses: ["Expenses", "Expenses by account", "Expenses by fund"], donations: ["Donations"], staff: ["Staff hours"], inventory: ["Inventory & gifts in kind"],
   };
   return [...(GROUP_OF[key] ? [GROUP_OF[key]!] : []), ...(extra[key] ?? [])];
 }
@@ -147,27 +147,22 @@ export function operationsReport(args: {
     const goal = goals[g.group];
     const sumOf = (rs: readonly ImpactRow[]) => (goal ? asGoals(rs, goal.lines) : 0);
     const compared: Figure[] = goal ? [...figures, { label: `Goal: ${goal.label}`, value: sumOf(rows), previous: sumOf(previous), ytd: sumOf(ytdRows) + sumOf(rows), goal: goal.target, derived: true }] : figures;
-    const tableRows = g.lines.map((l) => [l.label, ...buckets.map((b) => shown(cell(rows, l.key, b.key))), total(rows, l.key), ytdOf(l.key)]);
+    const withYtd = columnsShown.has("ytd");
+    const tableRows = g.lines.map((l) => [l.label, ...buckets.map((b) => shown(cell(rows, l.key, b.key))), total(rows, l.key), ...(withYtd ? [ytdOf(l.key)] : [])]);
     out.push({
       heading: g.group,
       description: withNote(g.group, g.description),
       kpis: figureKpis(figures),
       table: totalsOnly
         ? compare(compared)
-        : { columns: ["Line", ...buckets.map((b) => b.label), "Total", ytdLabel], rows: tableRows, totals: g.lines.length > 1 ? ["Total", ...buckets.map((b) => g.lines.reduce((s, l) => s + shown(cell(rows, l.key, b.key)), 0)), g.lines.reduce((s, l) => s + total(rows, l.key), 0), g.lines.reduce((s, l) => s + ytdOf(l.key), 0)] : undefined },
+        : { columns: ["Line", ...buckets.map((b) => b.label), "Total", ...(withYtd ? [ytdLabel] : [])], rows: tableRows, totals: g.lines.length > 1 ? ["Total", ...buckets.map((b) => g.lines.reduce((s, l) => s + shown(cell(rows, l.key, b.key)), 0)), g.lines.reduce((s, l) => s + total(rows, l.key), 0), ...(withYtd ? [g.lines.reduce((s, l) => s + ytdOf(l.key), 0)] : [])] : undefined },
       chart: totalsOnly ? twoBars(figures) : { kind: g.lines.length > 1 ? "stacked" : "bar", labels: buckets.map((b) => b.label), series: g.lines.map((l) => ({ label: l.label, values: buckets.map((b) => shown(cell(rows, l.key, b.key))) })) },
     });
     inputs.push({ heading: g.group, description: g.description, kpis: figureInput(figures) });
   };
   // A section of figures only (no columns by period): the comparison table, the two-bar chart, and any table of its own.
-  const figuresSection = (heading: string, description: string, figures: Figure[], table?: { columns: string[]; rows: (string | number)[][]; totals?: (string | number)[] }, chart?: { labels: string[]; values: number[]; label: string }) => {
-    out.push({
-      heading,
-      description,
-      kpis: figureKpis(figures),
-      table: table && !totalsOnly ? table : compare(figures),
-      chart: chart ? { kind: "rank", labels: chart.labels, series: [{ label: chart.label, values: chart.values }] } : twoBars(figures),
-    });
+  const figuresSection = (heading: string, description: string, figures: Figure[]) => {
+    out.push({ heading, description, kpis: figureKpis(figures), table: compare(figures), chart: twoBars(figures) });
     inputs.push({ heading, description, kpis: figureInput(figures) });
   };
   const extra = (heading: string, description: string, x: { figures: Figure[]; rows: Record<string, string | number>[] } | undefined, columns: string[], keys: string[], chart: { kind: "bar" | "stacked"; series: { label: string; key: string }[] }) => {
@@ -196,13 +191,14 @@ export function operationsReport(args: {
     if (key === "occupancy" && extras.occupancy) figuresSection("Occupancy & beds", extras.occupancy.note, extras.occupancy.figures);
     if (key === "expenses" && extras.expenses) {
       const x = extras.expenses;
-      figuresSection(
-        "Expenses",
-        x.note,
-        x.figures,
-        { columns: ["Account", "Amount (PHP)"], rows: x.byAccount.map((a) => [a.label, round2(a.amount)]), totals: ["Total", round2(x.byAccount.reduce((t, a) => t + a.amount, 0))] },
-        x.byAccount.length ? { labels: x.byAccount.slice(0, 10).map((a) => a.label), values: x.byAccount.slice(0, 10).map((a) => a.amount), label: "Paid (PHP)" } : undefined,
-      );
+      figuresSection("Expenses", x.note, x.figures);
+      if (x.byAccount.length)
+        out.push({
+          heading: "Expenses by account",
+          description: "The same paid vouchers by the account each line was charged to.",
+          table: { columns: ["Account", "Amount (PHP)"], rows: x.byAccount.map((a) => [a.label, round2(a.amount)]), totals: ["Total", round2(x.byAccount.reduce((t, a) => t + a.amount, 0))] },
+          chart: { kind: "rank", labels: x.byAccount.slice(0, 10).map((a) => a.label), series: [{ label: "Paid (PHP)", values: x.byAccount.slice(0, 10).map((a) => a.amount) }] },
+        });
       if (x.byFund.length > 1) out.push({ heading: "Expenses by fund", description: "The same paid vouchers by the fund they were paid from.", table: { columns: ["Fund", "Amount (PHP)"], rows: x.byFund.map((a) => [a.label, round2(a.amount)]) }, chart: { kind: "rank", labels: x.byFund.map((a) => a.label), series: [{ label: "Paid (PHP)", values: x.byFund.map((a) => a.amount) }] } });
     }
     if (key === "inventory") extra("Inventory & gifts in kind", "Value of the goods received in LAF Inventory in the range, food and non-food, at the values on the receipts.", extras.inventory, ["Period", "Food (PHP)", "Non-food (PHP)"], ["label", "food", "nonFood"], { kind: "stacked", series: [{ label: "Food", key: "food" }, { label: "Non-food", key: "nonFood" }] });
@@ -216,7 +212,7 @@ export function operationsReport(args: {
     const st = styleOf(sec.heading);
     if (st === "figures") return { ...sec, table: undefined, chart: undefined };
     if (st === "table") return { ...sec, chart: undefined };
-    if (st === "rank" && sec.chart) return { ...sec, chart: { ...sec.chart, kind: "rank" as const } };
+    if (st === "rank" && sec.chart && sec.chart.series.length === 1) return { ...sec, chart: { ...sec.chart, kind: "rank" as const } };
     return sec;
   });
   return {

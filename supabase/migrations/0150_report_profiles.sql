@@ -54,7 +54,7 @@ create trigger stamp_report_profile before insert or update on ops.report_profil
 insert into ops.report_profiles (name, description, sections, charts, comparisons, columns_mode, period, fund_code, built_in, sort)
 select * from (values
   ('Executive summary', 'The headline figures with the year to date and the goals, money in and out against the budget, and the AI summary.',
-    array['headline', 'housing', 'meals', 'transportation', 'care_cart', 'donations', 'expenses'], '{"housing":"figures","meals":"figures","transportation":"figures","care_cart":"figures"}'::jsonb,
+    array['headline', 'housing', 'meals', 'transportation', 'care_cart', 'donations', 'expenses'], '{"housing":"table","meals":"table","transportation":"table","care_cart":"table"}'::jsonb,
     array['previous', 'ytd', 'goal'], 'total', 'this_month', null::text, true, 10),
   ('Impact report', 'What the foundation delivered: housing and beds, rides, meals, Care Cart, the Activity Center and the children served.',
     array['headline', 'housing', 'occupancy', 'transportation', 'meals', 'care_cart', 'center', 'activities'], '{}'::jsonb,
@@ -77,12 +77,16 @@ where not exists (select 1 from ops.report_profiles p where lower(btrim(p.name))
 -- after today are not counted.
 -- Expenses: paid vouchers by the day paid, gross, without fund top-ups and cash advances (as 0147), by account and by
 -- fund, optionally one fund; and the approved budget for the same days (each month's amount by the share of its days
--- in the range), for a dashboard profile with the Expenses card.
+-- in the range, to today), for a dashboard profile with the Expenses card (the budget only with the Budget card too).
 create or replace function ops.report_extra(p_from date, p_to date, p_fund text default null)
 returns jsonb language plpgsql stable security definer set search_path = ops, pg_temp as $$
 declare
   r jsonb;
-  v_to date := least(p_to, (now() at time zone 'Asia/Manila')::date);
+  v_today date := (now() at time zone 'Asia/Manila')::date;
+  -- The last night counted: today once its beds are finalized in the app, else yesterday.
+  v_to date := least(p_to, case when exists (select 1 from ops.bed_nights where night = (now() at time zone 'Asia/Manila')::date) then (now() at time zone 'Asia/Manila')::date else (now() at time zone 'Asia/Manila')::date - 1 end);
+  -- Spending and the budget run to today.
+  v_spent_to date := least(p_to, (now() at time zone 'Asia/Manila')::date);
 begin
   if not shared.module_viewable('reports') then
     raise exception 'Reports access is needed.' using errcode = '42501';
@@ -95,7 +99,7 @@ begin
     union
     select sn.night, coalesce('p:' || hp.matched_patient_id, 'n:' || sn.name_key)
       from ops.sheet_nights sn left join ops.house_sheet_people hp on hp.name_key = sn.name_key
-     where sn.night between p_from and least(v_to, (now() at time zone 'Asia/Manila')::date - 1) and coalesce(hp.match_status, 'unmatched') <> 'dismissed'
+     where sn.night between p_from and least(v_to, v_today - 1) and coalesce(hp.match_status, 'unmatched') <> 'dismissed'
        and not exists (select 1 from ops.bed_nights b where b.night = sn.night)
   ), per_night as (select night, count(*) as families from nights group by night)
   select jsonb_build_object('occupancy', jsonb_build_object(
@@ -119,9 +123,10 @@ begin
           from paid p join ops.vouchers v on v.id = p.id join ops.voucher_lines l on l.voucher_id = p.id
       ), months as (
         -- Each month the range touches, with the share of its days in the range.
-        select m::date as month, (least(p_to, (m + interval '1 month - 1 day')::date) - greatest(p_from, m::date) + 1)::numeric
+        select m::date as month, (least(v_spent_to, (m + interval '1 month - 1 day')::date) - greatest(p_from, m::date) + 1)::numeric
                  / extract(day from (m + interval '1 month - 1 day'))::numeric as share
-          from generate_series(date_trunc('month', p_from::timestamp), p_to::timestamp, interval '1 month') m
+          from generate_series(date_trunc('month', p_from::timestamp), v_spent_to::timestamp, interval '1 month') m
+         where v_spent_to >= p_from
       ), budget as (
         select sum(bv.amount * mo.share) as amount
           from months mo
@@ -135,7 +140,7 @@ begin
         'total', coalesce((select sum(amount) from lines), 0),
         'vouchers', (select count(*) from paid),
         -- The whole foundation's approved budget for these days (none when one fund is asked for: budgets aren't by fund).
-        'budget', (select round(amount, 2) from budget),
+        'budget', case when shared.dashboard_card_ok('budget') then (select round(amount, 2) from budget) end,
         'by_account', coalesce((select jsonb_agg(x order by x.amount desc) from (
             select coalesce(a.code, nullif(l.legacy_code, ''), '—') as code, coalesce(a.name, nullif(l.legacy_name, ''), 'Not coded') as name, sum(l.amount) as amount
               from lines l left join ops.coa_accounts a on a.id = l.account_id group by 1, 2) x), '[]'::jsonb),

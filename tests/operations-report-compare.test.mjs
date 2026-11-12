@@ -51,7 +51,13 @@ it("the expenses section: by account and by fund, in the profile's order, with i
   };
   const spec = operationsReport({ ...base, sections: ["expenses", "housing"], extras: { expenses }, totalsOnly: false, title: "Financial report" }).spec;
   assert.equal(spec.title, "Financial report");
-  assert.deepEqual(spec.sections.map((x) => x.heading), ["Expenses", "Expenses by fund", "Housing"]);
-  assert.deepEqual(spec.sections[0].table.rows, [["5932 Travels and meals", 600], ["5100 Supplies", 400]]);
-  assert.equal(spec.sections[0].chart.kind, "rank");
+  assert.deepEqual(spec.sections.map((x) => x.heading), ["Expenses", "Expenses by account", "Expenses by fund", "Housing"]);
+  assert.equal(spec.sections[0].table.columns[0], "Figure");
+  assert.deepEqual(spec.sections[1].table.rows, [["5932 Travels and meals", 600], ["5100 Supplies", 400]]);
+  assert.equal(spec.sections[1].chart.kind, "rank");
+  // Sideways bars draw one series: a chart of several keeps its kind; the YTD column follows the profile.
+  const r = operationsReport({ ...base, totalsOnly: true, styles: { housing: "rank" }, comparisons: ["previous"] }).spec.sections[0];
+  assert.equal(r.chart.kind, "rank");
+  const c = operationsReport({ ...base, totalsOnly: false, comparisons: ["previous"] }).spec.sections[0];
+  assert.deepEqual(c.table.columns, ["Line", "Oct", "Total"]);
 });

@@ -164,16 +164,25 @@ function Generator() {
   const [order, setOrder] = React.useState<GeneratorSectionKey[]>(() => GENERATOR_SECTIONS.map((s) => s.key));
   // A profile picked (or opened from a link) sets the sections and their order once.
   const appliedFor = React.useRef<string | null>(null);
+  const design = profile ? JSON.stringify([profile.id, profile.sections, profile.includeAi]) : null;
   React.useEffect(() => {
-    if (!profile || appliedFor.current === profile.id) return;
-    appliedFor.current = profile.id;
+    if (!profile) {
+      if (appliedFor.current !== null) {
+        appliedFor.current = null;
+        setPicked(new Set(GENERATOR_SECTIONS.map((x) => x.key)));
+        setOrder(GENERATOR_SECTIONS.map((x) => x.key));
+      }
+      return;
+    }
+    if (appliedFor.current === design) return;
+    appliedFor.current = design;
     const known = new Set<string>(GENERATOR_SECTIONS.map((x) => x.key));
     const mine = profile.sections.filter((k) => known.has(k)) as GeneratorSectionKey[];
     setPicked(new Set(mine));
     setOrder([...mine, ...GENERATOR_SECTIONS.map((x) => x.key).filter((k) => !mine.includes(k))]);
     ai.setInclude(profile.includeAi);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once a profile, not on every render of the analysis state
-  }, [profile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once a design, not on every render of the analysis state
+  }, [design]);
   // A profile just saved may not be in the list yet: its period and columns come with it.
   const pickProfile = (id: string, saved?: Pick<ReportProfile, "period" | "columnsMode">) => {
     const p = id ? (saved ?? profiles.find((x) => x.id === id) ?? null) : null;
@@ -183,10 +192,6 @@ function Generator() {
       q.set("profile", id);
       q.set("period", p.period);
       q.set("cols", p.columnsMode);
-    } else {
-      appliedFor.current = null;
-      setPicked(new Set(GENERATOR_SECTIONS.map((x) => x.key)));
-      setOrder(GENERATOR_SECTIONS.map((x) => x.key));
     }
     router.replace(`${pathname}?${q.toString()}`, { scroll: false });
   };
@@ -374,17 +379,18 @@ function Generator() {
 
   const loadingMore = (needExtra && (extraNow.loading || extraPrev.loading || extraYtd.loading)) || (needHeadline && (headNow.loading || headPrev.loading || headYtd.loading));
   const ready = !programs.loading && !programsBefore.loading && !programsYtd.loading && !!extras && !!extrasBefore && !!extrasYtd && !loadingMore;
-  const report = () =>
+  /** `plain`: every table whatever the profile draws (the CSV). */
+  const report = (plain = false) =>
     operationsReport({
       sections, rows: programs.rows, previous: programsBefore.rows, buckets, extras: built, period: label, previousPeriod: prevLabel, totalsOnly, ytdRows: programsYtd.rows, ytdLabel, goalYear: year, goals: programGoals,
-      styles: profile?.charts as Partial<Record<GeneratorSectionKey, "chart" | "rank" | "table" | "figures">> | undefined,
+      styles: plain ? undefined : (profile?.charts as Partial<Record<GeneratorSectionKey, "chart" | "rank" | "table" | "figures">> | undefined),
       comparisons: profile?.comparisons,
       notes: filled ? { Housing: `${filled} night${filled === 1 ? "" : "s"} of this period came from the House Sheet: nobody finalized them in the app.` } : undefined,
       title: profile?.name,
     });
   // Every table of the report as one CSV, section by section.
   const exportCsv = () => {
-    const spec = report().spec;
+    const spec = report(true).spec;
     const lines: (string | number)[][] = [[spec.title, spec.period, spec.previousPeriod ?? ""]];
     for (const sec of spec.sections) {
       if (!sec.table) continue;
@@ -436,8 +442,7 @@ function Generator() {
           onClose={() => setEditing(null)}
           onSaved={(id, saved) => {
             setEditing(null);
-            // Reapplied from the saved design once the list has it.
-            appliedFor.current = null;
+            // Applied again once the list has the saved design (the effect follows the design, not the id).
             pickProfile(id, saved);
           }}
         />
@@ -469,6 +474,7 @@ function Generator() {
         </p>
       </div>
       {programs.error || programsBefore.error || programsYtd.error ? <EmptyState title="Couldn't load the programs" description={`${programs.error ?? programsBefore.error ?? programsYtd.error} Figures that failed to load read as zero: reload before using this report.`} /> : null}
+      {[extraNow, extraPrev, extraYtd, headNow, headPrev, headYtd].some((x) => x.error) ? <EmptyState title="Some figures couldn't load" description={`${[extraNow, extraPrev, extraYtd, headNow, headPrev, headYtd].find((x) => x.error)?.error} The headline, occupancy or expenses section is left out: reload before using this report.`} /> : null}
       {extras?.failed || extrasBefore?.failed || extrasYtd?.failed ? <EmptyState title="Some figures couldn't load" description="Transport, staff hours or gifts in kind failed to load and read as zero: reload before using this report." /> : null}
       {!ready ? <LoadingState /> : null}
       <AiAnalysisPanel text={ai.analysis?.overall} />
