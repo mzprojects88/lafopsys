@@ -25,8 +25,9 @@ const storageKey = (page: string) => `laf-period:${page}`;
  * A page's period (Nov 2026), kept in the address (`?period=this_week`, custom adds `from`/`to`) so a link or a
  * reload shows the same figures. With no period in the address, the one last picked on this page on this device
  * comes back; otherwise the page's default. The page must sit inside a React.Suspense (useSearchParams).
+ * `remember: false` (the dashboard, 0147): the default is the person's own choice, so the device's last pick isn't kept.
  */
-export function usePeriodPresets(page: string, fallback: PresetKey, allowAll = false) {
+export function usePeriodPresets(page: string, fallback: PresetKey, allowAll = false, remember = true) {
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -35,11 +36,11 @@ export function usePeriodPresets(page: string, fallback: PresetKey, allowAll = f
   const window = React.useMemo(() => presetWindow(state, today), [state, today]);
 
   const write = React.useCallback(
-    (next: PresetState, remember: boolean) => {
+    (next: PresetState, keep: boolean) => {
       const q = new URLSearchParams(params.toString());
       for (const k of ["period", "from", "to"]) q.delete(k);
       for (const [k, v] of Object.entries(presetQuery(next))) q.set(k, v);
-      if (remember) {
+      if (remember && keep) {
         try {
           window_localStorage()?.setItem(storageKey(page), JSON.stringify(next));
         } catch {
@@ -48,7 +49,7 @@ export function usePeriodPresets(page: string, fallback: PresetKey, allowAll = f
       }
       router.replace(`${pathname}?${q.toString()}`, { scroll: false });
     },
-    [params, pathname, router, page]
+    [params, pathname, router, page, remember]
   );
 
   // Once: the period last picked here, when the address doesn't name one.
@@ -56,14 +57,14 @@ export function usePeriodPresets(page: string, fallback: PresetKey, allowAll = f
   React.useEffect(() => {
     if (restored.current) return;
     restored.current = true;
-    if (params.get("period")) return;
+    if (params.get("period") || !remember) return;
     try {
       const saved = JSON.parse(window_localStorage()?.getItem(storageKey(page)) ?? "null") as PresetState | null;
       if (saved && PRESETS.some((p) => p.key === saved.key) && (saved.key !== "all" || allowAll) && saved.key !== fallback) write(saved, false);
     } catch {
       // Nothing usable stored: the default stands.
     }
-  }, [params, page, fallback, allowAll, write]);
+  }, [params, page, fallback, allowAll, write, remember]);
 
   return { state, window, label: presetLabel(state, window), setState: (next: PresetState) => write(next, true), today };
 }

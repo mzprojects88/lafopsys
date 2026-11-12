@@ -52,6 +52,7 @@ export default function SettingsPage() {
         <SectionCard title={<CardTitleWithIcon icon={Users}>Users & Roles</CardTitleWithIcon>} bodyClassName="flex flex-col gap-1.5">
           <Link href="/settings/users" className="text-theme-sm text-primary hover:underline">Manage users</Link>
           <Link href="/settings/access" className="text-theme-sm text-primary hover:underline">Roles &amp; access by module</Link>
+          <Link href="/settings/dashboard" className="text-theme-sm text-primary hover:underline">Dashboard profiles</Link>
         </SectionCard>
 
         <SectionCard title={<CardTitleWithIcon icon={Bell}>Notifications</CardTitleWithIcon>}>

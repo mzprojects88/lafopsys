@@ -2,10 +2,7 @@
 
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import Link from "next/link";
-import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import {
-  Plus,
   TrendingUp,
   TrendingDown,
   Scale,
@@ -37,7 +34,6 @@ import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/fi
 import { optionsOf } from "@/lib/utils/filters";
 import { ENTITIES } from "@/lib/types/common";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
-import { Button } from "@/components/ui/button";
 import { useCashEntriesData } from "@/lib/hooks/use-cash-entries-collection";
 import { useProgramsData } from "@/lib/hooks/use-programs-collection";
 
@@ -108,7 +104,6 @@ export default function FinancePage() {
 }
 
 function FinanceContent() {
-  const { canEdit } = useModuleAccess();
   const { roles } = useRole();
   const { entries: all } = useCashEntriesData();
   const { programs } = useProgramsData();
@@ -137,7 +132,6 @@ function FinanceContent() {
         description="All cashflow in/out — donation, infusion, and other means."
         action={
           <>
-            {canEdit("finance") ? <Button asChild><Link href="/finance/entry"><Plus />New Entry</Link></Button> : null}
             <ModuleSubNav items={SUB_NAV} />
           </>
         }

@@ -3,12 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import {
-  Users,
-  UserCheck,
-  Wallet,
-  ClipboardList,
   Send,
-  PackageX,
   CheckCircle2,
   AlertTriangle,
   Clock,
@@ -21,7 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Line, LineChart, XAxis } from "recharts";
-import { KpiCard, KpiGrid, type StatTone } from "@/components/patterns/kpi-card";
+import { KpiGrid, type StatTone } from "@/components/patterns/kpi-card";
 import { IconCircle } from "@/components/patterns/icon-circle";
 import { SectionCard } from "@/components/patterns/section-card";
 import { Button } from "@/components/ui/button";
@@ -45,10 +40,27 @@ import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/date";
 import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 import { ROLES, type Role } from "@/lib/types/common";
-import { doesFinance, hasAnyRole } from "@/lib/rbac/roles";
+import { hasAnyRole } from "@/lib/rbac/roles";
 import { LoadingState } from "@/components/patterns/loading-state";
 import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
 import { FilterSelect, useFilters } from "@/components/patterns/filters";
+import { useCollection } from "@/lib/data/collection-store";
+import { dashboardProfilesStore, myDashboardStore, useDashboardFigures } from "@/lib/hooks/use-dashboard";
+import { DashboardCard } from "@/components/modules/dashboard/dashboard-cards";
+import { CustomizeSheet } from "@/components/modules/dashboard/customize-sheet";
+import { ACTIONS, CARDS, resolveLayout, type ActionKey } from "@/lib/utils/dashboard-catalog";
+import type { PresetKey } from "@/lib/utils/period-presets";
+import { canManageHr } from "@/lib/rbac/roles";
+import {
+  BedDouble, Bus, CalendarCheck, ClipboardCheck, Fingerprint, Fuel, Gift, HandHeart, Landmark, LayoutGrid, ListChecks, Map as MapIcon, NotebookPen, ShoppingBasket, Stethoscope, Wallet as WalletIcon,
+} from "lucide-react";
+
+/** The quick actions' icons (0147). */
+const ACTION_ICONS: Record<ActionKey, LucideIcon> = {
+  admit: Send, house_today: BedDouble, floor_plan: MapIcon, new_request: FileSignature, requests: ClipboardCheck, ledger: Landmark, funds: WalletIcon,
+  receive_donation: HandCoins, cash_gift: Gift, donors: HandHeart, new_trip: Bus, log_fuel: Fuel, care_cart: ShoppingBasket, activity_center: Stethoscope,
+  clock: Fingerprint, punches: ListChecks, dtr: Clock, leave: CalendarCheck, generate_report: BarChart3, programs_report: NotebookPen, compliance: CheckCircle2,
+};
 import { bucketOf, daysOf } from "@/lib/utils/period-presets";
 import { naturalGrain } from "@/lib/utils/period";
 
@@ -61,12 +73,30 @@ export default function DashboardPage() {
 }
 
 function DashboardContent() {
-  const { role, roles, title, user } = useRole();
-  // The period the dated figures cover (Nov 2026); In-House Now, the pending counts and stock stay "right now".
-  const period = usePeriodPresets("dashboard", "this_month");
+  const { role, roles, title, user, isHr } = useRole();
+  // The person's own dashboard (0147): the cards their profile offers, in their order, their quick actions, and the
+  // period it opens on (Year to date unless they chose another).
+  const { data: profiles } = useCollection(dashboardProfilesStore);
+  const { data: saved, loading: layoutLoading } = useCollection(myDashboardStore);
+  const allowed = React.useMemo(() => {
+    if (roles.includes("admin")) return new Set<string>(CARDS.map((c) => c.key));
+    const set = new Set(profiles.filter((p) => roles.includes(p.role as Role)).map((p) => p.card));
+    if (canManageHr(roles, isHr)) for (const c of ["cash", "gifts", "expenses", "budget"]) set.add(c);
+    return set;
+  }, [profiles, roles, isHr]);
+  const { levelOfPath } = useModuleAccess();
+  const mayUse = (a: (typeof ACTIONS)[number]) => {
+    // Only actions the person may take; receiving happens in the inventory app, for its editors.
+    if (a.inventory) return hasAnyRole(roles, "admin", "inventory_staff", "inventory_lead");
+    const level = levelOfPath(a.href, moduleForPath(a.href) ?? undefined);
+    return !isHiddenPath(a.href, role) && (a.edit ? level === "edit" : level !== "none");
+  };
+  const layout = resolveLayout(saved, allowed, roles, mayUse);
+  const [customizing, setCustomizing] = React.useState(false);
+  const period = usePeriodPresets("dashboard", layout.period as PresetKey, false, false);
   const w = period.window!;
+  const { figures } = useDashboardFigures(w);
   const inPeriod = (date: string | undefined | null) => !!date && date.slice(0, 10) >= w.from && date.slice(0, 10) <= w.to;
-  const has = (...r: Role[]) => hasAnyRole(roles, ...r);
   const roleLabel = ROLES.find((r) => r.value === title)?.label ?? title;
   const { referrals } = useReferralsData();
   const { patients, stays } = usePatientsData();
@@ -82,15 +112,7 @@ function DashboardContent() {
   const today = censusHistory[censusHistory.length - 1];
   // Families checked in now (the stays), not the House Sheet's row count the census held.
   const inHouseNow = stays.filter(isActiveStay).length || (today?.inHouse ?? 0);
-  const pendingApprovals = leaveRequests.filter((a) => a.status === "pending").length;
-  const pendingReferrals = referrals.filter((r) => r.status === "submitted").length;
   const expiringSoon = expiringLots.filter((l) => l.days_left >= 0 && l.days_left <= 14).length;
-  // Cash gifts in the period, from the donor ledger like Donors & Donations (until Nov 2026 this added up the
-  // finance cash book, so it showed P0 while gifts were coming in).
-  const cashIn = donations.filter((d) => d.kind === "cash" && d.currency === "PHP" && inPeriod(d.date)).reduce((s, d) => s + d.totalValue, 0);
-  const inKindIn = donations.filter((d) => d.kind === "in_kind" && inPeriod(d.date)).reduce((s, d) => s + d.totalValue, 0);
-  const admittedInPeriod = patients.filter((p) => inPeriod(p.admittedAt)).length;
-  const referralsReceived = referrals.filter((r) => inPeriod(r.date)).length;
 
   // The beds drawn on the floor plan (0047), one admission slot each by default.
   const capacity = houseCapacity(units);
@@ -159,20 +181,9 @@ function DashboardContent() {
       })),
   ].slice(0, 4);
 
-  const { canEdit } = useModuleAccess();
-  const quickActions = [
-    { label: "Admit a child", href: "/patients/admit", icon: Send },
-    // Donations and stock are both recorded in the LAF Inventory app (one
-    // receipt, one entry); this app only shows what they became.
-    { label: "Receive a donation", href: inventoryAppHref("/intake"), icon: HandCoins },
-    { label: "New Cash Entry", href: "/finance/entry", icon: FileSignature },
-    { label: "Request Approval", href: "/finance/approvals", icon: CheckCircle2 },
-    { label: "Generate Report", href: "/reports/builder", icon: BarChart3 },
-  ].filter((a) => {
-    // Only actions the person may actually take. Receiving happens in the inventory app, for its editors.
-    if (a.label === "Receive a donation") return hasAnyRole(roles, "admin", "inventory_staff", "inventory_lead");
-    const m = moduleForPath(a.href);
-    return !isHiddenPath(a.href, role) && (m === null || canEdit(m));
+  const quickActions = layout.actions.map((k) => {
+    const a = ACTIONS.find((x) => x.key === k)!;
+    return { label: a.label, href: a.inventory ? inventoryAppHref(a.href) : a.href, icon: ACTION_ICONS[k] };
   });
 
   const chartConfig: ChartConfig = { amount: { label: "Donations", color: "var(--chart-1)" } };
@@ -192,6 +203,7 @@ function DashboardContent() {
 
   return (
     <div className="flex flex-1 flex-col gap-5 lg:gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-2">
       <div className="flex flex-col gap-0.5">
         <p className="text-theme-sm text-muted-foreground">Welcome back,</p>
         <h1 className="text-xl font-semibold text-foreground lg:text-2xl">
@@ -199,38 +211,37 @@ function DashboardContent() {
           {user ? <span className="font-normal text-muted-foreground"> · {roleLabel}</span> : null}
         </h1>
       </div>
+        <Button variant="outline" size="sm" onClick={() => setCustomizing(true)}><LayoutGrid className="size-4" /> Customize</Button>
+      </div>
+      {customizing ? (
+        <CustomizeSheet
+          open
+          onOpenChange={setCustomizing}
+          allowed={allowed}
+          usable={ACTIONS.filter(mayUse).map((a) => a.key)}
+          current={layout}
+        />
+      ) : null}
 
-      <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} />
+      <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} years />
 
       <KpiGrid>
-        {has("admin", "office_admin", "social_worker", "house_staff", "driver") && (
-          <KpiCard label="In-House Now" value={inHouseNow} sublabel="Residents · now" icon={Users} />
-        )}
-        {has("admin", "office_admin", "social_worker") && (
-          <KpiCard label="New Admissions" value={admittedInPeriod} sublabel={`${patients.length} enrolled in all · ${period.label}`} icon={UserCheck} />
-        )}
-        {has("admin", "office_admin", "finance", "board") && !isHiddenPath("/donors", roles) && (
-          <KpiCard label="Cash Donations" value={formatCurrency(cashIn)} sublabel={period.label} icon={Wallet} />
-        )}
-        {has("admin", "office_admin", "finance", "board") && !isHiddenPath("/donors", roles) && (
-          <KpiCard label="Gifts in Kind" value={formatCurrency(inKindIn)} sublabel={period.label} icon={HandCoins} />
-        )}
-        {doesFinance(roles) && !isHiddenPath("/finance", roles) && (
-          <KpiCard label="Pending Approvals" value={pendingApprovals} sublabel="Items · now" icon={ClipboardList} tone={pendingApprovals > 0 ? "warning" : "default"} />
-        )}
-        {has("admin", "office_admin", "social_worker") && (
-          <KpiCard label="Pending Referrals" value={pendingReferrals} sublabel={`Now · ${referralsReceived} received in the period`} icon={Send} tone={pendingReferrals > 0 ? "warning" : "default"} />
-        )}
-        {has("admin", "house_staff") && (
-          <KpiCard label="Items Expiring ≤14d" value={expiringSoon} sublabel="Items · now" icon={PackageX} tone={expiringSoon > 0 ? "warning" : "default"} />
-        )}
-        {role === "volunteer" && !isHiddenPath("/donors", role) && (
-          <KpiCard label="Donations Recorded" value={donations.filter((d) => inPeriod(d.date)).length} sublabel={period.label} icon={HandCoins} />
-        )}
+        {layout.cards.map((k) => (
+          <DashboardCard
+            key={k}
+            k={k}
+            f={figures}
+            period={period.state.key === "this_year" ? `Year to date ${w.from.slice(0, 4)}` : period.label}
+            window={w}
+            now={{ inHouseNow, occupiedPct, capacity, expiringSoon, lowStock }}
+          />
+        ))}
       </KpiGrid>
+      {!layoutLoading && layout.cards.length === 0 ? <p className="text-theme-sm text-muted-foreground">No cards chosen: press Customize to add some.</p> : null}
 
       <div className="flex flex-col gap-2">
         <h2 className="text-theme-sm font-semibold text-foreground">Quick Actions</h2>
+        {quickActions.length === 0 ? <p className="text-theme-xs text-muted-foreground">None chosen: press Customize to add shortcuts.</p> : null}
         <div className="grid grid-cols-4 gap-2 lg:hidden">
           {quickActions.map((action) => (
             <Link

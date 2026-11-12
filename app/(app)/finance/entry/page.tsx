@@ -1,11 +1,7 @@
-import { PageHeader } from "@/components/patterns/page-header";
-import { EntryForm } from "@/components/modules/finance/entry-form";
+import { redirect } from "next/navigation";
 
+// New Cash Entry is retired (0147, user 12 Nov 2026): gifts come in through Donors and Inventory, and money goes out
+// through Payment Requests, whose paid vouchers post to the books themselves. Old links land on a new request.
 export default function FinanceEntryPage() {
-  return (
-    <div className="flex flex-1 flex-col gap-6">
-      <PageHeader title="New Cash Entry" description="Multi-entity, multi-currency inflow or outflow." />
-      <EntryForm />
-    </div>
-  );
+  redirect("/requests/new");
 }
