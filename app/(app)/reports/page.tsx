@@ -2,7 +2,15 @@
 
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { FolderOpen, List } from "lucide-react";
+import { Download, FolderOpen, List, Pencil, Plus } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ProfileEditor } from "@/components/modules/reports/profile-editor";
+import { useCollection } from "@/lib/data/collection-store";
+import { reportProfilesStore, useReportExtra, type ReportExtra, type ReportProfile } from "@/lib/hooks/use-report-profiles";
+import { dashboardProfilesStore, useDashboardFigures, type DashboardFigures } from "@/lib/hooks/use-dashboard";
+import { csvLines, downloadCsv } from "@/lib/utils/csv";
+import { useSetupRows } from "@/lib/hooks/use-finance-setup";
+import type { Role } from "@/lib/types/common";
 import { ModuleSubNav } from "@/components/patterns/module-subnav";
 import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period-presets";
 import { Button } from "@/components/ui/button";
@@ -121,7 +129,9 @@ function Generator() {
   const previous = previousWindow(kind, window);
   // Counted as the dashboard counts the same period; shown as totals, or in those columns (a year by month).
   const grain = periodGrain(window);
-  const cols = params.get("cols") ?? (grain === "month" ? "columns" : "total");
+  const { data: profiles } = useCollection(reportProfilesStore);
+  const profile = profiles.find((p) => p.id === params.get("profile")) ?? null;
+  const cols = params.get("cols") ?? profile?.columnsMode ?? (grain === "month" ? "columns" : "total");
   const totalsOnly = cols !== "columns";
   const setCols = (v: string) => {
     const q = new URLSearchParams(params.toString());
@@ -146,9 +156,46 @@ function Generator() {
   const access = useModuleAccess();
   const { roles } = useRole();
   const see = { reports: access.canView("reports"), transport: access.canView("transport"), donors: access.canView("donors"), hours: holdsPower(roles, "runs_hr") || holdsPower(roles, "finance_work"), caf: holdsPower(roles, "caf_billing_view") };
+  // Expenses: for a dashboard profile with the Expenses card (the database gives the figures to no one else, 0147).
+  const { data: cardRows } = useCollection(dashboardProfilesStore);
+  const seesExpenses = roles.includes("admin") || cardRows.some((r) => r.card === "expenses" && roles.includes(r.role as Role));
+  const designs = roles.some((r) => r === "admin" || r === "ceo" || r === "finance");
   const [picked, setPicked] = React.useState<Set<GeneratorSectionKey>>(() => new Set(GENERATOR_SECTIONS.map((s) => s.key)));
-  const allowed = (k: GeneratorSectionKey) => (k === "donations" || k === "inventory" ? see.donors : k === "staff" ? see.hours : k === "caf" ? see.reports : see.reports);
-  const sections = GENERATOR_SECTIONS.map((s) => s.key).filter((k) => picked.has(k) && allowed(k));
+  const [order, setOrder] = React.useState<GeneratorSectionKey[]>(() => GENERATOR_SECTIONS.map((s) => s.key));
+  // A profile picked (or opened from a link) sets the sections and their order once.
+  const appliedFor = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!profile || appliedFor.current === profile.id) return;
+    appliedFor.current = profile.id;
+    const known = new Set<string>(GENERATOR_SECTIONS.map((x) => x.key));
+    const mine = profile.sections.filter((k) => known.has(k)) as GeneratorSectionKey[];
+    setPicked(new Set(mine));
+    setOrder([...mine, ...GENERATOR_SECTIONS.map((x) => x.key).filter((k) => !mine.includes(k))]);
+    ai.setInclude(profile.includeAi);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once a profile, not on every render of the analysis state
+  }, [profile]);
+  // A profile just saved may not be in the list yet: its period and columns come with it.
+  const pickProfile = (id: string, saved?: Pick<ReportProfile, "period" | "columnsMode">) => {
+    const p = id ? (saved ?? profiles.find((x) => x.id === id) ?? null) : null;
+    const q = new URLSearchParams(params.toString());
+    for (const k of ["period", "from", "to", "cols", "profile"]) q.delete(k);
+    if (p) {
+      q.set("profile", id);
+      q.set("period", p.period);
+      q.set("cols", p.columnsMode);
+    } else {
+      appliedFor.current = null;
+      setPicked(new Set(GENERATOR_SECTIONS.map((x) => x.key)));
+      setOrder(GENERATOR_SECTIONS.map((x) => x.key));
+    }
+    router.replace(`${pathname}?${q.toString()}`, { scroll: false });
+  };
+  const [editing, setEditing] = React.useState<ReportProfile | "new" | null>(null);
+  const { data: fundCodes } = useSetupRows("fin_codes");
+  const allowed = (k: GeneratorSectionKey) => (k === "donations" || k === "inventory" ? see.donors : k === "staff" ? see.hours : k === "expenses" ? seesExpenses : see.reports);
+  const sections = order.filter((k) => picked.has(k) && allowed(k));
+  const wants = (k: GeneratorSectionKey) => sections.includes(k);
+  const fund = profile?.fundCode ?? null;
 
   const programs = useProgramImpact(window, grain);
   const programsBefore = useProgramImpact(previous, periodGrain(previous));
@@ -166,6 +213,28 @@ function Generator() {
   const programGoals = Object.fromEntries(
     (Object.keys(GOAL_GROUP) as Measure[]).flatMap((m) => ((g) => (g ? [[GOAL_GROUP[m], { label: g.title, lines: MEASURES[m].lines as string[], target: g.target }]] : []))(goalOf(m))),
   );
+  const needExtra = wants("occupancy") || wants("expenses");
+  const extraNow = useReportExtra(window, fund, needExtra);
+  const extraPrev = useReportExtra(previous, fund, needExtra);
+  const extraYtdRead = useReportExtra(ytdWindow, fund, needExtra && !ytdIsPeriod);
+  const extraYtd = ytdIsPeriod ? extraNow : extraYtdRead;
+  const needHeadline = wants("headline");
+  const headNow = useDashboardFigures(window, needHeadline);
+  const headPrev = useDashboardFigures(previous, needHeadline);
+  const headYtdRead = useDashboardFigures(ytdWindow, needHeadline && !ytdIsPeriod);
+  const headYtd = ytdIsPeriod ? headNow : headYtdRead;
+  // How many of the period's nights the House Sheet filled (nobody finalized them in the app, 0148).
+  const [filledNights, setFilledNights] = React.useState<{ key: string; n: number } | null>(null);
+  const nightsKey = `${window.from}|${window.to}`;
+  React.useEffect(() => {
+    let live = true;
+    void createClient().schema("ops").rpc("unfinalized_nights", { p_from: window.from, p_to: window.to })
+      .then(({ data }) => live && setFilledNights({ key: nightsKey, n: ((data ?? []) as { filled: boolean }[]).filter((r) => r.filled).length }));
+    return () => {
+      live = false;
+    };
+  }, [window.from, window.to, nightsKey]);
+  const filled = filledNights?.key === nightsKey ? filledNights.n : 0;
   const { donations } = useDonorsData();
   const { bills } = useCafBills();
   const ai = useReportAnalysis();
@@ -247,8 +316,82 @@ function Generator() {
     built.caf = { figures: [fig("Billed", sum(cur, "billed"), sum(prev, "billed"), sum(ytd, "billed"), "PHP"), fig("Paid", sum(cur, "paid"), sum(prev, "paid"), sum(ytd, "paid"), "PHP"), fig("Nights absorbed", sum(cur, "absorbed"), sum(prev, "absorbed"), sum(ytd, "absorbed"))], rows: cur };
   }
 
-  const ready = !programs.loading && !programsBefore.loading && !programsYtd.loading && !!extras && !!extrasBefore && !!extrasYtd;
-  const report = () => operationsReport({ sections, rows: programs.rows, previous: programsBefore.rows, buckets, extras: built, period: label, previousPeriod: prevLabel, totalsOnly, ytdRows: programsYtd.rows, ytdLabel, goalYear: year, goals: programGoals });
+  // Headline: the dashboard's own figures for the three windows (money only where the dashboard shows it).
+  const sumLines = (x: DashboardFigures | null, ...lines: string[]) => lines.reduce((t, l) => t + Number(x?.lines[l] ?? 0), 0);
+  if (needHeadline && headNow.figures && headPrev.figures && headYtd.figures) {
+    const [a, b, c] = [headNow.figures, headPrev.figures, headYtd.figures];
+    const line = (name: string, unit: Figure["unit"], ...lines: string[]) => fig(name, sumLines(a, ...lines), sumLines(b, ...lines), sumLines(c, ...lines), unit);
+    built.headline = {
+      figures: [
+        line("Bed nights provided", "", "housing"),
+        line("Patient and caregiver rides", "", "transport_to_nch", "transport_to_laf"),
+        line("Meals served", "", "meals_breakfast", "meals_lunch", "meals_dinner"),
+        line("Child visits (Activity Center @ NCH)", "", "center_nch_participants"),
+        line("Care Cart meals (served at NCH)", "", "care_cart_1000", "care_cart_1200", "care_cart_1700"),
+        fig("Unique patients admitted", a.unique_patients, b.unique_patients, c.unique_patients),
+        ...(a.cash && b.cash && c.cash ? [fig("Cash donations", a.cash.amount, b.cash.amount, c.cash.amount, "PHP")] : []),
+        ...(a.expenses && b.expenses && c.expenses ? [fig("Expenses (paid vouchers)", a.expenses.amount, b.expenses.amount, c.expenses.amount, "PHP")] : []),
+      ],
+    };
+  }
+  // Occupancy and beds: the house's beds and the families a night.
+  const occ = (x: ReportExtra | null) => x?.occupancy;
+  if (needExtra && occ(extraNow.data) && occ(extraPrev.data) && occ(extraYtd.data)) {
+    const [a, b, c] = [occ(extraNow.data)!, occ(extraPrev.data)!, occ(extraYtd.data)!];
+    const avg = (o: typeof a) => (o.days ? Math.round((o.family_nights / o.days) * 10) / 10 : 0);
+    const pct = (o: typeof a) => (o.beds && o.days ? Math.round((o.family_nights / o.days / o.beds) * 1000) / 10 : 0);
+    built.occupancy = {
+      figures: [
+        fig("Families a night (average)", avg(a), avg(b), avg(c)),
+        fig("Beds in use (average, %)", pct(a), pct(b), pct(c)),
+        fig("Family-nights", a.family_nights, b.family_nights, c.family_nights),
+        fig("Nights with nobody in", a.empty_nights, b.empty_nights, c.empty_nights),
+      ],
+      note: `${a.beds} beds (${a.regular_beds} regular, ${a.beds - a.regular_beds} temporary mattresses) on the floor plan; families housed each night from the nights finalized in the app, else the House Sheet. ${a.busiest ? `Busiest night: ${a.busiest.night} with ${a.busiest.families} families.` : ""}`.trim(),
+    };
+  }
+  // Expenses: paid vouchers against the approved budget, by account and by fund; spending per person-night.
+  const exp = (x: ReportExtra | null) => x?.expenses;
+  if (needExtra && exp(extraNow.data) && exp(extraPrev.data) && exp(extraYtd.data)) {
+    const [a, b, c] = [exp(extraNow.data)!, exp(extraPrev.data)!, exp(extraYtd.data)!];
+    const nights = (rows: typeof programs.rows) => rows.filter((r) => r.line === "housing").reduce((t, r) => t + Math.max(r.native, r.fromSheet), 0);
+    const perNight = (paid: number, n: number) => (n ? Math.round((paid / n) * 100) / 100 : 0);
+    const ytdNights = nights(programsYtd.rows) + nights(programs.rows);
+    built.expenses = {
+      figures: [
+        fig("Paid", a.total, b.total, c.total, "PHP"),
+        ...(a.budget != null ? [fig("Approved budget for these days", a.budget, b.budget ?? 0, c.budget ?? 0, "PHP")] : []),
+        fig("Vouchers paid", a.vouchers, b.vouchers, c.vouchers),
+        ...(fund ? [] : [fig("Spending per person-night (all spending ÷ bed nights)", perNight(a.total, nights(programs.rows)), perNight(b.total, nights(programsBefore.rows)), perNight(c.total, ytdNights), "PHP")]),
+      ],
+      byAccount: a.by_account.map((x) => ({ label: `${x.code} ${x.name}`, amount: Number(x.amount) })),
+      byFund: a.by_fund.map((x) => ({ label: `${x.name} (${x.code})`, amount: Number(x.amount) })),
+      note: fund
+        ? `Paid from the ${fund} fund only, by the day paid. Budgets aren't set by fund, so there is no budget line.`
+        : "Paid vouchers by the day paid (fund top-ups and cash advances left out; a liquidation counts the spending), against the approved budget's share of these days.",
+    };
+  }
+
+  const loadingMore = (needExtra && (extraNow.loading || extraPrev.loading || extraYtd.loading)) || (needHeadline && (headNow.loading || headPrev.loading || headYtd.loading));
+  const ready = !programs.loading && !programsBefore.loading && !programsYtd.loading && !!extras && !!extrasBefore && !!extrasYtd && !loadingMore;
+  const report = () =>
+    operationsReport({
+      sections, rows: programs.rows, previous: programsBefore.rows, buckets, extras: built, period: label, previousPeriod: prevLabel, totalsOnly, ytdRows: programsYtd.rows, ytdLabel, goalYear: year, goals: programGoals,
+      styles: profile?.charts as Partial<Record<GeneratorSectionKey, "chart" | "rank" | "table" | "figures">> | undefined,
+      comparisons: profile?.comparisons,
+      notes: filled ? { Housing: `${filled} night${filled === 1 ? "" : "s"} of this period came from the House Sheet: nobody finalized them in the app.` } : undefined,
+      title: profile?.name,
+    });
+  // Every table of the report as one CSV, section by section.
+  const exportCsv = () => {
+    const spec = report().spec;
+    const lines: (string | number)[][] = [[spec.title, spec.period, spec.previousPeriod ?? ""]];
+    for (const sec of spec.sections) {
+      if (!sec.table) continue;
+      lines.push([], [sec.heading], sec.table.columns, ...sec.table.rows, ...(sec.table.totals ? [sec.table.totals] : []));
+    }
+    downloadCsv(csvLines(lines[0].map(String), lines.slice(1).map((r) => r.map(String))), `LAF-${(profile?.name ?? "Report").replace(/[^A-Za-z0-9]+/g, "-")}-${window.from}-${window.to}.csv`);
+  };
   const preview = ready ? report().spec : null;
   const toggle = (k: GeneratorSectionKey) =>
     setPicked((s) => {
@@ -273,6 +416,32 @@ function Generator() {
       />
       {showLinks ? <ReportLinks /> : null}
       <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} years />
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card p-4">
+        <span className="text-theme-sm font-medium">Report profile</span>
+        <Select value={profile?.id ?? "none"} onValueChange={(v) => pickProfile(v === "none" ? "" : v)}>
+          <SelectTrigger className="w-64" aria-label="Report profile"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Everything (no profile)</SelectItem>
+            {profiles.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {designs && profile ? <Button variant="outline" size="sm" onClick={() => setEditing(profile)}><Pencil className="size-4" /> Edit</Button> : null}
+        {designs ? <Button variant="outline" size="sm" onClick={() => setEditing("new")}><Plus className="size-4" /> New profile</Button> : null}
+        {profile?.description ? <p className="w-full text-theme-xs text-muted-foreground">{profile.description}</p> : null}
+      </div>
+      {editing ? (
+        <ProfileEditor
+          profile={editing === "new" ? null : editing}
+          funds={fundCodes.filter((c) => c.tier === "T2" && c.active !== false).map((c) => ({ code: String(c.code), name: String(c.name) }))}
+          onClose={() => setEditing(null)}
+          onSaved={(id, saved) => {
+            setEditing(null);
+            // Reapplied from the saved design once the list has it.
+            appliedFor.current = null;
+            pickProfile(id, saved);
+          }}
+        />
+      ) : null}
       <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex gap-1" role="group" aria-label="Columns">
@@ -280,10 +449,13 @@ function Generator() {
               <Button key={o.v} size="sm" variant={(o.v === "total") === totalsOnly ? "default" : "outline"} aria-pressed={(o.v === "total") === totalsOnly} onClick={() => setCols(o.v)}>{o.label}</Button>
             ))}
           </div>
-          <ReportToolbar ai={ai} buildSpec={() => report().spec} buildInput={() => report().input} filename={`LAF-Operations-Report-${window.from}-${window.to}.pdf`} />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" disabled={!ready} onClick={exportCsv}><Download className="size-4" /> CSV</Button>
+            <ReportToolbar ai={ai} buildSpec={() => report().spec} buildInput={() => report().input} filename={`LAF-${(profile?.name ?? "Operations-Report").replace(/[^A-Za-z0-9]+/g, "-")}-${window.from}-${window.to}.pdf`} />
+          </div>
         </div>
         <div className="flex flex-wrap gap-x-5 gap-y-2">
-          {GENERATOR_SECTIONS.filter((s) => allowed(s.key)).map((s) => (
+          {order.map((k) => GENERATOR_SECTIONS.find((x) => x.key === k)!).filter((s) => allowed(s.key)).map((s) => (
             <span key={s.key} className="flex items-center gap-2">
               <Checkbox id={`gen-${s.key}`} checked={picked.has(s.key)} onCheckedChange={() => toggle(s.key)} />
               <Label htmlFor={`gen-${s.key}`} className="text-theme-sm font-normal">

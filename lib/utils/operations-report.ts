@@ -6,10 +6,12 @@ import type { AnalysisInput, AnalysisSection } from "../ai/report-analysis.ts";
 import type { ReportSection, ReportSpec } from "../pdf/report-doc.ts";
 import { IMPACT_GROUPS, cell, changeLabel, shown, total, type Bucket, type ImpactRow } from "./program-impact.ts";
 
-export type GeneratorSectionKey = "housing" | "transportation" | "meals" | "care_cart" | "center" | "activities" | "caf" | "donations" | "staff" | "inventory";
+export type GeneratorSectionKey = "headline" | "housing" | "occupancy" | "transportation" | "meals" | "care_cart" | "center" | "activities" | "caf" | "donations" | "expenses" | "staff" | "inventory";
 
 export const GENERATOR_SECTIONS: { key: GeneratorSectionKey; label: string }[] = [
+  { key: "headline", label: "Headline figures" },
   { key: "housing", label: "Housing" },
+  { key: "occupancy", label: "Occupancy & beds" },
   { key: "transportation", label: "Transportation" },
   { key: "meals", label: "Meals" },
   { key: "care_cart", label: "Care Cart" },
@@ -17,9 +19,19 @@ export const GENERATOR_SECTIONS: { key: GeneratorSectionKey; label: string }[] =
   { key: "activities", label: "Activities @ LAF House" },
   { key: "caf", label: "CAF / NCH billing" },
   { key: "donations", label: "Donations" },
+  { key: "expenses", label: "Expenses" },
   { key: "staff", label: "Staff hours" },
   { key: "inventory", label: "Inventory & gifts in kind" },
 ];
+
+/** The headings a section key prints (for a profile's drawing). */
+function headingsOf(key: GeneratorSectionKey): string[] {
+  const extra: Partial<Record<GeneratorSectionKey, string[]>> = {
+    transportation: ["Transport & fuel"], caf: ["NCH billing"], headline: ["Headline figures"], occupancy: ["Occupancy & beds"],
+    expenses: ["Expenses", "Expenses by fund"], donations: ["Donations"], staff: ["Staff hours"], inventory: ["Inventory & gifts in kind"],
+  };
+  return [...(GROUP_OF[key] ? [GROUP_OF[key]!] : []), ...(extra[key] ?? [])];
+}
 
 /** Which Programs group each section key prints. */
 const GROUP_OF: Partial<Record<GeneratorSectionKey, string>> = { housing: "Housing", transportation: "Transportation", meals: "Meals @ LAF House", care_cart: "Care Cart", center: "LAF Center @ NCH", activities: "Activities @ LAF House", caf: "CAF" };
@@ -39,7 +51,15 @@ export interface Figure {
   derived?: boolean;
 }
 
+/** How a profile draws a section (0150): the chart, sideways bars, the table without a chart, or the figures only. */
+export type SectionStyle = "chart" | "rank" | "table" | "figures";
+/** The comparison columns a profile shows beside the period. */
+export type ComparisonKey = "previous" | "ytd" | "goal";
+
 export interface GeneratorExtras {
+  headline?: { figures: Figure[] };
+  occupancy?: { figures: Figure[]; note: string };
+  expenses?: { figures: Figure[]; byAccount: { label: string; amount: number }[]; byFund: { label: string; amount: number }[]; note: string };
   transport?: { figures: Figure[]; rows: { label: string; trips: number; km: number; fuel: number }[] };
   caf?: { figures: Figure[]; rows: { label: string; billed: number; paid: number; absorbed: number }[] };
   donations?: { figures: Figure[]; rows: { label: string; cash: number; food: number; nonFood: number }[] };
@@ -63,17 +83,18 @@ function figureKpis(figures: Figure[]) {
 }
 /** The comparison table of a section shown as totals: each figure for the period, the one before, the variance, the
  * year to date, and the year's goal where there is one. */
-function comparison(figures: Figure[], period: string, previousPeriod: string, ytdLabel: string, goalYear: number) {
-  const goals = figures.some((f) => f.goal != null);
+function comparison(figures: Figure[], period: string, previousPeriod: string, ytdLabel: string, goalYear: number, show: ReadonlySet<ComparisonKey>) {
+  const prev = show.has("previous");
+  const ytd = show.has("ytd");
+  const goals = show.has("goal") && figures.some((f) => f.goal != null);
   return {
     // Few columns, so the first keeps room for long names on paper: the variance and the goal each in one.
-    columns: ["Figure", period, previousPeriod, "Variance", ytdLabel, ...(goals ? [`Goal ${goalYear}`] : [])],
+    columns: ["Figure", period, ...(prev ? [previousPeriod, "Variance"] : []), ...(ytd ? [ytdLabel] : []), ...(goals ? [`Goal ${goalYear}`] : [])],
     rows: figures.map((f) => [
       f.unit === "PHP" ? `${f.label} (PHP)` : f.unit ? `${f.label} (${f.unit})` : f.label,
       round2(f.value),
-      round2(f.previous),
-      variance(f) || "—",
-      f.ytd == null ? "—" : round2(f.ytd),
+      ...(prev ? [round2(f.previous), variance(f) || "—"] : []),
+      ...(ytd ? [f.ytd == null ? "—" : round2(f.ytd)] : []),
       ...(goals ? [f.goal ? `${num(round2(f.goal))} (${Math.round(((f.ytd ?? 0) / f.goal) * 100)}%)` : "—"] : []),
     ]),
   };
@@ -99,9 +120,19 @@ export function operationsReport(args: {
   goalYear?: number;
   /** The year's goals by Programs group ("Housing", "Meals @ LAF House" …): the lines the goal counts and its target. */
   goals?: Record<string, { label: string; lines: string[]; target: number }>;
+  /** A profile's drawing per section, and its comparison columns (all three when not given). */
+  styles?: Partial<Record<GeneratorSectionKey, SectionStyle>>;
+  comparisons?: readonly ComparisonKey[];
+  /** A note under a section's description (e.g. how many nights came from the House Sheet). */
+  notes?: Partial<Record<string, string>>;
+  /** The report's title (a profile's name). */
+  title?: string;
 }): { spec: ReportSpec; input: AnalysisInput } {
   const { sections, rows, previous, buckets, extras, period, previousPeriod, totalsOnly = false, ytdRows = [], ytdLabel = "Year to date", goalYear = 0, goals = {} } = args;
-  const compare = (figures: Figure[]) => comparison(figures, period, previousPeriod, ytdLabel, goalYear);
+  const columnsShown = new Set<ComparisonKey>(args.comparisons ?? ["previous", "ytd", "goal"]);
+  const compare = (figures: Figure[]) => comparison(figures, period, previousPeriod, ytdLabel, goalYear, columnsShown);
+  const title = args.title || "Operations Report";
+  const withNote = (heading: string, description: string) => (args.notes?.[heading] ? `${description} ${args.notes[heading]}` : description);
   // One scale a chart: the figures in the first one's unit, without sums and goal rows.
   const twoBars = (figures: Figure[]) => ({ kind: "bar" as const, labels: [previousPeriod, period], series: figures.filter((f) => !f.derived && (f.unit ?? "") === (figures[0]?.unit ?? "")).map((f) => ({ label: f.label, values: [f.previous, f.value] })) });
   const ytdOf = (key: Parameters<typeof total>[1]) => total(ytdRows, key) + total(rows, key);
@@ -119,7 +150,7 @@ export function operationsReport(args: {
     const tableRows = g.lines.map((l) => [l.label, ...buckets.map((b) => shown(cell(rows, l.key, b.key))), total(rows, l.key), ytdOf(l.key)]);
     out.push({
       heading: g.group,
-      description: g.description,
+      description: withNote(g.group, g.description),
       kpis: figureKpis(figures),
       table: totalsOnly
         ? compare(compared)
@@ -127,6 +158,17 @@ export function operationsReport(args: {
       chart: totalsOnly ? twoBars(figures) : { kind: g.lines.length > 1 ? "stacked" : "bar", labels: buckets.map((b) => b.label), series: g.lines.map((l) => ({ label: l.label, values: buckets.map((b) => shown(cell(rows, l.key, b.key))) })) },
     });
     inputs.push({ heading: g.group, description: g.description, kpis: figureInput(figures) });
+  };
+  // A section of figures only (no columns by period): the comparison table, the two-bar chart, and any table of its own.
+  const figuresSection = (heading: string, description: string, figures: Figure[], table?: { columns: string[]; rows: (string | number)[][]; totals?: (string | number)[] }, chart?: { labels: string[]; values: number[]; label: string }) => {
+    out.push({
+      heading,
+      description,
+      kpis: figureKpis(figures),
+      table: table && !totalsOnly ? table : compare(figures),
+      chart: chart ? { kind: "rank", labels: chart.labels, series: [{ label: chart.label, values: chart.values }] } : twoBars(figures),
+    });
+    inputs.push({ heading, description, kpis: figureInput(figures) });
   };
   const extra = (heading: string, description: string, x: { figures: Figure[]; rows: Record<string, string | number>[] } | undefined, columns: string[], keys: string[], chart: { kind: "bar" | "stacked"; series: { label: string; key: string }[] }) => {
     if (!x) return;
@@ -150,10 +192,35 @@ export function operationsReport(args: {
     }
     if (key === "donations") extra("Donations", "Cash gifts in pesos from the Donation Tracker and gifts in kind by the category each line was received under in LAF Inventory.", extras.donations, ["Period", "Cash (PHP)", "Food (PHP)", "Non-food (PHP)"], ["label", "cash", "food", "nonFood"], { kind: "stacked", series: [{ label: "Cash", key: "cash" }, { label: "Food", key: "food" }, { label: "Non-food", key: "nonFood" }] });
     if (key === "staff") extra("Staff hours", "Hours worked and late arrivals from the staff's clock-ins and clock-outs.", extras.staff, ["Period", "Hours", "Late arrivals"], ["label", "hours", "late"], { kind: "bar", series: [{ label: "Hours", key: "hours" }, { label: "Late", key: "late" }] });
+    if (key === "headline" && extras.headline) figuresSection("Headline figures", "The foundation's main figures for the period, counted as the dashboard counts them.", extras.headline.figures);
+    if (key === "occupancy" && extras.occupancy) figuresSection("Occupancy & beds", extras.occupancy.note, extras.occupancy.figures);
+    if (key === "expenses" && extras.expenses) {
+      const x = extras.expenses;
+      figuresSection(
+        "Expenses",
+        x.note,
+        x.figures,
+        { columns: ["Account", "Amount (PHP)"], rows: x.byAccount.map((a) => [a.label, round2(a.amount)]), totals: ["Total", round2(x.byAccount.reduce((t, a) => t + a.amount, 0))] },
+        x.byAccount.length ? { labels: x.byAccount.slice(0, 10).map((a) => a.label), values: x.byAccount.slice(0, 10).map((a) => a.amount), label: "Paid (PHP)" } : undefined,
+      );
+      if (x.byFund.length > 1) out.push({ heading: "Expenses by fund", description: "The same paid vouchers by the fund they were paid from.", table: { columns: ["Fund", "Amount (PHP)"], rows: x.byFund.map((a) => [a.label, round2(a.amount)]) }, chart: { kind: "rank", labels: x.byFund.map((a) => a.label), series: [{ label: "Paid (PHP)", values: x.byFund.map((a) => a.amount) }] } });
+    }
     if (key === "inventory") extra("Inventory & gifts in kind", "Value of the goods received in LAF Inventory in the range, food and non-food, at the values on the receipts.", extras.inventory, ["Period", "Food (PHP)", "Non-food (PHP)"], ["label", "food", "nonFood"], { kind: "stacked", series: [{ label: "Food", key: "food" }, { label: "Non-food", key: "nonFood" }] });
   }
+  // A profile's drawing: sideways bars, the table without a chart, or the figures only.
+  const styleOf = (heading: string) => {
+    const key = sections.find((k) => headingsOf(k).includes(heading));
+    return key ? args.styles?.[key] : undefined;
+  };
+  const styled = out.map((sec) => {
+    const st = styleOf(sec.heading);
+    if (st === "figures") return { ...sec, table: undefined, chart: undefined };
+    if (st === "table") return { ...sec, chart: undefined };
+    if (st === "rank" && sec.chart) return { ...sec, chart: { ...sec.chart, kind: "rank" as const } };
+    return sec;
+  });
   return {
-    spec: { title: "Operations Report", subtitle: "The foundation's programs and operations for the range, from the app's records", period, previousPeriod, sections: out },
-    input: { title: "Operations Report", period, previousPeriod, sections: inputs },
+    spec: { title, subtitle: "The foundation's programs and operations for the period, from the app's records", period, previousPeriod, sections: styled },
+    input: { title, period, previousPeriod, sections: inputs },
   };
 }

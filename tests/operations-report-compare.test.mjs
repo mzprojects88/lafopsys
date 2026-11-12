@@ -32,3 +32,26 @@ it("by columns keeps the buckets and adds the year to date; the grain follows th
   assert.equal(periodGrain({ from: "2026-11-09", to: "2026-11-15" }), "day");
   assert.equal(periodGrain({ from: "2026-01-01", to: "2026-12-31" }), "month");
 });
+
+it("a profile's comparisons choose the columns; its drawing drops the chart or the table", () => {
+  const s = operationsReport({ ...base, totalsOnly: true, comparisons: ["ytd"], styles: { housing: "table" } }).spec.sections[0];
+  assert.deepEqual(s.table.columns, ["Figure", "Oct 2026", "YTD 2026"]);
+  assert.equal(s.chart, undefined);
+  const f = operationsReport({ ...base, totalsOnly: true, styles: { housing: "figures" } }).spec.sections[0];
+  assert.equal(f.table, undefined);
+  assert.ok(f.kpis.length > 0);
+});
+
+it("the expenses section: by account and by fund, in the profile's order, with its title", () => {
+  const expenses = {
+    figures: [{ label: "Paid", value: 1000, previous: 500, ytd: 4000, unit: "PHP" }],
+    byAccount: [{ label: "5932 Travels and meals", amount: 600 }, { label: "5100 Supplies", amount: 400 }],
+    byFund: [{ label: "One Child (OC)", amount: 700 }, { label: "Unrestricted (UNR)", amount: 300 }],
+    note: "Paid vouchers.",
+  };
+  const spec = operationsReport({ ...base, sections: ["expenses", "housing"], extras: { expenses }, totalsOnly: false, title: "Financial report" }).spec;
+  assert.equal(spec.title, "Financial report");
+  assert.deepEqual(spec.sections.map((x) => x.heading), ["Expenses", "Expenses by fund", "Housing"]);
+  assert.deepEqual(spec.sections[0].table.rows, [["5932 Travels and meals", 600], ["5100 Supplies", 400]]);
+  assert.equal(spec.sections[0].chart.kind, "rank");
+});
