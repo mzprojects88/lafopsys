@@ -1,9 +1,15 @@
 /**
  * An uploaded file sent as a data URL, checked by its bytes and not just its label (0134, 0149): a JPEG must start
- * and end like one, a PNG carry its full 8-byte signature and an IHDR header, a PDF start with %PDF.
+ * like one and have its end marker near the end, a PNG carry its full 8-byte signature and an IHDR header, a PDF
+ * start with %PDF.
  */
 const CHECKS: Record<string, (b: Uint8Array) => boolean> = {
-  "image/jpeg": (b) => b.length > 4 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff && b[b.length - 2] === 0xff && b[b.length - 1] === 0xd9,
+  // Some phones pad a JPEG after its end marker: the marker need only be near the end.
+  "image/jpeg": (b) => {
+    if (!(b.length > 4 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff)) return false;
+    for (let i = b.length - 2; i >= Math.max(2, b.length - 1024); i--) if (b[i] === 0xff && b[i + 1] === 0xd9) return true;
+    return false;
+  },
   "image/png": (b) =>
     b.length > 24 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((x, i) => b[i] === x) && String.fromCharCode(b[12], b[13], b[14], b[15]) === "IHDR",
   "application/pdf": (b) => b.length > 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46,
