@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { KeyRound, LogOut, PanelLeft, Search } from "lucide-react";
+import { KeyRound, LogOut, PanelLeft, PenLine, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -69,6 +69,12 @@ export function Header({ onSearchClick }: { onSearchClick: () => void }) {
               <Link href="/change-pin">
                 <KeyRound className="size-4" />
                 Change PIN
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/my-signature">
+                <PenLine className="size-4" />
+                My signature
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />

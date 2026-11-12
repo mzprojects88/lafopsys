@@ -14,6 +14,7 @@ export const NAME_DOCUMENTS = [
   { key: "dtr", title: "Daily Time Record", who: "Employee", default: "name_title" },
   { key: "manifest", title: "Pick-up manifest", who: "Driver", default: "name" },
   { key: "payslip", title: "Payslip", who: "Employee", default: "name_title" },
+  { key: "voucher", title: "Payment voucher", who: "Signers", default: "name_title" },
 ] as const satisfies readonly { key: string; title: string; who: string; default: NameFormat }[];
 
 export type NameDocument = (typeof NAME_DOCUMENTS)[number]["key"];

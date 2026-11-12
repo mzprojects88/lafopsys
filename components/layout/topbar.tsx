@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { KeyRound, LogOut, Moon, Search } from "lucide-react";
+import { KeyRound, LogOut, Moon, PenLine, Search } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -62,6 +62,14 @@ export function Topbar({ onSearchClick }: { onSearchClick: () => void }) {
               >
                 <KeyRound className="size-4.5 text-muted-foreground" />
                 Change PIN
+              </Link>
+              <Link
+                href="/my-signature"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-3 rounded-lg px-2 py-2.5 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
+              >
+                <PenLine className="size-4.5 text-muted-foreground" />
+                My signature
               </Link>
               <label className="flex items-center justify-between gap-3 rounded-lg px-2 py-2.5 text-sm font-medium text-foreground">
                 <span className="flex items-center gap-3">

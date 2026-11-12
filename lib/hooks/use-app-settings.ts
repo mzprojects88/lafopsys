@@ -55,7 +55,7 @@ export interface AppSettings extends HrSettings {
   bedMoves: { from: string; until: string };
   /** What prints on receipts and donee certificates (0085): the registration line, the
    * foundation's address and TIN, and who signs certificates (a staff id). */
-  documents: { header: string; orgAddress: string; orgTin: string; signatoryId: string | null; names: Record<string, string>; dswdLabel: string; dswdNumber: string; cashReceiptTitle: string; cashReceiptPurpose: string };
+  documents: { header: string; orgAddress: string; orgTin: string; signatoryId: string | null; names: Record<string, string>; dswdLabel: string; dswdNumber: string; cashReceiptTitle: string; cashReceiptPurpose: string; voucherCertification: string };
   /** The daily admission reset (0089), Manila "HH:MM": when the morning check-out runs and by
    * when tonight's beds must be assigned. */
   /** mealsBy (0148): by when the day's meals should be ticked (the social worker's reminder). */
@@ -97,6 +97,7 @@ interface AppSettingsRow {
   dswd_number?: string | null;
   cash_receipt_title?: string | null;
   cash_receipt_purpose?: string | null;
+  voucher_certification?: string | null;
   admission_reset_at: string | null;
   admission_finalize_by: string | null;
   admission_meals_by: string | null;
@@ -128,7 +129,7 @@ const DEFAULTS: AppSettings = {
   transportPlaces: [],
   caseAiReading: false,
   bedMoves: { from: "07:00", until: "20:00" },
-  documents: { header: "", orgAddress: "", orgTin: "", signatoryId: null, names: {}, dswdLabel: "DSWD Accreditation No.", dswdNumber: "", cashReceiptTitle: "Acknowledgement Receipt", cashReceiptPurpose: "" },
+  documents: { header: "", orgAddress: "", orgTin: "", signatoryId: null, names: {}, dswdLabel: "DSWD Accreditation No.", dswdNumber: "", cashReceiptTitle: "Acknowledgement Receipt", cashReceiptPurpose: "", voucherCertification: "I certify that this disbursement is for official Foundation purposes, is properly supported by documents, and is charged to the appropriate account." },
   admissions: { resetAt: "06:00", finalizeBy: "18:00", mealsBy: "20:00" },
   ...HR_SETTINGS_DEFAULTS,
 };
@@ -139,7 +140,7 @@ const SELECT =
   "leave_vl_days_per_year, leave_sl_days_per_year, leave_vl_convertible, minimum_wage_region, " +
   "compliance_pen_last_digit, compliance_employer_initial, compliance_tracking_from, compliance_lead_days, " +
   "laf_house_latitude, laf_house_longitude, laf_house_radius_m, transport_places, case_ai_reading, bed_moves_from, bed_moves_until, " +
-  "report_header, org_address, org_tin, certificate_signatory_id, admission_reset_at, admission_finalize_by, admission_meals_by, document_names, dswd_label, dswd_number";
+  "report_header, org_address, org_tin, certificate_signatory_id, admission_reset_at, admission_finalize_by, admission_meals_by, document_names, dswd_label, dswd_number, voucher_certification";
 
 export const appSettingsStore = createCollection<AppSettings>({
   key: "shared.app_settings",
@@ -177,7 +178,7 @@ export const appSettingsStore = createCollection<AppSettings>({
       transportPlaces: placesFromSettings(row.transport_places),
       caseAiReading: row.case_ai_reading === true,
       bedMoves: { from: (row.bed_moves_from ?? "07:00").slice(0, 5), until: (row.bed_moves_until ?? "20:00").slice(0, 5) },
-      documents: { header: row.report_header ?? "", orgAddress: row.org_address ?? "", orgTin: row.org_tin ?? "", signatoryId: row.certificate_signatory_id ?? null, names: row.document_names ?? {}, dswdLabel: row.dswd_label ?? "DSWD Accreditation No.", dswdNumber: row.dswd_number ?? "", cashReceiptTitle: row.cash_receipt_title ?? "Acknowledgement Receipt", cashReceiptPurpose: row.cash_receipt_purpose ?? "" },
+      documents: { header: row.report_header ?? "", orgAddress: row.org_address ?? "", orgTin: row.org_tin ?? "", signatoryId: row.certificate_signatory_id ?? null, names: row.document_names ?? {}, dswdLabel: row.dswd_label ?? "DSWD Accreditation No.", dswdNumber: row.dswd_number ?? "", cashReceiptTitle: row.cash_receipt_title ?? "Acknowledgement Receipt", cashReceiptPurpose: row.cash_receipt_purpose ?? "", voucherCertification: row.voucher_certification ?? "I certify that this disbursement is for official Foundation purposes, is properly supported by documents, and is charged to the appropriate account." },
       admissions: { resetAt: (row.admission_reset_at ?? "06:00").slice(0, 5), finalizeBy: (row.admission_finalize_by ?? "18:00").slice(0, 5), mealsBy: (row.admission_meals_by ?? "20:00").slice(0, 5) },
     };
   },

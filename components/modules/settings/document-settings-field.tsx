@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
@@ -71,6 +72,11 @@ export function DocumentSettingsField() {
           <Label htmlFor="docCashPurpose">Purpose of the donation</Label>
           <Input id="docCashPurpose" value={form.cashReceiptPurpose} disabled={loading || !canEdit} maxLength={300} onChange={(e) => setForm({ ...form, cashReceiptPurpose: e.target.value })} placeholder="For the care of children with cancer and their carers housed by the foundation" />
         </div>
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="docVoucherCert">Voucher certification</Label>
+        <Textarea id="docVoucherCert" rows={2} value={form.voucherCertification} disabled={loading || !canEdit} maxLength={600} onChange={(e) => setForm({ ...form, voucherCertification: e.target.value })} />
+        <span className="text-xs text-muted-foreground">Printed above the signatures on every payment voucher. <a href="/requests/print/sample" target="_blank" rel="noopener noreferrer" className="text-primary underline">Preview the voucher</a> (save first).</span>
       </div>
       <span className="-mt-1 text-xs text-muted-foreground">BIR RMC 77-2024: a donation is acknowledged with a receipt (not an invoice) that names the donor, the date, what was given and its intended purpose. The title is what the accountant registered the booklet as.</span>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_180px]">

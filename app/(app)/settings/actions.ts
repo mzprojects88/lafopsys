@@ -442,7 +442,7 @@ export async function updateBedMoveHours(input: { from: string; until: string })
   return { ok: true };
 }
 
-export type DocumentSettingsInput = { header: string; orgAddress: string; orgTin: string; signatoryId: string | null; dswdLabel?: string; dswdNumber?: string; cashReceiptTitle?: string; cashReceiptPurpose?: string };
+export type DocumentSettingsInput = { header: string; orgAddress: string; orgTin: string; signatoryId: string | null; dswdLabel?: string; dswdNumber?: string; cashReceiptTitle?: string; cashReceiptPurpose?: string; voucherCertification?: string };
 
 /**
  * What prints on receipts and donee certificates (0085): the registration line, the
@@ -459,6 +459,8 @@ export async function updateDocumentSettings(input: DocumentSettingsInput): Prom
   // 0122: the cash gift document's title and the purpose line BIR RMC 77-2024 asks for.
   const cashReceiptTitle = clean(input.cashReceiptTitle, 60) || "Acknowledgement Receipt";
   const cashReceiptPurpose = clean(input.cashReceiptPurpose, 300);
+  // 0149: the certification printed above the voucher's signatures.
+  const voucherCertification = clean(input.voucherCertification, 600) || "I certify that this disbursement is for official Foundation purposes, is properly supported by documents, and is charged to the appropriate account.";
   const signatoryId = typeof input.signatoryId === "string" && /^[0-9a-f-]{36}$/i.test(input.signatoryId) ? input.signatoryId : null;
   if (orgTin && !/^[0-9\-\s]{9,20}$/.test(orgTin)) return { ok: false, error: "TIN: 9 to 15 digits, dashes allowed." };
 
@@ -473,7 +475,7 @@ export async function updateDocumentSettings(input: DocumentSettingsInput): Prom
   const { error } = await supabase
     .schema("shared")
     .from("app_settings")
-    .update({ report_header: header, org_address: orgAddress, org_tin: orgTin, certificate_signatory_id: signatoryId, dswd_label: dswdLabel, dswd_number: dswdNumber || null, cash_receipt_title: cashReceiptTitle, cash_receipt_purpose: cashReceiptPurpose, updated_at: new Date().toISOString(), updated_by: caller.id })
+    .update({ report_header: header, org_address: orgAddress, org_tin: orgTin, certificate_signatory_id: signatoryId, dswd_label: dswdLabel, dswd_number: dswdNumber || null, cash_receipt_title: cashReceiptTitle, cash_receipt_purpose: cashReceiptPurpose, voucher_certification: voucherCertification, updated_at: new Date().toISOString(), updated_by: caller.id })
     .eq("id", true);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/settings");
