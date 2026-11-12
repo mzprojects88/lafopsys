@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCollection } from "@/lib/data/collection-store";
-import { createTopUp, fundStatusStore, useVouchers, voucherFilesStore, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
+import { actOnVouchers, createTopUp, fundStatusStore, useVouchers, voucherFilesStore, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
 import { toast } from "sonner";
 import { useSetupRows } from "@/lib/hooks/use-finance-setup";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
@@ -93,6 +93,19 @@ function RequestsContent() {
     return s ? `${s.firstName} ${s.lastName}` : "";
   };
   const waitingIds = new Set(queue.map((q) => q.voucherId));
+  // The weekly approval (polish 2): the approver ticks several and approves them at once.
+  const toApprove = new Set(queue.filter((q) => q.step === "approve").map((q) => q.voucherId));
+  const [picked, setPicked] = React.useState<Set<string>>(new Set());
+  const [approving, setApproving] = React.useState(false);
+  const pickedNow = [...picked].filter((id) => toApprove.has(id));
+  async function approvePicked() {
+    setApproving(true);
+    const r = await actOnVouchers(pickedNow, "approve");
+    setApproving(false);
+    setPicked(new Set());
+    if (r.failed) toast.error(`${r.done} approved; ${r.failed} not: ${r.firstError}`);
+    else toast.success(`${r.done} approved`);
+  }
   const linesOf = React.useMemo(() => {
     const m = new Map<string, VoucherLine[]>();
     for (const l of lines) m.set(l.voucherId, [...(m.get(l.voucherId) ?? []), l]);
@@ -157,6 +170,20 @@ function RequestsContent() {
 
   const numberOf = (v: Voucher) => v.voucherNumber ?? v.legacyNumber ?? v.requestNumber ?? "Draft";
   const requestColumns: ColumnDef<Voucher>[] = [
+    ...(tab === "waiting" && toApprove.size
+      ? [
+          {
+            id: "pick",
+            header: () => <input type="checkbox" aria-label="Pick every request to approve" checked={toApprove.size > 0 && pickedNow.length === toApprove.size} onChange={(e) => setPicked(e.target.checked ? new Set(toApprove) : new Set())} />,
+            enableSorting: false,
+            cell: ({ row }: { row: { original: Voucher } }) =>
+              toApprove.has(row.original.id) ? (
+                <input type="checkbox" aria-label={`Pick ${row.original.voucherNumber ?? row.original.requestNumber} to approve`} checked={picked.has(row.original.id)} onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setPicked((p) => { const n = new Set(p); if (e.target.checked) n.add(row.original.id); else n.delete(row.original.id); return n; })} />
+              ) : null,
+          } satisfies ColumnDef<Voucher>,
+        ]
+      : []),
     { id: "number", header: "No.", accessorFn: numberOf, cell: ({ row }) => <span className="font-medium tabular-nums">{numberOf(row.original)}</span> },
     { id: "date", header: BASIS[basis], accessorFn: (v) => dateOf(v) ?? "", cell: ({ row }) => formatDate(dateOf(row.original)) },
     { id: "purpose", header: "For", accessorFn: (v) => v.purpose, cell: ({ row }) => <span className="line-clamp-2 max-w-72">{row.original.purpose}</span> },
@@ -233,6 +260,13 @@ function RequestsContent() {
         />
       </div>
 
+      {tab === "waiting" && pickedNow.length ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-theme-sm">
+          <span>{pickedNow.length} picked · {formatCurrency(shown.filter((v) => pickedNow.includes(v.id)).reduce((s, v) => s + v.total, 0), "PHP", true)}</span>
+          <Button size="sm" disabled={approving} onClick={() => void approvePicked()}>{approving ? "Approving…" : `Approve ${pickedNow.length}`}</Button>
+          <Button size="sm" variant="ghost" onClick={() => setPicked(new Set())}>Clear</Button>
+        </div>
+      ) : null}
       <DataTable columns={requestColumns} data={shown} onRowClick={(v) => router.push(`/requests/${v.id}`)} emptyMessage={tab === "waiting" ? "Nothing waits for you." : "No requests match."} />
     </div>
   );

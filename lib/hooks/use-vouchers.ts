@@ -258,9 +258,22 @@ export interface DraftHeader {
 export const saveVoucher = (id: string | null, header: DraftHeader, lines: DraftLine[]) => call<string>("voucher_save", { p_id: id, p_voucher: header, p_lines: lines });
 /** submit, endorse, review, approve, return, reject, cancel or discard; returns the new status. */
 export const actOnVoucher = (id: string, action: string, note?: string) => call<string>("voucher_act", { p_id: id, p_action: action, p_note: note ?? null });
+/** The same step for several requests (the weekly approval): each signed by the database's rules on its own; the
+ * data refreshed once. Returns how many went through and the first refusal. */
+export async function actOnVouchers(ids: string[], action: string): Promise<{ done: number; failed: number; firstError: string | null }> {
+  let done = 0;
+  let firstError: string | null = null;
+  for (const id of ids) {
+    const { error } = await createClient().schema("ops").rpc("voucher_act", { p_id: id, p_action: action, p_note: null });
+    if (error) firstError ??= error.message;
+    else done++;
+  }
+  await refresh();
+  return { done, failed: ids.length - done, firstError };
+}
 /** Finance prepares: the fund, the employee code and each line's coding; returns the voucher number. */
-export const prepareVoucher = (id: string, t2Id: string, t4StaffId: string | null, lines: { id: string; account_id: string | null; t1_id: string | null; t3_id: string | null }[], note?: string, payeeId?: string | null) =>
-  call<string>("voucher_prepare", { p_id: id, p_t2: t2Id, p_t4_staff: t4StaffId, p_lines: lines, p_note: note ?? null, p_payee: payeeId ?? null });
+export const prepareVoucher = (id: string, t2Id: string, t4StaffId: string | null, lines: { id: string; account_id: string | null; t1_id: string | null; t3_id: string | null }[], note?: string, payeeId?: string | null, payMethod?: Voucher["payMethod"]) =>
+  call<string>("voucher_prepare", { p_id: id, p_t2: t2Id, p_t4_staff: t4StaffId, p_lines: lines, p_note: note ?? null, p_payee: payeeId ?? null, p_pay_method: payMethod ?? null });
 /** A payment step (0139): prepare the payment (from an account, with its reference), approve it, or release it. */
 export const payVoucher = (id: string, action: "prepare_payment" | "approve_payment" | "release", accountId?: string | null, reference?: string, note?: string) =>
   call<string>("voucher_pay", { p_id: id, p_action: action, p_account: accountId ?? null, p_reference: reference ?? null, p_note: note ?? null });

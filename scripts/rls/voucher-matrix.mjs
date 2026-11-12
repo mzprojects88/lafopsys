@@ -44,7 +44,7 @@ try {
   await c.query("begin");
   // 0139 changed advances_open's columns; re-applying 0138 over a database that has 0139 needs it gone first.
   await c.query("drop function if exists ops.advances_open()");
-  for (const m of ["0134_vouchers.sql", "0135_pay_a_person.sql", "0136_voucher_history_fixes.sql", "0138_funds_advances_ewt.sql", "0139_payment_books_quickbooks.sql", "0140_finance_picks_fund_ledger.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${m}`, import.meta.url), "utf8"));
+  for (const m of ["0134_vouchers.sql", "0135_pay_a_person.sql", "0136_voucher_history_fixes.sql", "0138_funds_advances_ewt.sql", "0139_payment_books_quickbooks.sql", "0140_finance_picks_fund_ledger.sql", "0142_finance_sets_pay_method.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${m}`, import.meta.url), "utf8"));
   const ids = (await c.query(`select
     (select id from shared.staff where role = 'admin' and active order by id limit 1) admin1,
     (select id from shared.staff where role = 'admin' and active order by id offset 1 limit 1) admin2,
@@ -141,6 +141,11 @@ try {
     [header({ purpose: "Tyres" }), JSON.stringify([{ description: "Two tyres", qty: 2, unit_cost: 3000, expense_type_id: (await c.query(`select md5('exp:Vehicle repair and maintenance:code:T3:TRN')::uuid id`)).rows[0].id }])], (r) => r.ok));
   await step("... sent and endorsed", ids.driver, `select ops.voucher_act($1, 'submit')`, [big], (r) => r.ok);
   await step("... endorsed", ids.office, `select ops.voucher_act($1, 'endorse')`, [big], (r) => r.ok);
+  await step("Finance can't set an unknown payment method (0142)", ids.finance, `select ops.voucher_prepare($1, $2, null, '[]'::jsonb, null, null, 'barter')`, [big, ids.unr], refused("23514"), false);
+  await c.query("savepoint gcash");
+  await step("Finance changes it to GCash: a GCash Fund Voucher", ids.finance, `select ops.voucher_prepare($1, $2, null, '[]'::jsonb, null, null, 'gcash') n`, [big, ids.unr], (r) => r.ok && /^GCV-/.test(r.rows[0].n));
+  await step("... paid by GCash, from the GCash fund", null, `select pay_method || '/' || (fund_id is not null) m from ops.vouchers where id = $1`, [big], (r) => r.ok && r.rows[0].m === "gcash/true");
+  await c.query("rollback to savepoint gcash");
   await step("... prepared", ids.finance, `select ops.voucher_prepare($1, $2, null, '[]'::jsonb)`, [big, ids.unr], (r) => r.ok);
   await step("... reviewed", ids.office, `select ops.voucher_act($1, 'review')`, [big], (r) => r.ok);
   await step("the up-to-5,000 approver can't approve 6,000", ids.admin1, `select ops.voucher_act($1, 'approve')`, [big], refused("42501"), false);

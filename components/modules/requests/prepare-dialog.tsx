@@ -15,7 +15,7 @@ import { fixHistory, prepareVoucher, similarCount, useVouchers, type Voucher, ty
 import { useBudgets } from "@/lib/hooks/use-budgets";
 import { todayIso } from "@/lib/utils/date";
 import { formatCurrency } from "@/lib/utils/currency";
-import { countedDay, fundAllows, settledAdvances } from "@/lib/utils/vouchers";
+import { countedDay, fundAllows, PAY_LABEL, settledAdvances } from "@/lib/utils/vouchers";
 
 const NONE = "__none";
 
@@ -31,6 +31,9 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
   const { data: rates } = useSetupRows("ewt_rates");
   const { staff } = useStaffRoster();
   const [payee, setPayee] = React.useState(voucher.payeeId ?? NONE);
+  // 0142: Finance keeps the requester's payment method or changes it (GCash makes it a GCash Fund Voucher).
+  const [payMethod, setPayMethod] = React.useState(voucher.payMethod);
+  const typeOf = voucher.kind === "liquidation" ? "JV" : voucher.kind === "petty_cash" ? "PCV" : payMethod === "gcash" ? "GCV" : "PV";
   const [fund, setFund] = React.useState(voucher.t2Id ?? "");
   const [t4, setT4] = React.useState(voucher.t4StaffId ?? NONE);
   const [coding, setCoding] = React.useState(() => lines.map((l) => ({ id: l.id, account_id: l.accountId, t1_id: l.t1Id, t3_id: l.t3Id })));
@@ -86,7 +89,7 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
       toast.success(r.value ? "Corrected: cleaned up" : "Corrected; something is still to clean up");
       return void onOpenChange(false);
     }
-    const r = await prepareVoucher(voucher.id, fund, t4 === NONE ? null : t4, coding, note, payee === NONE ? null : payee);
+    const r = await prepareVoucher(voucher.id, fund, t4 === NONE ? null : t4, coding, note, payee === NONE ? null : payee, payMethod);
     setBusy(false);
     if (!r.ok) return void toast.error(r.error);
     toast.success(`Prepared as ${r.value}`);
@@ -100,7 +103,7 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
           <DialogTitle>{history ? `Correct the coding · ${voucher.voucherNumber}` : `Prepare the voucher · ${voucher.requestNumber}`}</DialogTitle>
           <DialogDescription>
             {history ? `From the ${voucher.voucherType} register. Correct the fund and each item's coding; amounts and the register's words stay as they are.` : <>
-            Check the request and its papers, confirm the coding, then prepare: it gets its {voucher.kind === "liquidation" ? "JV" : voucher.kind === "petty_cash" ? "PCV" : voucher.payMethod === "gcash" ? "GCV" : "PV"} number and goes to the reviewer.
+            Check the request and its papers, confirm the coding, then prepare: it gets its {typeOf} number and goes to the reviewer.
             The budget for the month is on <Link href="/finance/budget" className="text-primary hover:underline">Budget vs Actual</Link>.
             </>}
           </DialogDescription>
@@ -134,6 +137,18 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
                 ))}
               </SelectContent>
             </Select>
+          </Field>
+          )}
+          {history || voucher.kind === "liquidation" || voucher.kind === "petty_cash" ? null : (
+          <Field>
+            <FieldLabel>Paid by</FieldLabel>
+            <Select value={payMethod} onValueChange={(v) => setPayMethod(v as typeof payMethod)}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(PAY_LABEL).map(([k, label]) => <SelectItem key={k} value={k}>{label}{k === voucher.payMethod ? " (asked)" : ""}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-theme-xs text-muted-foreground">Makes it a {typeOf === "GCV" ? "GCash Fund Voucher (GCV)" : "Payment Voucher (PV)"}.</p>
           </Field>
           )}
           {history ? null : (

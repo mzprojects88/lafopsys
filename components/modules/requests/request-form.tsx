@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Send, Trash2 } from "lucide-react";
+import { Paperclip, Plus, Send, Trash2 } from "lucide-react";
 import { SectionCard } from "@/components/patterns/section-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,9 +16,9 @@ import { createCollection, useCollection } from "@/lib/data/collection-store";
 import { setupChecklistStore, useSetupRows } from "@/lib/hooks/use-finance-setup";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
-import { actOnVoucher, saveVoucher, type DraftHeader, type DraftLine, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
+import { actOnVoucher, saveVoucher, similarCount, vouchersStore, type DraftHeader, type DraftLine, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
 import { formatCurrency } from "@/lib/utils/currency";
-import { KIND_LABEL, PAY_LABEL, REQUESTABLE } from "@/lib/utils/vouchers";
+import { KIND_LABEL, PAY_LABEL, REQUESTABLE, settlement } from "@/lib/utils/vouchers";
 import { todayIso } from "@/lib/utils/date";
 
 /** Suppliers by name only (ops.payee_choices: TINs stay with Finance). */
@@ -66,10 +66,10 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
   const router = useRouter();
   const { data: types } = useSetupRows("expense_types");
   const { data: codes } = useSetupRows("fin_codes");
-  const { data: accounts } = useSetupRows("coa_accounts");
   const { data: payees } = useCollection(payeeChoicesStore);
   const { data: checklist } = useCollection(setupChecklistStore);
   const { data: categories } = useSetupRows("recipient_categories");
+  const { data: vouchers } = useCollection(vouchersStore);
   const { canView } = useModuleAccess();
 
   const typeById = (id: string) => types.find((t) => t.id === id);
@@ -105,14 +105,29 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
     const u = codes.find((c) => c.id === useId);
     return u ? (u.tier === "T1" ? `${u.name} (office)` : String(u.name)) : "";
   };
-  const accountOf = (typeId: string) => accounts.find((a) => a.id === typeById(typeId)?.account_id);
   const labelOf = (item: LineDraft) => item.label || String(typeById(item.expense_type_id)?.label ?? "");
   const amount = (item: LineDraft) => Math.round((Number(item.qty) || 0) * (Number(item.unit_cost) || 0) * 100) / 100;
   const total = items.reduce((s, i) => s + amount(i), 0);
   const setItem = (n: number, patch: Partial<LineDraft>) => setItems((list) => list.map((x, i) => (i === n ? { ...x, ...patch } : x)));
   const set = <K extends keyof DraftHeader>(k: K, v: DraftHeader[K]) => setHeader((h) => ({ ...h, [k]: v }));
+  // A liquidation: what is left of its advance as the items are typed.
+  const advance = voucher?.advanceOf ? vouchers.find((x) => x.id === voucher.advanceOf) : undefined;
+  const left = advance ? settlement(advance.total, total) : null;
+  // What Send still needs, named here rather than refused by the server one at a time.
+  const missing = [
+    ...(header.purpose.trim() ? [] : ["what it is for"]),
+    ...(header.kind === "supplier" && !toPerson && !header.payee_id ? ["the supplier"] : []),
+    ...(toPerson && !header.recipient_category_id ? ["who the person is"] : []),
+    ...(toPerson && !header.recipient_name?.trim() && !header.patient_id ? ["the name of the person paid"] : []),
+    ...(header.urgent && !header.urgent_reason?.trim() ? ["why it is urgent"] : []),
+    ...items.flatMap((i, n) => {
+      const gaps = [!i.expense_type_id && (labelOf(i) ? "who it serves" : "what it is"), !i.description.trim() && "a description", !(Number(i.qty) > 0) && "the quantity", (i.unit_cost === "" || Number(i.unit_cost) < 0) && "the unit cost"].filter(Boolean);
+      return gaps.length ? [`item ${n + 1}: ${gaps.join(", ")}`] : [];
+    }),
+    ...(header.kind !== "liquidation" && total <= 0 ? ["an amount above zero"] : []),
+  ];
 
-  async function save(send: boolean) {
+  async function save(send: boolean, then = "") {
     setBusy(true);
     const person = toPerson
       ? { to_person: true, recipient_category_id: header.recipient_category_id, patient_id: category?.kind === "patient" && readsPatients ? header.patient_id : null, recipient_name: header.recipient_name }
@@ -121,6 +136,13 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
     if (!saved.ok) {
       setBusy(false);
       return void toast.error(saved.error);
+    }
+    // Looks like another request (same OR number, or same payee and amount within 30 days)? Say so before sending.
+    const alike = send ? await similarCount(saved.value) : 0;
+    if (alike && !confirm(`${alike} other ${alike === 1 ? "request looks" : "requests look"} like this one (same OR number, or the same payee and amount within 30 days). Send it anyway?`)) {
+      setBusy(false);
+      toast.success("Saved as a draft");
+      return void router.push(`/requests/${saved.value}`);
     }
     if (send) {
       const sent = await actOnVoucher(saved.value, "submit");
@@ -134,7 +156,7 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
       setBusy(false);
       toast.success("Draft saved");
     }
-    router.push(`/requests/${saved.value}`);
+    router.push(`/requests/${saved.value}${then}`);
   }
 
   return (
@@ -238,12 +260,19 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
         </div>
       </SectionCard>
 
-      <SectionCard title="Items" description="One line per thing paid for. The receipts and quotations are added once the request is saved." actions={<span className="text-theme-sm font-medium tabular-nums">Total {formatCurrency(total, "PHP", true)}</span>}>
+      <SectionCard
+        title="Items"
+        description="One line per thing paid for. Finance codes each one when it prepares the voucher."
+        actions={
+          <span className="text-theme-sm font-medium tabular-nums">
+            {advance && left ? `Advanced ${formatCurrency(advance.total, "PHP", true)} · spent ${formatCurrency(total, "PHP", true)} · ${left.kind === "even" ? "nothing left" : `${formatCurrency(left.amount, "PHP", true)} ${left.kind === "return" ? "to return" : "to reimburse"}`}` : `Total ${formatCurrency(total, "PHP", true)}`}
+          </span>
+        }
+      >
         <div className="flex flex-col gap-3">
           {items.map((item, n) => {
             const label = labelOf(item);
             const uses = label ? usesOf(label) : [];
-            const account = item.expense_type_id ? accountOf(item.expense_type_id) : undefined;
             return (
               <div key={n} className="grid gap-3 rounded-xl border border-border p-3 sm:grid-cols-12">
                 <Field className="sm:col-span-4">
@@ -291,10 +320,7 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
                   <Input maxLength={60} value={item.or_number} onChange={(e) => setItem(n, { or_number: e.target.value })} placeholder="If there is one" />
                 </Field>
                 <div className="flex items-end justify-between gap-2 sm:col-span-4">
-                  <div className="text-theme-xs text-muted-foreground">
-                    {account ? <>Account {String(account.code)} · {String(account.name)}</> : "The account follows the type."}
-                    <p className="text-theme-sm font-medium tabular-nums text-foreground">{formatCurrency(amount(item), "PHP", true)}</p>
-                  </div>
+                  <p className="text-theme-sm font-medium tabular-nums">{formatCurrency(amount(item), "PHP", true)}</p>
                   {items.length > 1 ? (
                     <Button type="button" size="sm" variant="ghost" className="text-destructive" aria-label={`Remove item ${n + 1}`} onClick={() => setItems((list) => list.filter((_, i) => i !== n))}>
                       <Trash2 />
@@ -312,10 +338,19 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
         </div>
       </SectionCard>
 
+      {voucher ? null : (
+        <SectionCard title="Receipts and papers" description="ORs, invoices and quotations go with the request.">
+          <Button type="button" variant="outline" disabled={busy} onClick={() => void save(false, "#files")}>
+            <Paperclip /> Save the draft and attach files
+          </Button>
+        </SectionCard>
+      )}
+
       <div className="flex flex-wrap items-center justify-end gap-2">
         {checklist && !checklist.ready ? <p className="mr-auto text-theme-xs text-muted-foreground">Requests can be sent once Finance has finished Financial Settings; a draft can be saved now.</p> : null}
+        {checklist?.ready && missing.length ? <p className="mr-auto text-theme-xs text-warning-foreground">Still needed before sending: {missing.join("; ")}.</p> : null}
         <Button variant="outline" disabled={busy} onClick={() => void save(false)}>Save draft</Button>
-        <Button disabled={busy || !checklist?.ready} onClick={() => void save(true)}>
+        <Button disabled={busy || !checklist?.ready || missing.length > 0} onClick={() => void save(true)}>
           <Send /> {busy ? "Sending…" : "Send for approval"}
         </Button>
       </div>

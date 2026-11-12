@@ -46,7 +46,10 @@ export default function RequestDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { staffId: me } = useRole();
-  const { canEdit } = useModuleAccess();
+  const { canEdit, canView } = useModuleAccess();
+  // Codes are Finance's (polish 2): a requester reads the plain expense type.
+  const seesCodes = canView("finance");
+  const { data: types } = useSetupRows("expense_types");
   const { vouchers, lines: allLines, events: allEvents, queue, loading, linesLoading } = useVouchers();
   const { data: codes } = useSetupRows("fin_codes");
   const { data: accounts } = useSetupRows("coa_accounts");
@@ -237,15 +240,21 @@ export default function RequestDetailPage() {
       )}
 
       {!editable ? (
-        <SectionCard flush title="Items" description="Account, cost center and program as Finance coded them (or as the expense type proposed, until Finance prepares it).">
+        <SectionCard flush title="Items" description={seesCodes ? "Account, cost center and program as Finance coded them (or as the expense type proposed, until Finance prepares it)." : undefined}>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-theme-sm">
               <thead>
                 <tr className="border-b border-border text-left text-theme-xs text-muted-foreground">
                   <th className="h-10 px-4 font-medium">Item</th>
                   <th className="h-10 px-4 font-medium">OR / invoice</th>
-                  <th className="h-10 px-4 font-medium">Account</th>
-                  <th className="h-10 px-4 font-medium">Class</th>
+                  {seesCodes ? (
+                    <>
+                      <th className="h-10 px-4 font-medium">Account</th>
+                      <th className="h-10 px-4 font-medium">Class</th>
+                    </>
+                  ) : (
+                    <th className="h-10 px-4 font-medium">Type</th>
+                  )}
                   <th className="h-10 px-4 text-right font-medium">Amount</th>
                 </tr>
               </thead>
@@ -254,8 +263,14 @@ export default function RequestDetailPage() {
                   <tr key={l.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-2.5">{l.description}<span className="block text-theme-xs text-muted-foreground">{l.qty} × {formatCurrency(l.unitCost, "PHP", true)}</span></td>
                     <td className="px-4 py-2.5">{l.orNumber ?? "—"}</td>
-                    <td className="px-4 py-2.5">{[account(l.accountId)?.code ?? l.legacyCode, account(l.accountId)?.name].filter(Boolean).join(" ") || "—"}</td>
-                    <td className="px-4 py-2.5">{[code(l.t1Id), code(l.t3Id)].filter(Boolean).join(":") || "—"}</td>
+                    {seesCodes ? (
+                      <>
+                        <td className="px-4 py-2.5">{[account(l.accountId)?.code ?? l.legacyCode, account(l.accountId)?.name].filter(Boolean).join(" ") || "—"}</td>
+                        <td className="px-4 py-2.5">{[code(l.t1Id), code(l.t3Id)].filter(Boolean).join(":") || "—"}</td>
+                      </>
+                    ) : (
+                      <td className="px-4 py-2.5">{String(types.find((t) => t.id === l.expenseTypeId)?.label ?? "—")}</td>
+                    )}
                     <td className="px-4 py-2.5 text-right tabular-nums">
                       {formatCurrency(l.amount, "PHP", true)}
                       {l.ewtAmount > 0 ? <span className="block text-theme-xs text-muted-foreground">EWT {l.ewtAtc} {l.ewtRate}%: −{formatCurrency(l.ewtAmount, "PHP", true)}</span> : null}
@@ -269,7 +284,7 @@ export default function RequestDetailPage() {
       ) : null}
 
       {v.status !== "draft" || v.requestNumber || mine ? (
-        <SectionCard title="Receipts and papers">
+        <SectionCard id="files" title="Receipts and papers">
           <VoucherFiles voucherId={v.id} canAttach={canAttach} />
         </SectionCard>
       ) : null}
