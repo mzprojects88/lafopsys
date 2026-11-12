@@ -24,6 +24,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { KpiCard, type StatTone } from "@/components/patterns/kpi-card";
+import { createClient } from "@/lib/supabase/client";
 import { useCollection } from "@/lib/data/collection-store";
 import type { DashboardFigures } from "@/lib/hooks/use-dashboard";
 import { fundStatusStore, voucherQueueStore } from "@/lib/hooks/use-vouchers";
@@ -66,7 +67,7 @@ export function DashboardCard({ k, f, period, window, now }: { k: CardKey; f: Da
   const dash = f ? undefined : "…";
   switch (k) {
     case "housing":
-      return <Card href="/patients/bed-nights" label="Housing" value={dash ?? n(sum(f, "housing"))} sublabel={`Bed nights provided · ${period}`} icon={BedDouble} />;
+      return <HousingCard value={dash ?? n(sum(f, "housing"))} period={period} window={window} />;
     case "rides":
       return <Card href="/transport/report" label="Transportation" value={dash ?? n(sum(f, "transport_to_nch", "transport_to_laf"))} sublabel={`Patient and caregiver rides · to NCH ${n(sum(f, "transport_to_nch"))} · to LAF ${n(sum(f, "transport_to_laf"))}`} icon={Bus} />;
     case "meals":
@@ -118,6 +119,31 @@ export function DashboardCard({ k, f, period, window, now }: { k: CardKey; f: Da
     case "staff_in":
       return <StaffInCard />;
   }
+}
+
+/** Housing, saying how many of its nights the House Sheet filled because nobody finalized them in the app (0148). */
+function HousingCard({ value, period, window }: { value: string; period: string; window: DayWindow }) {
+  const [filled, setFilled] = React.useState<{ key: string; n: number } | null>(null);
+  const key = `${window.from}|${window.to}`;
+  React.useEffect(() => {
+    let live = true;
+    void createClient().schema("ops").rpc("unfinalized_nights", { p_from: window.from, p_to: window.to })
+      .then(({ data }) => live && setFilled({ key, n: ((data ?? []) as unknown[]).length }));
+    return () => {
+      live = false;
+    };
+  }, [window.from, window.to, key]);
+  const gaps = filled?.key === key ? filled.n : 0;
+  return (
+    <Card
+      href="/patients/bed-nights"
+      label="Housing"
+      value={value}
+      sublabel={gaps ? `Bed nights provided · ${period} · ${gaps} night${gaps === 1 ? "" : "s"} from the House Sheet (not finalized)` : `Bed nights provided · ${period}`}
+      icon={BedDouble}
+      tone={gaps ? "warning" : "default"}
+    />
+  );
 }
 
 function WaitingCard() {

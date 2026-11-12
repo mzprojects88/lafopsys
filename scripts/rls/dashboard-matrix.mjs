@@ -40,6 +40,7 @@ const n = (want) => (r) => r.ok && r.rows[0].n === want;
 try {
   await c.query("begin");
   await c.query(readFileSync(new URL("../../supabase/migrations/0147_dashboard_profiles.sql", import.meta.url), "utf8"));
+  await c.query(readFileSync(new URL("../../supabase/migrations/0148_house_sheet_nights_fallback.sql", import.meta.url), "utf8"));
   const ids = (await c.query(`select
     (select id from shared.staff where active and role = 'admin' order by id limit 1) admin,
     (select id from shared.staff where active and role = 'finance' and not ('admin' = any(extra_roles)) limit 1) finance,
@@ -70,6 +71,11 @@ try {
   await c.query("update shared.staff set is_hr = true where id = $1", [ids.driver]);
   await step("a driver with the HR switch still gets no money figure", ids.driver, fig, [], (r) => r.ok && !("cash" in r.rows[0].r) && !("expenses" in r.rows[0].r));
   await c.query("update shared.staff set is_hr = false where id = $1", [ids.driver]);
+  // 0148: a night the Programs sheet lacks and nobody finalized counts from the House Sheet (child + carer per row).
+  const gapNight = await one(`select max(sn.night)::text d from ops.sheet_nights sn where not exists (select 1 from ops.sheet_meals sm where sm.date = sn.night) and not exists (select 1 from ops.bed_nights b where b.night = sn.night)`);
+  const rowsThatNight = await one(`select sum(1 + (nullif(btrim(carer_name), '') is not null)::int)::int v from ops.sheet_nights where night = $1`, [gapNight]);
+  await step(`an unfinalized night (${gapNight}) counts from the House Sheet`, ids.driver, `select ops.dashboard_figures($1, $1)->'lines'->>'housing' v`, [gapNight], (r) => r.ok && Number(r.rows[0].v) === rowsThatNight && rowsThatNight > 0);
+  await step("... and is listed as not finalized", ids.driver, `select count(*)::int n from ops.unfinalized_nights($1, $1)`, [gapNight], n(1));
   await step("a range over ten years is refused", ids.driver, "select ops.dashboard_figures('2000-01-01', '2026-01-01')", [], refused("22023"), false);
   await c.query("select set_config('request.jwt.claims', '', true)");
   await step("signed out: refused", null, "select ops.dashboard_figures('2026-01-01', '2026-02-01')", [], refused("42501"), false);

@@ -1,7 +1,13 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
-import { BedDouble, Bell, ClipboardList, CloudOff, Fuel, Mail, MapPin, PenLine, Receipt, Wrench, type LucideIcon } from "lucide-react";
+import { BedDouble, Bell, Bus, ClipboardList, CloudOff, Fuel, Mail, MapPin, PenLine, Receipt, UtensilsCrossed, Wrench, type LucideIcon } from "lucide-react";
+import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
+import { mealsServedStore } from "@/lib/hooks/use-meals-served";
+import { useTripsData } from "@/lib/hooks/use-trips-collection";
+import { createClient } from "@/lib/supabase/client";
+import { addDays } from "@/lib/utils/dtr";
 import { useCollection } from "@/lib/data/collection-store";
 import { advancesOpenStore, fundStatusStore, myRecentPaymentsStore, voucherQueueStore } from "@/lib/hooks/use-vouchers";
 import { budgetsStore } from "@/lib/hooks/use-budgets";
@@ -116,7 +122,8 @@ export function NotificationCenter() {
     if (tracker) return <TrackerReminder>{withA}</TrackerReminder>;
     return withA([]);
   };
-  if (admissions) return <AdmissionReminder>{rest}</AdmissionReminder>;
+  // 0148: the drivers get the trips-without-passengers reminder from the same place.
+  if (admissions || roles.includes("driver")) return <AdmissionReminder driverOnly={!admissions}>{rest}</AdmissionReminder>;
   return rest([]);
 }
 
@@ -198,34 +205,59 @@ function CaseReminders({ children }: { children: (reminders: Reminder[]) => Reac
 }
 
 /** From an hour before the finalize time until every name on today's NCH list has tonight's bed (0089). */
-function AdmissionReminder({ children }: { children: (reminders: Reminder[]) => React.ReactNode }) {
+function AdmissionReminder({ driverOnly = false, children }: { driverOnly?: boolean; children: (reminders: Reminder[]) => React.ReactNode }) {
   const { admissions, loading } = useAppSettings();
   const { stays } = usePatientsData();
   const { people } = useHouseSheetPeople();
+  const { data: nights } = useCollection(bedNightsStore);
+  const { data: ticked } = useCollection(mealsServedStore);
+  const { trips } = useTripsData();
   const now = useNow();
+  const today = todayIso();
+  // 0148: the nights of the last week the House Sheet had to fill (nobody finalized them in the app).
+  const [gaps, setGaps] = React.useState<string[]>([]);
+  React.useEffect(() => {
+    if (driverOnly) return;
+    let live = true;
+    void createClient().schema("ops").rpc("unfinalized_nights", { p_from: addDays(today, -7), p_to: addDays(today, -1) })
+      .then(({ data }) => live && setGaps(((data ?? []) as string[]).map(String)));
+    return () => { live = false; };
+  }, [today, driverOnly]);
   const hm = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Manila" });
   const [fh, fm] = admissions.finalizeBy.split(":").map(Number);
   const warnFrom = `${String(fh === 0 ? 23 : fh - 1).padStart(2, "0")}:${String(fm).padStart(2, "0")}`;
   const inHouse = new Set(stays.filter((s) => s.status === "in_house" || s.status === "overdue").map((s) => s.patientId));
   const waiting = people.filter((p) => p.offSheetAt === null && p.matchStatus !== "dismissed" && !(houseSheetPatientId(p) && inHouse.has(houseSheetPatientId(p)!))).length;
   const due = !loading && waiting > 0 && hm >= warnFrom;
-  return (
-    <>
-      {children(
-        due
-          ? [
-              {
-                id: "admissions-finalize",
-                title: hm >= admissions.finalizeBy ? "Tonight's beds are past the finalize time" : `Finalize tonight's beds by ${formatTime12(admissions.finalizeBy)}`,
-                body: `${waiting} on today's NCH list ${waiting === 1 ? "has" : "have"} no bed for tonight yet.`,
-                href: "/patients/house-sheet",
-                icon: BedDouble,
-              },
-            ]
-          : [],
-      )}
-    </>
-  );
+  // 0148 (user, 12 Nov): the gaps that leave the reports empty. Tonight not finalized at all; families in but no meal
+  // ticked by 8 PM; a trip to or from NCH done without its passengers (last 7 days).
+  const tonightDone = nights.some((n) => n.night === today);
+  const familiesIn = inHouse.size;
+  const noPassengers = trips.filter((t) => t.status === "completed" && (t.direction === "to_hospital" || t.direction === "from_hospital") && t.date >= addDays(today, -7) && t.passengerPatientIds.length === 0);
+  const out: Reminder[] = [];
+  if (!driverOnly && due)
+    out.push({
+      id: "admissions-finalize",
+      title: hm >= admissions.finalizeBy ? "Tonight's beds are past the finalize time" : `Finalize tonight's beds by ${formatTime12(admissions.finalizeBy)}`,
+      body: `${waiting} on today's NCH list ${waiting === 1 ? "has" : "have"} no bed for tonight yet.`,
+      href: "/patients/house-sheet",
+      icon: BedDouble,
+    });
+  else if (!driverOnly && !loading && !tonightDone && hm >= admissions.finalizeBy)
+    out.push({ id: "admissions-not-finalized", title: "Tonight's beds aren't finalized", body: "Check the families in and press Finalize on House Today: until then tonight counts for nothing in the reports.", href: "/patients/today", icon: BedDouble });
+  if (!driverOnly && gaps.length)
+    out.push({
+      id: `admissions-gaps-${gaps.join(",")}`,
+      title: `${gaps.length} night${gaps.length === 1 ? "" : "s"} last week ${gaps.length === 1 ? "wasn't" : "weren't"} finalized`,
+      body: `${gaps.map((d) => formatDate(d, "MMM d")).join(", ")}: the reports count ${gaps.length === 1 ? "it" : "them"} from the House Sheet. Finalize every night by ${formatTime12(admissions.finalizeBy)}.`,
+      href: "/patients/today",
+      icon: BedDouble,
+    });
+  if (!driverOnly && familiesIn > 0 && ticked.size === 0 && hm >= "20:00")
+    out.push({ id: "meals-not-ticked", title: "No meal ticked today", body: `${familiesIn} famil${familiesIn === 1 ? "y is" : "ies are"} in the house: tick their breakfast, lunch and dinner on House Today.`, href: "/patients/today", icon: UtensilsCrossed });
+  if (noPassengers.length)
+    out.push({ id: `trips-no-passengers-${noPassengers.map((t) => t.id).join(",")}`, title: `${noPassengers.length} trip${noPassengers.length === 1 ? "" : "s"} without passengers`, body: "Add who rode (the child and carer) so the rides count.", href: "/transport", icon: Bus });
+  return <>{children(out)}</>;
 }
 
 /** The tracker is read every hour. On 2026-10-12 it was found stopped for four days, unnoticed. */
