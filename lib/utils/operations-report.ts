@@ -35,6 +35,8 @@ export interface Figure {
   ytd?: number;
   /** The year's goal for this figure (Executive › Goals), set against the year to date. */
   goal?: number;
+  /** A sum of other figures or a goal's row: left out of the chart. */
+  derived?: boolean;
 }
 
 export interface GeneratorExtras {
@@ -55,23 +57,24 @@ function variance(f: Figure): string {
   const pct = changeLabel(f.value, f.previous);
   return d === 0 && !pct ? "" : `${d > 0 ? "+" : ""}${num(d)}${pct ? ` (${pct})` : ""}`;
 }
+// The boxes keep the short percent (the PDF's boxes are narrow); the table carries the amount.
 function figureKpis(figures: Figure[]) {
-  return figures.map((f) => ({ label: f.label, value: fmt(f, f.value), previous: fmt(f, f.previous), change: variance(f) }));
+  return figures.filter((f) => !f.derived).map((f) => ({ label: f.label, value: fmt(f, f.value), previous: fmt(f, f.previous), change: changeLabel(f.value, f.previous) }));
 }
 /** The comparison table of a section shown as totals: each figure for the period, the one before, the variance, the
  * year to date, and the year's goal where there is one. */
 function comparison(figures: Figure[], period: string, previousPeriod: string, ytdLabel: string, goalYear: number) {
   const goals = figures.some((f) => f.goal != null);
   return {
-    columns: ["Figure", period, previousPeriod, "Variance", "%", ytdLabel, ...(goals ? [`Goal ${goalYear}`, "% of goal"] : [])],
+    // Few columns, so the first keeps room for long names on paper: the variance and the goal each in one.
+    columns: ["Figure", period, previousPeriod, "Variance", ytdLabel, ...(goals ? [`Goal ${goalYear}`] : [])],
     rows: figures.map((f) => [
       f.unit === "PHP" ? `${f.label} (PHP)` : f.unit ? `${f.label} (${f.unit})` : f.label,
       round2(f.value),
       round2(f.previous),
-      round2(f.value - f.previous),
-      changeLabel(f.value, f.previous) || "—",
+      variance(f) || "—",
       f.ytd == null ? "—" : round2(f.ytd),
-      ...(goals ? [f.goal == null ? "—" : round2(f.goal), f.goal ? `${Math.round(((f.ytd ?? 0) / f.goal) * 100)}%` : "—"] : []),
+      ...(goals ? [f.goal ? `${num(round2(f.goal))} (${Math.round(((f.ytd ?? 0) / f.goal) * 100)}%)` : "—"] : []),
     ]),
   };
 }
@@ -89,7 +92,8 @@ export function operationsReport(args: {
   previousPeriod: string;
   /** Totals only (one comparison table a section) instead of the columns by day, week or month. */
   totalsOnly?: boolean;
-  /** The programs' rows for the year to date, its label ("YTD 2026") and year. */
+  /** The programs' rows from 1 January to the day before the period (the period's own figure is added to them, so
+   * a period never exceeds its year to date), the label ("YTD 2026") and the year. */
   ytdRows?: readonly ImpactRow[];
   ytdLabel?: string;
   goalYear?: number;
@@ -98,24 +102,28 @@ export function operationsReport(args: {
 }): { spec: ReportSpec; input: AnalysisInput } {
   const { sections, rows, previous, buckets, extras, period, previousPeriod, totalsOnly = false, ytdRows = [], ytdLabel = "Year to date", goalYear = 0, goals = {} } = args;
   const compare = (figures: Figure[]) => comparison(figures, period, previousPeriod, ytdLabel, goalYear);
-  const twoBars = (figures: Figure[]) => ({ kind: "bar" as const, labels: [previousPeriod, period], series: figures.map((f) => ({ label: f.label, values: [f.previous, f.value] })) });
+  // One scale a chart: the figures in the first one's unit, without sums and goal rows.
+  const twoBars = (figures: Figure[]) => ({ kind: "bar" as const, labels: [previousPeriod, period], series: figures.filter((f) => !f.derived && (f.unit ?? "") === (figures[0]?.unit ?? "")).map((f) => ({ label: f.label, values: [f.previous, f.value] })) });
+  const ytdOf = (key: Parameters<typeof total>[1]) => total(ytdRows, key) + total(rows, key);
+  // A goal counts as Executive › Goals counts it (the app's figure, else the sheet's).
+  const asGoals = (rs: readonly ImpactRow[], lines: readonly string[]) => rs.filter((r) => lines.includes(r.line)).reduce((s, r) => s + (r.native || r.fromSheet), 0);
   const out: ReportSection[] = [];
   const inputs: AnalysisSection[] = [];
   const program = (groupName: string) => {
     const g = IMPACT_GROUPS.find((x) => x.group === groupName)!;
-    const figures: Figure[] = g.lines.map((l) => ({ label: `${l.label} (${l.unit})`, value: total(rows, l.key), previous: total(previous, l.key), ytd: total(ytdRows, l.key) }));
+    const figures: Figure[] = g.lines.map((l) => ({ label: `${l.label} (${l.unit})`, value: total(rows, l.key), previous: total(previous, l.key), ytd: ytdOf(l.key) }));
     // The year's goal counts some of the group's lines together: its own row, against the year to date.
     const goal = goals[g.group];
-    const sumOf = (rs: readonly ImpactRow[]) => (goal ? g.lines.filter((l) => goal.lines.includes(l.key)).reduce((s, l) => s + total(rs, l.key), 0) : 0);
-    const compared: Figure[] = goal ? [...figures, { label: `Goal: ${goal.label}`, value: sumOf(rows), previous: sumOf(previous), ytd: sumOf(ytdRows), goal: goal.target }] : figures;
-    const tableRows = g.lines.map((l) => [l.label, ...buckets.map((b) => shown(cell(rows, l.key, b.key))), total(rows, l.key), total(ytdRows, l.key)]);
+    const sumOf = (rs: readonly ImpactRow[]) => (goal ? asGoals(rs, goal.lines) : 0);
+    const compared: Figure[] = goal ? [...figures, { label: `Goal: ${goal.label}`, value: sumOf(rows), previous: sumOf(previous), ytd: sumOf(ytdRows) + sumOf(rows), goal: goal.target, derived: true }] : figures;
+    const tableRows = g.lines.map((l) => [l.label, ...buckets.map((b) => shown(cell(rows, l.key, b.key))), total(rows, l.key), ytdOf(l.key)]);
     out.push({
       heading: g.group,
       description: g.description,
       kpis: figureKpis(figures),
       table: totalsOnly
         ? compare(compared)
-        : { columns: ["Line", ...buckets.map((b) => b.label), "Total", ytdLabel], rows: tableRows, totals: g.lines.length > 1 ? ["Total", ...buckets.map((b) => g.lines.reduce((s, l) => s + shown(cell(rows, l.key, b.key)), 0)), g.lines.reduce((s, l) => s + total(rows, l.key), 0), g.lines.reduce((s, l) => s + total(ytdRows, l.key), 0)] : undefined },
+        : { columns: ["Line", ...buckets.map((b) => b.label), "Total", ytdLabel], rows: tableRows, totals: g.lines.length > 1 ? ["Total", ...buckets.map((b) => g.lines.reduce((s, l) => s + shown(cell(rows, l.key, b.key)), 0)), g.lines.reduce((s, l) => s + total(rows, l.key), 0), g.lines.reduce((s, l) => s + ytdOf(l.key), 0)] : undefined },
       chart: totalsOnly ? twoBars(figures) : { kind: g.lines.length > 1 ? "stacked" : "bar", labels: buckets.map((b) => b.label), series: g.lines.map((l) => ({ label: l.label, values: buckets.map((b) => shown(cell(rows, l.key, b.key))) })) },
     });
     inputs.push({ heading: g.group, description: g.description, kpis: figureInput(figures) });

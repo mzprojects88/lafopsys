@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { ReportLinks } from "@/components/modules/reports/report-links";
 import { useGoals } from "@/lib/hooks/use-budgets";
 import { MEASURES, type Measure } from "@/lib/utils/budgets";
-import type { PresetKey } from "@/lib/utils/period-presets";
 import { PageHeader } from "@/components/patterns/page-header";
 import { SectionCard } from "@/components/patterns/section-card";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
@@ -29,27 +28,40 @@ import { holdsPower } from "@/lib/rbac/roles";
 import { cafAmounts, cafMonthLabel } from "@/lib/utils/caf";
 import { bucketsFor, periodGrain, type Grain } from "@/lib/utils/program-impact";
 import { GENERATOR_SECTIONS, operationsReport, type Figure, type GeneratorExtras, type GeneratorSectionKey } from "@/lib/utils/operations-report";
-import { periodLabel, previousWindow, type DayWindow, type RangeKind } from "@/lib/utils/period";
+import { periodLabel, periodWindow, previousWindow, type DayWindow, type RangeKind } from "@/lib/utils/period";
+import { addDays } from "@/lib/utils/dtr";
 import { bucketOf } from "@/lib/utils/report-series";
 import { todayIso } from "@/lib/utils/date";
 
-/** How each period chip compares itself: a day with the day before, a week, month or year with the one before. */
-const KIND: Record<PresetKey, RangeKind> = { today: "today", yesterday: "today", this_week: "week", last_week: "week", this_month: "month", last_month: "month", this_year: "year", last_year: "year", custom: "custom", all: "custom" };
+/** What a window is, by its shape, so a whole month picked as two dates still compares with the month before: a
+ * day with the day before, a calendar week, month, quarter or year with the one before, anything else with the same
+ * number of days before it. */
+function kindOf(w: DayWindow): RangeKind {
+  if (w.from === w.to) return "today";
+  for (const k of ["week", "month", "quarter", "year"] as const) {
+    const p = periodWindow(k, w.from);
+    if (p.from === w.from && p.to === w.to) return k;
+  }
+  return "custom";
+}
 const GRAIN_WORD: Record<Grain, string> = { day: "By day", week: "By week", month: "By month" };
 /** The Programs group each goal measure belongs to. */
 const GOAL_GROUP: Record<Measure, string> = { housing: "Housing", rides: "Transportation", meals: "Meals @ LAF House", care_cart: "Care Cart", center: "LAF Center @ NCH" };
 
 interface Extra {
+  /** The reads failed: the figures are missing, not zero. */
+  failed?: boolean;
   trips: { date: string; km: number; fuel: number }[];
   hours: { date: string; minutes: number; late: boolean }[];
   gifts: { date: string; food: number; nonFood: number }[];
 }
 
 /** Transport, staff hours and gifts in kind for a window, read with the viewer's own access. */
-function useExtras(window: DayWindow, see: { transport: boolean; hours: boolean; donors: boolean }) {
+function useExtras(window: DayWindow, see: { transport: boolean; hours: boolean; donors: boolean }, enabled = true) {
   const [state, setState] = React.useState<{ key: string; data: Extra } | null>(null);
   const key = `${window.from}|${window.to}|${see.transport}|${see.hours}|${see.donors}`;
   React.useEffect(() => {
+    if (!enabled) return;
     let live = true;
     const ops = () => createClient().schema("ops");
     const none = Promise.resolve([] as never[]);
@@ -75,11 +87,11 @@ function useExtras(window: DayWindow, see: { transport: boolean; hours: boolean;
           gifts: gifts.map((g) => ({ date: g.date, food: Number(g.food_value), nonFood: Number(g.nonfood_value) })),
         },
       });
-    });
+    }).catch(() => live && setState({ key, data: { failed: true, trips: [], hours: [], gifts: [] } }));
     return () => {
       live = false;
     };
-  }, [window.from, window.to, see.transport, see.hours, see.donors, key]);
+  }, [window.from, window.to, see.transport, see.hours, see.donors, key, enabled]);
   return state?.key === key ? state.data : null;
 }
 
@@ -105,7 +117,7 @@ function Generator() {
   // One period for the whole page (the chips every page uses); a month runs from its day 1 to its last day.
   const period = usePeriodPresets("reports", "this_month");
   const window = period.window!;
-  const kind = KIND[period.state.key];
+  const kind = kindOf(window);
   const previous = previousWindow(kind, window);
   // Counted as the dashboard counts the same period; shown as totals, or in those columns (a year by month).
   const grain = periodGrain(window);
@@ -119,10 +131,16 @@ function Generator() {
   const buckets = bucketsFor(window, grain);
   const label = periodLabel(kind, window);
   const prevLabel = periodLabel(kind, previous);
-  // Year to date: 1 January of the period's year to the period's end (today at the latest).
-  const year = Number(window.to.slice(0, 4));
-  const ytdWindow = React.useMemo(() => ({ from: `${window.to.slice(0, 4)}-01-01`, to: window.to > today ? today : window.to }), [window.to, today]);
+  // Year to date: 1 January of the year the period ends in (today at the latest, unless the period is all ahead).
+  const ytdEnd = window.to > today && window.from <= today ? today : window.to;
+  const year = Number(ytdEnd.slice(0, 4));
+  const ytdWindow = React.useMemo(() => ({ from: `${ytdEnd.slice(0, 4)}-01-01`, to: ytdEnd }), [ytdEnd]);
   const ytdLabel = `YTD ${year}`;
+  // The programs' year to date = 1 January to the day before the period, plus the period's own figure (so the two
+  // are counted alike and a period never exceeds its year to date); nothing to ask when the period starts the year.
+  const beforeWindow = React.useMemo(() => ({ from: ytdWindow.from, to: addDays(window.from, -1) }), [ytdWindow.from, window.from]);
+  const hasBefore = window.from > ytdWindow.from && beforeWindow.to >= beforeWindow.from;
+  const ytdIsPeriod = window.from === ytdWindow.from && window.to === ytdWindow.to;
   const [showLinks, setShowLinks] = React.useState(false);
 
   const access = useModuleAccess();
@@ -134,10 +152,11 @@ function Generator() {
 
   const programs = useProgramImpact(window, grain);
   const programsBefore = useProgramImpact(previous, periodGrain(previous));
-  const programsYtd = useProgramImpact(ytdWindow, "month");
+  const programsYtd = useProgramImpact(hasBefore ? beforeWindow : ytdWindow, "month", 0, hasBefore);
   const extras = useExtras(window, see);
   const extrasBefore = useExtras(previous, see);
-  const extrasYtd = useExtras(ytdWindow, see);
+  const extrasYtdRead = useExtras(ytdWindow, see, !ytdIsPeriod);
+  const extrasYtd = ytdIsPeriod ? extras : extrasYtdRead;
   // The year's goals (Executive › Goals): read by the CEO, the Trustees and the Super Admin; nobody else gets rows.
   const { goals, targets } = useGoals();
   const goalOf = (measure: string) => {
@@ -187,12 +206,14 @@ function Generator() {
     const food = (x: Extra) => x.gifts.reduce((s, g) => s + g.food, 0);
     const nonFood = (x: Extra) => x.gifts.reduce((s, g) => s + g.nonFood, 0);
     const cashOf = (w: DayWindow) => cash(w).reduce((s, d) => s + d.totalValue, 0);
+    const raised = (w: DayWindow) => donations.filter((d) => d.date >= w.from && d.date <= w.to).reduce((s, d) => s + Number(d.totalValue ?? 0), 0);
     built.donations = {
       figures: [
         fig("Cash gifts", cashOf(window), cashOf(previous), cashOf(ytdWindow), "PHP"),
         fig("Gifts in kind", food(extras) + nonFood(extras), food(extrasBefore) + nonFood(extrasBefore), food(extrasYtd) + nonFood(extrasYtd), "PHP"),
-        fig("All gifts", cashOf(window) + food(extras) + nonFood(extras), cashOf(previous) + food(extrasBefore) + nonFood(extrasBefore), cashOf(ytdWindow) + food(extrasYtd) + nonFood(extrasYtd), "PHP", goalOf("donations")?.target),
         fig("Cash gifts (count)", cash(window).length, cash(previous).length, cash(ytdWindow).length),
+        // The money-raised goal, counted as Executive › Goals counts it: every gift on the donor ledger.
+        ...((g) => (g ? [{ ...fig(`Goal: ${g.title}`, raised(window), raised(previous), raised(ytdWindow), "PHP", g.target), derived: true }] : []))(goalOf("donations")),
       ],
       rows: inBuckets([...extras.gifts.map((g) => ({ date: g.date, cash: 0, food: g.food, nonFood: g.nonFood })), ...cash(window).map((d) => ({ date: d.date, cash: d.totalValue, food: 0, nonFood: 0 }))], (r) => r.date, (a, r) => {
         a.cash = (a.cash ?? 0) + r.cash;
@@ -275,7 +296,8 @@ function Generator() {
           {label} ({window.from} to {window.to}) compared with {prevLabel}; year to date is {ytdWindow.from} to {ytdWindow.to}.{Object.keys(programGoals).length ? ` Goals are the ${year} targets from Executive › Goals, set against the year to date.` : ""}
         </p>
       </div>
-      {programs.error ? <EmptyState title="Couldn't load the programs" description={programs.error} /> : null}
+      {programs.error || programsBefore.error || programsYtd.error ? <EmptyState title="Couldn't load the programs" description={`${programs.error ?? programsBefore.error ?? programsYtd.error} Figures that failed to load read as zero: reload before using this report.`} /> : null}
+      {extras?.failed || extrasBefore?.failed || extrasYtd?.failed ? <EmptyState title="Some figures couldn't load" description="Transport, staff hours or gifts in kind failed to load and read as zero: reload before using this report." /> : null}
       {!ready ? <LoadingState /> : null}
       <AiAnalysisPanel text={ai.analysis?.overall} />
       {preview?.sections.map((s) => (

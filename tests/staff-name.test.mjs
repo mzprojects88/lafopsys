@@ -28,7 +28,7 @@ describe("pages and powers (0093)", () => {
       .map((f) => readFileSync(new URL(`../supabase/migrations/${f}`, import.meta.url), "utf8"))
       .join("\n");
     // Pages retired later (finance.entry, 0147) leave the catalogue; their old seeds stay in their migrations.
-    const retired = new Set(["finance.entry"]);
+    const retired = new Set(["finance.entry", "reports.generate"]);
     const seeded = [...sql.matchAll(/\('([a-z_]+\.[a-z_]+)'\)/g)].map((m) => m[1]).filter((k) => !retired.has(k)).sort();
     assert.deepEqual(seeded, PAGES.filter((p) => !p.power).map((p) => p.key).sort());
   });

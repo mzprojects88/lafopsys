@@ -2,7 +2,7 @@
 // app's records and broken into days, weeks or months. Pure: loads under `node --test`.
 
 import { addDays, weekKey } from "./dtr.ts";
-import { monthStart, shiftAnchor, type DayWindow } from "./period.ts";
+import { monthStart, shiftAnchor, windowDays, type DayWindow } from "./period.ts";
 import type { AnalysisInput } from "../ai/report-analysis.ts";
 import type { ReportSpec } from "../pdf/report-doc.ts";
 
@@ -165,7 +165,7 @@ export function bucketsFor(window: DayWindow, grain: Grain): Bucket[] {
 /** The grain a window's figures are counted in, as ops.dashboard_figures (0147): days up to 14, weeks up to 120 days,
  * then months, so the dashboard and the reports agree for the same period. */
 export function periodGrain(window: DayWindow): Grain {
-  const days = Math.round((Date.parse(window.to) - Date.parse(window.from)) / 86_400_000) + 1;
+  const days = windowDays(window);
   return days <= 14 ? "day" : days <= 120 ? "week" : "month";
 }
 

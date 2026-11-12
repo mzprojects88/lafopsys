@@ -7,10 +7,11 @@ import type { DayWindow } from "@/lib/utils/period";
 import type { Grain, ImpactLine, ImpactRow } from "@/lib/utils/program-impact";
 
 /** The report rows for a range (ops.program_impact_range, 0128): computed on request from the live tables. */
-export function useProgramImpact(window: DayWindow, grain: Grain, refreshKey = 0) {
+export function useProgramImpact(window: DayWindow, grain: Grain, refreshKey = 0, enabled = true) {
   const [state, setState] = React.useState<{ key: string; rows: ImpactRow[]; error: string | null } | null>(null);
   const key = `${window.from}|${window.to}|${grain}|${refreshKey}`;
   React.useEffect(() => {
+    if (!enabled) return;
     let live = true;
     void createClient()
       .schema("ops")
@@ -26,7 +27,8 @@ export function useProgramImpact(window: DayWindow, grain: Grain, refreshKey = 0
     return () => {
       live = false;
     };
-  }, [window.from, window.to, grain, key]);
+  }, [window.from, window.to, grain, key, enabled]);
+  if (!enabled) return { rows: [] as ImpactRow[], error: null, loading: false };
   return state?.key === key ? { rows: state.rows, error: state.error, loading: false } : { rows: [] as ImpactRow[], error: null, loading: true };
 }
 
