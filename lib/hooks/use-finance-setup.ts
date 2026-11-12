@@ -84,6 +84,22 @@ export async function settleAll(table: SetupTable, keys: string[]): Promise<Resu
   return { ok: true };
 }
 
+/** Several new rows at once (suppliers from the registers, suggested withholding rates: polish 4). */
+export async function addSetupRows(table: SetupTable, rows: SetupRow[]): Promise<Result> {
+  const { error } = await createClient().schema("ops").from(table).insert(rows);
+  if (error) return { ok: false, error: plain(error) };
+  await stores[table].refetch();
+  return { ok: true };
+}
+
+/** The whole signer matrix at once, in one transaction (ops.voucher_authority_set, 0144). */
+export async function setAuthority(rows: SetupRow[]): Promise<Result> {
+  const { error } = await createClient().schema("ops").rpc("voucher_authority_set", { p_rows: rows });
+  if (error) return { ok: false, error: plain(error) };
+  await Promise.all([stores.voucher_authority.refetch(), setupChecklistStore.refetch()]);
+  return { ok: true };
+}
+
 export interface SetupChecklist {
   ready: boolean;
   items: { key: string; label: string; done: boolean; detail: string }[];

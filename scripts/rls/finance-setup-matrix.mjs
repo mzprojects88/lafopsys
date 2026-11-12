@@ -143,6 +143,22 @@ try {
   await c.query(`update ops.voucher_authority set min_amount = 200 where step = 'review' and max_amount is null`);
   await check("a gap between 100 and 200 for review is found", ids.sw, `select ops.finance_setup_checklist() j`, (r) => /Review/.test(checklist(r)?.items.find((i) => i.key === "authority")?.detail ?? ""));
   await c.query("rollback to savepoint setup_all");
+
+  // 0144: the signers set in one form, in one transaction.
+  await c.query(readFileSync(new URL("supabase/migrations/0144_authority_set.sql", proj), "utf8"));
+  const rows = (who) => JSON.stringify([{ step: "validate", staff_id: who }, { step: "review", staff_id: ids.office }, { step: "approve", staff_id: ids.admin, max_amount: 5000 }]).replace(/'/g, "''");
+  await check("a driver can't set the signers", ids.driver, `select ops.voucher_authority_set('${rows(ids.finance)}'::jsonb)`, (r) => !r.ok && r.code === "42501");
+  await check("an empty list is refused", ids.admin, `select ops.voucher_authority_set('[]'::jsonb)`, (r) => !r.ok && r.code === "23514");
+  await c.query("savepoint signers");
+  await as(ids.admin);
+  const set = await c.query(`select ops.voucher_authority_set('${rows(ids.finance)}'::jsonb) n`);
+  await c.query("reset role");
+  await check("the Super Admin sets them all at once (3 rows)", null, `select ${set.rows[0].n}::int n`, (r) => r.ok && r.rows[0].n === 3);
+  await check("... the old rows went, the three new ones stay, each logged", null,
+    `select (select count(*)::int from ops.voucher_authority) rows, (select count(*)::int from ops.finance_setup_log where table_name = 'voucher_authority' and action = 'INSERT') logged`,
+    (r) => r.ok && r.rows[0].rows === 3 && r.rows[0].logged >= 3);
+  await c.query("rollback to savepoint signers");
+  await check("a bad step refuses the whole list (nothing half replaced)", ids.admin, `select ops.voucher_authority_set('[{"step":"review","staff_id":"${ids.office}"},{"step":"nonsense"}]'::jsonb)`, (r) => !r.ok);
 } finally {
   await c.query("rollback");
   await c.end();

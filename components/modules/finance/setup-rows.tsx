@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { keyOf, removeSetupRow, saveSetupRow, settleAll, type SetupRow, type SetupTable } from "@/lib/hooks/use-finance-setup";
 import { cn } from "@/lib/utils";
 
@@ -52,7 +53,7 @@ function fromDraft(field: SetupField, value: string | boolean): unknown {
  * note, and a dialog to add, change, settle or remove a row. The database checks every value and who may
  * write; this only shapes the form.
  */
-export function SetupRows({ table, title, description, rows, columns, fields, blank, fixed, search, addLabel = "Add", canAdd = true, canDelete = true }: {
+export function SetupRows({ table, title, description, rows, columns, fields, blank, fixed, search, addLabel = "Add", canAdd = true, canDelete = true, notesFirst = false }: {
   table: SetupTable;
   title: string;
   description?: string;
@@ -67,8 +68,12 @@ export function SetupRows({ table, title, description, rows, columns, fields, bl
   addLabel?: string;
   canAdd?: boolean;
   canDelete?: boolean;
+  /** Open on the rows that need attention (the setup checklist's Open, polish 4). */
+  notesFirst?: boolean;
 }) {
-  const [onlyNotes, setOnlyNotes] = React.useState(false);
+  const [onlyNotes, setOnlyNotes] = React.useState(notesFirst);
+  // Rows ticked to settle together (polish 4): only rows that carry a note.
+  const [picked, setPicked] = React.useState<Set<string>>(new Set());
   const [query, setQuery] = React.useState("");
   const [editing, setEditing] = React.useState<{ key: string | null; note: string | null; draft: Record<string, string | boolean>; settled: boolean } | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -105,11 +110,15 @@ export function SetupRows({ table, title, description, rows, columns, fields, bl
     setEditing(null);
   }
 
+  const pickedKeys = rows.filter((x) => x.review_note && picked.has(keyOf(table, x))).map((x) => keyOf(table, x));
   async function settleEverything() {
-    if (!confirm(`Mark all ${notes} notes in ${title} as settled? Do this only once each one has been checked.`)) return;
-    const r = await settleAll(table, rows.filter((x) => x.review_note).map((x) => keyOf(table, x)));
-    toast[r.ok ? "success" : "error"](r.ok ? "All settled" : r.error);
+    const keys = pickedKeys.length ? pickedKeys : rows.filter((x) => x.review_note).map((x) => keyOf(table, x));
+    if (!confirm(`Mark ${pickedKeys.length ? `these ${keys.length}` : `all ${keys.length}`} notes in ${title} as settled? Do this only once each one has been checked. Every change is logged.`)) return;
+    const r = await settleAll(table, keys);
+    if (r.ok) setPicked(new Set());
+    toast[r.ok ? "success" : "error"](r.ok ? `${keys.length} settled` : r.error);
   }
+  const toggle = (key: string, on: boolean) => setPicked((p) => { const n = new Set(p); if (on) n.add(key); else n.delete(key); return n; });
 
   return (
     <SectionCard
@@ -125,7 +134,7 @@ export function SetupRows({ table, title, description, rows, columns, fields, bl
           ) : null}
           {notes > 0 ? (
             <Button size="sm" variant="ghost" onClick={() => void settleEverything()}>
-              <CheckCheck /> Settle all
+              <CheckCheck /> {pickedKeys.length ? `Settle ${pickedKeys.length} picked` : "Settle all"}
             </Button>
           ) : null}
           {canAdd ? (
@@ -146,6 +155,7 @@ export function SetupRows({ table, title, description, rows, columns, fields, bl
         <table className="w-full min-w-[560px] text-theme-sm">
           <thead>
             <tr className="border-b border-border text-left text-theme-xs text-muted-foreground">
+              {notes > 0 ? <th className="h-10 w-10 px-4" aria-label="Pick to settle" /> : null}
               {columns.map((c) => (
                 <th key={c.label} className={cn("h-10 px-4 font-medium", c.className)}>{c.label}</th>
               ))}
@@ -154,6 +164,11 @@ export function SetupRows({ table, title, description, rows, columns, fields, bl
           <tbody>
             {shown.map((row) => (
               <tr key={keyOf(table, row)} className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/40" onClick={() => open(row)}>
+                {notes > 0 ? (
+                  <td className="w-10 px-4 py-2.5 align-top" onClick={(e) => e.stopPropagation()}>
+                    {row.review_note ? <Checkbox aria-label="Pick this note to settle" checked={picked.has(keyOf(table, row))} onCheckedChange={(on) => toggle(keyOf(table, row), !!on)} /> : null}
+                  </td>
+                ) : null}
                 {columns.map((c, i) => (
                   <td key={c.label} className={cn("px-4 py-2.5 align-top", c.className)}>
                     {c.render(row)}
@@ -164,7 +179,7 @@ export function SetupRows({ table, title, description, rows, columns, fields, bl
             ))}
             {shown.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-6 text-center text-muted-foreground">{onlyNotes || q ? "Nothing matches." : "Nothing here yet."}</td>
+                <td colSpan={columns.length + (notes > 0 ? 1 : 0)} className="px-4 py-6 text-center text-muted-foreground">{onlyNotes || q ? "Nothing matches." : "Nothing here yet."}</td>
               </tr>
             ) : null}
           </tbody>

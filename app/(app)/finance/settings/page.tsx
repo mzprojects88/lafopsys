@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SetupRows, type SetupColumn, type SetupField } from "@/components/modules/finance/setup-rows";
+import { AuthoritySetup } from "@/components/modules/finance/authority-setup";
+import { EwtSuggestions, PayeeSuggestions } from "@/components/modules/finance/setup-suggestions";
 import { PersonListSuggestions } from "@/components/modules/finance/person-list-suggestions";
 import { createClient } from "@/lib/supabase/client";
 import { useCollection } from "@/lib/data/collection-store";
@@ -58,6 +60,8 @@ const off = (row: SetupRow) => (row.active === false ? <Badge className={STATUS_
  */
 export default function FinancialSettingsPage() {
   const [tab, setTab] = React.useState<string>("setup");
+  // The checklist item opened last (polish 4): its tab opens on the rows that need attention.
+  const [focus, setFocus] = React.useState<string | null>(null);
   const { data: accounts } = useSetupRows("coa_accounts");
   const { data: codes } = useSetupRows("fin_codes");
   const { data: expenseTypes } = useSetupRows("expense_types");
@@ -140,7 +144,7 @@ export default function FinancialSettingsPage() {
                     <p className="text-theme-xs text-muted-foreground">{i.detail}</p>
                   </div>
                   {!i.done && TAB_OF[i.key] ? (
-                    <Button size="sm" variant="outline" onClick={() => setTab(TAB_OF[i.key])}>Open</Button>
+                    <Button size="sm" variant="outline" onClick={() => (setFocus(i.key), setTab(TAB_OF[i.key]))}>Open</Button>
                   ) : null}
                 </div>
               ))}
@@ -151,6 +155,7 @@ export default function FinancialSettingsPage() {
         <TabsContent value="chart" className="mt-4">
           <SetupRows
             table="coa_accounts"
+            notesFirst={focus === "chart"}
             title="Chart of accounts"
             description="Imported from the LAF COA QB Standard COA workbook (18 Aug). Rows with a note need a decision before requests open."
             rows={accounts}
@@ -183,6 +188,7 @@ export default function FinancialSettingsPage() {
             <SetupRows
               key={tier}
               table="fin_codes"
+              notesFirst={focus === "codes"}
               title={tier === "T1" ? "T1 · Cost centers (QuickBooks Classes)" : tier === "T2" ? "T2 · Donor funds (QuickBooks Projects)" : "T3 · Programs (QuickBooks sub-classes)"}
               rows={codes.filter((c) => c.tier === tier)}
               columns={codeColumns}
@@ -226,6 +232,7 @@ export default function FinancialSettingsPage() {
           </div>
           <SetupRows
             table="expense_types"
+            notesFirst={focus === "expense_types"}
             title="Expense types"
             description="What a requester picks, and the account it means for each use. Proposed by the app from the chart's descriptions."
             rows={expenseTypes}
@@ -249,6 +256,7 @@ export default function FinancialSettingsPage() {
           />
           <SetupRows
             table="recipient_categories"
+            notesFirst={focus === "expense_types"}
             title="Recipient categories"
             description="Who a person paid can be, when a request says the payment goes to a person. A Patient category lets those who read Patients pick the patient."
             rows={categories}
@@ -267,7 +275,8 @@ export default function FinancialSettingsPage() {
           />
         </TabsContent>
 
-        <TabsContent value="authority" className="mt-4">
+        <TabsContent value="authority" className="mt-4 flex flex-col gap-4">
+          <AuthoritySetup rows={authority} people={people} roles={roleOptions} />
           <SetupRows
             table="voucher_authority"
             title="Approval authority"
@@ -321,6 +330,7 @@ export default function FinancialSettingsPage() {
         </TabsContent>
 
         <TabsContent value="payees" className="mt-4 flex flex-col gap-4">
+          <EwtSuggestions rates={rates} />
           <SetupRows
             table="ewt_rates"
             title="Withholding tax rates (EWT)"
@@ -363,6 +373,7 @@ export default function FinancialSettingsPage() {
               { key: "active", label: "In use", kind: "switch" },
             ]}
           />
+          <PayeeSuggestions payees={payees} />
         </TabsContent>
 
         <TabsContent value="general" className="mt-4 flex flex-col gap-4">
