@@ -58,7 +58,7 @@ export const ACTIONS: { key: ActionKey; label: string; href: string; inventory?:
   { key: "punches", label: "Punches", href: "/staff/punches", roles: ["office_admin"] },
   { key: "dtr", label: "My DTR", href: "/staff/dtr", roles: [] },
   { key: "leave", label: "Leave", href: "/hr/leave", roles: [] },
-  { key: "generate_report", label: "Generate report", href: "/reports/generate", roles: ["ceo", "admin", "board"] },
+  { key: "generate_report", label: "Generate report", href: "/reports", roles: ["ceo", "admin", "board"] },
   { key: "programs_report", label: "Programs report", href: "/reports/programs", roles: ["ceo", "board"] },
   { key: "compliance", label: "Compliances", href: "/compliance", roles: ["office_admin", "finance"] },
 ];

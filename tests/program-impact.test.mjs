@@ -15,7 +15,9 @@ describe("bucketsFor", () => {
   it("gives days, Monday weeks and first-of-month keys with short labels", () => {
     assert.deepEqual(bucketsFor({ from: "2026-11-05", to: "2026-11-06" }, "day"), [{ key: "2026-11-05", label: "Nov 5" }, { key: "2026-11-06", label: "Nov 6" }]);
     assert.deepEqual(bucketsFor({ from: "2026-11-01", to: "2026-11-15" }, "week").map((b) => b.key), ["2026-10-26", "2026-11-02", "2026-11-09"]);
-    assert.equal(bucketsFor({ from: "2026-11-01", to: "2026-11-15" }, "week")[0].label, "Oct 26–Nov 1");
+    // Labels are clipped to the window: a month starts on day 1 and ends on its last day.
+    assert.equal(bucketsFor({ from: "2026-11-01", to: "2026-11-15" }, "week")[0].label, "Nov 1");
+    assert.deepEqual(bucketsFor({ from: "2026-10-01", to: "2026-10-31" }, "week").map((b) => b.label), ["Oct 1–4", "Oct 5–11", "Oct 12–18", "Oct 19–25", "Oct 26–31"]);
     assert.deepEqual(bucketsFor({ from: "2026-01-01", to: "2026-03-31" }, "month").map((b) => b.label), ["Jan", "Feb", "Mar"]);
     assert.equal(bucketsFor({ from: "2025-12-01", to: "2026-01-31" }, "month")[1].label, "Jan 2026");
   });

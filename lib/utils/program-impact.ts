@@ -149,15 +149,24 @@ export function bucketsFor(window: DayWindow, grain: Grain): Bucket[] {
   if (grain === "day") {
     for (let d = window.from; d <= window.to; d = addDays(d, 1)) out.push({ key: d, label: dayLabel(d) });
   } else if (grain === "week") {
+    // The key stays the week's Monday (as date_trunc); the label is clipped to the window, so a month starts on day 1.
     for (let d = weekKey(window.from); d <= window.to; d = addDays(d, 7)) {
-      const end = addDays(d, 6);
-      out.push({ key: d, label: end.slice(5, 7) === d.slice(5, 7) ? `${dayLabel(d)}–${Number(end.slice(8, 10))}` : `${dayLabel(d)}–${dayLabel(end)}` });
+      const start = d < window.from ? window.from : d;
+      const end = addDays(d, 6) > window.to ? window.to : addDays(d, 6);
+      out.push({ key: d, label: start === end ? dayLabel(start) : end.slice(5, 7) === start.slice(5, 7) ? `${dayLabel(start)}–${Number(end.slice(8, 10))}` : `${dayLabel(start)}–${dayLabel(end)}` });
     }
   } else {
     const sameYear = window.from.slice(0, 4) === window.to.slice(0, 4);
     for (let d = monthStart(window.from); d <= window.to; d = shiftAnchor("month", d, 1)) out.push({ key: d, label: sameYear ? MONTHS[Number(d.slice(5, 7)) - 1]! : `${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}` });
   }
   return out;
+}
+
+/** The grain a window's figures are counted in, as ops.dashboard_figures (0147): days up to 14, weeks up to 120 days,
+ * then months, so the dashboard and the reports agree for the same period. */
+export function periodGrain(window: DayWindow): Grain {
+  const days = Math.round((Date.parse(window.to) - Date.parse(window.from)) / 86_400_000) + 1;
+  return days <= 14 ? "day" : days <= 120 ? "week" : "month";
 }
 
 /** "+20%", "-5%", "new" (from nothing), or "" when both are nothing. */
