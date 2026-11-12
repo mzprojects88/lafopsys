@@ -19,11 +19,12 @@ export interface DashboardFigures {
   budget?: { year: number; approved: number; spent: number };
 }
 
-/** The dashboard's figures for a period, computed on request. */
-export function useDashboardFigures(window: DayWindow) {
+/** The dashboard's figures for a period, computed on request; `ready` false waits (the period isn't settled yet). */
+export function useDashboardFigures(window: DayWindow, ready = true) {
   const key = `${window.from}|${window.to}`;
   const [state, setState] = React.useState<{ key: string; data: DashboardFigures | null; error: string | null } | null>(null);
   React.useEffect(() => {
+    if (!ready) return;
     let live = true;
     void createClient()
       .schema("ops")
@@ -32,7 +33,7 @@ export function useDashboardFigures(window: DayWindow) {
     return () => {
       live = false;
     };
-  }, [window.from, window.to, key]);
+  }, [window.from, window.to, key, ready]);
   return state?.key === key ? { figures: state.data, error: state.error, loading: false } : { figures: null, error: null, loading: true };
 }
 

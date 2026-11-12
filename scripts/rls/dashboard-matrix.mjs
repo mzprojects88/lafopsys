@@ -56,10 +56,20 @@ try {
   await step("Finance gets cash, gifts, expenses and the budget", ids.finance, fig, [], (r) => r.ok && ["cash", "gifts", "expenses", "budget"].every((k) => k in r.rows[0].r));
   await step("the Super Admin too", ids.admin, fig, [], (r) => r.ok && "cash" in r.rows[0].r);
   const site = await one(`select ops.website_dashboard()->'ytd' r`);
-  await step("the year's housing, meals and Care Cart equal the website feed's", ids.driver,
-    `select ops.dashboard_figures(make_date(extract(year from now() at time zone 'Asia/Manila')::int, 1, 1), (now() at time zone 'Asia/Manila')::date)->'lines' r`, [],
+  const year = await one(`select extract(year from now() at time zone 'Asia/Manila')::int y`);
+  await step("this year's housing, meals and Care Cart equal the website feed's", ids.driver,
+    `select ops.dashboard_figures(make_date($1, 1, 1), make_date($1, 12, 31))->'lines' r`, [year],
     (r) => r.ok && Number(r.rows[0].r.housing) === Number(site.housing) && Number(r.rows[0].r.meals_breakfast) + Number(r.rows[0].r.meals_lunch) + Number(r.rows[0].r.meals_dinner) === Number(site.meals)
       && ["care_cart_1000", "care_cart_1200", "care_cart_1700"].reduce((t, k) => t + Number(r.rows[0].r[k] ?? 0), 0) === Number(site.care_cart));
+  // A month is by week, as the Programs report shows it.
+  const byWeek = await one(`select coalesce(sum(greatest(native, from_sheet)), 0)::numeric v from ops.program_impact_range_rows('2026-10-01', '2026-10-31', 'week') where line = 'housing'`);
+  await step("October's housing equals the report's (by week)", ids.driver, `select ops.dashboard_figures('2026-10-01', '2026-10-31')->'lines'->>'housing' v`, [], (r) => r.ok && Number(r.rows[0].v) === Number(byWeek));
+  await step("since 2024 = this year's five figures (no prior years entered yet)", ids.driver, `select (ops.dashboard_figures('2026-11-01', '2026-11-12')->>'since_2024')::numeric v`, [],
+    (r) => r.ok && Number(r.rows[0].v) === ["housing", "transportation", "meals", "center", "care_cart"].reduce((t, k) => t + Number(site[k]), 0));
+  // The profile alone decides: HR (the switch or Runs HR) doesn't go around an unticked box.
+  await c.query("update shared.staff set is_hr = true where id = $1", [ids.driver]);
+  await step("a driver with the HR switch still gets no money figure", ids.driver, fig, [], (r) => r.ok && !("cash" in r.rows[0].r) && !("expenses" in r.rows[0].r));
+  await c.query("update shared.staff set is_hr = false where id = $1", [ids.driver]);
   await step("a range over ten years is refused", ids.driver, "select ops.dashboard_figures('2000-01-01', '2026-01-01')", [], refused("22023"), false);
   await c.query("select set_config('request.jwt.claims', '', true)");
   await step("signed out: refused", null, "select ops.dashboard_figures('2026-01-01', '2026-02-01')", [], refused("42501"), false);

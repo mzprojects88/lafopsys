@@ -24,7 +24,7 @@ revoke all on shared.role_dashboard_cards from anon, authenticated;
 grant select, insert, delete on shared.role_dashboard_cards to authenticated;
 
 -- The defaults (user, 12 Nov): the program cards for every staff role; the money cards for Office Admin, Finance,
--- the CEO and the Trustees (HR people and the Super Admin always); extras where they fit the work.
+-- the CEO and the Trustees (the Super Admin always); extras where they fit the work.
 insert into shared.role_dashboard_cards (role, card)
 select r.key, c.card
 from shared.roles r
@@ -46,14 +46,13 @@ from (values ('office_admin', 'funds'), ('finance', 'funds'), ('ceo', 'funds'),
 where exists (select 1 from shared.roles where key = x.role)
 on conflict do nothing;
 
--- Whether the signed-in person's profile has a card: the Super Admin always, a role that has it, and (for the money
--- cards, user 12 Nov) anyone who runs HR.
+-- Whether the signed-in person's profile has a card: the Super Admin always, else a role of theirs that has it. The
+-- profile alone decides (a power such as Runs HR doesn't go around an unticked box).
 create or replace function shared.dashboard_card_ok(p_card text)
 returns boolean language sql stable security definer set search_path = shared, pg_temp as $$
   select shared.current_staff_roles() is not null and (
     shared.has_role('admin')
-    or exists (select 1 from shared.role_dashboard_cards where card = p_card and role = any (shared.current_staff_roles()))
-    or (p_card in ('cash', 'gifts', 'expenses', 'budget') and hr.is_hr_staff()));
+    or exists (select 1 from shared.role_dashboard_cards where card = p_card and role = any (shared.current_staff_roles())));
 $$;
 revoke all on function shared.dashboard_card_ok(text) from public, anon;
 grant execute on function shared.dashboard_card_ok(text) to authenticated;
@@ -73,6 +72,13 @@ create policy "own dashboard" on shared.dashboard_layouts for all to authenticat
 revoke all on shared.dashboard_layouts from anon, authenticated;
 grant select, insert, update, delete on shared.dashboard_layouts to authenticated;
 
+do $$ begin
+  alter publication supabase_realtime add table shared.role_dashboard_cards;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter publication supabase_realtime add table shared.dashboard_layouts;
+exception when duplicate_object then null; end $$;
+
 -- 3. The figures for a period, as totals only, the same for everyone the card is offered to (so nobody sees P0 for
 -- want of Donors access): the program lines exactly as the website counts them (0112/0128: per month, the app's
 -- figure or the sheet's, whichever is higher), unique children, and the money only for profiles that have it.
@@ -82,6 +88,11 @@ declare
   r jsonb;
   v_year integer := extract(year from p_to)::int;
   v_today date := (now() at time zone 'Asia/Manila')::date;
+  v_this integer := extract(year from (now() at time zone 'Asia/Manila'))::int;
+  -- The Programs report's columns (reports/programs grainFor): days up to 14, weeks up to 120 days, then months; the
+  -- app's figure or the sheet's, whichever is higher, per column. A whole year is by month, as the website feed.
+  v_grain text := case when p_to - p_from < 14 then 'day' when p_to - p_from < 120 then 'week' else 'month' end;
+  v_whole_year boolean := p_from = make_date(v_this, 1, 1) and p_to = make_date(v_this, 12, 31);
 begin
   if shared.current_staff_roles() is null then
     raise exception 'Sign in first.' using errcode = '42501';
@@ -90,11 +101,12 @@ begin
     raise exception 'Give a date range of up to ten years.' using errcode = '22023';
   end if;
   with lines as (
-    select x.line, sum(greatest(x.native, x.from_sheet)) as v from ops.program_impact_range_rows(p_from, p_to, 'month') x group by x.line
+    select x.line, sum(greatest(x.native, x.from_sheet)) as v from ops.program_impact_range_rows(p_from, p_to, v_grain) x group by x.line
   ), ytd as (
+    -- This year as the website feed counts it (the whole calendar year, by month); the lines above when they are it.
     select x.line, sum(greatest(x.native, x.from_sheet)) as v
-      from ops.program_impact_range_rows(make_date(extract(year from v_today)::int, 1, 1), v_today, 'month') x
-     where x.line in ('housing', 'transport_to_nch', 'transport_to_laf', 'meals_breakfast', 'meals_lunch', 'meals_dinner',
+      from ops.program_impact_range_rows(make_date(v_this, 1, 1), make_date(v_this, 12, 31), 'month') x
+     where not v_whole_year and x.line in ('housing', 'transport_to_nch', 'transport_to_laf', 'meals_breakfast', 'meals_lunch', 'meals_dinner',
                       'center_nch_participants', 'care_cart_1000', 'care_cart_1200', 'care_cart_1700')
      group by x.line
   ), kids as (
@@ -108,8 +120,10 @@ begin
     'lines', coalesce((select jsonb_object_agg(line, v) from lines), '{}'::jsonb),
     'unique_patients', (select count(*) from kids),
     'enrolled', (select count(*) from ops.patients),
-    'since_2024', coalesce((select sum(value) from ops.program_history where year < extract(year from v_today)), 0) + coalesce((select sum(v) from ytd), 0),
-    'prior_years', (select count(distinct year) from ops.program_history where year < extract(year from v_today))
+    'since_2024', coalesce((select sum(value) from ops.program_history where year < v_this), 0)
+      + coalesce(case when v_whole_year then (select sum(v) from lines where line in ('housing', 'transport_to_nch', 'transport_to_laf', 'meals_breakfast',
+          'meals_lunch', 'meals_dinner', 'center_nch_participants', 'care_cart_1000', 'care_cart_1200', 'care_cart_1700')) else (select sum(v) from ytd) end, 0),
+    'prior_years', (select count(distinct year) from ops.program_history where year < v_this)
   ) into r;
 
   if shared.dashboard_card_ok('cash') then
@@ -126,16 +140,17 @@ begin
       left join inventory.categories c on c.name = l.category
      where d.date between p_from and p_to));
   end if;
-  -- Expenses = paid vouchers only (user, 12 Nov): released, by the day paid, gross; a fund top-up only refills a
-  -- fund whose slips were already counted, and a liquidation settles its advance (its lines undo the advance).
+  -- Expenses = paid vouchers only (user, 12 Nov): released, by the day paid, gross. Left out: a fund top-up (it only
+  -- refills a fund whose slips were already counted) and a cash advance (money lent, a receivable in the books, 0139);
+  -- its liquidation, the spending itself, counts when released.
   if shared.dashboard_card_ok('expenses') then
     r := r || jsonb_build_object('expenses', (select jsonb_build_object('amount', coalesce(sum(total), 0), 'vouchers', count(*))
-      from ops.vouchers where status = 'released' and kind <> 'fund_topup'
+      from ops.vouchers where status = 'released' and kind not in ('fund_topup', 'cash_advance')
        and (released_at at time zone 'Asia/Manila')::date between p_from and p_to));
   end if;
   if shared.dashboard_card_ok('budget') then
     r := r || jsonb_build_object('budget', (select jsonb_build_object('year', v_year, 'approved', coalesce(sum(bv.amount), 0),
-        'spent', (select coalesce(sum(total), 0) from ops.vouchers where status = 'released' and kind <> 'fund_topup'
+        'spent', (select coalesce(sum(total), 0) from ops.vouchers where status = 'released' and kind not in ('fund_topup', 'cash_advance')
                    and (released_at at time zone 'Asia/Manila')::date between make_date(v_year, 1, 1) and least(make_date(v_year, 12, 31), v_today)))
       from ops.budget_values bv join ops.budget_items bi on bi.id = bv.item_id
      where bi.budget_id = (select id from ops.budgets where year = v_year and status = 'approved' order by version desc limit 1)));

@@ -7,22 +7,23 @@ export type CardKey =
   | "in_house" | "since_2024" | "waiting" | "funds" | "budget" | "compliance" | "volunteers" | "stock"
   | "transport_costs" | "caf_nights" | "staff_in";
 
-/** In the order a new dashboard shows them; `main` cards are on by default, the others are switched on by the person. */
-export const CARDS: { key: CardKey; title: string; main: boolean; now?: boolean }[] = [
+/** In the order a new dashboard shows them; `main` cards are on by default, the others are switched on by the person.
+ * `money`: a peso figure the database sends only to profiles that have the card (shared.dashboard_card_ok). */
+export const CARDS: { key: CardKey; title: string; main: boolean; now?: boolean; money?: boolean }[] = [
   { key: "housing", title: "Housing · Bed nights provided", main: true },
   { key: "rides", title: "Transportation · Patient and caregiver rides", main: true },
   { key: "meals", title: "Meals served", main: true },
   { key: "child_visits", title: "Child visits supported", main: true },
   { key: "care_cart", title: "Care Cart meals served", main: true },
-  { key: "cash", title: "Cash donations", main: true },
-  { key: "gifts", title: "Gifts in kind", main: true },
-  { key: "expenses", title: "Expenses", main: true },
+  { key: "cash", title: "Cash donations", main: true, money: true },
+  { key: "gifts", title: "Gifts in kind", main: true, money: true },
+  { key: "expenses", title: "Expenses", main: true, money: true },
   { key: "patients", title: "Unique patients admitted", main: true },
   { key: "in_house", title: "In the house now", main: false, now: true },
   { key: "since_2024", title: "Since 2024", main: false },
   { key: "waiting", title: "Waiting on me", main: false, now: true },
   { key: "funds", title: "Funds", main: false, now: true },
-  { key: "budget", title: "Budget used this year", main: false },
+  { key: "budget", title: "Budget used this year", main: false, money: true },
   { key: "compliance", title: "Compliance due", main: false, now: true },
   { key: "volunteers", title: "Volunteers", main: false },
   { key: "stock", title: "Stock alerts", main: false, now: true },

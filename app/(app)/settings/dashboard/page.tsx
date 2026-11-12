@@ -12,12 +12,10 @@ import { rolesStore } from "@/lib/hooks/use-module-access";
 import { useRole } from "@/lib/rbac/use-role";
 import { CARDS } from "@/lib/utils/dashboard-catalog";
 
-const MONEY = new Set(["cash", "gifts", "expenses", "budget"]);
-
 /**
  * Settings › Dashboard profiles (0147): the cards each role may have on its dashboard, set by the Super Admin. Each
  * person then switches their own on and off. The database gives a money figure only to a role ticked here (and to
- * HR and the Super Admin, who always have them).
+ * the Super Admin, who has every card).
  */
 export default function DashboardProfilesPage() {
   const { roles: mine } = useRole();
@@ -38,7 +36,7 @@ export default function DashboardProfilesPage() {
   return (
     <div className="flex flex-1 flex-col gap-6">
       <PageHeader title="Dashboard profiles" description="Which cards each role may have on its dashboard. Each person then switches theirs on and off and puts them in their own order." />
-      <SectionCard flush title="Cards by role" description="The money cards (₱) are figures only for the roles ticked here; HR and the Super Admin always have them.">
+      <SectionCard flush title="Cards by role" description="The money cards (₱) are figures only for the roles ticked here; the Super Admin has every card.">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-theme-sm">
             <thead>
@@ -52,7 +50,7 @@ export default function DashboardProfilesPage() {
                 <tr key={c.key} className="border-b border-border last:border-0">
                   <td className="sticky left-0 bg-card px-4 py-2">
                     {c.title}
-                    {MONEY.has(c.key) ? <span className="ml-1 text-theme-xs text-muted-foreground">₱</span> : null}
+                    {c.money ? <span className="ml-1 text-theme-xs text-muted-foreground">₱</span> : null}
                     {c.main ? null : <span className="ml-1 text-theme-xs text-muted-foreground">(extra)</span>}
                   </td>
                   {shown.map((r) => {

@@ -50,7 +50,6 @@ import { DashboardCard } from "@/components/modules/dashboard/dashboard-cards";
 import { CustomizeSheet } from "@/components/modules/dashboard/customize-sheet";
 import { ACTIONS, CARDS, resolveLayout, type ActionKey } from "@/lib/utils/dashboard-catalog";
 import type { PresetKey } from "@/lib/utils/period-presets";
-import { canManageHr } from "@/lib/rbac/roles";
 import {
   BedDouble, Bus, CalendarCheck, ClipboardCheck, Fingerprint, Fuel, Gift, HandHeart, Landmark, LayoutGrid, ListChecks, Map as MapIcon, NotebookPen, ShoppingBasket, Stethoscope, Wallet as WalletIcon,
 } from "lucide-react";
@@ -73,17 +72,18 @@ export default function DashboardPage() {
 }
 
 function DashboardContent() {
-  const { role, roles, title, user, isHr } = useRole();
+  const { role, roles, title, user } = useRole();
   // The person's own dashboard (0147): the cards their profile offers, in their order, their quick actions, and the
   // period it opens on (Year to date unless they chose another).
-  const { data: profiles } = useCollection(dashboardProfilesStore);
+  const { data: profiles, loading: profilesLoading } = useCollection(dashboardProfilesStore);
   const { data: saved, loading: layoutLoading } = useCollection(myDashboardStore);
   const allowed = React.useMemo(() => {
     if (roles.includes("admin")) return new Set<string>(CARDS.map((c) => c.key));
-    const set = new Set(profiles.filter((p) => roles.includes(p.role as Role)).map((p) => p.card));
-    if (canManageHr(roles, isHr)) for (const c of ["cash", "gifts", "expenses", "budget"]) set.add(c);
-    return set;
-  }, [profiles, roles, isHr]);
+    // The profile alone, as the database decides it (shared.dashboard_card_ok).
+    return new Set(profiles.filter((p) => roles.includes(p.role as Role)).map((p) => p.card));
+  }, [profiles, roles]);
+  // Money anywhere on the page (the trend, the activity, approvals) only for a profile with a money card.
+  const seesMoney = CARDS.some((c) => c.money && allowed.has(c.key));
   const { levelOfPath } = useModuleAccess();
   const mayUse = (a: (typeof ACTIONS)[number]) => {
     // Only actions the person may take; receiving happens in the inventory app, for its editors.
@@ -95,7 +95,9 @@ function DashboardContent() {
   const [customizing, setCustomizing] = React.useState(false);
   const period = usePeriodPresets("dashboard", layout.period as PresetKey, false, false);
   const w = period.window!;
-  const { figures } = useDashboardFigures(w);
+  // Only once the person's period and profile are known, so the figures are fetched once, for the right period.
+  const settled = !layoutLoading && !profilesLoading;
+  const { figures, error: figuresError } = useDashboardFigures(w, settled);
   const inPeriod = (date: string | undefined | null) => !!date && date.slice(0, 10) >= w.from && date.slice(0, 10) <= w.to;
   const roleLabel = ROLES.find((r) => r.value === title)?.label ?? title;
   const { referrals } = useReferralsData();
@@ -140,7 +142,7 @@ function DashboardContent() {
   // The newest five in the period: gifts, check-ins, approved referrals (or one of them).
   const shows = useFilters("kind");
   const recentActivity = [
-    ...donations.filter((d) => inPeriod(d.date)).map((d) => ({
+    ...donations.filter((d) => seesMoney && inPeriod(d.date)).map((d) => ({
       kind: "gift",
       icon: HandCoins,
       title: `Donation of ${formatCurrency(d.totalValue, d.currency)} received`,
@@ -172,7 +174,7 @@ function DashboardContent() {
       .slice(0, 2)
       .map((a) => ({ title: "Leave request", subtitle: `${a.startsOn}${a.endsOn !== a.startsOn ? ` – ${a.endsOn}` : ""} · ${a.days} day(s)`, priority: "Medium" as const })),
     ...cashEntries
-      .filter((e) => e.approvalStatus === "pending")
+      .filter((e) => seesMoney && e.approvalStatus === "pending")
       .slice(0, 2)
       .map((e) => ({
         title: e.direction === "outflow" ? "Cash Disbursement" : "Cash Deposit",
@@ -237,7 +239,8 @@ function DashboardContent() {
           />
         ))}
       </KpiGrid>
-      {!layoutLoading && layout.cards.length === 0 ? <p className="text-theme-sm text-muted-foreground">No cards chosen: press Customize to add some.</p> : null}
+      {figuresError ? <p className="text-theme-sm text-destructive">The figures could not load: {figuresError}</p> : null}
+      {settled && layout.cards.length === 0 ? <p className="text-theme-sm text-muted-foreground">No cards chosen: press Customize to add some.</p> : null}
 
       <div className="flex flex-col gap-2">
         <h2 className="text-theme-sm font-semibold text-foreground">Quick Actions</h2>
@@ -268,7 +271,7 @@ function DashboardContent() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3 lg:gap-6">
         <div className="flex min-w-0 flex-col gap-5 lg:col-span-2 lg:gap-6">
-          {!isHiddenPath("/donors", role) && (
+          {seesMoney && !isHiddenPath("/donors", role) && (
             <SectionCard title="Donations Trend" description={period.label}>
               <div className="mb-3 flex items-center gap-1.5 text-theme-xs text-muted-foreground">
                 <span className="size-2 rounded-full bg-chart-1" />
