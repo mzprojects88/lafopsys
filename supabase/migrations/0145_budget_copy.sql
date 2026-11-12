@@ -1,7 +1,8 @@
 -- 0145 Budgets polish (12 Nov 2026): start a year's budget from an earlier year's.
 --
 -- A year with no budget yet can start as a copy of an earlier year's approved budget: every item with its twelve
--- months, as a draft to adjust (a revision of the same year is budget_revise, 0137). One transaction.
+-- months, as a draft to adjust (a revision of the same year is budget_revise, 0137). One transaction. A program or
+-- account no longer in use is left out of the copied item (it is coded again), never carried into the new year.
 
 create or replace function ops.budget_copy(p_from uuid, p_year integer)
 returns uuid language plpgsql security definer set search_path = ops, shared, pg_temp as $$
@@ -25,7 +26,11 @@ begin
   values (p_year, 1, 'draft', left('Started from the ' || b.year || ' budget (version ' || b.version || ')', 500)) returning id into v_new;
   for i in select * from ops.budget_items where budget_id = b.id order by sort loop
     insert into ops.budget_items (budget_id, t3_id, label, unit, measure, account_id, sort)
-    values (v_new, i.t3_id, i.label, i.unit, i.measure, i.account_id, i.sort) returning id into v_item;
+    values (v_new,
+            case when exists (select 1 from ops.fin_codes c where c.id = i.t3_id and c.tier = 'T3' and c.active) then i.t3_id end,
+            i.label, i.unit, i.measure,
+            case when exists (select 1 from ops.coa_accounts a where a.id = i.account_id and a.active and not a.is_header and a.review_note is null) then i.account_id end,
+            i.sort) returning id into v_item;
     insert into ops.budget_values (item_id, month, quantity, amount) select v_item, month, quantity, amount from ops.budget_values where item_id = i.id;
   end loop;
   return v_new;

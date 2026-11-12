@@ -19,7 +19,7 @@ import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { dayKey } from "@/lib/utils/dtr";
-import { quarterOf, settlement, SPENDING } from "@/lib/utils/vouchers";
+import { APPROVED, quarterOf, settlement, SPENDING } from "@/lib/utils/vouchers";
 import { FundSetupDialog } from "@/components/modules/finance/fund-setup-dialog";
 import { useRole } from "@/lib/rbac/use-role";
 import { holdsPower } from "@/lib/rbac/roles";
@@ -38,6 +38,7 @@ export default function FundsPage() {
   const { data: advances } = useCollection(advancesOpenStore);
   const { vouchers, lines, events } = useVouchers();
   const { data: payees } = useSetupRows("payees");
+  const { data: fundRows } = useSetupRows("cash_funds");
   const { staff } = useStaffRoster();
   const [busy, setBusy] = React.useState<string | null>(null);
   // Whoever sets up Finance sets a fund up on its card (polish 5).
@@ -73,15 +74,24 @@ export default function FundsPage() {
 
   // A fund's slips paid out and not yet refilled (their top-up not yet released), and a top-up on its way.
   const net = (v: { total: number; ewtTotal: number }) => v.total - v.ewtTotal;
-  const openSlips = (fundId: string) =>
-    vouchers
-      .filter((v) => v.fundId === fundId && v.kind !== "fund_topup" && v.status === "released" && (!v.replenishedBy || byId.get(v.replenishedBy)?.status !== "released"))
-      .sort((a, b) => (b.releasedAt ?? "").localeCompare(a.releasedAt ?? ""));
-  const topUpOnWay = (fundId: string) => vouchers.find((v) => v.fundId === fundId && v.kind === "fund_topup" && !["released", "rejected", "cancelled"].includes(v.status));
-  // Advances settled by a released liquidation: what was advanced, spent and returned or reimbursed (latest 50).
+  const slipsOf = new Map<string, typeof vouchers>();
+  const topUpOf = new Map<string, (typeof vouchers)[number]>();
+  for (const v of vouchers) {
+    if (!v.fundId) continue;
+    if (v.kind === "fund_topup") {
+      if (!["released", "rejected", "cancelled"].includes(v.status)) topUpOf.set(v.fundId, v);
+    } else if (v.status === "released" && (!v.replenishedBy || byId.get(v.replenishedBy)?.status !== "released")) {
+      slipsOf.set(v.fundId, [...(slipsOf.get(v.fundId) ?? []), v]);
+    }
+  }
+  for (const list of slipsOf.values()) list.sort((a, b) => (b.releasedAt ?? "").localeCompare(a.releasedAt ?? ""));
+  const openSlips = (fundId: string) => slipsOf.get(fundId) ?? [];
+  const topUpOnWay = (fundId: string) => topUpOf.get(fundId);
+  // Advances settled by their liquidation: approved (the change or the overspend still to settle) or released;
+  // what was advanced, spent and returned or reimbursed (latest 50). An approved one has left the list above.
   const settled = vouchers
-    .filter((v) => v.kind === "liquidation" && v.status === "released" && v.advanceOf && byId.has(v.advanceOf))
-    .sort((a, b) => (b.releasedAt ?? "").localeCompare(a.releasedAt ?? ""))
+    .filter((v) => v.kind === "liquidation" && (v.status === "released" || APPROVED.includes(v.status)) && v.advanceOf && byId.has(v.advanceOf))
+    .sort((a, b) => (b.releasedAt ?? b.createdAt).localeCompare(a.releasedAt ?? a.createdAt))
     .slice(0, 50);
 
   async function topUp(fundId: string) {
@@ -115,7 +125,7 @@ export default function FundsPage() {
                       Top up
                     </Button>
                   ) : null}
-                  {setsUp ? <Button variant="ghost" size="sm" onClick={() => setSettingUp(f.fundId)}>Set up</Button> : null}
+                  {setsUp ? <Button variant="ghost" size="sm" disabled={!fundRows.some((r) => r.id === f.fundId)} onClick={() => setSettingUp(f.fundId)}>Set up</Button> : null}
                 </div>
                 {openSlips(f.fundId).length || topUpOnWay(f.fundId) ? (
                   <details className="rounded-xl border border-border px-3 py-2 text-theme-sm">
@@ -142,7 +152,7 @@ export default function FundsPage() {
         )}
       </SectionCard>
 
-      {settingUp ? <FundSetupDialog key={settingUp} fundId={settingUp} open onOpenChange={(o) => !o && setSettingUp(null)} /> : null}
+      {settingUp && fundRows.some((r) => r.id === settingUp) ? <FundSetupDialog key={settingUp} fund={fundRows.find((r) => r.id === settingUp)!} open onOpenChange={(o) => !o && setSettingUp(null)} /> : null}
 
       <SectionCard flush title="Cash advances to liquidate" description="Advances paid out and not yet settled by a liquidation, due within the days set in Financial Settings from the day they were paid.">
         <div className="overflow-x-auto">
@@ -203,7 +213,7 @@ export default function FundsPage() {
                       <td className="px-4 py-2.5"><Link className="text-primary hover:underline" href={`/requests/${l.id}`}>{l.voucherNumber ?? l.requestNumber}</Link></td>
                       <td className="px-4 py-2.5 text-right tabular-nums">{peso(net(l))}</td>
                       <td className="px-4 py-2.5">
-                        {l.releasedAt ? formatDate(l.releasedAt) : ""} · {left.kind === "even" ? "spent exactly" : `${peso(left.amount)} ${left.kind === "return" ? "returned" : "reimbursed"}`}
+                        {l.releasedAt ? formatDate(l.releasedAt) : "Approved, to settle"} · {left.kind === "even" ? "spent exactly" : `${peso(left.amount)} ${left.kind === "return" ? (l.releasedAt ? "returned" : "to return") : (l.releasedAt ? "reimbursed" : "to reimburse")}`}
                       </td>
                     </tr>
                   );

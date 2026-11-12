@@ -41,8 +41,10 @@ function Frame({ children }: { children: React.ReactNode }) {
           <Header onSearchClick={openPalette} />
         </div>
         <main className="mx-auto flex w-full max-w-(--breakpoint-2xl) flex-1 flex-col gap-4 px-4 pt-4 pb-24 lg:gap-6 lg:px-6 lg:pt-6 lg:pb-10 print:p-0">
-          <ShiftReminder />
-          <MissedClockOutPrompt />
+          <div className="contents print:hidden">
+            <ShiftReminder />
+            <MissedClockOutPrompt />
+          </div>
           <ClockInGate>
             <ModuleGate>{children}</ModuleGate>
           </ClockInGate>

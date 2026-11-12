@@ -58,7 +58,7 @@ try {
   // Budgets.
   const b = val(await step("Finance starts a test year's budget (2091; real years stay untouched) (a draft)", ids.finance, `insert into ops.budgets (year) values (2091) returning id`, [], (r) => r.ok));
   await step("only one draft a year", ids.finance, `insert into ops.budgets (year, version) values (2091, 2)`, [], refused("23505"), false);
-  await step("Finance can't insert an approved budget", ids.finance, `insert into ops.budgets (year, version, status, approved_at) values (2092, 1, 'approved', now())`, [], refused("42501"), false);
+  await step("Finance can't insert an approved budget (2092)", ids.finance, `insert into ops.budgets (year, version, status, approved_at) values (2092, 1, 'approved', now())`, [], refused("42501"), false);
   const item = val(await step("Finance adds an item: Housing, patients and carers housed", ids.finance, `insert into ops.budget_items (budget_id, t3_id, label, unit, measure) values ($1, $2, 'Patients and carers housed', 'people-nights', 'housing') returning id`, [b, hsg], (r) => r.ok));
   await step("... with quantity and amount per month", ids.finance, `insert into ops.budget_values (item_id, month, quantity, amount) select $1, m, 300, 45000 from generate_series(1, 12) m`, [item], (r) => r.ok && r.n === 12);
   await step("a driver can't read budgets", ids.driver, `select count(*)::int n from ops.budgets`, [], (r) => r.ok && r.rows[0].n === 0);
@@ -72,10 +72,10 @@ try {
   const rev = val(await step("Finance revises with a reason: a new draft version, copied", ids.finance, `select ops.budget_revise($1, 'Care Cart grows in March') id`, [b], (r) => r.ok));
   await step("... version 2 holds the copied item and its 12 months", null, `select b.version, (select count(*)::int from ops.budget_values v join ops.budget_items i on i.id = v.item_id where i.budget_id = b.id) n from ops.budgets b where b.id = $1`, [rev], (r) => r.ok && r.rows[0].version === 2 && r.rows[0].n === 12);
   await step("the CEO approves the revision: version 1 is superseded", ids.ceo, `select ops.budget_approve($1)`, [rev], (r) => r.ok);
-  await step("... one approved version stands for 2027", null, `select string_agg(version || '=' || status, ',' order by version) s from ops.budgets where year = 2091`, [], (r) => r.ok && r.rows[0].s === "1=superseded,2=approved");
+  await step("... one approved version stands for 2091", null, `select string_agg(version || '=' || status, ',' order by version) s from ops.budgets where year = 2091`, [], (r) => r.ok && r.rows[0].s === "1=superseded,2=approved");
   // Saving in one step (code review, 12 Nov): all of an item or a goal, or none of it.
   const months = (amount) => JSON.stringify(Array.from({ length: 12 }, (_, m) => ({ quantity: 10, amount: m === 5 ? amount : 100 })));
-  const d3 = val(await step("Finance starts 2028", ids.finance, `insert into ops.budgets (year) values (2092) returning id`, [], (r) => r.ok));
+  const d3 = val(await step("Finance starts 2092", ids.finance, `insert into ops.budgets (year) values (2092) returning id`, [], (r) => r.ok));
   await step("an item with a negative month is refused whole: no item left behind", ids.finance,
     `select ops.budget_save_item(null, $1::jsonb, $2::jsonb)`, [JSON.stringify({ budget_id: d3, t3_id: hsg, label: "Meals", measure: "meals" }), months(-5)], refused("23514"), false);
   await step("... the draft still has no items", null, `select count(*)::int n from ops.budget_items where budget_id = $1`, [d3], (r) => r.ok && r.rows[0].n === 0);
@@ -94,7 +94,7 @@ try {
   await step("a draft can't be copied", ids.finance, `select ops.budget_copy($1, 2094)`, [d3], refused("23514"), false);
   await step("nor into an earlier year", ids.finance, `select ops.budget_copy($1, 2090)`, [rev], refused("23514"), false);
   await step("nor into a year already started", ids.finance, `select ops.budget_copy($1, 2092)`, [rev], refused("23514"), false);
-  const cp = val(await step("Finance starts 2030 from 2027's approved budget", ids.finance, `select ops.budget_copy($1, 2094) id`, [rev], (r) => r.ok));
+  const cp = val(await step("Finance starts 2094 from 2091's approved budget", ids.finance, `select ops.budget_copy($1, 2094) id`, [rev], (r) => r.ok));
   await step("... a draft with the same items and their 12 months", null,
     `select b.status, b.version, (select count(*)::int from ops.budget_items where budget_id = b.id) items, (select count(*)::int from ops.budget_values v join ops.budget_items i on i.id = v.item_id where i.budget_id = b.id) months,
             (select count(*)::int from ops.budget_items where budget_id = $2) source_items from ops.budgets b where b.id = $1`, [cp, rev],

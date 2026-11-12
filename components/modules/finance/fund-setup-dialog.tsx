@@ -7,30 +7,31 @@ import { Input } from "@/components/ui/input";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { saveSetupRow, useSetupRows } from "@/lib/hooks/use-finance-setup";
+import { saveSetupRow, useSetupRows, type SetupRow } from "@/lib/hooks/use-finance-setup";
 import { fundStatusStore } from "@/lib/hooks/use-vouchers";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 
 const NONE = "__none";
 
 /**
- * A fund set up from its card (polish 5): its float, the point to top it up at, who keeps it and the cash account it
- * is (one of the 1100s). The same row as Financial Settings › Funds, saved and logged the same way.
+ * A fund set up from its card (polish 5): its float, the point to top it up at, who keeps it and its account. The
+ * same row as Financial Settings › Funds, saved and logged the same way, offering the same accounts. Opened with the
+ * fund's saved row (the page waits for it), so nothing it doesn't show is overwritten.
  */
-export function FundSetupDialog({ fundId, open, onOpenChange }: { fundId: string; open: boolean; onOpenChange: (o: boolean) => void }) {
-  const { data: funds } = useSetupRows("cash_funds");
+export function FundSetupDialog({ fund, open, onOpenChange }: { fund: SetupRow; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const fundId = String(fund.id);
   const { data: accounts } = useSetupRows("coa_accounts");
   const { staff } = useStaffRoster();
-  const fund = funds.find((f) => f.id === fundId);
-  const [float, setFloat] = React.useState(fund?.float_amount == null ? "" : String(fund.float_amount));
-  const [topUp, setTopUp] = React.useState(fund?.top_up_below == null ? "" : String(fund.top_up_below));
-  const [keeper, setKeeper] = React.useState(String(fund?.custodian_staff_id ?? NONE));
-  const [account, setAccount] = React.useState(String(fund?.account_id ?? NONE));
+  const [float, setFloat] = React.useState(fund.float_amount == null ? "" : String(fund.float_amount));
+  const [topUp, setTopUp] = React.useState(fund.top_up_below == null ? "" : String(fund.top_up_below));
+  const [keeper, setKeeper] = React.useState(String(fund.custodian_staff_id ?? NONE));
+  const [account, setAccount] = React.useState(String(fund.account_id ?? NONE));
   const [busy, setBusy] = React.useState(false);
-  const cash = accounts.filter((a) => String(a.code ?? "").startsWith("11") && !a.is_header && a.active !== false && !a.review_note);
+  // Settings › Funds offers any postable account; so does this.
+  const cash = accounts.filter((a) => !a.is_header && a.code);
   const f = Number(float);
   const t = topUp === "" ? null : Number(topUp);
-  const problem = !(f > 0) ? "Give the float (above zero)." : t != null && !(t >= 0 && t < f) ? "The top-up point is below the float." : null;
+  const problem = !(f > 0) ? "Give the float (above zero)." : t != null && !(t >= 0 && t < f) ? "The top-up point must be below the float." : null;
 
   async function save() {
     setBusy(true);
@@ -51,7 +52,7 @@ export function FundSetupDialog({ fundId, open, onOpenChange }: { fundId: string
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Set up {String(fund?.name ?? "the fund")}</DialogTitle>
+          <DialogTitle>Set up {String(fund.name)}</DialogTitle>
           <DialogDescription>Cash on hand is the float less the slips paid from it; below the top-up point, it is topped up from the open slips.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
