@@ -65,6 +65,32 @@ function fromRows(rows: SetupRow[], roles: Option[]) {
   };
 }
 
+/** The rows a form saves (the inverse of fromRows). */
+function toRows(form: ReturnType<typeof fromRows>, roles: Option[]) {
+  const threshold = Number(form.threshold) || 0;
+  const row = (step: string, p: Pair, extra: Record<string, unknown> = {}) => ({ step, requester_role: null, staff_id: p.staff || null, alternate_staff_id: p.alt || null, min_amount: 0, max_amount: null, urgent: false, ...extra });
+  return [
+    ...roles.map((r) => ({ step: "endorse", requester_role: r.value, staff_id: form.endorse[r.value] === NONE ? null : form.endorse[r.value], alternate_staff_id: null, min_amount: 0, max_amount: null, urgent: false })),
+    row("validate", form.validate),
+    row("review", form.review),
+    ...(threshold > 0 ? [row("approve", form.below, { max_amount: threshold }), row("approve", form.above, { min_amount: threshold })] : [row("approve", form.below)]),
+    ...(form.urgent.staff ? [row("approve", form.urgent, { urgent: true })] : []),
+    row("approve_payment", form.payment),
+    row("release", form.release),
+  ];
+}
+const rowKey = (r: SetupRow) =>
+  [r.step, r.requester_role ?? "", Number(r.min_amount ?? 0), r.max_amount == null || r.max_amount === "" ? "" : Number(r.max_amount), r.staff_id ?? "", r.alternate_staff_id ?? "", !!r.urgent].join("|");
+/** Whether the form shows a matrix completely: read into the form and saved back, it is the same set of rows. Only
+ * then may the form replace it; a more detailed matrix (alternates for endorsers, more bands or signers, a role
+ * no longer listed) is edited row by row instead, so nothing is dropped. */
+function formFits(rows: SetupRow[], roles: Option[]) {
+  if (!rows.length) return true;
+  const a = rows.map(rowKey).sort().join("\n");
+  const b = toRows(fromRows(rows, roles), roles).map(rowKey).sort().join("\n");
+  return a === b;
+}
+
 /**
  * Financial Settings › Authority, polish 4: every signer set in one form (saved in one transaction, 0144), and a
  * checker that shows who signs a role's request at an amount, warning about any step nobody covers.
@@ -74,7 +100,10 @@ export function AuthoritySetup({ rows, people, roles }: { rows: SetupRow[]; peop
   const [open, setOpen] = React.useState(false);
   const [form, setForm] = React.useState(() => fromRows(rows, roles));
   const [busy, setBusy] = React.useState(false);
-  const [role, setRole] = React.useState(roles[0]?.value ?? "");
+  const [pickedRole, setRole] = React.useState("");
+  // The roles arrive after the first render: until one is picked, the first.
+  const role = pickedRole || roles[0]?.value || "";
+  const fits = formFits(rows, roles);
   const [amount, setAmount] = React.useState("1000");
   const [urgent, setUrgent] = React.useState(false);
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
@@ -88,19 +117,14 @@ export function AuthoritySetup({ rows, people, roles }: { rows: SetupRow[]; peop
     ...(threshold > 0 && !form.above.staff ? [`the approver from ${formatCurrency(threshold, "PHP", true)}`] : []),
     ...(form.payment.staff ? [] : ["the payment signatory"]),
     ...(form.release.staff ? [] : ["the releaser"]),
+    ...(form.urgent.alt && !form.urgent.staff ? ["the urgent approver (an alternate alone signs nothing)"] : []),
+    ...([["the preparer", form.validate], ["the reviewer", form.review], ["the approver", form.below], ["the second approver", form.above], ["the urgent approver", form.urgent], ["the payment signatory", form.payment], ["the releaser", form.release]] as const)
+      .filter(([, p]) => p.staff && p.staff === p.alt)
+      .map(([label]) => `an alternate for ${label} other than the signer`),
   ];
 
   async function save() {
-    const row = (step: string, p: Pair, extra: Record<string, unknown> = {}) => ({ step, staff_id: p.staff || null, alternate_staff_id: p.alt || null, min_amount: 0, ...extra });
-    const next = [
-      ...roles.map((r) => ({ step: "endorse", requester_role: r.value, staff_id: form.endorse[r.value] === NONE ? null : form.endorse[r.value], min_amount: 0 })),
-      row("validate", form.validate),
-      row("review", form.review),
-      ...(threshold > 0 ? [row("approve", form.below, { max_amount: threshold }), row("approve", form.above, { min_amount: threshold })] : [row("approve", form.below)]),
-      ...(form.urgent.staff ? [row("approve", form.urgent, { urgent: true })] : []),
-      row("approve_payment", form.payment),
-      row("release", form.release),
-    ];
+    const next = toRows(form, roles);
     if (rows.length && !confirm(`This replaces the ${rows.length} signer rows with these ${next.length}. Every change is logged.`)) return;
     setBusy(true);
     const r = await setAuthority(next);
@@ -116,7 +140,13 @@ export function AuthoritySetup({ rows, people, roles }: { rows: SetupRow[]; peop
       <SectionCard
         title="Who signs what"
         description="Pick a requester's role and an amount to see who signs each step, by the same rules the vouchers follow."
-        actions={<Button size="sm" onClick={() => (setForm(fromRows(rows, roles)), setOpen(true))}><UsersRound /> Set up the signers</Button>}
+        actions={
+          fits ? (
+            <Button size="sm" onClick={() => (setForm(fromRows(rows, roles)), setOpen(true))}><UsersRound /> Set up the signers</Button>
+          ) : (
+            <span className="max-w-xs text-right text-theme-xs text-muted-foreground">The signers are set in more detail than the one-page form shows: edit them row by row below.</span>
+          )
+        }
       >
         <div className="flex flex-wrap items-end gap-3">
           <Field className="w-56">

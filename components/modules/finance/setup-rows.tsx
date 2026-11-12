@@ -80,7 +80,9 @@ export function SetupRows({ table, title, description, rows, columns, fields, bl
 
   const notes = rows.filter((r) => r.review_note).length;
   const q = query.trim().toLowerCase();
-  const shown = rows.filter((r) => (!onlyNotes || r.review_note) && (!q || !search || search(r).toLowerCase().includes(q)));
+  // Only when there are notes: with none left (all settled), the whole list shows again.
+  const filtering = onlyNotes && notes > 0;
+  const shown = rows.filter((r) => (!filtering || r.review_note) && (!q || !search || search(r).toLowerCase().includes(q)));
 
   const open = (row: SetupRow | null) => {
     const src = row ?? blank;
@@ -128,7 +130,7 @@ export function SetupRows({ table, title, description, rows, columns, fields, bl
       actions={
         <>
           {notes > 0 ? (
-            <Button size="sm" variant={onlyNotes ? "default" : "outline"} onClick={() => setOnlyNotes((v) => !v)}>
+            <Button size="sm" variant={filtering ? "default" : "outline"} onClick={() => setOnlyNotes((v) => !v)}>
               <AlertTriangle /> Needs attention ({notes})
             </Button>
           ) : null}
@@ -179,7 +181,7 @@ export function SetupRows({ table, title, description, rows, columns, fields, bl
             ))}
             {shown.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + (notes > 0 ? 1 : 0)} className="px-4 py-6 text-center text-muted-foreground">{onlyNotes || q ? "Nothing matches." : "Nothing here yet."}</td>
+                <td colSpan={columns.length + (notes > 0 ? 1 : 0)} className="px-4 py-6 text-center text-muted-foreground">{filtering || q ? "Nothing matches." : "Nothing here yet."}</td>
               </tr>
             ) : null}
           </tbody>

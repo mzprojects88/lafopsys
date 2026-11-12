@@ -18,17 +18,20 @@ export function PayeeSuggestions({ payees }: { payees: SetupRow[] }) {
   const [found, setFound] = React.useState<{ name: string; times: number }[] | null>(null);
   const [picked, setPicked] = React.useState<Set<string>>(new Set());
   const [busy, setBusy] = React.useState(false);
-  const known = new Set(payees.map((p) => String(p.name ?? "").trim().toLowerCase()));
+  const norm = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
+  const known = new Set(payees.map((p) => norm(String(p.name ?? ""))));
 
   async function read(file: File) {
     const rows = parseCsv(await file.text());
-    const head = rows.findIndex((r) => r.some((c) => /payee/i.test(c)));
+    // The header row is the one with a cell that says exactly "Payee" (a title row or a "Payee TIN" column won't do).
+    const isPayee = (c: string) => /^\s*payee\s*$/i.test(c);
+    const head = rows.findIndex((r) => r.some(isPayee));
     if (head < 0) return void toast.error("No Payee column in that file: export the register tab as CSV.");
-    const col = rows[head].findIndex((c) => /payee/i.test(c));
+    const col = rows[head].findIndex(isPayee);
     const counts = new Map<string, { name: string; times: number }>();
     for (const r of rows.slice(head + 1)) {
       const name = (r[col] ?? "").trim().replace(/\s+/g, " ");
-      if (!name || name.length > 160 || known.has(name.toLowerCase())) continue;
+      if (!name || name.length > 160 || known.has(norm(name))) continue;
       const k = name.toLowerCase();
       counts.set(k, { name: counts.get(k)?.name ?? name, times: (counts.get(k)?.times ?? 0) + 1 });
     }

@@ -3,6 +3,7 @@
  * signers by the same rules the database signs by (ops.voucher_may_sign / voucher_may_pay): a row covers an amount
  * from its lower bound to under its upper one; endorsement is per role, and a row with nobody means none is needed;
  * an urgent approver signs only urgent requests. A step nobody covers would leave the request waiting forever.
+ * Not modelled here: a petty cash slip, a GCash voucher and a liquidation skip the payment approval.
  */
 export interface AuthorityRow {
   step: string;
@@ -37,6 +38,6 @@ export function whoSigns(rows: readonly AuthorityRow[], role: string, amount: nu
   return SIGN_STEPS.map(({ step, label }) => {
     const hits = rows.filter((r) => r.step === step && covers(r) && (step !== "endorse" || r.requester_role === role) && (!r.urgent || urgent));
     const signers = [...new Set(hits.flatMap((r) => [r.staff_id, r.alternate_staff_id]).filter((x): x is string => !!x))];
-    return { step, label, signers, notNeeded: step === "endorse" && hits.length > 0 && hits.every((r) => !r.staff_id) };
+    return { step, label, signers, notNeeded: step === "endorse" && hits.some((r) => !r.staff_id) };
   });
 }

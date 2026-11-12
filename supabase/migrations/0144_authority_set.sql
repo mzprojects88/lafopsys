@@ -15,7 +15,8 @@ begin
   if jsonb_typeof(p_rows) is distinct from 'array' or jsonb_array_length(p_rows) = 0 then
     raise exception 'Give the signers.' using errcode = '23514';
   end if;
-  delete from ops.voucher_authority;
+  -- "where true": the hosted API (pg-safeupdate) refuses a DELETE without a WHERE clause.
+  delete from ops.voucher_authority where true;
   insert into ops.voucher_authority (step, requester_role, min_amount, max_amount, staff_id, alternate_staff_id, urgent)
   select r->>'step', nullif(r->>'requester_role', ''), coalesce((r->>'min_amount')::numeric, 0), nullif(r->>'max_amount', '')::numeric,
          nullif(r->>'staff_id', '')::uuid, nullif(r->>'alternate_staff_id', '')::uuid, coalesce((r->>'urgent')::boolean, false)

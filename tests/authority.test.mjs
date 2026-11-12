@@ -24,6 +24,8 @@ describe("who signs a request", () => {
   });
   it("says when a role needs no endorsement, and when a role has no endorser at all", () => {
     assert.equal(whoSigns(rows, "admin", 100)[0].notNeeded, true);
+    // A 'nobody' row wins over a named one, as at submit.
+    assert.equal(whoSigns([...rows, { step: "endorse", requester_role: "admin", staff_id: "office" }], "admin", 100)[0].notNeeded, true);
     const chef = whoSigns(rows, "chef", 100)[0];
     assert.deepEqual([chef.notNeeded, chef.signers.length], [false, 0]);
   });
