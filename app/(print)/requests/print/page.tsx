@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PrintButton } from "@/app/(print)/hr/payslips/[id]/print/print-button";
-import { VoucherSheet } from "@/components/modules/requests/voucher-sheet";
+import { loadVoucherSheets } from "@/components/modules/requests/voucher-sheet";
 
 const MAX = 50;
 
@@ -13,7 +13,7 @@ export default async function PrintSeveralPage({ searchParams }: { searchParams:
   const { ids } = await searchParams;
   const list = [...new Set((ids ?? "").split(",").filter((x) => /^[0-9a-f-]{36}$/i.test(x)))].slice(0, MAX);
   if (!list.length) notFound();
-  const sheets = (await Promise.all(list.map((id) => VoucherSheet({ id })))).filter(Boolean);
+  const sheets = await loadVoucherSheets(list);
   return (
     <div className="mx-auto max-w-3xl p-6 text-sm text-neutral-900 print:max-w-none print:p-0">
       <div className="mb-4 flex items-center justify-between print:hidden">
@@ -21,8 +21,8 @@ export default async function PrintSeveralPage({ searchParams }: { searchParams:
         <span className="text-xs text-neutral-600">{sheets.length} voucher{sheets.length === 1 ? "" : "s"}</span>
         <PrintButton />
       </div>
-      {sheets.map((sheet, n) => (
-        <div key={list[n]} className="mb-6 break-after-page print:mb-0 last:break-after-auto">{sheet}</div>
+      {sheets.map(({ id, sheet }) => (
+        <div key={id} className="mb-6 break-after-page print:mb-0 last:break-after-auto">{sheet}</div>
       ))}
     </div>
   );

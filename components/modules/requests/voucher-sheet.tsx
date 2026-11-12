@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 import { KIND_LABEL, PAY_LABEL, STATUS_LABEL, type VoucherKind, type VoucherStatus } from "@/lib/utils/vouchers";
 
 const TITLE: Record<string, string> = { PV: "Payment Voucher", PCV: "Petty Cash Voucher", GCV: "GCash Fund Voucher", JV: "Journal Voucher (liquidation)" };
@@ -17,29 +18,17 @@ const peso = (n: number) => `₱${n.toLocaleString("en-PH", { minimumFractionDig
 const manila = (iso: string) =>
   new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(iso));
 
-/**
- * A payment request or voucher on paper (0134, 0139): its number, the items with their coding, withholding and the
- * net, and each signature from its history (latest round), with a PAID stamp once released. Read under the
- * caller's RLS, so only someone who can see it prints it; null when it isn't theirs to see. Used by the one-voucher
- * print page and by printing several from the Ledger (polish 3).
- */
-export async function VoucherSheet({ id }: { id: string }) {
-  const supabase = await createClient();
-  const { data: v } = await supabase.schema("ops").from("vouchers").select("*").eq("id", id).maybeSingle();
-  if (!v) return null;
-  const [{ data: lines }, { data: events }, { data: codes }, { data: accounts }, { data: payees }] = await Promise.all([
-    supabase.schema("ops").from("voucher_lines").select("*").eq("voucher_id", id).order("sort"),
-    supabase.schema("ops").from("voucher_events").select("action, actor, signer_text, at").eq("voucher_id", id).order("at"),
-    supabase.schema("ops").from("fin_codes").select("id, code, name"),
-    supabase.schema("ops").from("coa_accounts").select("id, code, name"),
-    supabase.schema("ops").rpc("payee_choices"),
-  ]);
+// The rows as PostgREST returns them (the schema isn't typed for this client).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Row = any;
+
+/** One voucher's sheet from rows already read: its number, the items with their coding, withholding and the net,
+ * and each signature from its history (latest round), with a PAID stamp once released. */
+function sheetFor(v: Row, lines: Row[], events: Row[], people: Row[], codes: Row[], accounts: Row[], payees: Row[]) {
   const evs = (events ?? []) as { action: string; actor: string | null; signer_text: string | null; at: string }[];
   const start = evs.map((e) => e.action).lastIndexOf("submit");
   // A voucher from the registers has no submit: its signatures are the register's.
   const round = start < 0 ? evs : evs.slice(start);
-  const actorIds = [...new Set([v.requested_by, ...round.map((e) => e.actor)].filter(Boolean))] as string[];
-  const { data: people } = actorIds.length ? await supabase.schema("shared").from("staff").select("id, first_name, last_name").in("id", actorIds) : { data: [] };
   const person = (sid: string | null) => {
     const p = (people ?? []).find((x) => x.id === sid);
     return p ? `${p.first_name} ${p.last_name}` : "";
@@ -133,4 +122,31 @@ export async function VoucherSheet({ id }: { id: string }) {
       </section>
     </div>
   );
+}
+
+/**
+ * Payment requests or vouchers on paper (0134, 0139; several at once since polish 3): read under the caller's RLS,
+ * so only what they can see prints (the rest is left out), in a handful of queries whatever the count: the vouchers,
+ * their lines and events, the people who signed, and the code, account and payee lists once.
+ */
+export async function loadVoucherSheets(ids: readonly string[]): Promise<{ id: string; sheet: React.ReactNode }[]> {
+  const supabase = await createClient();
+  const ops = () => supabase.schema("ops");
+  const { data: found } = await ops().from("vouchers").select("*").in("id", [...ids]);
+  if (!found?.length) return [];
+  const vid = (found as Row[]).map((v) => v.id as string);
+  const [lines, events, { data: codes }, { data: accounts }, { data: payees }] = await Promise.all([
+    fetchAll<Row>((from, to) => ops().from("voucher_lines").select("*").in("voucher_id", vid).order("voucher_id").order("sort").range(from, to)),
+    fetchAll<Row>((from, to) => ops().from("voucher_events").select("id, voucher_id, action, actor, signer_text, at").in("voucher_id", vid).order("at").order("id").range(from, to)),
+    ops().from("fin_codes").select("id, code, name"),
+    ops().from("coa_accounts").select("id, code, name"),
+    ops().rpc("payee_choices"),
+  ]);
+  const actorIds = [...new Set([...(found as Row[]).map((v) => v.requested_by), ...events.map((e) => e.actor)].filter(Boolean))] as string[];
+  const { data: people } = actorIds.length ? await supabase.schema("shared").from("staff").select("id, first_name, last_name").in("id", actorIds) : { data: [] };
+  const byId = new Map((found as Row[]).map((v) => [v.id as string, v]));
+  return ids.filter((id) => byId.has(id)).map((id) => ({
+    id,
+    sheet: sheetFor(byId.get(id), lines.filter((l) => l.voucher_id === id), events.filter((e) => e.voucher_id === id), people ?? [], codes ?? [], accounts ?? [], payees ?? []),
+  }));
 }

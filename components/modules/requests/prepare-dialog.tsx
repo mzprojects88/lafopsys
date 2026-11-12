@@ -27,7 +27,8 @@ function AccountPicker({ accounts, value, onChange, label, className }: { accoun
   const [open, setOpen] = React.useState(false);
   const current = accounts.find((a) => a.id === value);
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    // Modal, so the list scrolls inside the dialog (its scroll lock would hold the wheel otherwise).
+    <Popover modal open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button type="button" variant="outline" aria-label={label} className={`justify-between font-normal ${className ?? ""}`}>
           <span className="truncate">{current ? `${String(current.code)} ${String(current.name)}` : "Account"}</span>
@@ -225,7 +226,7 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
           </details>
         )}
         {lines.length > 1 ? (
-          <Button type="button" variant="outline" size="sm" className="self-start" disabled={!coding[0]?.account_id}
+          <Button type="button" variant="outline" size="sm" className="self-start" disabled={!coding[0]?.account_id || !coding[0]?.t1_id}
             onClick={() => setCoding((c) => c.map((x) => ({ ...x, account_id: c[0].account_id, t1_id: c[0].t1_id, t3_id: c[0].t3_id })))}>
             <Copy /> Use item 1&apos;s coding for every item
           </Button>

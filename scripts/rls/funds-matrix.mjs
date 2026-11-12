@@ -273,6 +273,7 @@ try {
   await step("unmatching frees the debit", ids.finance, `select ops.voucher_bank_match($1, null), (select matched_cash_entry_id is null from ops.bank_transactions where id = $2) freed`, [reim, tx], (r) => r.ok, false);
   // 0143: the requester's bell.
   await step("the driver hears that their reimbursement was paid (2,000 by check)", ids.driver, `select count(*)::int n, bool_or(voucher_id = $1 and amount = 2000) it from ops.my_recent_payments()`, [reim], (r) => r.ok && r.rows[0].it === true);
+  await step("... but not a liquidation (it settles an advance, it pays nobody)", ids.driver, `select count(*)::int n from ops.my_recent_payments() where voucher_id in ($1, $2)`, [liq, liq3], (r) => r.ok && r.rows[0].n === 0);
   await step("... and Finance doesn't get the driver's payments as its own", ids.finance, `select count(*)::int n from ops.my_recent_payments() where voucher_id = $1`, [reim], (r) => r.ok && r.rows[0].n === 0);
   await step("the funds page is seeded: Finance edits, the CEO views", null, `select string_agg(role || '=' || level, ',' order by role) s from shared.role_page_access where page = 'finance.funds'`, [],
     (r) => r.ok && /finance=edit/.test(r.rows[0].s) && /ceo=view/.test(r.rows[0].s));

@@ -27,6 +27,7 @@ export function PayDialog({ voucher, step, settles, open, onOpenChange }: { vouc
   // The account last used for this payment method, on this device (a convenience; the database checks the account).
   const remembered = `laf.payFrom.${voucher.payMethod}`;
   const [account, setAccount] = React.useState(() => {
+    if (step !== "prepare_payment") return "";
     try {
       return localStorage.getItem(remembered) ?? "";
     } catch {

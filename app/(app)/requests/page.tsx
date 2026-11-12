@@ -96,14 +96,19 @@ function RequestsContent() {
   const waitingIds = new Set(queue.map((q) => q.voucherId));
   // The weekly approval and a payment run (polish 2, 3): the signer ticks several and signs them at once. A
   // liquidation that settles money is released on its own (it asks for an account).
-  const stepOf = new Map(queue.filter((q) => q.step === "approve" || q.step === "approve_payment" || q.step === "release").map((q) => [q.voucherId, q.step as "approve" | "approve_payment" | "release"]));
-  const toApprove = new Set([...stepOf.keys()].filter((id) => !(stepOf.get(id) === "release" && vouchers.find((v) => v.id === id)?.kind === "liquidation")));
+  const byId = React.useMemo(() => new Map(vouchers.map((v) => [v.id, v])), [vouchers]);
+  const stepOf = React.useMemo(
+    () => new Map(queue.filter((q) => q.step === "approve" || q.step === "approve_payment" || q.step === "release").map((q) => [q.voucherId, q.step as "approve" | "approve_payment" | "release"])),
+    [queue]
+  );
+  const toApprove = React.useMemo(() => new Set([...stepOf.keys()].filter((id) => !(stepOf.get(id) === "release" && byId.get(id)?.kind === "liquidation"))), [stepOf, byId]);
   const SIGN_WORD = { approve: "approve", approve_payment: "approve the payment of", release: "release" } as const;
   const [picked, setPicked] = React.useState<Set<string>>(new Set());
   const [approving, setApproving] = React.useState(false);
   async function approvePicked() {
-    const flagged = pickedNow.filter((id) => { const v = vouchers.find((x) => x.id === id); return v && flags(v).some((x) => x === "missing_or" || x === "no_attachment"); }).length;
-    const sum = formatCurrency(shown.filter((v) => pickedNow.includes(v.id)).reduce((s, v) => s + v.total, 0), "PHP", true);
+    const flagged = pickedNow.filter((id) => { const v = byId.get(id); return v && flags(v).some((x) => x === "missing_or" || x === "no_attachment"); }).length;
+    // What the signer attests: the approval of the gross; for the payment steps, what goes out (net of withholding).
+    const sum = formatCurrency(pickedNow.reduce((s, id) => { const v = byId.get(id); return s + (v ? v.total - (stepOf.get(id) === "approve" ? 0 : v.ewtTotal) : 0); }, 0), "PHP", true);
     const counts = (["approve", "approve_payment", "release"] as const).map((st) => [st, pickedNow.filter((id) => stepOf.get(id) === st).length] as const).filter(([, n]) => n > 0);
     if (!confirm(`${counts.map(([st, n]) => `${SIGN_WORD[st][0].toUpperCase()}${SIGN_WORD[st].slice(1)} ${n}`).join(", ")} (${sum} in all)?${flagged ? ` ${flagged} ${flagged === 1 ? "has" : "have"} an item without an OR number or no attachment.` : ""}`)) return;
     setApproving(true);
@@ -179,6 +184,7 @@ function RequestsContent() {
   // What can be picked is what is on screen: a search or a filter never leaves hidden picks behind.
   const approvable = shown.filter((v) => toApprove.has(v.id)).map((v) => v.id);
   const pickedNow = approvable.filter((id) => picked.has(id));
+  const pickedSet = new Set(pickedNow);
   const requestColumns: ColumnDef<Voucher>[] = [
     { id: "number", header: "No.", accessorFn: numberOf, cell: ({ row }) => <span className="font-medium tabular-nums">{numberOf(row.original)}</span> },
     { id: "date", header: BASIS[basis], accessorFn: (v) => dateOf(v) ?? "", cell: ({ row }) => formatDate(dateOf(row.original)) },
@@ -275,7 +281,7 @@ function RequestsContent() {
 
       {tab === "waiting" && approvable.length ? (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-theme-sm">
-          <span>{pickedNow.length ? `${pickedNow.length} picked · ${formatCurrency(shown.filter((v) => pickedNow.includes(v.id)).reduce((s, v) => s + v.total, 0), "PHP", true)}` : `${approvable.length} waiting for your signature`}</span>
+          <span>{pickedNow.length ? `${pickedNow.length} picked · ${formatCurrency(shown.filter((v) => pickedSet.has(v.id)).reduce((s, v) => s + v.total, 0), "PHP", true)}` : `${approvable.length} waiting for your signature`}</span>
           {pickedNow.length ? (
             <>
               <Button size="sm" disabled={approving} onClick={() => void approvePicked()}>{approving ? "Signing…" : `Sign ${pickedNow.length}`}</Button>

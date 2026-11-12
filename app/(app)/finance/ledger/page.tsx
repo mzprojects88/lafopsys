@@ -115,7 +115,7 @@ function LedgerContent() {
     f.ok("requester", v.requestedBy) &&
     (f.values.state === "all" || states(v).includes(f.values.state)) &&
     f.ok("source", v.source) &&
-    (!q || [v.requestNumber, v.voucherNumber, v.legacyNumber, v.purpose, l.description, l.orNumber, v.payReference].some((x) => x?.toLowerCase().includes(q)))
+    (!q || [v.requestNumber, v.voucherNumber, v.legacyNumber, v.purpose, l.description, l.orNumber, v.payReference, l.legacyCode].some((x) => x?.toLowerCase().includes(q)))
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the helpers read accounts, payees and staff, listed here
   ), [all, f.values, w, q, min, max, settled, payeeName, accounts, staff]);
   const sum = ledgerTotals(shown.map((r) => r.l));
@@ -265,8 +265,14 @@ function LedgerContent() {
                   const t = ledgerTotals(rows.map((r) => r.l));
                   const id = rows[0].l.accountId;
                   return (
-                    <tr key={id ?? rows[0].l.legacyCode ?? "none"} className={`border-b border-border last:border-0 ${id ? "cursor-pointer hover:bg-muted/40" : ""}`}
-                      onClick={() => { if (id) { f.set("account")(id); setView("accounts"); } }}>
+                    <tr key={id ?? rows[0].l.legacyCode ?? "none"} className={`border-b border-border last:border-0 ${id || rows[0].l.legacyCode ? "cursor-pointer hover:bg-muted/40" : ""}`}
+                      onClick={() => {
+                        // An account by its filter; a register line known only by its code, by the search.
+                        if (id) f.set("account")(id);
+                        else if (rows[0].l.legacyCode) setQuery(rows[0].l.legacyCode);
+                        else return;
+                        setView("accounts");
+                      }}>
                       <td className="px-4 py-2 font-medium">{accountName(id, rows[0].l.legacyCode)}</td>
                       <td className="px-4 py-2 text-right tabular-nums">{rows.length}</td>
                       <td className="px-4 py-2 text-right tabular-nums">{peso(t.gross)}</td>
