@@ -13,7 +13,7 @@ import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { useNow } from "@/lib/hooks/use-now";
 import { useRole } from "@/lib/rbac/use-role";
-import { canManageHr } from "@/lib/rbac/roles";
+import { canManageHr, holdsPower } from "@/lib/rbac/roles";
 import { dayKey } from "@/lib/utils/dtr";
 import { formatDate } from "@/lib/utils/date";
 import { formatDistance } from "@/lib/utils/site";
@@ -28,14 +28,17 @@ const TONE = {
 };
 
 /**
- * Today's roster. Everyone sees who is on duty and whether they are in.
+ * Today's roster. Everyone sees who is on duty; whether they are in, for those who read everyone's day (0146), else their own.
  * Admins and HR also see the supervisor's board (DTR plan phase 3): late
  * past the grace period, not in yet, still in after the shift, at LAF
  * House or off-site, and anyone clocked in who is not on today's roster.
  */
 export function TodayBoard() {
-  const { role, isHr } = useRole();
+  const { role, roles, isHr, staffId: myId } = useRole();
   const manages = canManageHr(role, isHr);
+  // Whose day summaries this viewer may read (0146): their own, or everyone's for Finance, HR, the CEO, the Super
+  // Admin and the Board of Trustees. Others see the duty roster, with a status on their own row only.
+  const readsAll = manages || holdsPower(roles, "manage_punches") || holdsPower(roles, "finance_work") || roles.some((r) => r === "ceo" || r === "board");
   const { onDay, loading } = useRoster();
   const { entries } = useTimeEntriesData();
   const { punches } = useTimePunchesData();
@@ -80,7 +83,7 @@ export function TodayBoard() {
                     <Badge className={TONE.warn}>Off-site{punch.siteDistanceM !== undefined ? ` · ${formatDistance(punch.siteDistanceM)}` : ""}</Badge>
                   ) : null}
                 </div>
-              ) : entry?.clockIn ? (
+              ) : !readsAll && e.person.staffId !== myId ? null : entry?.clockIn ? (
                 <StatusBadge dot domain="timesheet" status={entry.clockOut ? "approved" : "pending"} label={entry.clockOut ? `Out ${entry.clockOut}` : `In ${entry.clockIn}`} />
               ) : (
                 <StatusBadge dot domain="timesheet" status="flagged" label="Not clocked in" />

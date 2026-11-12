@@ -57,6 +57,13 @@ try {
   const eA = await one(`insert into ops.time_entries (staff_id, date, clock_in) values ($1, '2099-02-01', '08:00') returning id`, [ids.driver]);
   const pIn = await one(`insert into ops.time_punches (time_entry_id, staff_id, punch_type, punched_at, location_status, source) values ($1, $2, 'clock_in', '2099-02-01T00:00:00Z', 'captured', 'device') returning id`, [eA, ids.driver]);
 
+  await step("the driver reads their own day summary", ids.driver, `select count(*)::int n from ops.time_entries where id = $1`, [eA], n(1));
+  await step("the social worker can't read the driver's day summary", ids.sw, `select count(*)::int n from ops.time_entries where id = $1`, [eA], n(0));
+  await step("... nor anyone else's", ids.sw, `select count(*)::int n from ops.time_entries where staff_id <> $1`, [ids.sw], n(0));
+  await step("Finance (no HR switch) reads it", ids.finance, `select count(*)::int n from ops.time_entries where id = $1`, [eA], n(1));
+  await step("the policy names the CEO and the Board of Trustees", null, `select count(*)::int n from pg_policy where polrelid = 'ops.time_entries'::regclass and polname = 'own or the office reads time entries' and pg_get_expr(polqual, polrelid) like '%ceo%board%'`, [], n(1));
+  await step("the old everyone-reads policy is gone", null, `select count(*)::int n from pg_policy where polrelid = 'ops.time_entries'::regclass and polname = 'staff read time entries'`, [], n(0));
+
   const add = (actor, staff, type, at, entry, reason = "Forgot to punch") => ["select ops.time_punch_add($1, $2, $3, $4, $5, $6) r", [staff, type, at, entry, reason, actor]];
   const edit = (actor, punch, at, reason = "Wrong time") => ["select ops.time_punch_edit($1, $2, $3, $4) r", [punch, at, reason, actor]];
   await step("nobody calls add from the browser", ids.finance, `select ops.time_punch_add($1, 'clock_out', now(), $2, 'x y z', $3)`, [ids.driver, eA, ids.finance], refused("42501"), false);

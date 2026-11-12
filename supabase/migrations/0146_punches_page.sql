@@ -32,6 +32,14 @@ drop policy if exists "own or hr read correction requests" on ops.dtr_correction
 create policy "own or punch managers read correction requests" on ops.dtr_correction_requests
   for select to authenticated using (staff_id = auth.uid() or ops.manages_punches());
 
+-- 2b. The daily summaries (time_entries) were readable by every staff member since 0041. User, 12 Nov 2026: staff see
+-- only their own; Finance, HR, the CEO, the Super Admin and the Board of Trustees see everyone's. (HR keeps its full
+-- 0041 policy; the update policies are unchanged.)
+drop policy if exists "staff read time entries" on ops.time_entries;
+drop policy if exists "own or the office reads time entries" on ops.time_entries;
+create policy "own or the office reads time entries" on ops.time_entries for select to authenticated
+  using (staff_id = auth.uid() or ops.manages_punches() or shared.has_power('finance_work') or shared.has_role('ceo', 'board'));
+
 -- 3. The punch log: every change, read by the managers and by the person whose punch it was.
 alter table ops.time_punch_deletions add column if not exists action text not null default 'deleted';
 alter table ops.time_punch_deletions drop constraint if exists time_punch_deletions_action_check;
