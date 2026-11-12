@@ -3,27 +3,21 @@
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { format, parseISO } from "date-fns";
-import { CalendarDays, CalendarRange, Clock, Download, LogIn, MapPinOff, PencilLine, ShieldCheck, Trash2 } from "lucide-react";
-import { toast } from "sonner";
-import { ReasonDialog } from "@/components/patterns/reason-dialog";
-import { useCollection } from "@/lib/data/collection-store";
-import { timePunchesStore } from "@/lib/hooks/use-time-punches-collection";
-import { punchDeletionsStore } from "@/lib/hooks/use-punch-deletions-collection";
+import Link from "next/link";
+import { CalendarDays, CalendarRange, Clock, Download, LogIn, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { PersonAvatar } from "@/components/patterns/person-avatar";
-import { SectionCard } from "@/components/patterns/section-card";
 import { LoadingState } from "@/components/patterns/loading-state";
+import { SectionCard } from "@/components/patterns/section-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PunchPhotoCell } from "@/components/modules/staff/punch-photo-cell";
 import { PrintDtrButton } from "@/components/modules/staff/print-dtr-button";
-import { formatDistance } from "@/lib/utils/site";
 import { CorrectionRequestsPanel } from "@/components/modules/staff/correction-requests-panel";
 import { useCorrectionRequests } from "@/lib/hooks/use-correction-requests";
 import { useRole } from "@/lib/rbac/use-role";
@@ -36,30 +30,12 @@ import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period
 import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/filters";
 import { optionsOf } from "@/lib/utils/filters";
 import { ROLES } from "@/lib/types/common";
-import { dayKey, effectiveStatus, formatMinutes, isLong, sessionMinutes, timeLabel12, totalsFor, type DtrSession } from "@/lib/utils/dtr";
-import type { PunchLocationStatus, TimePunch } from "@/lib/types/staff";
+import { effectiveStatus, formatMinutes, isLong, sessionMinutes, timeLabel12, totalsFor, type DtrSession } from "@/lib/utils/dtr";
 import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 import { doesFinance } from "@/lib/rbac/roles";
 
 /** Inventory table look: header cell. */
 const TH = "h-11 px-5 text-theme-xs font-medium text-muted-foreground";
-
-/** Why a punch has no address, in words a person can act on. */
-const LOCATION_STATUS_LABELS: Record<PunchLocationStatus, string> = {
-  captured: "Captured",
-  permission_denied: "Location not captured — permission denied",
-  unavailable: "Location not captured — unavailable on this device",
-  geocode_failed: "Coordinates recorded, address lookup failed",
-};
-
-interface PunchRow extends TimePunch {
-  staffName: string;
-  /** Drivers work away from the house; their off-site punches are not a warning (DTR plan decision). */
-  isDriver: boolean;
-  dayKey: string;
-  dateLabel: string;
-  timeLabel: string;
-}
 
 type SessionDisplayStatus = "open" | "closed" | "long" | "missed_out" | "orphan_out";
 
@@ -92,71 +68,6 @@ function displayStatus(s: DtrSession, now: Date): SessionDisplayStatus {
 /** "Sep 4, 2026" from a yyyy-MM-dd key (date-only, so no timezone shift). */
 function formatDayKey(key: string) {
   return format(parseISO(key), "MMM d, yyyy");
-}
-
-function mapsHref(punch: TimePunch) {
-  return `https://www.openstreetmap.org/?mlat=${punch.latitude}&mlon=${punch.longitude}#map=18/${punch.latitude}/${punch.longitude}`;
-}
-
-/** On-site / off-site against the LAF House pin, as judged when punched (0063). */
-function SiteBadge({ punch, isDriver }: { punch: TimePunch; isDriver: boolean }) {
-  if (punch.siteStatus === "on_site") {
-    return <Badge className={STATUS_TONE_CLASSES.positive}>LAF House</Badge>;
-  }
-  if (punch.siteStatus !== "off_site") return null;
-  return (
-    <Badge className={STATUS_TONE_CLASSES[isDriver ? "neutral" : "warning"]}>
-      Off-site{punch.siteDistanceM !== undefined ? ` · ${formatDistance(punch.siteDistanceM)} away` : ""}
-    </Badge>
-  );
-}
-
-function LocationCell({ punch, isDriver = false }: { punch: TimePunch; isDriver?: boolean }) {
-  // At the house the badge says it all; anywhere else, the address the phone was at.
-  if (punch.siteStatus === "on_site") return <SiteBadge punch={punch} isDriver={isDriver} />;
-  if (punch.locationStatus === "captured" && punch.addressLabel) {
-    return (
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <SiteBadge punch={punch} isDriver={isDriver} />
-        <span className="break-words">{punch.addressLabel}</span>
-        <a
-          href={mapsHref(punch)}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="w-fit text-theme-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-        >
-          {punch.latitude?.toFixed(5)}, {punch.longitude?.toFixed(5)}
-          {punch.accuracyMeters !== undefined && ` · ±${Math.round(punch.accuracyMeters)}m`}
-        </a>
-      </div>
-    );
-  }
-  if (punch.locationStatus === "geocode_failed" && punch.latitude !== undefined) {
-    return (
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="italic text-muted-foreground">Address lookup failed</span>
-        <a
-          href={mapsHref(punch)}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="w-fit text-theme-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-        >
-          {punch.latitude?.toFixed(5)}, {punch.longitude?.toFixed(5)}
-        </a>
-      </div>
-    );
-  }
-  return <span className="italic text-muted-foreground">{LOCATION_STATUS_LABELS[punch.locationStatus]}</span>;
-}
-
-function PunchTypeBadge({ punchType }: { punchType: TimePunch["punchType"] }) {
-  return punchType === "clock_in" ? (
-    <Badge className={STATUS_TONE_CLASSES.info}>In</Badge>
-  ) : (
-    <Badge className={STATUS_TONE_CLASSES.neutral}>Out</Badge>
-  );
 }
 
 function SessionStatusBadge({ status }: { status: SessionDisplayStatus }) {
@@ -193,132 +104,6 @@ const sessionColumns: ColumnDef<SessionRow>[] = [
   },
 ];
 
-/** Deleted punches (0141), for HR and the Super Admin: rendered only for them, so nobody else loads the log. */
-function DeletedPunches({ staffName }: { staffName: (id: string) => string }) {
-  const { data } = useCollection(punchDeletionsStore);
-  if (!data.length) return null;
-  return (
-    <SectionCard flush title="Deleted punches" description="Punches the Super Admin removed as mistakes, with the reason. Kept for the record.">
-      <ul className="divide-y divide-border">
-        {data.map((d) => (
-          <li key={d.id} className="flex flex-wrap gap-x-3 gap-y-1 px-5 py-2.5 text-theme-sm">
-            <span className="font-medium">{d.staffId ? staffName(d.staffId) : "—"}</span>
-            <span>{d.punchType === "clock_out" ? "Out" : "In"} · {format(parseISO(dayKey(d.punchedAt)), "MMM d, yyyy")} {timeLabel12(d.punchedAt)}</span>
-            <span className="text-muted-foreground">deleted {format(parseISO(dayKey(d.deletedAt)), "MMM d, yyyy")} {timeLabel12(d.deletedAt)} by {d.deletedBy ? staffName(d.deletedBy) : "the system"}: {d.reason}</span>
-          </li>
-        ))}
-      </ul>
-    </SectionCard>
-  );
-}
-
-/** The photo column is added for admins and HR only (0060); everyone else sees times and places. The Super Admin
- * also gets a delete button for a punch made by mistake (0141). */
-const punchColumnsFor = (canSeePhotos: boolean, onDelete?: (p: PunchRow) => void): ColumnDef<PunchRow>[] => [
-  {
-    id: "staff",
-    header: "Staff",
-    accessorFn: (p) => p.staffName,
-    cell: ({ row }) => (
-      <div className="flex items-center gap-2.5">
-        <PersonAvatar name={row.original.staffName} size="sm" />
-        <span className="font-medium">{row.original.staffName}</span>
-      </div>
-    ),
-  },
-  { id: "date", header: "Date", accessorFn: (p) => p.dateLabel },
-  {
-    id: "punch",
-    header: "Punch",
-    accessorFn: (p) => p.punchType,
-    cell: ({ row }) => (
-      <div className="flex items-center gap-1.5">
-        <PunchTypeBadge punchType={row.original.punchType} />
-        {/* A punch an admin supplied for a shift nobody clocked out of (0029).
-            Marked here so a corrected day is never mistaken for one that was
-            actually recorded on a device. */}
-        {row.original.source === "adjustment" ? (
-          <Badge
-            variant="outline"
-            className="gap-1 border-warning/30 text-warning-foreground dark:text-warning"
-            title={row.original.adjustmentReason}
-          >
-            <PencilLine className="size-3" />
-            Added
-          </Badge>
-        ) : null}
-      </div>
-    ),
-  },
-  { id: "time", header: "Time", accessorFn: (p) => p.timeLabel },
-  ...(canSeePhotos
-    ? [
-        {
-          id: "photo",
-          header: "Photo",
-          accessorFn: (p: PunchRow) => p.photoStatus,
-          cell: ({ row }: { row: { original: PunchRow } }) => (
-            <PunchPhotoCell punch={row.original} caption={`${row.original.staffName} · ${row.original.dateLabel} ${row.original.timeLabel}`} />
-          ),
-        } satisfies ColumnDef<PunchRow>,
-      ]
-    : []),
-  {
-    id: "location",
-    header: "Location",
-    accessorFn: (p) => p.addressLabel ?? LOCATION_STATUS_LABELS[p.locationStatus],
-    cell: ({ row }) => <LocationCell punch={row.original} isDriver={row.original.isDriver} />,
-  },
-  {
-    id: "device",
-    header: "Device",
-    accessorFn: (p) => p.deviceLabel ?? "",
-    cell: ({ row }) => row.original.deviceLabel ?? <span className="text-muted-foreground">—</span>,
-  },
-  {
-    id: "ip",
-    header: "Network address",
-    accessorFn: (p) => p.ipAddress ?? "",
-    cell: ({ row }) => (
-      <span className="font-mono text-theme-xs">{row.original.ipAddress ?? "—"}</span>
-    ),
-  },
-  ...(onDelete
-    ? [
-        {
-          id: "delete",
-          header: "",
-          enableSorting: false,
-          cell: ({ row }: { row: { original: PunchRow } }) => (
-            <Button variant="ghost" size="icon-sm" className="text-destructive" aria-label="Delete this punch" onClick={(e) => (e.stopPropagation(), onDelete(row.original))}>
-              <Trash2 />
-            </Button>
-          ),
-        } satisfies ColumnDef<PunchRow>,
-      ]
-    : []),
-];
-
-function punchesToCsv(rows: PunchRow[]): string {
-  return csvLines(
-    ["Staff", "Date", "Punch", "Time", "Site", "Metres from LAF House", "Location", "Location status", "Device", "Network address", "Source", "Correction reason"],
-    rows.map((r) => [
-      r.staffName,
-      r.dateLabel,
-      r.punchType === "clock_in" ? "In" : "Out",
-      r.timeLabel,
-      r.siteStatus === "on_site" ? "LAF House" : r.siteStatus === "off_site" ? "Off-site" : "",
-      r.siteDistanceM !== undefined ? String(r.siteDistanceM) : "",
-      r.addressLabel ?? "",
-      LOCATION_STATUS_LABELS[r.locationStatus],
-      r.deviceLabel ?? "",
-      r.ipAddress ?? "",
-      r.source === "adjustment" ? "Added by an admin" : "Device",
-      r.adjustmentReason ?? "",
-    ])
-  );
-}
-
 function sessionsToCsv(rows: SessionRow[]): string {
   return csvLines(
     ["Staff", "Date", "In", "Out", "Duration", "Minutes", "Status"],
@@ -342,24 +127,12 @@ function DtrContent() {
   const fromDate = period.window?.from ?? "";
   const toDate = period.window?.to ?? "";
   const [tab, setTab] = React.useState("sessions");
-  const { role, roles, isHr, staffId: myId } = useRole();
+  const { roles, isHr, staffId: myId } = useRole();
   const { requests } = useCorrectionRequests();
-  // Admins and HR: requests waiting on them (not their own); everyone else: their own still waiting.
-  const pendingRequests = requests.filter((r) => r.status === "pending" && (canManageHr(role, isHr) ? r.staffId !== myId : true)).length;
-  const canSeePhotos = canManageHr(role, isHr);
-  // Only the Super Admin deletes a punch, and only with a reason (0141; the database checks both).
-  const superAdmin = roles.includes("admin");
-  const [deleting, setDeleting] = React.useState<PunchRow | null>(null);
-  const punchColumns = React.useMemo(() => punchColumnsFor(canSeePhotos, superAdmin ? setDeleting : undefined), [canSeePhotos, superAdmin]);
-  async function deletePunch(p: PunchRow, reason: string) {
-    const res = await fetch("/api/dtr/punch/delete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ punchId: p.id, reason }) }).catch(() => null);
-    const body = (await res?.json().catch(() => null)) as { ok: boolean; error?: string; warning?: string | null } | null;
-    if (!body?.ok) return void toast.error(body?.error ?? (res ? `The server refused it (${res.status}): try again.` : "No connection: try again."));
-    if (body.warning) toast.warning(body.warning);
-    else toast.success("Punch deleted; the deletion is logged");
-    await Promise.all([timePunchesStore.refetch(), punchDeletionsStore.refetch()]);
-  }
-
+  // Those who decide: requests waiting on them (not their own); everyone else: their own still waiting.
+  const pendingRequests = requests.filter((r) => r.status === "pending" && (holdsPower(roles, "manage_punches") || isHr ? r.staffId !== myId : true)).length;
+  // Those who manage punches decide the requests (0146).
+  const decides = holdsPower(roles, "manage_punches") || isHr;
   const staffIds = React.useMemo(() => (staffFilter === "all" ? undefined : [staffFilter]), [staffFilter]);
   const { sessions, totals, punches, loading, now } = useDtrSessions({ staffIds });
 
@@ -407,26 +180,8 @@ function DtrContent() {
     return rows.reverse();
   }, [sessions, inRange, staffName, now, statusFilter]);
 
-  const punchRows: PunchRow[] = React.useMemo(() => {
-    const rows: PunchRow[] = [];
-    for (const p of punches) {
-      const day = dayKey(p.punchedAt);
-      if (!inRange(p.staffId, day)) continue;
-      rows.push({
-        ...p,
-        staffName: staffName(p.staffId),
-        isDriver: ((x) => !!x && holdsPower([x.role, ...x.extraRoles], "driver"))(staff.find((x) => x.id === p.staffId)),
-        dayKey: day,
-        dateLabel: formatDayKey(day),
-        timeLabel: timeLabel12(p.punchedAt),
-      });
-    }
-    return rows;
-  }, [punches, inRange, staffName, staff]);
-
   const today = todayIso();
   const sessionsToday = sessions.filter((s) => s.dayKey === today && (!staffIds || staffIds.includes(s.staffId)) && s.status !== "orphan_out").length;
-  const missingLocation = punchRows.filter((r) => r.locationStatus !== "captured").length;
 
   // RLS decides who is in the punches: one person for most roles, everyone for
   // admin and finance. A per-staff table only means something in the second case.
@@ -439,15 +194,14 @@ function DtrContent() {
   }, [punches, sessions, now, staffName]);
 
   function handleExport() {
-    if (tab === "sessions") downloadCsv(sessionsToCsv(sessionRows), `dtr-sessions-${today}.csv`);
-    else downloadCsv(punchesToCsv(punchRows), `dtr-punches-${today}.csv`);
+    downloadCsv(sessionsToCsv(sessionRows), `dtr-sessions-${today}.csv`);
   }
 
   // Whose DTR prints: your own, or for those who read everyone's (0017/0041), whoever the filter picked.
   const readsEveryone = canManageHr(roles, isHr) || doesFinance(roles);
   const printTarget = readsEveryone ? (staffFilter === "all" ? null : staffFilter) : (myId ?? null);
 
-  const exportDisabled = tab === "sessions" ? sessionRows.length === 0 : punchRows.length === 0;
+  const exportDisabled = sessionRows.length === 0;
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -507,9 +261,10 @@ function DtrContent() {
       <div className="flex items-start gap-2.5 rounded-2xl border border-border bg-card px-5 py-3 text-theme-sm text-muted-foreground">
         <ShieldCheck className="size-4 shrink-0 text-primary" />
         <span>
-          Staff see their own record here. Admin and Finance see everyone&apos;s — Finance because payroll is
-          reconciled against it. Punches cannot be edited after the fact by anyone; an admin supplying a missing
-          clock-out adds a punch marked Added, signed with their name. Only the Super Admin can delete a punch made by mistake, and every deletion is logged with its reason. Times are Manila time; a session that crosses midnight counts toward the day it started.
+          Staff see their own record here. HR, Finance, the CEO and the Super Admin see everyone&apos;s. Each IN and
+          OUT is on <Link className="text-primary underline underline-offset-2" href="/staff/punches">Punches</Link>: those who manage punches add a
+          missing one (marked Added, signed with their name), change a time or delete a mistake, always with a reason,
+          and every change is logged. Times are Manila time; a session that crosses midnight counts toward the day it started.
         </span>
       </div>
 
@@ -548,14 +303,13 @@ function DtrContent() {
       <Tabs value={tab} onValueChange={setTab} className="gap-4">
         <TabsList>
           <TabsTrigger value="sessions">Sessions</TabsTrigger>
-          <TabsTrigger value="punches">Punches</TabsTrigger>
           <TabsTrigger value="requests">
             Requests{pendingRequests > 0 ? ` (${pendingRequests})` : ""}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="requests">
-          <CorrectionRequestsPanel canDecide={canSeePhotos} myId={myId ?? undefined} staffName={staffName} />
+          <CorrectionRequestsPanel canDecide={decides} myId={myId ?? undefined} staffName={staffName} />
         </TabsContent>
 
         <TabsContent value="sessions">
@@ -583,60 +337,6 @@ function DtrContent() {
           />}
         </TabsContent>
 
-        <TabsContent value="punches" className="flex flex-col gap-3">
-          {missingLocation > 0 && (
-            <div className="flex items-center gap-2 text-theme-xs text-muted-foreground">
-              <MapPinOff className="size-3.5" />
-              {missingLocation} of {punchRows.length} punches without a captured location
-            </div>
-          )}
-          {loading ? <LoadingState /> : <DataTable
-            columns={punchColumns}
-            data={punchRows}
-            searchPlaceholder="Search staff, address, device…"
-            pageSize={15}
-            emptyMessage="No punches recorded yet. They appear here as staff clock in and out."
-            renderMobileCard={(row) => (
-              <div className="flex flex-col gap-2.5 rounded-2xl border border-border bg-card p-4 text-theme-sm">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <PersonAvatar name={row.staffName} size="sm" />
-                    <span className="truncate font-medium">{row.staffName}</span>
-                  </div>
-                  <PunchTypeBadge punchType={row.punchType} />
-                </div>
-                <div className="text-theme-xs text-muted-foreground">
-                  {row.dateLabel} · {row.timeLabel}
-                </div>
-                <div className="text-theme-xs">
-                  <LocationCell punch={row} isDriver={row.isDriver} />
-                </div>
-                {canSeePhotos ? <PunchPhotoCell punch={row} caption={`${row.staffName} · ${row.dateLabel} ${row.timeLabel}`} /> : null}
-                <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-border pt-2.5 text-theme-xs text-muted-foreground">
-                  <span>{row.deviceLabel ?? "Unknown device"}</span>
-                  {row.ipAddress && <span className="font-mono">{row.ipAddress}</span>}
-                </div>
-                {superAdmin ? <Button variant="ghost" size="sm" className="self-start text-destructive" onClick={() => setDeleting(row)}><Trash2 /> Delete this punch</Button> : null}
-              </div>
-            )}
-          />}
-          {canSeePhotos ? <DeletedPunches staffName={staffName} /> : null}
-          <ReasonDialog
-            open={!!deleting}
-            onOpenChange={(o) => !o && setDeleting(null)}
-            title="Delete this punch"
-            description={deleting ? `${deleting.staffName}, ${deleting.punchType === "clock_in" ? "in" : "out"} at ${deleting.dateLabel} ${deleting.timeLabel}. Only for a punch made by mistake: it leaves the record, its photo is removed, and the deletion is logged with your reason.` : ""}
-            confirmLabel="Delete punch"
-            requireReason
-            minLength={3}
-            destructive
-            onConfirm={(reason) => {
-              const p = deleting;
-              setDeleting(null);
-              if (p) void deletePunch(p, reason);
-            }}
-          />
-        </TabsContent>
       </Tabs>
     </div>
   );

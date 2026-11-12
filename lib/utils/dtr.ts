@@ -151,6 +151,8 @@ export interface DtrSession {
   timeEntryId?: string;
   clockInAt?: string;
   clockOutAt?: string;
+  /** Id of the clock-out punch, once there is one. */
+  clockOutId?: string;
   /** The org-timezone day the session belongs to: the day it was clocked IN.
    * An overnight shift counts wholly toward the day it started. */
   dayKey: string;
@@ -192,6 +194,7 @@ export function pairSessions(punches: readonly PunchLike[]): DtrSession[] {
       out.push(session);
     } else if (current) {
       current.clockOutAt = p.punchedAt;
+      current.clockOutId = p.id;
       current.status = "closed";
       open.delete(p.staffId);
     } else {
@@ -200,12 +203,47 @@ export function pairSessions(punches: readonly PunchLike[]): DtrSession[] {
         staffId: p.staffId,
         timeEntryId: p.timeEntryId,
         clockOutAt: p.punchedAt,
+        clockOutId: p.id,
         dayKey: dayKey(p.punchedAt),
         status: "orphan_out",
       });
     }
   }
   return out;
+}
+
+/**
+ * Neighbouring punches of one person that can't both stand (0146): a clock-out first or after another clock-out,
+ * two clock-ins on the same day, or a clock-in whose clock-out comes past the session cap. Keys "a|b" by punch id,
+ * so a change is judged only by the problems it makes (old records may have some already).
+ */
+export function orderProblems(punches: readonly PunchLike[]): Set<string> {
+  const bad = new Set<string>();
+  const byStaff = new Map<string, PunchLike[]>();
+  for (const p of punches) byStaff.set(p.staffId, [...(byStaff.get(p.staffId) ?? []), p]);
+  for (const list of byStaff.values()) {
+    list.sort((a, b) => ms(a.punchedAt) - ms(b.punchedAt) || (a.id < b.id ? -1 : 1));
+    if (list[0]?.punchType === "clock_out") bad.add(`|${list[0].id}`);
+    for (let i = 1; i < list.length; i++) {
+      const a = list[i - 1];
+      const b = list[i];
+      const wrong =
+        a.punchType === b.punchType
+          ? a.punchType === "clock_out" || dayKey(a.punchedAt) === dayKey(b.punchedAt)
+          : a.punchType === "clock_in" && ms(b.punchedAt) - ms(a.punchedAt) > MAX_SESSION_MINUTES * 60_000;
+      if (wrong) bad.add(`${a.id}|${b.id}`);
+    }
+  }
+  return bad;
+}
+
+/** Why a change to someone's punches can't stand (a problem it makes that wasn't there), or null. */
+export function orderBroken(before: readonly PunchLike[], after: readonly PunchLike[]): string | null {
+  const was = orderProblems(before);
+  for (const k of orderProblems(after)) {
+    if (!was.has(k)) return "That time puts this person's punches out of order: two INs on one day, two OUTs in a row, an OUT before its IN, or a session over 25 hours. Pick a time between their other punches.";
+  }
+  return null;
 }
 
 /** `open` sessions that have run past the cap are reported as missed clock-outs. */

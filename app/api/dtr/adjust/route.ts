@@ -1,153 +1,76 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { addDays, dayKey, planClockOut, timeLabel, zonedDayStart } from "@/lib/utils/dtr";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { addDays, dayKey, orderBroken, planClockOut, timeLabel } from "@/lib/utils/dtr";
+import { instantOn } from "@/lib/utils/dtr-prompts";
+import { asPunchLike, punchesBetween, refreshDay } from "@/lib/server/dtr-day";
 
-interface AdjustBody {
-  timeEntryId?: unknown;
-  /** Manila wall-clock day of the clock-out, `yyyy-MM-dd`. Usually the entry's
-   * own day; the next day for a shift that ran past midnight. */
-  date?: unknown;
-  /** Manila wall-clock time, `HH:mm`. */
-  time?: unknown;
-  reason?: unknown;
-}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Supplies a clock-out that was never made.
- *
- * Four of the seven days recorded before this existed have a clock-in and no
- * clock-out, so they read as zero hours worked. Somebody has to be able to put
- * the real time in -- but a DTR whose entries can be edited afterwards is not
- * a DTR, which is why this ADDS a punch marked `source = 'adjustment'` and
- * signed by the admin who made it, and never edits or deletes an existing one.
- * ops.time_punches still has no update or delete policy for anyone.
- *
- * Admin only. The signature comes from the session (the policy requires
- * `adjusted_by = auth.uid()`), so it cannot be attributed to a colleague.
+ * POST /api/dtr/adjust: adds a punch nobody made (0029; widened 0146). A clock-out for a day's session
+ * (`timeEntryId`), or a clock-in on a day (`type: "clock_in"`, `staffId`). It ADDS a punch marked Added and signed by
+ * whoever added it, never rewrites one. Who may is the database's call (ops.time_punch_add: those who manage
+ * punches), checked first so nobody else learns anything from the order checks. A clock-out must close that day's
+ * own session (planClockOut); any punch must leave the person's punches in order (orderBroken). Then the day's
+ * summary follows its punches; `flag` stays missed_punch, as the day WAS missed.
  */
 export async function POST(request: Request) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
+  const { data: may } = await supabase.schema("ops").rpc("manages_punches");
+  if (may !== true) return NextResponse.json({ ok: false, error: "Only those who manage punches add one." }, { status: 403 });
 
-  if (!user) {
-    return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const type = body?.type === "clock_in" ? "clock_in" : "clock_out";
+  const date = typeof body?.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date) ? body.date : null;
+  const time = typeof body?.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(body.time) ? body.time : null;
+  const reason = typeof body?.reason === "string" ? body.reason.trim() : "";
+  const entryId = typeof body?.timeEntryId === "string" && UUID_RE.test(body.timeEntryId) ? body.timeEntryId : null;
+  let staffId = typeof body?.staffId === "string" && UUID_RE.test(body.staffId) ? body.staffId : null;
+  if (!date || !time || (type === "clock_out" ? !entryId : !staffId)) {
+    return NextResponse.json({ ok: false, error: "A day, a time and the person (or the day's session) are all required." }, { status: 400 });
   }
+  const at = instantOn(date, time);
+  if (at.getTime() > Date.now()) return NextResponse.json({ ok: false, error: "A punch can't be in the future." }, { status: 400 });
 
-  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", user.id).single();
-  if (callerStaff?.role !== "admin") {
-    return NextResponse.json({ ok: false, error: "Only admins can correct a time record." }, { status: 403 });
+  const db = createAdminClient();
+  let day = dayKey(at);
+  if (type === "clock_out") {
+    const { data: entry } = await db.schema("ops").from("time_entries").select("id, staff_id, date").eq("id", entryId!).maybeSingle();
+    if (!entry) return NextResponse.json({ ok: false, error: "That time record no longer exists." }, { status: 404 });
+    staffId = String(entry.staff_id);
+    day = String(entry.date);
   }
-
-  let body: AdjustBody;
+  let punches;
   try {
-    body = (await request.json()) as AdjustBody;
-  } catch {
-    return NextResponse.json({ ok: false, error: "Malformed request body." }, { status: 400 });
+    punches = (await punchesBetween(db, staffId!, addDays(day, -1), addDays(day, 3))).map(asPunchLike);
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 500 });
   }
-
-  const timeEntryId = typeof body.timeEntryId === "string" ? body.timeEntryId : null;
-  const date = typeof body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date) ? body.date : null;
-  const time = typeof body.time === "string" && /^\d{2}:\d{2}$/.test(body.time) ? body.time : null;
-  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
-
-  if (!timeEntryId || !date || !time) {
-    return NextResponse.json({ ok: false, error: "A day, a time and the entry are all required." }, { status: 400 });
+  if (type === "clock_out") {
+    const plan = planClockOut(punches, { id: entryId!, staffId: staffId!, day }, at);
+    if (!plan.ok) return NextResponse.json({ ok: false, error: plan.error }, { status: 409 });
   }
-  if (!reason) {
-    return NextResponse.json({ ok: false, error: "Say why the clock-out is missing." }, { status: 400 });
-  }
+  const broken = orderBroken(punches, [...punches, { id: "new-punch", staffId: staffId!, punchType: type, punchedAt: at.toISOString(), timeEntryId: entryId ?? undefined }]);
+  if (broken) return NextResponse.json({ ok: false, error: broken }, { status: 409 });
 
-  const { data: entry, error: entryError } = await supabase
-    .schema("ops")
-    .from("time_entries")
-    .select("id, staff_id, date, clock_in, clock_out")
-    .eq("id", timeEntryId)
-    .maybeSingle();
-  if (entryError) return NextResponse.json({ ok: false, error: entryError.message }, { status: 500 });
-  if (!entry) return NextResponse.json({ ok: false, error: "That time record no longer exists." }, { status: 404 });
-  if (!entry.clock_in) {
-    return NextResponse.json({ ok: false, error: "That day has no clock-in to close." }, { status: 409 });
-  }
-  if (entry.clock_out) {
-    return NextResponse.json({ ok: false, error: "That day already has a clock-out." }, { status: 409 });
-  }
-
-  // Manila wall clock -> a real instant. Built from the day's midnight rather
-  // than parsed in the server's zone, which is UTC on Vercel and would land the
-  // punch eight hours out.
-  const [hours, minutes] = time.split(":").map(Number);
-  if (hours > 23 || minutes > 59) {
-    return NextResponse.json({ ok: false, error: "That is not a valid time." }, { status: 400 });
-  }
-  const punchedAt = new Date(zonedDayStart(date).getTime() + (hours * 60 + minutes) * 60_000);
-
-  if (punchedAt.getTime() > Date.now()) {
-    return NextResponse.json({ ok: false, error: "A clock-out can't be in the future." }, { status: 400 });
-  }
-
-  // The same window the punch route uses: the entry's day and the one after
-  // it, so an overnight session's clock-out is in range wherever it falls.
-  const entryDay = dayKey(entry.date as string);
-  const { data: punchRows, error: punchesError } = await supabase
-    .schema("ops")
-    .from("time_punches")
-    .select("id, staff_id, punch_type, punched_at, time_entry_id")
-    .eq("staff_id", entry.staff_id)
-    .gte("punched_at", zonedDayStart(entryDay).toISOString())
-    .lt("punched_at", zonedDayStart(addDays(entryDay, 2)).toISOString())
-    .order("punched_at", { ascending: true });
-  if (punchesError) return NextResponse.json({ ok: false, error: punchesError.message }, { status: 500 });
-
-  type PunchRowLite = { id: string; staff_id: string; punch_type: "clock_in" | "clock_out"; punched_at: string; time_entry_id: string | null };
-  // Where the clock-out may go, and the day's totals with it: lib/utils/dtr.ts
-  // planClockOut, shared with approved correction requests (0062).
-  const plan = planClockOut(
-    ((punchRows ?? []) as PunchRowLite[]).map((r) => ({
-      id: r.id,
-      staffId: r.staff_id,
-      punchType: r.punch_type,
-      punchedAt: r.punched_at,
-      timeEntryId: r.time_entry_id ?? undefined,
-    })),
-    { id: entry.id as string, staffId: entry.staff_id as string, day: entryDay },
-    punchedAt
-  );
-  if (!plan.ok) return NextResponse.json({ ok: false, error: plan.error }, { status: 409 });
-  const totals = plan;
-
-  const { error: insertError } = await supabase.schema("ops").from("time_punches").insert({
-    time_entry_id: entry.id,
-    staff_id: entry.staff_id,
-    punch_type: "clock_out",
-    punched_at: punchedAt.toISOString(),
-    location_status: "unavailable",
-    device_type: "unknown",
-    source: "adjustment",
-    adjustment_reason: reason,
-    adjusted_by: user.id,
+  const { data, error } = await db.schema("ops").rpc("time_punch_add", {
+    p_staff: staffId,
+    p_type: type,
+    p_at: at.toISOString(),
+    p_entry: entryId,
+    p_reason: reason,
+    p_actor: user.id,
   });
-  if (insertError) return NextResponse.json({ ok: false, error: insertError.message }, { status: 500 });
-
-  // `flag` is deliberately left alone. The day WAS a missed punch; that it has
-  // since been corrected is recorded by the adjustment punch, which says who
-  // supplied the time and why. Clearing the flag would erase that it happened.
-  const { error: summaryError } = await supabase
-    .schema("ops")
-    .from("time_entries")
-    .update({
-      clock_out: timeLabel(punchedAt),
-      total_minutes: totals.totalMinutes,
-      session_count: totals.sessionCount,
-    })
-    .eq("id", entry.id);
-  if (summaryError) {
-    return NextResponse.json(
-      { ok: false, error: `The correction was recorded, but the daily summary failed: ${summaryError.message}` },
-      { status: 500 }
-    );
-  }
-
-  return NextResponse.json({ ok: true, totalMinutes: totals.totalMinutes, clockOut: timeLabel(punchedAt) });
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: error.code === "42501" ? 403 : 409 });
+  const added = data as { punch_id: string; time_entry_id: string };
+  const warning = await refreshDay(db, added.time_entry_id);
+  return NextResponse.json({
+    ok: true,
+    timeEntryId: added.time_entry_id,
+    clockOut: type === "clock_out" ? timeLabel(at) : undefined,
+    warning: warning ? `The punch is added, but ${warning}.` : null,
+  });
 }

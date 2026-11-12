@@ -33,6 +33,7 @@ export const POWERS: { key: Power; title: string; note: string }[] = [
   { key: "confirm_summary", title: "Confirms the executive summary", note: "Approves the app's draft of each month's Key monthly drivers on the Executive page (the Super Admin always can)." },
   { key: "finance_setup", title: "Sets up Finance", note: "Financial Settings: the chart of accounts, codes, expense types, approval authority, cash funds, payees and withholding." },
   { key: "finance_export", title: "Exports for QuickBooks", note: "Downloads vouchers and their lists for QuickBooks, for any period." },
+  { key: "manage_punches", title: "Manages punches", note: "Sees everyone's punches; adds, changes and deletes them with a reason (logged), and decides missed clock-out requests. HR always can." },
 ];
 
 const p = (module: ModuleKey, key: string, path: string, title: string, power?: Power): PageDef => ({ key: `${module}.${key}`, module, path, title, power });
@@ -59,6 +60,7 @@ export const PAGES: PageDef[] = [
   p("transport", "report", "/transport/report", "Transport report"),
   p("staff", "home", "/staff", "Staff & Time"),
   p("staff", "dtr", "/staff/dtr", "Daily Time Record"),
+  p("staff", "punches", "/staff/punches", "Punches"),
   p("staff", "roster", "/staff/roster", "Roster"),
   p("staff", "timesheets", "/staff/timesheets", "Timesheets"),
   p("staff", "volunteers", "/staff/volunteers", "Volunteers"),

@@ -29,6 +29,26 @@ const manila = (iso: string) =>
  * approve or reject; everyone else sees their own and what became of them.
  * Pending first, then the latest decisions.
  */
+/** Approves or rejects a missed clock-out request (0062; those who manage punches, 0146), with the toasts. Also
+ * used on the Punches page. */
+export async function decideCorrection(id: string, decision: "approve" | "reject", note: string): Promise<boolean> {
+  try {
+    const res = (await (
+      await fetch("/api/dtr/corrections", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, decision, note }) })
+    ).json()) as { ok: boolean; error?: string };
+    if (!res.ok) {
+      toast.error(res.error ?? "Couldn't save the decision.");
+      return false;
+    }
+    toast.success(decision === "approve" ? "Approved; the clock-out is on the record." : "Rejected; they can ask again.");
+    await Promise.all([correctionRequestsStore.refetch(), timeEntriesStore.refetch(), invalidateTables([{ schema: "ops", table: "time_punches" }])]);
+    return true;
+  } catch {
+    toast.error("Couldn't reach the server.");
+    return false;
+  }
+}
+
 export function CorrectionRequestsPanel({ canDecide, myId, staffName }: { canDecide: boolean; myId: string | undefined; staffName: (id: string) => string }) {
   const { requests, loading } = useCorrectionRequests();
   const { data: entries } = useCollection(timeEntriesStore);
@@ -37,7 +57,7 @@ export function CorrectionRequestsPanel({ canDecide, myId, staffName }: { canDec
 
   if (loading && shown.length === 0) return <LoadingState />;
   if (!loading && shown.length === 0) {
-    return <EmptyState title="No correction requests" description="When someone reports a missed clock-out, it appears here for admins and HR to check." />;
+    return <EmptyState title="No correction requests" description="When someone reports a missed clock-out, it appears here for those who manage punches to check." />;
   }
   return (
     <div className="flex flex-col divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
@@ -67,21 +87,8 @@ function RequestCard({
 
   async function decide(decision: "approve" | "reject") {
     setBusy(true);
-    try {
-      const res = (await (
-        await fetch("/api/dtr/corrections", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id, decision, note }) })
-      ).json()) as { ok: boolean; error?: string };
-      if (!res.ok) {
-        toast.error(res.error ?? "Couldn't save the decision.");
-        return;
-      }
-      toast.success(decision === "approve" ? "Approved; the clock-out is on the record." : "Rejected; they can ask again.");
-      await Promise.all([correctionRequestsStore.refetch(), timeEntriesStore.refetch(), invalidateTables([{ schema: "ops", table: "time_punches" }])]);
-    } catch {
-      toast.error("Couldn't reach the server.");
-    } finally {
-      setBusy(false);
-    }
+    await decideCorrection(r.id, decision, note);
+    setBusy(false);
   }
 
   const s = STATUS[r.status];
