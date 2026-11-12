@@ -3,7 +3,10 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ChevronsUpDown, Copy } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { VoucherFiles } from "@/components/modules/requests/voucher-files";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -18,6 +21,37 @@ import { formatCurrency } from "@/lib/utils/currency";
 import { countedDay, fundAllows, PAY_LABEL, settledAdvances } from "@/lib/utils/vouchers";
 
 const NONE = "__none";
+
+/** An account found by typing its code or a word of its name (polish 3: ~150 accounts are too many to scroll). */
+function AccountPicker({ accounts, value, onChange, label, className }: { accounts: Record<string, unknown>[]; value: string | null; onChange: (id: string) => void; label: string; className?: string }) {
+  const [open, setOpen] = React.useState(false);
+  const current = accounts.find((a) => a.id === value);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" aria-label={label} className={`justify-between font-normal ${className ?? ""}`}>
+          <span className="truncate">{current ? `${String(current.code)} ${String(current.name)}` : "Account"}</span>
+          <ChevronsUpDown className="opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Code or name, e.g. 5303 or fuel" />
+          <CommandList>
+            <CommandEmpty>No usable account by that.</CommandEmpty>
+            <CommandGroup>
+              {accounts.map((a) => (
+                <CommandItem key={String(a.id)} value={`${String(a.code)} ${String(a.name)}`} onSelect={() => (onChange(String(a.id)), setOpen(false))}>
+                  {String(a.code)} {String(a.name)}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 /**
  * Finance prepares the voucher (Marivic's steps 3-4): checks the request, confirms the fund, the employee code
@@ -184,6 +218,18 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
             <span>Also flagged: {others.map((r) => r.replace(/_/g, " ")).join(", ")}. Tick once you have checked them against the papers.</span>
           </label>
         ) : null}
+        {history ? null : (
+          <details className="rounded-xl border border-border px-3 py-2 text-theme-sm" open>
+            <summary className="cursor-pointer font-medium">Receipts and papers</summary>
+            <div className="pt-2"><VoucherFiles voucherId={voucher.id} canAttach={false} /></div>
+          </details>
+        )}
+        {lines.length > 1 ? (
+          <Button type="button" variant="outline" size="sm" className="self-start" disabled={!coding[0]?.account_id}
+            onClick={() => setCoding((c) => c.map((x) => ({ ...x, account_id: c[0].account_id, t1_id: c[0].t1_id, t3_id: c[0].t3_id })))}>
+            <Copy /> Use item 1&apos;s coding for every item
+          </Button>
+        ) : null}
         <div className="flex flex-col gap-3">
           {lines.map((l, n) => {
             const c = coding[n];
@@ -194,14 +240,7 @@ export function PrepareDialog({ voucher, lines, open, onOpenChange, history = fa
                   <span className="font-medium">{n + 1}. {l.description}{l.orNumber ? ` · OR ${l.orNumber}` : " · no OR number"}</span>
                   <span className="tabular-nums">{formatCurrency(l.amount, "PHP", true)}</span>
                 </div>
-                <Select value={c.account_id ?? ""} onValueChange={(v) => set(n, { account_id: v })}>
-                  <SelectTrigger className="w-full sm:col-span-6" aria-label={`Item ${n + 1}: account`}><SelectValue placeholder="Account" /></SelectTrigger>
-                  <SelectContent>
-                    {usable.map((a) => (
-                      <SelectItem key={String(a.id)} value={String(a.id)}>{String(a.code)} {String(a.name)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <AccountPicker accounts={usable} value={c.account_id} onChange={(v) => set(n, { account_id: v })} label={`Item ${n + 1}: account`} className="w-full sm:col-span-6" />
                 <Select value={c.t1_id ?? ""} onValueChange={(v) => set(n, { t1_id: v })}>
                   <SelectTrigger className="w-full sm:col-span-3" aria-label={`Item ${n + 1}: cost center`}><SelectValue placeholder="Cost center" /></SelectTrigger>
                   <SelectContent>

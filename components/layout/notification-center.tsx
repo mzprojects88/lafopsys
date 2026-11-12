@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { BedDouble, Bell, ClipboardList, CloudOff, Fuel, Mail, MapPin, PenLine, Receipt, Wrench, type LucideIcon } from "lucide-react";
 import { useCollection } from "@/lib/data/collection-store";
-import { advancesOpenStore, fundStatusStore, voucherQueueStore } from "@/lib/hooks/use-vouchers";
+import { advancesOpenStore, fundStatusStore, myRecentPaymentsStore, voucherQueueStore } from "@/lib/hooks/use-vouchers";
 import { budgetsStore } from "@/lib/hooks/use-budgets";
 import { useSetupRows } from "@/lib/hooks/use-finance-setup";
 import { budgetReminder } from "@/lib/utils/budgets";
 import { formatDate, todayIso } from "@/lib/utils/date";
+import { formatCurrency } from "@/lib/utils/currency";
 import { useOpenCaseRecords, usePlansDue } from "@/lib/hooks/use-case-files";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useHouseSheetPeople } from "@/lib/hooks/use-house-sheet-collection";
@@ -126,6 +127,7 @@ function RequestReminders({ funds: seesFunds, children }: { funds: boolean; chil
   const { staffId: me } = useRole();
   // Anyone may hold an advance, so everyone asks (it returns only their own; all of them for Finance).
   const { data: advances } = useCollection(advancesOpenStore);
+  const { data: paid } = useCollection(myRecentPaymentsStore);
   const { data: all } = useCollection(voucherQueueStore);
   const queue = all.filter((q) => q.step !== "returned");
   const returned = all.filter((q) => q.step === "returned");
@@ -135,6 +137,9 @@ function RequestReminders({ funds: seesFunds, children }: { funds: boolean; chil
   if (returned.length)
     out.push({ id: "requests-returned", title: `${returned.length} of your requests ${returned.length === 1 ? "was" : "were"} sent back`, body: "Read why, change it and send it again.", href: returned.length === 1 ? `/requests/${returned[0].voucherId}` : "/requests", icon: Receipt });
   const soon = new Date(Date.parse(`${todayIso()}T00:00:00Z`) + 3 * 86_400_000).toISOString().slice(0, 10);
+  // 0143: their own requests paid in the last 7 days.
+  for (const p of paid)
+    out.push({ id: `paid-${p.voucherId}`, title: `${p.number} was paid`, body: `${formatCurrency(p.amount, "PHP", true)} released ${formatDate(p.releasedAt)}.`, href: `/requests/${p.voucherId}`, icon: Receipt });
   // Not yet liquidated: no liquidation sent (none, a draft, or one sent back).
   const mine = advances.filter((a) => a.requestedBy === me && [null, "draft", "returned"].includes(a.liquidationStatus) && a.due <= soon);
   if (mine.length)

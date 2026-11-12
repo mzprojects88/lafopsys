@@ -215,6 +215,13 @@ export const advancesOpenStore = rpcStore<OpenAdvance>("advances_open", (r) => (
   overdue: Boolean(r.overdue), liquidationId: s(r.liquidation_id), liquidationStatus: s(r.liquidation_status),
 }), ["vouchers", "finance_settings"]);
 
+/** The caller's own requests paid in the last 7 days (0143), for their bell. */
+export const myRecentPaymentsStore = rpcStore<{ voucherId: string; number: string; amount: number; releasedAt: string }>(
+  "my_recent_payments",
+  (r) => ({ voucherId: String(r.voucher_id), number: String(r.number), amount: num(r.amount), releasedAt: String(r.released_at) }),
+  ["vouchers"]
+);
+
 export function useVouchers() {
   const { data: vouchers, loading } = useCollection(vouchersStore);
   const { data: lines, loading: linesLoading } = useCollection(voucherLinesStore);
@@ -258,13 +265,17 @@ export interface DraftHeader {
 export const saveVoucher = (id: string | null, header: DraftHeader, lines: DraftLine[]) => call<string>("voucher_save", { p_id: id, p_voucher: header, p_lines: lines });
 /** submit, endorse, review, approve, return, reject, cancel or discard; returns the new status. */
 export const actOnVoucher = (id: string, action: string, note?: string) => call<string>("voucher_act", { p_id: id, p_action: action, p_note: note ?? null });
-/** The same step for several requests (the weekly approval): each signed by the database's rules on its own; the
- * data refreshed once. Returns how many went through and the first refusal. */
-export async function actOnVouchers(ids: string[], action: string): Promise<{ done: number; failed: number; firstError: string | null }> {
-  const results = await Promise.all(ids.map((id) => createClient().schema("ops").rpc("voucher_act", { p_id: id, p_action: action, p_note: null })));
+/** Several requests signed at once (the weekly approval, a payment run): each at its own step, by the database's
+ * rules on its own (approval through voucher_act, payment approval and release through voucher_pay); the data
+ * refreshed once. Returns how many went through and the first refusal. */
+export async function signVouchers(items: { id: string; step: "approve" | "approve_payment" | "release" }[]): Promise<{ done: number; failed: number; firstError: string | null }> {
+  const db = createClient().schema("ops");
+  const results = await Promise.all(
+    items.map((i) => (i.step === "approve" ? db.rpc("voucher_act", { p_id: i.id, p_action: "approve", p_note: null }) : db.rpc("voucher_pay", { p_id: i.id, p_action: i.step })))
+  );
   await refresh();
   const failed = results.filter((r) => r.error);
-  return { done: ids.length - failed.length, failed: failed.length, firstError: failed[0]?.error?.message ?? null };
+  return { done: items.length - failed.length, failed: failed.length, firstError: failed[0]?.error?.message ?? null };
 }
 /** Finance prepares: the fund, the employee code and each line's coding; returns the voucher number. */
 export const prepareVoucher = (id: string, t2Id: string, t4StaffId: string | null, lines: { id: string; account_id: string | null; t1_id: string | null; t3_id: string | null }[], note?: string, payeeId?: string | null, payMethod?: Voucher["payMethod"]) =>

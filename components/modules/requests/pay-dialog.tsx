@@ -24,7 +24,16 @@ const TITLE: Record<PayStep, string> = { prepare_payment: "Prepare the payment",
 export function PayDialog({ voucher, step, settles, open, onOpenChange }: { voucher: Voucher; step: PayStep; /** A liquidation's change (+) or overspend (−). */ settles?: number; open: boolean; onOpenChange: (o: boolean) => void }) {
   const { data: accounts } = useSetupRows("coa_accounts");
   const cash = accounts.filter((a) => String(a.code ?? "").startsWith("11") && !a.is_header && a.active !== false && !a.review_note);
-  const [account, setAccount] = React.useState("");
+  // The account last used for this payment method, on this device (a convenience; the database checks the account).
+  const remembered = `laf.payFrom.${voucher.payMethod}`;
+  const [account, setAccount] = React.useState(() => {
+    try {
+      return localStorage.getItem(remembered) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const accountShown = cash.some((a) => a.id === account) ? account : "";
   const [reference, setReference] = React.useState("");
   const [note, setNote] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -35,9 +44,16 @@ export function PayDialog({ voucher, step, settles, open, onOpenChange }: { vouc
 
   async function go() {
     setBusy(true);
-    const r = await payVoucher(voucher.id, step, asksAccount ? account : null, reference, note);
+    const r = await payVoucher(voucher.id, step, asksAccount ? accountShown : null, reference, note);
     setBusy(false);
     if (!r.ok) return void toast.error(r.error);
+    if (asksAccount && step === "prepare_payment") {
+      try {
+        localStorage.setItem(remembered, accountShown);
+      } catch {
+        // Private windows may refuse storage; the next payment just starts empty.
+      }
+    }
     toast.success(r.value === "released" ? "Released: posted to the cash book" : "Done");
     onOpenChange(false);
   }
@@ -59,7 +75,7 @@ export function PayDialog({ voucher, step, settles, open, onOpenChange }: { vouc
           {asksAccount ? (
             <Field>
               <FieldLabel>{step === "release" ? (settles! > 0 ? "Account the change goes into" : "Account the overspend is paid from") : "Paid from"}</FieldLabel>
-              <Select value={account} onValueChange={setAccount}>
+              <Select value={accountShown} onValueChange={setAccount}>
                 <SelectTrigger className="w-full"><SelectValue placeholder="Pick the cash or bank account" /></SelectTrigger>
                 <SelectContent>
                   {cash.map((a) => <SelectItem key={String(a.id)} value={String(a.id)}>{String(a.code)} {String(a.name)}</SelectItem>)}
@@ -81,7 +97,7 @@ export function PayDialog({ voucher, step, settles, open, onOpenChange }: { vouc
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={busy || (asksAccount && !account) || (asksReference && !reference.trim())} onClick={() => void go()}>
+          <Button disabled={busy || (asksAccount && !accountShown) || (asksReference && !reference.trim())} onClick={() => void go()}>
             {busy ? "Saving…" : voucher.kind === "liquidation" && step === "release" ? "Settle" : TITLE[step].replace(" the payment", "")}
           </Button>
         </DialogFooter>

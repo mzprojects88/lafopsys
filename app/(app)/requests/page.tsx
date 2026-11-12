@@ -18,7 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCollection } from "@/lib/data/collection-store";
-import { actOnVouchers, createTopUp, fundStatusStore, useVouchers, voucherFilesStore, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
+import { signVouchers, createTopUp, fundStatusStore, useVouchers, voucherFilesStore, type Voucher, type VoucherLine } from "@/lib/hooks/use-vouchers";
 import { toast } from "sonner";
 import { useSetupRows } from "@/lib/hooks/use-finance-setup";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
@@ -94,20 +94,24 @@ function RequestsContent() {
     return s ? `${s.firstName} ${s.lastName}` : "";
   };
   const waitingIds = new Set(queue.map((q) => q.voucherId));
-  // The weekly approval (polish 2): the approver ticks several and approves them at once.
-  const toApprove = new Set(queue.filter((q) => q.step === "approve").map((q) => q.voucherId));
+  // The weekly approval and a payment run (polish 2, 3): the signer ticks several and signs them at once. A
+  // liquidation that settles money is released on its own (it asks for an account).
+  const stepOf = new Map(queue.filter((q) => q.step === "approve" || q.step === "approve_payment" || q.step === "release").map((q) => [q.voucherId, q.step as "approve" | "approve_payment" | "release"]));
+  const toApprove = new Set([...stepOf.keys()].filter((id) => !(stepOf.get(id) === "release" && vouchers.find((v) => v.id === id)?.kind === "liquidation")));
+  const SIGN_WORD = { approve: "approve", approve_payment: "approve the payment of", release: "release" } as const;
   const [picked, setPicked] = React.useState<Set<string>>(new Set());
   const [approving, setApproving] = React.useState(false);
   async function approvePicked() {
     const flagged = pickedNow.filter((id) => { const v = vouchers.find((x) => x.id === id); return v && flags(v).some((x) => x === "missing_or" || x === "no_attachment"); }).length;
     const sum = formatCurrency(shown.filter((v) => pickedNow.includes(v.id)).reduce((s, v) => s + v.total, 0), "PHP", true);
-    if (!confirm(`Approve ${pickedNow.length} request${pickedNow.length === 1 ? "" : "s"} for ${sum}?${flagged ? ` ${flagged} ${flagged === 1 ? "has" : "have"} an item without an OR number or no attachment.` : ""}`)) return;
+    const counts = (["approve", "approve_payment", "release"] as const).map((st) => [st, pickedNow.filter((id) => stepOf.get(id) === st).length] as const).filter(([, n]) => n > 0);
+    if (!confirm(`${counts.map(([st, n]) => `${SIGN_WORD[st][0].toUpperCase()}${SIGN_WORD[st].slice(1)} ${n}`).join(", ")} (${sum} in all)?${flagged ? ` ${flagged} ${flagged === 1 ? "has" : "have"} an item without an OR number or no attachment.` : ""}`)) return;
     setApproving(true);
-    const r = await actOnVouchers(pickedNow, "approve");
+    const r = await signVouchers(pickedNow.map((id) => ({ id, step: stepOf.get(id)! })));
     setApproving(false);
     setPicked(new Set());
-    if (r.failed) toast.error(`${r.done} approved; ${r.failed} not: ${r.firstError}`);
-    else toast.success(`${r.done} approved`);
+    if (r.failed) toast.error(`${r.done} signed; ${r.failed} not: ${r.firstError}`);
+    else toast.success(`${r.done} signed`);
   }
   const linesOf = React.useMemo(() => {
     const m = new Map<string, VoucherLine[]>();
@@ -271,10 +275,10 @@ function RequestsContent() {
 
       {tab === "waiting" && approvable.length ? (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-theme-sm">
-          <span>{pickedNow.length ? `${pickedNow.length} picked · ${formatCurrency(shown.filter((v) => pickedNow.includes(v.id)).reduce((s, v) => s + v.total, 0), "PHP", true)}` : `${approvable.length} waiting for your approval`}</span>
+          <span>{pickedNow.length ? `${pickedNow.length} picked · ${formatCurrency(shown.filter((v) => pickedNow.includes(v.id)).reduce((s, v) => s + v.total, 0), "PHP", true)}` : `${approvable.length} waiting for your signature`}</span>
           {pickedNow.length ? (
             <>
-              <Button size="sm" disabled={approving} onClick={() => void approvePicked()}>{approving ? "Approving…" : `Approve ${pickedNow.length}`}</Button>
+              <Button size="sm" disabled={approving} onClick={() => void approvePicked()}>{approving ? "Signing…" : `Sign ${pickedNow.length}`}</Button>
               <Button size="sm" variant="ghost" onClick={() => setPicked(new Set())}>Clear</Button>
             </>
           ) : (

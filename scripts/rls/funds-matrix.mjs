@@ -41,7 +41,7 @@ try {
   await c.query("begin");
   // 0139 changed advances_open's columns; re-applying 0138 over a database that has 0139 needs it gone first.
   await c.query("drop function if exists ops.advances_open()");
-  for (const m of ["0138_funds_advances_ewt.sql", "0139_payment_books_quickbooks.sql", "0140_finance_picks_fund_ledger.sql", "0142_finance_sets_pay_method.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${m}`, import.meta.url), "utf8"));
+  for (const m of ["0138_funds_advances_ewt.sql", "0139_payment_books_quickbooks.sql", "0140_finance_picks_fund_ledger.sql", "0142_finance_sets_pay_method.sql", "0143_my_recent_payments.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${m}`, import.meta.url), "utf8"));
   const ids = (await c.query(`select
     (select id from shared.staff where role = 'admin' and active order by id limit 1) admin1,
     (select id from shared.staff where role = 'admin' and active order by id offset 1 limit 1) admin2,
@@ -271,6 +271,9 @@ try {
     (r) => r.ok && r.rows[0].m && r.rows[0].linked);
   await step("the same debit can't serve another voucher", ids.finance, `select ops.voucher_bank_match($1, $2)`, [liq3, tx], refused("23514"), false);
   await step("unmatching frees the debit", ids.finance, `select ops.voucher_bank_match($1, null), (select matched_cash_entry_id is null from ops.bank_transactions where id = $2) freed`, [reim, tx], (r) => r.ok, false);
+  // 0143: the requester's bell.
+  await step("the driver hears that their reimbursement was paid (2,000 by check)", ids.driver, `select count(*)::int n, bool_or(voucher_id = $1 and amount = 2000) it from ops.my_recent_payments()`, [reim], (r) => r.ok && r.rows[0].it === true);
+  await step("... and Finance doesn't get the driver's payments as its own", ids.finance, `select count(*)::int n from ops.my_recent_payments() where voucher_id = $1`, [reim], (r) => r.ok && r.rows[0].n === 0);
   await step("the funds page is seeded: Finance edits, the CEO views", null, `select string_agg(role || '=' || level, ',' order by role) s from shared.role_page_access where page = 'finance.funds'`, [],
     (r) => r.ok && /finance=edit/.test(r.rows[0].s) && /ceo=view/.test(r.rows[0].s));
 } finally {

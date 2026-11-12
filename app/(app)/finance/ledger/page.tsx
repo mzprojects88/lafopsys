@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Download, ListTree, Wallet } from "lucide-react";
+import { Download, ListTree, Printer, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
@@ -55,7 +55,7 @@ function LedgerContent() {
   const { data: payees } = useSetupRows("payees");
   const { staff } = useStaffRoster();
   const period = usePeriodPresets("ledger", "this_month", true);
-  const [view, setView] = React.useState<"accounts" | "items">("accounts");
+  const [view, setView] = React.useState<"summary" | "accounts" | "items">("accounts");
   const [basis, setBasis] = React.useState<Basis>("voucher");
   const [query, setQuery] = React.useState("");
   const [minAmount, setMinAmount] = React.useState("");
@@ -173,6 +173,14 @@ function LedgerContent() {
     downloadCsv(csvLines(header, rows), `ledger-${w ? `${w.from}-to-${w.to}` : "all"}.csv`);
   }
 
+  // Print the shown vouchers together for filing (one sheet a page), up to 50 at a time.
+  const printable = [...new Set(shown.map((r) => r.v.id))];
+  const PRINT_MAX = 50;
+  function printVouchers() {
+    if (printable.length > PRINT_MAX && !confirm(`${printable.length} vouchers match; the first ${PRINT_MAX} print now. Narrow the filters for the rest.`)) return;
+    window.open(`/requests/print?ids=${printable.slice(0, PRINT_MAX).join(",")}`, "_blank", "noopener");
+  }
+
   if (loading && vouchers.length === 0) return <LoadingState />;
 
   return (
@@ -181,12 +189,15 @@ function LedgerContent() {
         title="Ledger"
         description="Every request and voucher by its codes, from the request to the payment. Filter by account, cost center, program, fund, employee, payee and dates."
         action={
-          canExport ? (
-            <>
-              <Button variant="outline" onClick={exportCsv}><Download /> CSV</Button>
-              <Button variant="outline" onClick={() => setExporting(true)}><Download /> QuickBooks</Button>
-            </>
-          ) : null
+          <>
+            {printable.length ? <Button variant="outline" onClick={printVouchers}><Printer /> Print vouchers ({Math.min(printable.length, PRINT_MAX)})</Button> : null}
+            {canExport ? (
+              <>
+                <Button variant="outline" onClick={exportCsv}><Download /> CSV</Button>
+                <Button variant="outline" onClick={() => setExporting(true)}><Download /> QuickBooks</Button>
+              </>
+            ) : null}
+          </>
         }
       />
       {exporting ? <QuickBooksExport from={w?.from ?? "2000-01-01"} to={w?.to ?? todayIso()} vouchers={vouchers} open={exporting} onOpenChange={setExporting} /> : null}
@@ -228,14 +239,58 @@ function LedgerContent() {
         <ClearFilters active={f.active + (query ? 1 : 0) + (minAmount ? 1 : 0) + (maxAmount ? 1 : 0)} onClear={() => (f.clear(), setQuery(""), setMinAmount(""), setMaxAmount(""))} />
       </div>
 
-      <Tabs value={view} onValueChange={(v) => setView(v as "accounts" | "items")}>
+      <Tabs value={view} onValueChange={(v) => setView(v as "summary" | "accounts" | "items")}>
         <TabsList>
+          <TabsTrigger value="summary">Summary</TabsTrigger>
           <TabsTrigger value="accounts">By account</TabsTrigger>
           <TabsTrigger value="items">All items</TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {view === "items" ? (
+      {view === "summary" ? (
+        <SectionCard flush title="Totals by account" description="Pick an account to see its items.">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] text-theme-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-theme-xs text-muted-foreground">
+                  <th className="h-9 px-4 font-medium">Account</th>
+                  <th className="h-9 px-4 text-right font-medium">Items</th>
+                  <th className="h-9 px-4 text-right font-medium">Gross</th>
+                  <th className="h-9 px-4 text-right font-medium">Withheld</th>
+                  <th className="h-9 px-4 text-right font-medium">Net</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sections.map((rows) => {
+                  const t = ledgerTotals(rows.map((r) => r.l));
+                  const id = rows[0].l.accountId;
+                  return (
+                    <tr key={id ?? rows[0].l.legacyCode ?? "none"} className={`border-b border-border last:border-0 ${id ? "cursor-pointer hover:bg-muted/40" : ""}`}
+                      onClick={() => { if (id) { f.set("account")(id); setView("accounts"); } }}>
+                      <td className="px-4 py-2 font-medium">{accountName(id, rows[0].l.legacyCode)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{rows.length}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{peso(t.gross)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{t.ewt ? peso(t.ewt) : "—"}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{peso(t.net)}</td>
+                    </tr>
+                  );
+                })}
+                {sections.length ? (
+                  <tr className="border-t border-border font-semibold">
+                    <td className="px-4 py-2">Total</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{shown.length}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{peso(sum.gross)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{peso(sum.ewt)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{peso(sum.net)}</td>
+                  </tr>
+                ) : (
+                  <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">No items match.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      ) : view === "items" ? (
         <DataTable columns={columns} data={shown} onRowClick={(r) => router.push(`/requests/${r.v.id}`)} emptyMessage="No items match." />
       ) : sections.length === 0 ? (
         <p className="py-8 text-center text-theme-sm text-muted-foreground">No items match.</p>
