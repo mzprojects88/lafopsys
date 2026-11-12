@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { CheckCircle2, Plus } from "lucide-react";
+import { CheckCircle2, Copy, Plus, Printer } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { SectionCard } from "@/components/patterns/section-card";
 import { EmptyState } from "@/components/patterns/empty-state";
@@ -15,7 +15,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { approveBudget, removeBudgetItem, reviseBudget, saveBudgetItem, startBudget, useBudgets, type BudgetItem } from "@/lib/hooks/use-budgets";
+import { approveBudget, copyBudget, removeBudgetItem, reviseBudget, saveBudgetItem, startBudget, useBudgets, type BudgetItem } from "@/lib/hooks/use-budgets";
 import { useSetupRows } from "@/lib/hooks/use-finance-setup";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { useProgramImpact } from "@/lib/hooks/use-program-impact";
@@ -118,6 +118,16 @@ export default function BudgetsPage() {
   }
 
   const groups = [...new Set(shownItems.map((i) => i.t3Id ?? ORG))];
+  // The latest approved budget of an earlier year, to start this one from (0145).
+  const earlier = budgets.filter((b) => b.status === "approved" && b.year < year).sort((a, b) => b.year - a.year || b.version - a.version)[0];
+  async function startFrom() {
+    if (!earlier) return;
+    setBusy(true);
+    const r = await copyBudget(earlier.id, year);
+    setBusy(false);
+    if (!r.ok) return void toast.error(r.error);
+    toast.success(`Started from the ${earlier.year} budget: adjust it, then the CEO approves it`);
+  }
   const name = (id: string | null) => {
     const s = id ? staff.find((x) => x.id === id) : null;
     return s ? `${s.firstName} ${s.lastName}` : "—";
@@ -130,14 +140,14 @@ export default function BudgetsPage() {
         description="The year's budget by program: the items, with a quantity and an amount each month. Finance and the CEO key it in; only the CEO approves it. Next year's budget is due before January 1."
         action={
           <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-            <SelectTrigger className="w-32" aria-label="Year"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-32 print:hidden" aria-label="Year"><SelectValue /></SelectTrigger>
             <SelectContent>
               {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
             </SelectContent>
           </Select>
         }
       />
-      <Tabs value={tab} onValueChange={(v) => setTab(v as "budget" | "actual")}>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as "budget" | "actual")} className="print:hidden">
         <TabsList>
           <TabsTrigger value="budget">Budget</TabsTrigger>
           <TabsTrigger value="actual">Budget vs actual</TabsTrigger>
@@ -148,7 +158,14 @@ export default function BudgetsPage() {
         <EmptyState
           title={tab === "actual" ? `No approved budget for ${year}` : `No budget for ${year} yet`}
           description={tab === "actual" ? "Budget vs actual compares once the CEO has approved the year's budget." : editor ? "Start it, then add the items of each program." : "Finance or the CEO keys it in."}
-          action={tab === "budget" && editor ? <Button disabled={busy} onClick={async () => { setBusy(true); const r = await startBudget(year); setBusy(false); if (!r.ok) toast.error(r.error); }}><Plus /> Start the {year} budget</Button> : undefined}
+          action={
+            tab === "budget" && editor ? (
+              <div className="flex flex-wrap justify-center gap-2">
+                {earlier ? <Button disabled={busy} onClick={() => void startFrom()}><Copy /> Start from the {earlier.year} budget</Button> : null}
+                <Button variant={earlier ? "outline" : "default"} disabled={busy} onClick={async () => { setBusy(true); const r = await startBudget(year); setBusy(false); if (!r.ok) toast.error(r.error); }}><Plus /> Start the {year} budget empty</Button>
+              </div>
+            ) : undefined
+          }
         />
       ) : (
         <SectionCard
@@ -163,10 +180,15 @@ export default function BudgetsPage() {
                 {shown.status === "approved" && editor && !draft ? <Button size="sm" variant="outline" onClick={() => setRevising(true)}>Revise</Button> : null}
               </div>
             ) : (
-              <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
-                <SelectTrigger className="w-32" aria-label="Month"><SelectValue /></SelectTrigger>
-                <SelectContent>{MONTHS.map((m, i) => <SelectItem key={m} value={String(i + 1)}>{m}</SelectItem>)}</SelectContent>
-              </Select>
+              <div className="flex items-center gap-2">
+                {/* On paper: the month in words (the picker and the button stay on screen). */}
+                <span className="hidden text-theme-sm font-medium print:inline">{MONTHS[month - 1]} {year}</span>
+                <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
+                  <SelectTrigger className="w-32 print:hidden" aria-label="Month"><SelectValue /></SelectTrigger>
+                  <SelectContent>{MONTHS.map((m, i) => <SelectItem key={m} value={String(i + 1)}>{m}</SelectItem>)}</SelectContent>
+                </Select>
+                <Button size="sm" variant="outline" className="print:hidden" onClick={() => window.print()}><Printer /> Print</Button>
+              </div>
             )
           }
           flush

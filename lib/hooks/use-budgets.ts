@@ -121,4 +121,6 @@ export const saveBudgetItem = async (id: string | null, item: Omit<BudgetItem, "
   }), [budgetItemsStore, budgetValuesStore]);
 export const removeBudgetItem = async (id: string) => done(await ops().from("budget_items").delete().eq("id", id), [budgetItemsStore, budgetValuesStore]);
 export const approveBudget = async (id: string) => done(await ops().rpc("budget_approve", { p_id: id }), [budgetsStore]);
+/** A year with no budget starts as a copy of an earlier year's approved one (ops.budget_copy, 0145). */
+export const copyBudget = async (fromId: string, year: number) => done<string>(await ops().rpc("budget_copy", { p_from: fromId, p_year: year }), [budgetsStore, budgetItemsStore, budgetValuesStore]);
 export const reviseBudget = async (id: string, reason: string) => done<string>(await ops().rpc("budget_revise", { p_id: id, p_reason: reason }), [budgetsStore, budgetItemsStore, budgetValuesStore]);

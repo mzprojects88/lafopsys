@@ -1,4 +1,4 @@
-// The 0137 pre-flight (goals and budgets), on the development database and ALWAYS rolled back: applies the
+// The 0137 + 0145 pre-flight (goals and budgets), on the development database and ALWAYS rolled back: applies the
 // migration in a transaction and proves who reads and writes goals, who keys in, approves and revises budgets, and
 // that an approved budget is locked.
 //   node --env-file=.env.local scripts/rls/budget-matrix.mjs
@@ -37,7 +37,7 @@ const val = (r) => (r.ok ? Object.values(r.rows[0])[0] : undefined);
 
 try {
   await c.query("begin");
-  await c.query(readFileSync(new URL("../../supabase/migrations/0137_budgets_goals.sql", import.meta.url), "utf8"));
+  for (const m of ["0137_budgets_goals.sql", "0145_budget_copy.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${m}`, import.meta.url), "utf8"));
   const ids = (await c.query(`select
     (select id from shared.staff where active and role = 'admin' and 'ceo' = any(extra_roles) limit 1) ceo,
     (select id from shared.staff where active and role = 'admin' and not ('ceo' = any(extra_roles)) limit 1) admin,
@@ -56,9 +56,9 @@ try {
   await step("the Super Admin reads and edits goals", ids.admin, `update ops.goals set narrative = 'Three more rooms' where id = $1 returning id`, [g], (r) => r.ok && r.n === 1);
 
   // Budgets.
-  const b = val(await step("Finance starts the 2027 budget (a draft)", ids.finance, `insert into ops.budgets (year) values (2027) returning id`, [], (r) => r.ok));
-  await step("only one draft a year", ids.finance, `insert into ops.budgets (year, version) values (2027, 2)`, [], refused("23505"), false);
-  await step("Finance can't insert an approved budget", ids.finance, `insert into ops.budgets (year, version, status, approved_at) values (2028, 1, 'approved', now())`, [], refused("42501"), false);
+  const b = val(await step("Finance starts a test year's budget (2091; real years stay untouched) (a draft)", ids.finance, `insert into ops.budgets (year) values (2091) returning id`, [], (r) => r.ok));
+  await step("only one draft a year", ids.finance, `insert into ops.budgets (year, version) values (2091, 2)`, [], refused("23505"), false);
+  await step("Finance can't insert an approved budget", ids.finance, `insert into ops.budgets (year, version, status, approved_at) values (2092, 1, 'approved', now())`, [], refused("42501"), false);
   const item = val(await step("Finance adds an item: Housing, patients and carers housed", ids.finance, `insert into ops.budget_items (budget_id, t3_id, label, unit, measure) values ($1, $2, 'Patients and carers housed', 'people-nights', 'housing') returning id`, [b, hsg], (r) => r.ok));
   await step("... with quantity and amount per month", ids.finance, `insert into ops.budget_values (item_id, month, quantity, amount) select $1, m, 300, 45000 from generate_series(1, 12) m`, [item], (r) => r.ok && r.n === 12);
   await step("a driver can't read budgets", ids.driver, `select count(*)::int n from ops.budgets`, [], (r) => r.ok && r.rows[0].n === 0);
@@ -72,10 +72,10 @@ try {
   const rev = val(await step("Finance revises with a reason: a new draft version, copied", ids.finance, `select ops.budget_revise($1, 'Care Cart grows in March') id`, [b], (r) => r.ok));
   await step("... version 2 holds the copied item and its 12 months", null, `select b.version, (select count(*)::int from ops.budget_values v join ops.budget_items i on i.id = v.item_id where i.budget_id = b.id) n from ops.budgets b where b.id = $1`, [rev], (r) => r.ok && r.rows[0].version === 2 && r.rows[0].n === 12);
   await step("the CEO approves the revision: version 1 is superseded", ids.ceo, `select ops.budget_approve($1)`, [rev], (r) => r.ok);
-  await step("... one approved version stands for 2027", null, `select string_agg(version || '=' || status, ',' order by version) s from ops.budgets where year = 2027`, [], (r) => r.ok && r.rows[0].s === "1=superseded,2=approved");
+  await step("... one approved version stands for 2027", null, `select string_agg(version || '=' || status, ',' order by version) s from ops.budgets where year = 2091`, [], (r) => r.ok && r.rows[0].s === "1=superseded,2=approved");
   // Saving in one step (code review, 12 Nov): all of an item or a goal, or none of it.
   const months = (amount) => JSON.stringify(Array.from({ length: 12 }, (_, m) => ({ quantity: 10, amount: m === 5 ? amount : 100 })));
-  const d3 = val(await step("Finance starts 2028", ids.finance, `insert into ops.budgets (year) values (2028) returning id`, [], (r) => r.ok));
+  const d3 = val(await step("Finance starts 2028", ids.finance, `insert into ops.budgets (year) values (2092) returning id`, [], (r) => r.ok));
   await step("an item with a negative month is refused whole: no item left behind", ids.finance,
     `select ops.budget_save_item(null, $1::jsonb, $2::jsonb)`, [JSON.stringify({ budget_id: d3, t3_id: hsg, label: "Meals", measure: "meals" }), months(-5)], refused("23514"), false);
   await step("... the draft still has no items", null, `select count(*)::int n from ops.budget_items where budget_id = $1`, [d3], (r) => r.ok && r.rows[0].n === 0);
@@ -89,6 +89,16 @@ try {
   await step("the CEO saves a goal and its targets at once; a bad target refuses all of it", ids.ceo,
     `select ops.goal_save($1, '{"title":"House more families","horizon":3,"start_year":2027,"program_id":"prog-housing","measure":"housing"}'::jsonb, '[{"year":2027,"target":-1}]'::jsonb)`, [g], refused("23514"), false);
   await step("... the earlier targets are still there", null, `select count(*)::int n from ops.goal_targets where goal_id = $1`, [g], (r) => r.ok && r.rows[0].n === 3);
+  // 0145: a new year starts from an earlier year's approved budget.
+  await step("a driver can't copy a budget", ids.driver, `select ops.budget_copy($1, 2094)`, [rev], refused("42501"), false);
+  await step("a draft can't be copied", ids.finance, `select ops.budget_copy($1, 2094)`, [d3], refused("23514"), false);
+  await step("nor into an earlier year", ids.finance, `select ops.budget_copy($1, 2090)`, [rev], refused("23514"), false);
+  await step("nor into a year already started", ids.finance, `select ops.budget_copy($1, 2092)`, [rev], refused("23514"), false);
+  const cp = val(await step("Finance starts 2030 from 2027's approved budget", ids.finance, `select ops.budget_copy($1, 2094) id`, [rev], (r) => r.ok));
+  await step("... a draft with the same items and their 12 months", null,
+    `select b.status, b.version, (select count(*)::int from ops.budget_items where budget_id = b.id) items, (select count(*)::int from ops.budget_values v join ops.budget_items i on i.id = v.item_id where i.budget_id = b.id) months,
+            (select count(*)::int from ops.budget_items where budget_id = $2) source_items from ops.budgets b where b.id = $1`, [cp, rev],
+    (r) => r.ok && r.rows[0].status === "draft" && r.rows[0].version === 1 && r.rows[0].items === r.rows[0].source_items && r.rows[0].months === r.rows[0].items * 12);
   await step("the due-date settings default to 31 December, 30 days' notice", null, `select budget_due_month, budget_due_day, budget_remind_days from ops.finance_settings`, [], (r) => r.ok && r.rows[0].budget_due_month === 12 && r.rows[0].budget_due_day === 31 && r.rows[0].budget_remind_days === 30);
 } finally {
   await c.query("rollback");

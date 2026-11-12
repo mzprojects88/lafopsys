@@ -19,7 +19,10 @@ import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { dayKey } from "@/lib/utils/dtr";
-import { quarterOf, SPENDING } from "@/lib/utils/vouchers";
+import { quarterOf, settlement, SPENDING } from "@/lib/utils/vouchers";
+import { FundSetupDialog } from "@/components/modules/finance/fund-setup-dialog";
+import { useRole } from "@/lib/rbac/use-role";
+import { holdsPower } from "@/lib/rbac/roles";
 
 const peso = (n: number) => formatCurrency(n, "PHP", true);
 
@@ -37,6 +40,10 @@ export default function FundsPage() {
   const { data: payees } = useSetupRows("payees");
   const { staff } = useStaffRoster();
   const [busy, setBusy] = React.useState<string | null>(null);
+  // Whoever sets up Finance sets a fund up on its card (polish 5).
+  const { roles } = useRole();
+  const setsUp = holdsPower(roles, "finance_setup");
+  const [settingUp, setSettingUp] = React.useState<string | null>(null);
 
   const name = (id: string) => {
     const s = staff.find((x) => x.id === id);
@@ -64,6 +71,19 @@ export default function FundsPage() {
     return m.set(r.payeeId, r);
   }, new Map<string, { payeeId: string; base: number; tax: number; atcs: Set<string> }>()).values()];
 
+  // A fund's slips paid out and not yet refilled (their top-up not yet released), and a top-up on its way.
+  const net = (v: { total: number; ewtTotal: number }) => v.total - v.ewtTotal;
+  const openSlips = (fundId: string) =>
+    vouchers
+      .filter((v) => v.fundId === fundId && v.kind !== "fund_topup" && v.status === "released" && (!v.replenishedBy || byId.get(v.replenishedBy)?.status !== "released"))
+      .sort((a, b) => (b.releasedAt ?? "").localeCompare(a.releasedAt ?? ""));
+  const topUpOnWay = (fundId: string) => vouchers.find((v) => v.fundId === fundId && v.kind === "fund_topup" && !["released", "rejected", "cancelled"].includes(v.status));
+  // Advances settled by a released liquidation: what was advanced, spent and returned or reimbursed (latest 50).
+  const settled = vouchers
+    .filter((v) => v.kind === "liquidation" && v.status === "released" && v.advanceOf && byId.has(v.advanceOf))
+    .sort((a, b) => (b.releasedAt ?? "").localeCompare(a.releasedAt ?? ""))
+    .slice(0, 50);
+
   async function topUp(fundId: string) {
     setBusy(fundId);
     const r = await createTopUp(fundId);
@@ -89,10 +109,30 @@ export default function FundsPage() {
                   tone={f.low ? "warning" : "default"}
                   sublabel={`${f.float == null ? "No float set yet" : `of ${peso(f.float)}`} · ${f.openCount} open slip${f.openCount === 1 ? "" : "s"} (${peso(f.openAmount)})${f.topUpPending ? " · a top-up is on its way" : f.low ? " · below the top-up point" : ""}`}
                 />
-                {canEdit("finance") ? (
-                  <Button variant={f.low ? "default" : "outline"} size="sm" disabled={busy === f.fundId || f.toRefill === 0} onClick={() => void topUp(f.fundId)}>
-                    Top up
-                  </Button>
+                <div className="flex gap-2">
+                  {canEdit("finance") ? (
+                    <Button className="flex-1" variant={f.low ? "default" : "outline"} size="sm" disabled={busy === f.fundId || f.toRefill === 0} onClick={() => void topUp(f.fundId)}>
+                      Top up
+                    </Button>
+                  ) : null}
+                  {setsUp ? <Button variant="ghost" size="sm" onClick={() => setSettingUp(f.fundId)}>Set up</Button> : null}
+                </div>
+                {openSlips(f.fundId).length || topUpOnWay(f.fundId) ? (
+                  <details className="rounded-xl border border-border px-3 py-2 text-theme-sm">
+                    <summary className="cursor-pointer text-theme-xs font-medium text-muted-foreground">Slips not yet refilled ({openSlips(f.fundId).length})</summary>
+                    <ul className="mt-2 flex flex-col gap-1">
+                      {openSlips(f.fundId).map((v) => (
+                        <li key={v.id} className="flex justify-between gap-2 text-theme-xs">
+                          <Link className="text-primary hover:underline" href={`/requests/${v.id}`}>{v.voucherNumber ?? v.requestNumber}</Link>
+                          <span className="text-muted-foreground">{v.releasedAt ? formatDate(v.releasedAt) : ""}</span>
+                          <span className="tabular-nums">{peso(net(v))}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {topUpOnWay(f.fundId) ? (
+                      <p className="mt-2 text-theme-xs">Top-up on its way: <Link className="text-primary hover:underline" href={`/requests/${topUpOnWay(f.fundId)!.id}`}>{topUpOnWay(f.fundId)!.voucherNumber ?? topUpOnWay(f.fundId)!.requestNumber ?? "draft"}</Link></p>
+                    ) : null}
+                  </details>
                 ) : null}
               </div>
             ))}
@@ -101,6 +141,8 @@ export default function FundsPage() {
           <p className="text-theme-sm text-muted-foreground">No fund in use: set them up in Financial Settings › Funds.</p>
         )}
       </SectionCard>
+
+      {settingUp ? <FundSetupDialog key={settingUp} fundId={settingUp} open onOpenChange={(o) => !o && setSettingUp(null)} /> : null}
 
       <SectionCard flush title="Cash advances to liquidate" description="Advances paid out and not yet settled by a liquidation, due within the days set in Financial Settings from the day they were paid.">
         <div className="overflow-x-auto">
@@ -134,6 +176,43 @@ export default function FundsPage() {
           </table>
         </div>
       </SectionCard>
+
+      {settled.length ? (
+        <SectionCard flush title="Settled advances" description="Advances closed by their liquidation: what was advanced, what was spent, and the change returned or the overspend reimbursed. The latest 50.">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-theme-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-theme-xs text-muted-foreground">
+                  <th className="h-10 px-4 font-medium">Advance</th>
+                  <th className="h-10 px-4 font-medium">Requested by</th>
+                  <th className="h-10 px-4 text-right font-medium">Advanced</th>
+                  <th className="h-10 px-4 font-medium">Liquidation</th>
+                  <th className="h-10 px-4 text-right font-medium">Spent</th>
+                  <th className="h-10 px-4 font-medium">Settled</th>
+                </tr>
+              </thead>
+              <tbody>
+                {settled.map((l) => {
+                  const a = byId.get(l.advanceOf!)!;
+                  const left = settlement(a.total, net(l));
+                  return (
+                    <tr key={l.id} className="border-b border-border last:border-0">
+                      <td className="px-4 py-2.5"><Link className="text-primary hover:underline" href={`/requests/${a.id}`}>{a.voucherNumber ?? a.requestNumber}</Link></td>
+                      <td className="px-4 py-2.5">{a.requestedBy ? name(a.requestedBy) : "—"}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{peso(a.total)}</td>
+                      <td className="px-4 py-2.5"><Link className="text-primary hover:underline" href={`/requests/${l.id}`}>{l.voucherNumber ?? l.requestNumber}</Link></td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{peso(net(l))}</td>
+                      <td className="px-4 py-2.5">
+                        {l.releasedAt ? formatDate(l.releasedAt) : ""} · {left.kind === "even" ? "spent exactly" : `${peso(left.amount)} ${left.kind === "return" ? "returned" : "reimbursed"}`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      ) : null}
 
       <SectionCard
         flush

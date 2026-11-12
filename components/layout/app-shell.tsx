@@ -33,18 +33,21 @@ function Frame({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-svh flex-col">
-      <AppSidebar />
-      <div className={cn("flex min-h-svh min-w-0 flex-1 flex-col transition-[margin] duration-200 ease-out", expanded ? "lg:ml-[290px]" : "lg:ml-[90px]")}>
-        <Topbar onSearchClick={openPalette} />
-        <Header onSearchClick={openPalette} />
-        <main className="mx-auto flex w-full max-w-(--breakpoint-2xl) flex-1 flex-col gap-4 px-4 pt-4 pb-24 lg:gap-6 lg:px-6 lg:pt-6 lg:pb-10">
+      {/* A printed page shows the page only, without the menus and bars (polish 5). */}
+      <div className="contents print:hidden"><AppSidebar /></div>
+      <div className={cn("flex min-h-svh min-w-0 flex-1 flex-col transition-[margin] duration-200 ease-out print:ml-0", expanded ? "lg:ml-[290px]" : "lg:ml-[90px]")}>
+        <div className="contents print:hidden">
+          <Topbar onSearchClick={openPalette} />
+          <Header onSearchClick={openPalette} />
+        </div>
+        <main className="mx-auto flex w-full max-w-(--breakpoint-2xl) flex-1 flex-col gap-4 px-4 pt-4 pb-24 lg:gap-6 lg:px-6 lg:pt-6 lg:pb-10 print:p-0">
           <ShiftReminder />
           <MissedClockOutPrompt />
           <ClockInGate>
             <ModuleGate>{children}</ModuleGate>
           </ClockInGate>
         </main>
-        <BottomNav />
+        <div className="contents print:hidden"><BottomNav /></div>
       </div>
       <CommandPalette externalOpen={paletteOpen} onExternalOpenChange={setPaletteOpen} />
     </div>
