@@ -155,6 +155,10 @@ try {
   await step("... is tied to the petty cash fund", null, `select f.kind from ops.vouchers v join ops.cash_funds f on f.id = v.fund_id where v.id = $1`, [pc], (r) => r.ok && r.rows[0]?.kind === "petty_cash");
   await step("... sent, endorsed and prepared: a PCV number", ids.sw, `select ops.voucher_act($1, 'submit')`, [pc], (r) => r.ok);
   await step("... endorsed", ids.office, `select ops.voucher_act($1, 'endorse')`, [pc], (r) => r.ok);
+  await c.query("savepoint pcgcash");
+  await step("petty cash stays petty cash, whatever method is sent (0142)", ids.finance, `select ops.voucher_prepare($1, $2, null, '[]'::jsonb, null, null, 'gcash') n`, [pc, ids.unr], (r) => r.ok && /^PCV-/.test(r.rows[0].n));
+  await step("... its payment method unchanged", null, `select pay_method from ops.vouchers where id = $1`, [pc], (r) => r.ok && r.rows[0].pay_method !== "gcash");
+  await c.query("rollback to savepoint pcgcash");
   await step("... prepared as PCV", ids.finance, `select ops.voucher_prepare($1, $2, null, '[]'::jsonb) n`, [pc, ids.unr], (r) => r.ok && /^PCV-/.test(val(r)));
   await step("a similar request (same OR number) is counted", ids.sw, `select ops.voucher_similar($1) n`, [pc], (r) => r.ok && r.rows[0].n >= 1);
 

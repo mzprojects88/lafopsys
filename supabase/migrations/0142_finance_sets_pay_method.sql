@@ -59,7 +59,7 @@ begin
   end if;
   -- 0142: Finance keeps the requester's payment method or changes it (it decides PV or GCV); a liquidation and
   -- petty cash are what they are.
-  if p_pay_method is not null then
+  if p_pay_method is not null and v.kind not in ('liquidation', 'petty_cash') then
     if p_pay_method not in ('cash', 'check', 'bank_transfer', 'gcash') then
       raise exception 'Pick how it is paid.' using errcode = '23514';
     end if;

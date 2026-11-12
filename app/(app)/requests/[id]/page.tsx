@@ -47,8 +47,6 @@ export default function RequestDetailPage() {
   const router = useRouter();
   const { staffId: me } = useRole();
   const { canEdit, canView } = useModuleAccess();
-  // Codes are Finance's (polish 2): a requester reads the plain expense type.
-  const seesCodes = canView("finance");
   const { data: types } = useSetupRows("expense_types");
   const { vouchers, lines: allLines, events: allEvents, queue, loading, linesLoading } = useVouchers();
   const { data: codes } = useSetupRows("fin_codes");
@@ -85,6 +83,8 @@ export default function RequestDetailPage() {
   const code = (cid: string | null) => String(codes.find((c) => c.id === cid)?.code ?? "");
   const account = (aid: string | null) => accounts.find((a) => a.id === aid);
   const mine = v.requestedBy === me;
+  // Codes are Finance's and the signers' (polish 2): a requester outside Finance reads the plain expense type.
+  const seesCodes = canView("finance") || !mine;
   const editable = mine && (v.status === "draft" || v.status === "returned") && v.source === "app" && v.kind !== "fund_topup";
   const sendTopUp = mine && v.kind === "fund_topup" && (v.status === "draft" || v.status === "returned");
   const queued = queue.find((q) => q.voucherId === v.id)?.step ?? null;

@@ -14,6 +14,7 @@ import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/fi
 import { VoucherStatusBadge } from "@/components/modules/requests/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCollection } from "@/lib/data/collection-store";
@@ -97,8 +98,10 @@ function RequestsContent() {
   const toApprove = new Set(queue.filter((q) => q.step === "approve").map((q) => q.voucherId));
   const [picked, setPicked] = React.useState<Set<string>>(new Set());
   const [approving, setApproving] = React.useState(false);
-  const pickedNow = [...picked].filter((id) => toApprove.has(id));
   async function approvePicked() {
+    const flagged = pickedNow.filter((id) => { const v = vouchers.find((x) => x.id === id); return v && flags(v).some((x) => x === "missing_or" || x === "no_attachment"); }).length;
+    const sum = formatCurrency(shown.filter((v) => pickedNow.includes(v.id)).reduce((s, v) => s + v.total, 0), "PHP", true);
+    if (!confirm(`Approve ${pickedNow.length} request${pickedNow.length === 1 ? "" : "s"} for ${sum}?${flagged ? ` ${flagged} ${flagged === 1 ? "has" : "have"} an item without an OR number or no attachment.` : ""}`)) return;
     setApproving(true);
     const r = await actOnVouchers(pickedNow, "approve");
     setApproving(false);
@@ -169,27 +172,33 @@ function RequestsContent() {
   const active = f.active;
 
   const numberOf = (v: Voucher) => v.voucherNumber ?? v.legacyNumber ?? v.requestNumber ?? "Draft";
+  // What can be picked is what is on screen: a search or a filter never leaves hidden picks behind.
+  const approvable = shown.filter((v) => toApprove.has(v.id)).map((v) => v.id);
+  const pickedNow = approvable.filter((id) => picked.has(id));
   const requestColumns: ColumnDef<Voucher>[] = [
-    ...(tab === "waiting" && toApprove.size
-      ? [
-          {
-            id: "pick",
-            header: () => <input type="checkbox" aria-label="Pick every request to approve" checked={toApprove.size > 0 && pickedNow.length === toApprove.size} onChange={(e) => setPicked(e.target.checked ? new Set(toApprove) : new Set())} />,
-            enableSorting: false,
-            cell: ({ row }: { row: { original: Voucher } }) =>
-              toApprove.has(row.original.id) ? (
-                <input type="checkbox" aria-label={`Pick ${row.original.voucherNumber ?? row.original.requestNumber} to approve`} checked={picked.has(row.original.id)} onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => setPicked((p) => { const n = new Set(p); if (e.target.checked) n.add(row.original.id); else n.delete(row.original.id); return n; })} />
-              ) : null,
-          } satisfies ColumnDef<Voucher>,
-        ]
-      : []),
     { id: "number", header: "No.", accessorFn: numberOf, cell: ({ row }) => <span className="font-medium tabular-nums">{numberOf(row.original)}</span> },
     { id: "date", header: BASIS[basis], accessorFn: (v) => dateOf(v) ?? "", cell: ({ row }) => formatDate(dateOf(row.original)) },
     { id: "purpose", header: "For", accessorFn: (v) => v.purpose, cell: ({ row }) => <span className="line-clamp-2 max-w-72">{row.original.purpose}</span> },
     { id: "requester", header: "Requested by", accessorFn: (v) => name(v.requestedBy) || v.payeeText || "" },
     { id: "amount", header: "Amount", accessorFn: amountOf, cell: ({ row }) => <span className="tabular-nums">{formatCurrency(amountOf(row.original), "PHP", true)}</span> },
     { id: "status", header: "Status", accessorFn: (v) => v.status, cell: ({ row }) => <VoucherStatusBadge status={row.original.status} /> },
+    // Last, so a phone's card keeps the request number as its title.
+    ...(tab === "waiting" && approvable.length
+      ? [
+          {
+            id: "pick",
+            header: () => <Checkbox aria-label="Pick every request shown to approve" checked={pickedNow.length === approvable.length} onCheckedChange={(on) => setPicked(on ? new Set(approvable) : new Set())} />,
+            enableSorting: false,
+            cell: ({ row }: { row: { original: Voucher } }) =>
+              toApprove.has(row.original.id) ? (
+                <span onClick={(e) => e.stopPropagation()}>
+                  <Checkbox aria-label={`Pick ${row.original.voucherNumber ?? row.original.requestNumber} to approve`} checked={picked.has(row.original.id)}
+                    onCheckedChange={(on) => setPicked((p) => { const n = new Set(p); if (on) n.add(row.original.id); else n.delete(row.original.id); return n; })} />
+                </span>
+              ) : null,
+          } satisfies ColumnDef<Voucher>,
+        ]
+      : []),
     {
       id: "waiting",
       header: "Waiting",
@@ -260,11 +269,17 @@ function RequestsContent() {
         />
       </div>
 
-      {tab === "waiting" && pickedNow.length ? (
+      {tab === "waiting" && approvable.length ? (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-theme-sm">
-          <span>{pickedNow.length} picked · {formatCurrency(shown.filter((v) => pickedNow.includes(v.id)).reduce((s, v) => s + v.total, 0), "PHP", true)}</span>
-          <Button size="sm" disabled={approving} onClick={() => void approvePicked()}>{approving ? "Approving…" : `Approve ${pickedNow.length}`}</Button>
-          <Button size="sm" variant="ghost" onClick={() => setPicked(new Set())}>Clear</Button>
+          <span>{pickedNow.length ? `${pickedNow.length} picked · ${formatCurrency(shown.filter((v) => pickedNow.includes(v.id)).reduce((s, v) => s + v.total, 0), "PHP", true)}` : `${approvable.length} waiting for your approval`}</span>
+          {pickedNow.length ? (
+            <>
+              <Button size="sm" disabled={approving} onClick={() => void approvePicked()}>{approving ? "Approving…" : `Approve ${pickedNow.length}`}</Button>
+              <Button size="sm" variant="ghost" onClick={() => setPicked(new Set())}>Clear</Button>
+            </>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setPicked(new Set(approvable))}>Pick all {approvable.length}</Button>
+          )}
         </div>
       ) : null}
       <DataTable columns={requestColumns} data={shown} onRowClick={(v) => router.push(`/requests/${v.id}`)} emptyMessage={tab === "waiting" ? "Nothing waits for you." : "No requests match."} />

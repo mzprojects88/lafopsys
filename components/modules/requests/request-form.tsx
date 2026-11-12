@@ -112,13 +112,13 @@ export function RequestForm({ voucher, lines }: { voucher?: Voucher; lines?: Vou
   const set = <K extends keyof DraftHeader>(k: K, v: DraftHeader[K]) => setHeader((h) => ({ ...h, [k]: v }));
   // A liquidation: what is left of its advance as the items are typed.
   const advance = voucher?.advanceOf ? vouchers.find((x) => x.id === voucher.advanceOf) : undefined;
-  const left = advance ? settlement(advance.total, total) : null;
+  const left = advance ? settlement(advance.total, total - (voucher?.ewtTotal ?? 0)) : null;
   // What Send still needs, named here rather than refused by the server one at a time.
   const missing = [
     ...(header.purpose.trim() ? [] : ["what it is for"]),
     ...(header.kind === "supplier" && !toPerson && !header.payee_id ? ["the supplier"] : []),
     ...(toPerson && !header.recipient_category_id ? ["who the person is"] : []),
-    ...(toPerson && !header.recipient_name?.trim() && !header.patient_id ? ["the name of the person paid"] : []),
+    ...(toPerson && !header.recipient_name?.trim() && !(category?.kind === "patient" && readsPatients && header.patient_id) ? ["the name of the person paid"] : []),
     ...(header.urgent && !header.urgent_reason?.trim() ? ["why it is urgent"] : []),
     ...items.flatMap((i, n) => {
       const gaps = [!i.expense_type_id && (labelOf(i) ? "who it serves" : "what it is"), !i.description.trim() && "a description", !(Number(i.qty) > 0) && "the quantity", (i.unit_cost === "" || Number(i.unit_cost) < 0) && "the unit cost"].filter(Boolean);
