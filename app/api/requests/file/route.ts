@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { deleteObject, presignGet, putObject } from "@/lib/files/b2";
 import { sanitiseSegment } from "@/lib/utils/file-paths";
+import { decodeDataUrl, tooLarge } from "@/lib/files/data-url";
 
 export const dynamic = "force-dynamic";
 
@@ -10,20 +11,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const KINDS = ["receipt", "invoice", "quotation", "proof", "other"] as const;
 /** Under Vercel's 4.5 MB request limit once base64-encoded. */
 const MAX_BYTES = 3 * 1024 * 1024;
-const TYPES: Record<string, (b: Uint8Array) => boolean> = {
-  "image/jpeg": (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
-  "image/png": (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47,
-  "application/pdf": (b) => b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46,
-};
-
-/** The bytes of a data URL of an accepted type, checked by its first bytes, not just its label. */
-function decode(value: unknown): { bytes: Uint8Array; type: string } | null {
-  if (typeof value !== "string") return null;
-  const m = /^data:(image\/jpeg|image\/png|application\/pdf);base64,([A-Za-z0-9+/=]+)$/.exec(value);
-  if (!m || m[2].length > Math.ceil((MAX_BYTES * 4) / 3) + 4) return null;
-  const bytes = Uint8Array.from(Buffer.from(m[2], "base64"));
-  return bytes.length > 0 && bytes.length <= MAX_BYTES && TYPES[m[1]](bytes) ? { bytes, type: m[1] } : null;
-}
+const TYPES = ["image/jpeg", "image/png", "application/pdf"];
 
 async function caller() {
   const supabase = await createClient();
@@ -41,12 +29,13 @@ async function caller() {
 export async function POST(request: Request) {
   const { supabase, user } = await caller();
   if (!user) return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
+  if (tooLarge(request, MAX_BYTES)) return NextResponse.json({ ok: false, error: "Attach a photo (JPG or PNG) or a PDF of up to 3 MB." }, { status: 413 });
   const body = (await request.json().catch(() => null)) as { voucherId?: unknown; kind?: unknown; fileName?: unknown; data?: unknown } | null;
   const voucherId = typeof body?.voucherId === "string" && UUID_RE.test(body.voucherId) ? body.voucherId : null;
   const kind = KINDS.find((k) => k === body?.kind) ?? null;
   const fileName = typeof body?.fileName === "string" ? sanitiseSegment(body.fileName) : null;
   if (!voucherId || !kind || !fileName) return NextResponse.json({ ok: false, error: "Bad request." }, { status: 400 });
-  const file = decode(body?.data);
+  const file = decodeDataUrl(body?.data, TYPES, MAX_BYTES);
   if (!file) return NextResponse.json({ ok: false, error: "Attach a photo (JPG or PNG) or a PDF of up to 3 MB." }, { status: 400 });
 
   const { data: may } = await supabase.schema("ops").rpc("voucher_can_attach", { p_id: voucherId });

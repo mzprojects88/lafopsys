@@ -5,32 +5,38 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchAll } from "@/lib/supabase/fetch-all";
 import { presignGet } from "@/lib/files/b2";
 import { amountInWords } from "@/lib/utils/amount-words";
+import { DEFAULT_VOUCHER_CERTIFICATION } from "@/lib/utils/documents";
 import { nameFormat, titleFor } from "@/lib/utils/staff-name";
-import { PAY_LABEL, STATUS_LABEL, type VoucherStatus } from "@/lib/utils/vouchers";
+import { KIND_LABEL, PAY_LABEL, STATUS_LABEL, type VoucherKind, type VoucherStatus } from "@/lib/utils/vouchers";
 
 /** The LAF sky blue of the logo (0149). */
 const BRAND = "#39B6EA";
 const TITLE: Record<string, string> = { PV: "Payment Voucher", PCV: "Petty Cash Voucher", GCV: "GCash Fund Voucher", JV: "Journal Voucher (liquidation)" };
-/** The signatures in the order they happen; the first two print smaller (before Finance). */
+/** The signatures in the order they happen; the first two print smaller (before Finance). The payment steps don't
+ * apply to a voucher released straight after approval (a fund slip, a liquidation). */
 const SIGNS = [
   { action: "submit", label: "Requested by", small: true },
   { action: "endorse", label: "Endorsed by", small: true },
   { action: "prepare", label: "Prepared by" },
   { action: "review", label: "Reviewed by" },
   { action: "approve", label: "Approved by" },
-  { action: "approve_payment", label: "Payment approved by" },
+  { action: "prepare_payment", label: "Payment prepared by", payment: true },
+  { action: "approve_payment", label: "Payment approved by", payment: true },
   { action: "release", label: "Released by" },
-];
+] as const;
+/** Stopped: printed VOID, with no signature image. */
+const STOPPED: Record<string, string> = { cancelled: "CANCELLED", rejected: "REJECTED" };
 const FILE_KIND: Record<string, string> = { receipt: "Receipt", invoice: "Invoice", quotation: "Quotation", proof: "Proof", other: "Other" };
-const CERTIFICATION = "I certify that this disbursement is for official Foundation purposes, is properly supported by documents, and is charged to the appropriate account.";
 const peso = (n: number) => `₱${n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 /** Manila time whatever the server's clock zone (12-hour, as every time in the apps). */
 const manila = (iso: string, withTime = true) =>
   new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", ...(withTime ? { hour: "numeric", minute: "2-digit" } : {}) }).format(new Date(iso));
+export const printedNow = () => manila(new Date().toISOString());
 
 // The rows as PostgREST returns them (the schema isn't typed for this client).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = any;
+type Ev = { action: string; actor: string | null; signer_text: string | null; at: string; source?: string };
 
 export interface Org {
   header: string;
@@ -39,6 +45,23 @@ export interface Org {
   certification: string;
   names: unknown;
 }
+
+/** A voucher's signature boxes: the steps of its latest round (all of a register voucher's), each with the event that
+ * signed it or none yet (a line left to sign by hand); the payment steps only when the voucher has them. */
+function boxes(v: Row, events: readonly Ev[]) {
+  const start = events.map((e) => e.action).lastIndexOf("submit");
+  // A voucher from the registers has no submit: its signatures are the register's.
+  const round = start < 0 ? events : events.slice(start);
+  const direct = v.kind === "liquidation" || (!!v.fund_id && v.kind !== "fund_topup");
+  return SIGNS.filter((s) => !("payment" in s) || !direct).map((s) => ({
+    ...s,
+    e: round.find((x) => x.action === s.action || (s.action === "endorse" && x.action === "skip_endorse")),
+  }));
+}
+
+/** Who may have their image on a voucher: the person who did a step IN ArkOS (source app), on a voucher not stopped.
+ * A register voucher's signer (source sheet) prints by name only, even when matched to a staff member. */
+const imageSigner = (v: Row, e: Ev | undefined) => (e && e.actor && e.source !== "sheet" && e.action !== "skip_endorse" && !STOPPED[v.status] ? e.actor : null);
 
 /** One label / value cell pair of the details grid, as on the paper. */
 function Cell({ label, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean }) {
@@ -53,23 +76,14 @@ function Cell({ label, children, wide = false }: { label: string; children: Reac
 /**
  * One voucher on A4 in the foundation's format with the LAF branding (0149): letterhead from Settings › Documents,
  * the sky-blue title band, the details, the items with their coding, the net in words, the papers attached, the
- * certification, and each signature from its history (latest round) with the signer's image when they did that step
- * in ArkOS; a register voucher shows the register's name only.
+ * certification, and the signature boxes: each signed step with the signer's own image when they did it in ArkOS,
+ * the steps still ahead as lines to sign. A cancelled or rejected voucher is marked VOID and carries no image.
  */
-export interface SheetContext {
-  lines: Row[]; events: Row[]; people: Row[]; codes: Row[]; accounts: Row[]; payees: Row[]; files: Row[];
-  signatures: Map<string, string>; org: Org; link: string; printedAt: string; place: string;
-}
-
 export function sheetFor(
   v: Row,
-  ctx: { lines: Row[]; events: Row[]; people: Row[]; codes: Row[]; accounts: Row[]; payees: Row[]; files: Row[]; signatures: Map<string, string>; org: Org; link: string; printedAt: string; place: string },
+  ctx: { lines: Row[]; events: Ev[]; people: Row[]; codes: Row[]; accounts: Row[]; payees: Row[]; files: Row[]; signatures: Map<string, string>; org: Org; link: string; printedAt: string; place: string },
 ) {
   const { lines, events, people, codes, accounts, payees, files, signatures, org } = ctx;
-  const evs = (events ?? []) as { action: string; actor: string | null; signer_text: string | null; at: string }[];
-  const start = evs.map((e) => e.action).lastIndexOf("submit");
-  // A voucher from the registers has no submit: its signatures are the register's.
-  const round = start < 0 ? evs : evs.slice(start);
   const person = (sid: string | null) => (people ?? []).find((x) => x.id === sid);
   const fullName = (sid: string | null) => ((p) => (p ? `${p.first_name} ${p.last_name}` : ""))(person(sid));
   const position = (sid: string | null) => titleFor(nameFormat(org.names, "voucher"), person(sid)?.position);
@@ -80,31 +94,38 @@ export function sheetFor(
   const ewt = Number(v.ewt_total ?? 0);
   const net = Number(v.total) - ewt;
   const atcs = [...new Set(items.filter((l) => l.ewt_atc).map((l) => `${l.ewt_atc} ${Number(l.ewt_rate)}%`))].join(", ");
-  const prepared = evs.filter((e) => e.action === "prepare").map((e) => e.at).sort().at(-1);
+  const prepared = events.filter((e) => e.action === "prepare").map((e) => e.at).sort().at(-1);
   const voucherDate = prepared ?? v.submitted_at ?? v.created_at;
   const fund = codeOf(v.t2_id);
-  const signs = SIGNS.map((s) => ({ ...s, e: round.find((x) => x.action === s.action || (s.action === "endorse" && x.action === "skip_endorse")) })).filter((s) => s.e);
+  const signs = boxes(v, events);
+  const stopped = STOPPED[v.status];
 
   const sign = (s: (typeof signs)[number]) => {
-    const e = s.e!;
-    const skipped = e.action === "skip_endorse";
-    const img = e.actor ? signatures.get(e.actor) : undefined;
+    const e = s.e;
+    const skipped = e?.action === "skip_endorse";
+    const signer = imageSigner(v, e);
+    const img = signer ? signatures.get(signer) : undefined;
     return (
       <div key={s.action} className="flex flex-col">
-        <div className={`flex items-end justify-center ${s.small ? "h-9" : "h-14"}`}>
-          {img && !skipped ? <img src={img} alt="" className="max-h-full max-w-[70%] object-contain" /> : null}
+        <div className={`flex items-end justify-center ${"small" in s ? "h-9" : "h-14"}`}>
+          {img ? <img src={img} alt="" className="max-h-full max-w-[70%] object-contain" /> : null}
         </div>
         <div className="border-t border-neutral-500 pt-1 text-center">
-          <p className="font-semibold uppercase">{skipped ? "Not needed" : fullName(e.actor) || e.signer_text || ""}</p>
-          {!skipped && position(e.actor) ? <p className="text-neutral-600">{position(e.actor)}</p> : null}
-          <p className="text-neutral-500">{s.label} · {manila(e.at)}</p>
+          <p className="min-h-[1.25em] font-semibold uppercase">{skipped ? "Not needed" : e ? fullName(e.actor) || e.signer_text || "" : ""}</p>
+          {e && !skipped && position(e.actor) ? <p className="text-neutral-600">{position(e.actor)}</p> : null}
+          <p className="text-neutral-500">{s.label}{e ? ` · ${manila(e.at)}` : " · date"}</p>
         </div>
       </div>
     );
   };
 
   return (
-    <article className="relative mx-auto bg-white p-8 text-[11px] leading-snug text-neutral-900 [print-color-adjust:exact] print:p-0">
+    <article className="relative mx-auto overflow-hidden bg-white p-8 text-[11px] leading-snug text-neutral-900 [print-color-adjust:exact] print:p-0">
+      {stopped ? (
+        <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-[96px] font-extrabold tracking-[0.15em] text-red-600/15 [transform:rotate(-28deg)]" aria-hidden>
+          VOID
+        </p>
+      ) : null}
       <header className="flex items-end justify-between gap-6 border-b-2 pb-3" style={{ borderColor: BRAND }}>
         <Image src="/logo/laf-horizontal.png" alt="Little Ark Foundation" width={230} height={42} priority />
         <div className="text-right">
@@ -115,15 +136,14 @@ export function sheetFor(
         </div>
       </header>
 
-      <div className="mt-3 flex items-center justify-between rounded-sm px-4 py-2 text-white" style={{ backgroundColor: BRAND }}>
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-sm px-4 py-2 text-white" style={{ backgroundColor: BRAND }}>
         <h1 className="text-[15px] font-bold tracking-wider uppercase">{v.voucher_type ? TITLE[v.voucher_type] : "Payment Request"}</h1>
-        <p className="text-[13px] font-semibold">No. {v.voucher_number ?? v.legacy_number ?? v.request_number}</p>
+        <div className="flex items-center gap-3">
+          {stopped ? <span className="rounded-sm border-2 border-white px-2 py-0.5 text-[12px] font-extrabold tracking-[0.15em]">VOID · {stopped}</span> : null}
+          {v.status === "released" ? <span className="rounded-sm border-2 border-white px-2 py-0.5 text-[12px] font-extrabold tracking-[0.15em]">PAID{v.released_at ? ` ${manila(v.released_at, false)}` : ""}</span> : null}
+          <p className="text-[13px] font-semibold">No. {v.voucher_number ?? v.legacy_number ?? v.request_number}</p>
+        </div>
       </div>
-      {v.status === "released" ? (
-        <p className="absolute top-28 right-10 rotate-[-6deg] rounded border-[3px] border-emerald-700 px-3 py-1 text-base font-extrabold tracking-[0.2em] text-emerald-700 opacity-90 print:right-2">
-          PAID{v.released_at ? ` ${manila(v.released_at, false)}` : ""}
-        </p>
-      ) : null}
 
       <section className="mt-3 grid grid-cols-[150px_1fr_110px_1fr] border-t border-l border-neutral-300">
         <Cell label="Voucher no.">{v.voucher_number ?? v.legacy_number ?? "—"}</Cell>
@@ -133,7 +153,9 @@ export function sheetFor(
         </Cell>
         <Cell label="Purpose / Payment for" wide>{v.purpose}</Cell>
         <Cell label="Type of funding">{fund ? fund.name || fund.code : "—"}</Cell>
+        <Cell label="Kind">{KIND_LABEL[v.kind as VoucherKind] ?? v.kind}</Cell>
         <Cell label="Pay by">{PAY_LABEL[v.pay_method as keyof typeof PAY_LABEL] ?? "—"}{v.pay_reference ? ` · ${v.pay_reference}` : ""}</Cell>
+        <Cell label="Employee (T4)">{v.t4_code ?? "—"}</Cell>
         <Cell label="Request no.">{v.request_number ?? "—"}</Cell>
         <Cell label="Status">{STATUS_LABEL[v.status as VoucherStatus]}{v.urgent ? " · Urgent" : ""}</Cell>
       </section>
@@ -192,15 +214,15 @@ export function sheetFor(
         </div>
       </section>
 
-      <p className="mt-3 rounded-sm border border-neutral-300 px-3 py-2 italic">Certification: {org.certification || CERTIFICATION}</p>
+      <p className="mt-3 rounded-sm border border-neutral-300 px-3 py-2 italic">Certification: {org.certification || DEFAULT_VOUCHER_CERTIFICATION}</p>
 
-      {signs.some((s) => s.small) ? <div className="mt-4 grid grid-cols-3 gap-6">{signs.filter((s) => s.small).map(sign)}</div> : null}
+      <div className="mt-4 grid grid-cols-3 gap-6">{signs.filter((s) => "small" in s).map(sign)}</div>
       <div className="mt-4 grid grid-cols-3 gap-6">
-        {signs.filter((s) => !s.small).map(sign)}
+        {signs.filter((s) => !("small" in s)).map(sign)}
         <div className="flex flex-col">
           <div className="h-14" />
           <div className="border-t border-neutral-500 pt-1 text-center">
-            <p className="font-semibold">&nbsp;</p>
+            <p className="min-h-[1.25em] font-semibold">&nbsp;</p>
             <p className="text-neutral-500">Received by · signature over printed name · date</p>
           </div>
         </div>
@@ -214,8 +236,9 @@ export function sheetFor(
   );
 }
 
-/** Five-minute links to these people's own signature images (read by the server; callers pass only signers). */
-export async function signatureLinks(staffIds: readonly string[]): Promise<Map<string, string>> {
+/** Five-minute links to these people's own signature images, read by the server. Private to this file: only the
+ * signers of printed boxes (loadVoucherSheets) reach it; the preview uses ownSignatureLink. */
+async function signatureLinks(staffIds: readonly string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   if (!staffIds.length) return out;
   const { data: sigs } = await createAdminClient().schema("shared").from("staff_signatures").select("staff_id, object_key, content_type").in("staff_id", [...staffIds]);
@@ -231,13 +254,30 @@ export async function signatureLinks(staffIds: readonly string[]): Promise<Map<s
   return out;
 }
 
+/** The signed-in person's own signature (read as them, RLS), for the preview. */
+export async function ownSignatureLink(): Promise<Map<string, string>> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const out = new Map<string, string>();
+  if (!user) return out;
+  const { data } = await supabase.schema("shared").from("staff_signatures").select("object_key, content_type").eq("staff_id", user.id).maybeSingle();
+  if (data) {
+    try {
+      out.set(user.id, await presignGet(data.object_key as string, "signature", data.content_type as string, true));
+    } catch {
+      // Storage not set up on this hosting.
+    }
+  }
+  return out;
+}
+
 export const SETTINGS_COLUMNS = "report_header, org_address, dswd_label, dswd_number, voucher_certification, document_names";
 export function orgFrom(settings: Row): Org {
   return {
     header: settings?.report_header ?? "",
     address: settings?.org_address ?? "",
     dswd: settings?.dswd_number ? `${settings.dswd_label ?? "DSWD Accreditation No."} ${settings.dswd_number}` : "",
-    certification: settings?.voucher_certification ?? CERTIFICATION,
+    certification: settings?.voucher_certification ?? DEFAULT_VOUCHER_CERTIFICATION,
     names: settings?.document_names ?? {},
   };
 }
@@ -245,12 +285,12 @@ export async function siteOrigin(): Promise<string> {
   const h = await headers();
   return `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
 }
-export const printedNow = () => manila(new Date().toISOString());
 
 /**
  * Payment requests or vouchers on paper (0134, 0139; several at once since polish 3; branded 0149): read under the
  * caller's RLS, so only what they can see prints (the rest is left out), in a handful of queries whatever the count.
- * Signature images: only those of the people who did a step on these vouchers, as five-minute private links.
+ * Signature images: only for the people in the boxes that print (in-app steps of the latest round, vouchers not
+ * stopped), as five-minute private links.
  */
 export async function loadVoucherSheets(ids: readonly string[]): Promise<{ id: string; sheet: React.ReactNode }[]> {
   const supabase = await createClient();
@@ -260,30 +300,29 @@ export async function loadVoucherSheets(ids: readonly string[]): Promise<{ id: s
   const vid = (found as Row[]).map((v) => v.id as string);
   const [lines, events, files, { data: codes }, { data: accounts }, { data: payees }, { data: settings }] = await Promise.all([
     fetchAll<Row>((from, to) => ops().from("voucher_lines").select("*").in("voucher_id", vid).order("voucher_id").order("sort").range(from, to)),
-    fetchAll<Row>((from, to) => ops().from("voucher_events").select("id, voucher_id, action, actor, signer_text, at").in("voucher_id", vid).order("at").order("id").range(from, to)),
+    fetchAll<Row>((from, to) => ops().from("voucher_events").select("id, voucher_id, action, actor, signer_text, at, source").in("voucher_id", vid).order("at").order("id").range(from, to)),
     fetchAll<Row>((from, to) => ops().from("voucher_files").select("id, voucher_id, kind, file_name").in("voucher_id", vid).order("voucher_id").order("id").range(from, to)),
     ops().from("fin_codes").select("id, code, name"),
     ops().from("coa_accounts").select("id, code, name"),
     ops().rpc("payee_choices"),
     supabase.schema("shared").from("app_settings").select(SETTINGS_COLUMNS).maybeSingle(),
   ]);
+  const byId = new Map((found as Row[]).map((v) => [v.id as string, v]));
+  const eventsOf = (id: string) => events.filter((e) => e.voucher_id === id) as Ev[];
   const actorIds = [...new Set([...(found as Row[]).map((v) => v.requested_by), ...events.map((e) => e.actor)].filter(Boolean))] as string[];
   const { data: people } = actorIds.length ? await supabase.schema("shared").from("staff").select("id, first_name, last_name, position").in("id", actorIds) : { data: [] };
-
-  // The signers' own images: read by the server (the viewer can already see these vouchers), signed for 5 minutes.
-  const signerIds = [...new Set(events.map((e) => e.actor).filter(Boolean))] as string[];
+  const signerIds = [...new Set((found as Row[]).flatMap((v) => boxes(v, eventsOf(v.id)).map((b) => imageSigner(v, b.e)).filter((x): x is string => !!x)))];
   const signatures = await signatureLinks(signerIds);
 
   const origin = await siteOrigin();
   const org = orgFrom(settings);
-  const printedAt = manila(new Date().toISOString());
-  const byId = new Map((found as Row[]).map((v) => [v.id as string, v]));
+  const printedAt = printedNow();
   const shown = ids.filter((id) => byId.has(id));
   return shown.map((id, i) => ({
     id,
     sheet: sheetFor(byId.get(id), {
       lines: lines.filter((l) => l.voucher_id === id),
-      events: events.filter((e) => e.voucher_id === id),
+      events: eventsOf(id),
       files: files.filter((f) => f.voucher_id === id),
       people: people ?? [],
       codes: codes ?? [],

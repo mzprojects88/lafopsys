@@ -1,5 +1,6 @@
 "use server";
 
+import { DEFAULT_VOUCHER_CERTIFICATION } from "@/lib/utils/documents";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { HrSettings } from "@/lib/hooks/use-app-settings";
@@ -460,7 +461,7 @@ export async function updateDocumentSettings(input: DocumentSettingsInput): Prom
   const cashReceiptTitle = clean(input.cashReceiptTitle, 60) || "Acknowledgement Receipt";
   const cashReceiptPurpose = clean(input.cashReceiptPurpose, 300);
   // 0149: the certification printed above the voucher's signatures.
-  const voucherCertification = clean(input.voucherCertification, 600) || "I certify that this disbursement is for official Foundation purposes, is properly supported by documents, and is charged to the appropriate account.";
+  const voucherCertification = clean(input.voucherCertification, 600) || DEFAULT_VOUCHER_CERTIFICATION;
   const signatoryId = typeof input.signatoryId === "string" && /^[0-9a-f-]{36}$/i.test(input.signatoryId) ? input.signatoryId : null;
   if (orgTin && !/^[0-9\-\s]{9,20}$/.test(orgTin)) return { ok: false, error: "TIN: 9 to 15 digits, dashes allowed." };
 

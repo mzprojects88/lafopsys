@@ -34,7 +34,6 @@ async function step(name, who, sql, params, expect, keep = true) {
   return r;
 }
 const refused = (code) => (r) => !r.ok && (!code || r.code === code);
-const one = async (sql, params = []) => Object.values((await c.query(sql, params)).rows[0])[0];
 const n = (want) => (r) => r.ok && r.rows[0].n === want;
 
 try {

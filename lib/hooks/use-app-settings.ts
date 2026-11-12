@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_VOUCHER_CERTIFICATION } from "@/lib/utils/documents";
 import { createClient } from "@/lib/supabase/client";
 import { placesFromSettings, type Place } from "@/lib/utils/places";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
@@ -129,7 +130,7 @@ const DEFAULTS: AppSettings = {
   transportPlaces: [],
   caseAiReading: false,
   bedMoves: { from: "07:00", until: "20:00" },
-  documents: { header: "", orgAddress: "", orgTin: "", signatoryId: null, names: {}, dswdLabel: "DSWD Accreditation No.", dswdNumber: "", cashReceiptTitle: "Acknowledgement Receipt", cashReceiptPurpose: "", voucherCertification: "I certify that this disbursement is for official Foundation purposes, is properly supported by documents, and is charged to the appropriate account." },
+  documents: { header: "", orgAddress: "", orgTin: "", signatoryId: null, names: {}, dswdLabel: "DSWD Accreditation No.", dswdNumber: "", cashReceiptTitle: "Acknowledgement Receipt", cashReceiptPurpose: "", voucherCertification: DEFAULT_VOUCHER_CERTIFICATION },
   admissions: { resetAt: "06:00", finalizeBy: "18:00", mealsBy: "20:00" },
   ...HR_SETTINGS_DEFAULTS,
 };
@@ -178,7 +179,7 @@ export const appSettingsStore = createCollection<AppSettings>({
       transportPlaces: placesFromSettings(row.transport_places),
       caseAiReading: row.case_ai_reading === true,
       bedMoves: { from: (row.bed_moves_from ?? "07:00").slice(0, 5), until: (row.bed_moves_until ?? "20:00").slice(0, 5) },
-      documents: { header: row.report_header ?? "", orgAddress: row.org_address ?? "", orgTin: row.org_tin ?? "", signatoryId: row.certificate_signatory_id ?? null, names: row.document_names ?? {}, dswdLabel: row.dswd_label ?? "DSWD Accreditation No.", dswdNumber: row.dswd_number ?? "", cashReceiptTitle: row.cash_receipt_title ?? "Acknowledgement Receipt", cashReceiptPurpose: row.cash_receipt_purpose ?? "", voucherCertification: row.voucher_certification ?? "I certify that this disbursement is for official Foundation purposes, is properly supported by documents, and is charged to the appropriate account." },
+      documents: { header: row.report_header ?? "", orgAddress: row.org_address ?? "", orgTin: row.org_tin ?? "", signatoryId: row.certificate_signatory_id ?? null, names: row.document_names ?? {}, dswdLabel: row.dswd_label ?? "DSWD Accreditation No.", dswdNumber: row.dswd_number ?? "", cashReceiptTitle: row.cash_receipt_title ?? "Acknowledgement Receipt", cashReceiptPurpose: row.cash_receipt_purpose ?? "", voucherCertification: row.voucher_certification ?? DEFAULT_VOUCHER_CERTIFICATION },
       admissions: { resetAt: (row.admission_reset_at ?? "06:00").slice(0, 5), finalizeBy: (row.admission_finalize_by ?? "18:00").slice(0, 5), mealsBy: (row.admission_meals_by ?? "20:00").slice(0, 5) },
     };
   },

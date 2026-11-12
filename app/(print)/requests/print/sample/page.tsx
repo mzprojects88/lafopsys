@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PrintButton } from "@/app/(print)/hr/payslips/[id]/print/print-button";
 import { createClient } from "@/lib/supabase/server";
-import { SETTINGS_COLUMNS, orgFrom, printedNow, sheetFor, signatureLinks, siteOrigin } from "@/components/modules/requests/voucher-sheet";
+import { SETTINGS_COLUMNS, orgFrom, ownSignatureLink, printedNow, sheetFor, siteOrigin } from "@/components/modules/requests/voucher-sheet";
 
 /** A sample time, some hours ago. */
 function at(hours: number): string {
@@ -25,7 +25,7 @@ export default async function VoucherPreviewPage() {
   const sample = { id: "sample-a", first_name: "Sample", last_name: "Signer", position: "Position" };
   const sheet = sheetFor(
     {
-      id: "sample", voucher_type: "PV", voucher_number: "PV-2026-0000", request_number: "PR-2026-0000", status: "released", released_at: at(1),
+      id: "sample", kind: "supplier", fund_id: null, voucher_type: "PV", voucher_number: "PV-2026-0000", request_number: "PR-2026-0000", status: "released", released_at: at(1),
       payee_text: "Sample Supplier, Inc.", purpose: "Sample: meals for staff during the accreditation meeting", pay_method: "check", pay_reference: "Check 000000",
       t2_id: null, total: 2300, ewt_total: 23, urgent: false, submitted_at: at(30), created_at: at(30),
     },
@@ -40,13 +40,15 @@ export default async function VoucherPreviewPage() {
         { action: "prepare", actor: user.id, signer_text: null, at: at(26) },
         { action: "review", actor: sample.id, signer_text: null, at: at(20) },
         { action: "approve", actor: sample.id, signer_text: null, at: at(10) },
+        { action: "prepare_payment", actor: sample.id, signer_text: null, at: at(6) },
+        { action: "approve_payment", actor: sample.id, signer_text: null, at: at(4) },
         { action: "release", actor: sample.id, signer_text: null, at: at(1) },
       ],
       people: [sample, me],
       codes: [], accounts: [], payees: [],
       files: [{ kind: "receipt", file_name: "sample-receipt.jpg" }],
       // Your own signature on "Prepared by", to see how it prints; the others are samples.
-      signatures: await signatureLinks([user.id]),
+      signatures: await ownSignatureLink(),
       org: orgFrom(settings),
       link: `${await siteOrigin()}/requests/…`,
       printedAt: printedNow(),
