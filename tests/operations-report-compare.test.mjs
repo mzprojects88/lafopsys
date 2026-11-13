@@ -42,6 +42,18 @@ it("a profile's comparisons choose the columns; its drawing drops the chart or t
   assert.ok(f.kpis.length > 0);
 });
 
+it("a part (gifts in kind: food) is in the boxes and the table but not the chart", () => {
+  const donations = { figures: [
+    { label: "Gifts in kind", value: 100, previous: 80, ytd: 900, unit: "PHP" },
+    { label: "Gifts in kind: food", value: 60, previous: 50, ytd: 500, unit: "PHP", part: true },
+    { label: "Gifts in kind: non-food", value: 40, previous: 30, ytd: 400, unit: "PHP", part: true },
+  ], rows: [] };
+  const s = operationsReport({ ...base, sections: ["donations"], extras: { donations }, totalsOnly: true }).spec.sections[0];
+  assert.equal(s.kpis.length, 3);
+  assert.equal(s.table.rows.length, 3);
+  assert.deepEqual(s.chart.series.map((x) => x.label), ["Gifts in kind"]);
+});
+
 it("the expenses section: by account and by fund, in the profile's order, with its title", () => {
   const expenses = {
     figures: [{ label: "Paid", value: 1000, previous: 500, ytd: 4000, unit: "PHP" }],

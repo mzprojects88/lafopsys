@@ -49,6 +49,8 @@ export interface Figure {
   goal?: number;
   /** A sum of other figures or a goal's row: left out of the chart. */
   derived?: boolean;
+  /** A part of the figure before it (e.g. gifts in kind: food): in the boxes and the table, not in the chart. */
+  part?: boolean;
 }
 
 /** How a profile draws a section (0150): the chart, sideways bars, the table without a chart, or the figures only. */
@@ -134,7 +136,7 @@ export function operationsReport(args: {
   const title = args.title || "Operations Report";
   const withNote = (heading: string, description: string) => (args.notes?.[heading] ? `${description} ${args.notes[heading]}` : description);
   // One scale a chart: the figures in the first one's unit, without sums and goal rows.
-  const twoBars = (figures: Figure[]) => ({ kind: "bar" as const, labels: [previousPeriod, period], series: figures.filter((f) => !f.derived && (f.unit ?? "") === (figures[0]?.unit ?? "")).map((f) => ({ label: f.label, values: [f.previous, f.value] })) });
+  const twoBars = (figures: Figure[]) => ({ kind: "bar" as const, labels: [previousPeriod, period], series: figures.filter((f) => !f.derived && !f.part && (f.unit ?? "") === (figures[0]?.unit ?? "")).map((f) => ({ label: f.label, values: [f.previous, f.value] })) });
   const ytdOf = (key: Parameters<typeof total>[1]) => total(ytdRows, key) + total(rows, key);
   // A goal counts as Executive › Goals counts it (the app's figure, else the sheet's).
   const asGoals = (rs: readonly ImpactRow[], lines: readonly string[]) => rs.filter((r) => lines.includes(r.line)).reduce((s, r) => s + (r.native || r.fromSheet), 0);
