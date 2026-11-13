@@ -43,6 +43,7 @@ export function ProfileEditor({ profile, funds, context, onClose, onSaved }: { p
     profile ?? { name: "", description: "", sections: ["headline", "housing"], charts: {}, comparisons: ["previous", "ytd", "goal"], columnsMode: "total", period: "this_month", fundCode: null, includeAi: true, graphs: defaultGraphs(["headline", "housing"]), sort: 100 },
   );
   const [busy, setBusy] = React.useState(false);
+  const [graphOpen, setGraphOpen] = React.useState(false);
   const set = <K extends keyof ProfileInput>(k: K, v: ProfileInput[K]) => setP((o) => ({ ...o, [k]: v }));
   const rest = GENERATOR_SECTIONS.filter((s) => !p.sections.includes(s.key));
 
@@ -106,7 +107,7 @@ export function ProfileEditor({ profile, funds, context, onClose, onSaved }: { p
             <p className="text-theme-xs text-muted-foreground">Money sections (Donations, Expenses) show only to those who may see them. A section&apos;s scorecard shows each figure&apos;s period, year to date and goal with the variance; by day, week or month it shows the figures over the period.</p>
           </section>
 
-          <GraphsEditor graphs={p.graphs} onChange={(g) => set("graphs", g)} sections={p.sections} comparisons={p.comparisons} context={context} />
+          <GraphsEditor graphs={p.graphs} onChange={(g) => set("graphs", g)} sections={p.sections} comparisons={p.comparisons} context={context} onEditingChange={setGraphOpen} />
 
           <section className="flex flex-col gap-2">
             <h3 className="text-theme-sm font-semibold">Comparisons</h3>
@@ -156,7 +157,7 @@ export function ProfileEditor({ profile, funds, context, onClose, onSaved }: { p
           {profile ? <Button variant="ghost" className="text-destructive" disabled={busy} onClick={() => void remove()}>Delete profile</Button> : <span />}
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button disabled={busy || p.name.trim().length < 2 || p.sections.length === 0} onClick={() => void save()}>{busy ? "Saving…" : "Save profile"}</Button>
+            <Button disabled={busy || graphOpen || p.name.trim().length < 2 || p.sections.length === 0} title={graphOpen ? "Keep or close the graph first" : undefined} onClick={() => void save()}>{busy ? "Saving…" : "Save profile"}</Button>
           </div>
         </DialogFooter>
       </DialogContent>

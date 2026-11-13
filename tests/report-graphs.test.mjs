@@ -56,6 +56,8 @@ it("the rules: one scale unless the rows carry their own; a list goes alone as a
   assert.equal(graphProblem(g({ type: "scorecard", measures: ["donations.cash", "donations.cash_count"] })), null);
   assert.match(graphProblem(g({ type: "pie", measures: ["expenses.by_account", "expenses.paid"], showBy: "breakdown" })), /alone/);
   assert.match(graphProblem(g({ type: "line", measures: ["expenses.paid"], showBy: "months" })), /month-by-month/);
+  assert.match(graphProblem(g({ type: "line", measures: ["caf.billed"], showBy: "over_time" })), /day, week or month/);
+  assert.equal(graphProblem(g({ type: "line", measures: ["housing.housing"], showBy: "over_time" })), null);
   assert.match(graphProblem(g({ type: "pie", measures: ["donations.cash"], showBy: "comparisons" })), /breakdown/);
 });
 

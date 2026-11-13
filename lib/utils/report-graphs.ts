@@ -163,9 +163,17 @@ export function graphProblem(g: GraphDef): string | null {
   if (picked.length > r.max) return `Pick at most ${r.max} figures.`;
   if (!r.mixedUnits && new Set(picked.map((m) => m.unitName)).size > 1) return "These figures are in different units (pesos, counts, hours): one scale can't show them. Use a scorecard, variance or big numbers, or pick figures in one unit.";
   if (g.showBy === "months" && picked.some((m) => !monthsAvailable(m.id))) return "Some of these figures have no month-by-month history (headline money, occupancy, expenses, NCH billing).";
+  if (g.showBy === "over_time" && picked.some((m) => !seriesAvailable(m.id))) return "Some of these figures have no day, week or month figures (headline patients and money, occupancy, expenses, NCH billing).";
   return null;
 }
 const label = (t: GraphType) => GRAPH_TYPES.find((x) => x.type === t)!.label.toLowerCase();
+
+/** Figures the report has by day, week or month over the period (Programs lines and the figures with dated rows). */
+export function seriesAvailable(id: string): boolean {
+  const meta = EXTRA_MEASURES[id];
+  if (!meta) return !SET_MEASURES[id] && !id.endsWith(".goal");
+  return !!meta.lines || !!meta.row;
+}
 
 /** Figures whose months January to now the report can count (Programs lines, and the dated donations, gifts,
  * trips and hours). */

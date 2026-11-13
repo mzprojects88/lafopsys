@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { chartSvg, type ReportChart } from "@/lib/pdf/charts";
 import { GENERATOR_SECTIONS } from "@/lib/utils/operations-report";
-import { GRAPH_TYPES, SHOW_BY, graphProblem, graphRules, measureCatalogue, resolveGraph, sampleFigure, type GraphContext, type GraphDef, type GraphType } from "@/lib/utils/report-graphs";
+import { GRAPH_TYPES, SHOW_BY, graphProblem, graphRules, measureCatalogue, monthsAvailable, resolveGraph, sampleFigure, seriesAvailable, type GraphContext, type GraphDef, type GraphType } from "@/lib/utils/report-graphs";
 
 const ICONS: Record<GraphType, LucideIcon> = {
   scorecard: LayoutGrid,
@@ -70,8 +70,13 @@ function previewChart(g: GraphDef, context: GraphContext | null, comparisons: re
  * A profile's graphs (0152): the list (add, edit, hide, reorder, remove, at most twelve) and the editor of one graph
  * with its live preview, drawn as the PDF prints it.
  */
-export function GraphsEditor({ graphs, onChange, sections, comparisons, context }: { graphs: GraphDef[]; onChange: (g: GraphDef[]) => void; sections: string[]; comparisons: readonly ("previous" | "ytd" | "goal")[]; context: GraphContext | null }) {
-  const [editing, setEditing] = React.useState<GraphDef | null>(null);
+export function GraphsEditor({ graphs, onChange, sections, comparisons, context, onEditingChange }: { graphs: GraphDef[]; onChange: (g: GraphDef[]) => void; sections: string[]; comparisons: readonly ("previous" | "ytd" | "goal")[]; context: GraphContext | null; onEditingChange?: (open: boolean) => void }) {
+  const [editing, setEditingState] = React.useState<GraphDef | null>(null);
+  // The profile isn't saved while a graph is open (its changes would be lost).
+  const setEditing = (g: GraphDef | null) => {
+    setEditingState(g);
+    onEditingChange?.(g != null);
+  };
   const put = (g: GraphDef) => {
     onChange(graphs.some((x) => x.id === g.id) ? graphs.map((x) => (x.id === g.id ? g : x)) : [...graphs, g]);
     setEditing(null);
@@ -203,7 +208,13 @@ function GraphForm({ initial, sections, comparisons, context, onCancel, onDone }
           <FieldLabel>Show</FieldLabel>
           <Select value={g.showBy} onValueChange={(v) => set("showBy", v as GraphDef["showBy"])}>
             <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-            <SelectContent>{SHOW_BY.filter((s) => rules.showBy.includes(s.value)).map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+            <SelectContent>
+              {SHOW_BY.filter((s) => rules.showBy.includes(s.value)).map((s) => {
+                // Over time and month by month only where the picked figures have them.
+                const lacks = s.value === "over_time" ? picked.some((m) => !seriesAvailable(m.id)) : s.value === "months" ? picked.some((m) => !monthsAvailable(m.id)) : false;
+                return <SelectItem key={s.value} value={s.value} disabled={lacks}>{s.label}{lacks ? " (not for these figures)" : ""}</SelectItem>;
+              })}
+            </SelectContent>
           </Select>
         </Field>
         <Field>

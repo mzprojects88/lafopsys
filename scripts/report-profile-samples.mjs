@@ -74,9 +74,9 @@ for (const p of profiles) {
   const extras = {
     headline: {
       figures: [
-        fig("headline.bed_nights", 1020 * scale, 940 * scale, 9480, 12000),
+        fig("headline.bed_nights", 1020 * scale, 940 * scale, 9480),
         fig("headline.rides", 236 * scale, 251 * scale, 2134),
-        fig("headline.meals", 2610 * scale, 2402 * scale, 23950, 30000),
+        fig("headline.meals", 2610 * scale, 2402 * scale, 23950),
         fig("headline.child_visits", 158 * scale, 141 * scale, 1460),
         fig("headline.care_cart", 2210 * scale, 2075 * scale, 19840),
         fig("headline.patients", 41, 37, 128),

@@ -367,14 +367,10 @@ function Generator() {
   const sumLines = (x: DashboardFigures | null, ...lines: string[]) => lines.reduce((t, l) => t + Number(x?.lines[l] ?? 0), 0);
   if (needHeadline && headNow.figures && headPrev.figures && headYtd.figures) {
     const [a, b, c] = [headNow.figures, headPrev.figures, headYtd.figures];
-    // A headline figure counting exactly a goal's lines carries that goal (Executive › Goals) against its year to date.
-    const goalFor = (lines: string[]) => {
-      const m = (Object.keys(GOAL_GROUP) as Measure[]).find((k) => [...MEASURES[k].lines].sort().join() === [...lines].sort().join());
-      return m ? goalOf(m)?.target : undefined;
-    };
+    // The goals stay on each program's goal row, counted as Executive › Goals counts them (one count, one percent).
     const line = (id: string) => {
       const lines = EXTRA_MEASURES[id]!.lines!;
-      return fig(id, sumLines(a, ...lines), sumLines(b, ...lines), sumLines(c, ...lines), goalFor(lines));
+      return fig(id, sumLines(a, ...lines), sumLines(b, ...lines), sumLines(c, ...lines));
     };
     built.headline = {
       figures: [
