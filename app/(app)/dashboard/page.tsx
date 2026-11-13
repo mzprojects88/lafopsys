@@ -235,7 +235,7 @@ function DashboardContent() {
             f={figures}
             period={period.state.key === "this_year" ? `Year to date ${w.from.slice(0, 4)}` : period.label}
             window={w}
-            now={{ inHouseNow, occupiedPct, capacity, temporaryBeds, expiringSoon, lowStock }}
+            now={{ inHouseNow, occupiedPct, capacity, expiringSoon, lowStock }}
           />
         ))}
       </KpiGrid>

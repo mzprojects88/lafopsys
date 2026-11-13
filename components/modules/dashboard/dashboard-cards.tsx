@@ -37,6 +37,10 @@ import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { useVehicleExpenses } from "@/lib/hooks/use-vehicle-expenses-collection";
 import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
 import { useGoalActuals } from "@/lib/hooks/use-goal-actuals";
+import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
+import { usePatientsData } from "@/lib/hooks/use-patients-collection";
+import { useBedReservations } from "@/lib/hooks/use-bed-reservations";
+import { bedCounts } from "@/lib/utils/beds";
 import { useRole } from "@/lib/rbac/use-role";
 import { complianceCalendar } from "@/lib/utils/compliance";
 import { formatCurrency } from "@/lib/utils/currency";
@@ -49,8 +53,6 @@ export interface NowContext {
   inHouseNow: number;
   occupiedPct: number;
   capacity: number;
-  /** Of the capacity, the temporary mattresses (0092). */
-  temporaryBeds: number;
   expiringSoon: number;
   lowStock: number;
 }
@@ -125,15 +127,7 @@ export function DashboardCard({ k, f, period, window, now }: { k: CardKey; f: Da
     case "goals":
       return <GoalsCard />;
     case "beds":
-      return (
-        <Card
-          href="/patients/floor-plan"
-          label="Beds"
-          value={now.capacity}
-          sublabel={`${now.capacity - now.temporaryBeds} regular · ${now.temporaryBeds} temporary · ${now.inHouseNow} in use, ${Math.max(0, now.capacity - now.inHouseNow)} free · now`}
-          icon={BedDouble}
-        />
-      );
+      return <BedsCard />;
   }
 }
 
@@ -207,34 +201,62 @@ function FuelCard({ window, period }: { window: DayWindow; period: string }) {
   return <Card href="/transport/fuel" label="Fuel spent" value={formatCurrency(fuel.reduce((t, e) => t + e.amount, 0))} sublabel={`${litres.toLocaleString("en-PH", { maximumFractionDigits: 1 })} litres · ${period}`} icon={Fuel} />;
 }
 
-/** The share of a year already gone (0 to 1). */
+/** The share of a Manila year already gone (0 to 1). */
 function yearGone(year: number): number {
-  const start = Date.parse(`${year}-01-01`);
-  return Math.min(1, Math.max(0, (Date.now() - start) / (Date.parse(`${year + 1}-01-01`) - start)));
+  const start = Date.parse(`${year}-01-01T00:00:00+08:00`);
+  return Math.min(1, Math.max(0, (Date.now() - start) / (Date.parse(`${year + 1}-01-01T00:00:00+08:00`) - start)));
+}
+
+/** The beds as the floor plan counts them (bedCounts): beds, not admission slots; tonight's use, holds and repairs. */
+function BedsCard() {
+  const { units, bedPositions, loading } = useHouseLayout();
+  const { stays } = usePatientsData();
+  const { reservations } = useBedReservations();
+  const c = bedCounts(units, bedPositions, stays, reservations);
+  const out = c.reserved + c.maintenance + c.blocked;
+  return (
+    <Card
+      href="/patients/floor-plan"
+      label="Beds"
+      value={loading ? "…" : c.total}
+      sublabel={`${c.total - c.temporary} regular · ${c.temporary} temporary · ${c.occupied} in use · ${c.available} free${out ? ` · ${out} held or out of use` : ""} · now`}
+      icon={BedDouble}
+    />
+  );
 }
 
 /** Each active goal's progress this year (counted as Executive › Goals counts it): how many are on pace for the
  * share of the year gone, and the one furthest behind. Goals are read by the CEO, the Trustees and the Super Admin. */
 function GoalsCard() {
-  const { goals, actual, target, loading } = useGoalActuals();
   const year = Number(todayIso().slice(0, 4));
-  const gone = yearGone(year);
+  const { goals, actual, target, loading, error } = useGoalActuals(year);
+  const gone = yearGone(year) * 100;
   const rows = goals
-    .filter((g) => g.status === "active" && g.measure !== "none")
+    .filter((g) => g.status === "active")
     .map((g) => ({ g, t: target(g, year), a: actual(g, year) }))
     .filter((r): r is { g: typeof r.g; t: number; a: number } => r.t != null && r.t > 0 && r.a != null)
-    .map((r) => ({ ...r, pct: Math.round((r.a / r.t) * 100) }));
-  const onPace = rows.filter((r) => r.pct >= gone * 100 - 5).length;
-  const behind = [...rows].sort((x, y) => x.pct - y.pct)[0];
+    .map((r) => {
+      const pct = Math.round((r.a / r.t) * 100);
+      // A spending goal is a ceiling: on pace while not ahead of the year; the others while not behind it.
+      const off = r.g.measure === "spending" ? pct - (gone + 5) : gone - 5 - pct;
+      return { ...r, pct, off };
+    });
+  const offPace = rows.filter((r) => r.off > 0).sort((x, y) => y.off - x.off);
   if (loading) return <Card href="/executive/goals" label={`Goals ${year}`} value="…" icon={Target} />;
+  if (error) return <Card href="/executive/goals" label={`Goals ${year}`} value="—" sublabel={`The figures couldn't load: ${error}`} icon={Target} tone="warning" />;
+  const worst = offPace[0];
   return (
     <Card
       href="/executive/goals"
       label={`Goals ${year}`}
-      value={rows.length ? `${onPace} of ${rows.length} on pace` : "—"}
-      sublabel={rows.length ? `${Math.round(gone * 100)}% of the year gone${behind ? ` · furthest behind: ${behind.g.title} ${behind.pct}%` : ""}` : "No goal with a target this year (Executive › Goals)"}
+      value={rows.length ? `${rows.length - offPace.length} of ${rows.length} on pace` : "—"}
+      sublabel={
+        rows.length
+          ? `${Math.round(gone)}% of the year gone${worst ? ` · ${worst.g.measure === "spending" ? "furthest ahead on spending" : "furthest behind"}: ${worst.g.title} ${worst.pct}%` : ""}`
+          : "No goal with a target this year (Executive › Goals)"
+      }
       icon={Target}
-      tone={rows.length && onPace < rows.length ? "warning" : "default"}
+      tone={offPace.length ? "warning" : "default"}
     />
   );
 }

@@ -9,7 +9,7 @@ export type CardKey =
 
 /** In the order a new dashboard shows them; `main` cards are on by default, the others are switched on by the person.
  * `money`: a peso figure the database sends only to profiles that have the card (shared.dashboard_card_ok). */
-export const CARDS: { key: CardKey; title: string; main: boolean; now?: boolean; money?: boolean }[] = [
+export const CARDS: { key: CardKey; title: string; main: boolean; now?: boolean; money?: boolean; readers?: string }[] = [
   { key: "housing", title: "Housing · Bed nights provided", main: true },
   { key: "rides", title: "Transportation · Patient and caregiver rides", main: true },
   { key: "meals", title: "Meals served", main: true },
@@ -30,7 +30,7 @@ export const CARDS: { key: CardKey; title: string; main: boolean; now?: boolean;
   { key: "transport_costs", title: "Fuel spent", main: false },
   { key: "caf_nights", title: "NCH (CAF) nights", main: false },
   { key: "staff_in", title: "Staff clocked in", main: false, now: true },
-  { key: "goals", title: "Goals this year", main: false },
+  { key: "goals", title: "Goals this year", main: false, readers: "Only the CEO, the Trustees and the Super Admin may read the goals: other roles see none." },
   { key: "beds", title: "Beds", main: false, now: true },
 ];
 

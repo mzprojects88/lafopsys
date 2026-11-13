@@ -52,6 +52,7 @@ export default function DashboardProfilesPage() {
                     {c.title}
                     {c.money ? <span className="ml-1 text-theme-xs text-muted-foreground">₱</span> : null}
                     {c.main ? null : <span className="ml-1 text-theme-xs text-muted-foreground">(extra)</span>}
+                    {c.readers ? <span className="block text-theme-xs text-muted-foreground">{c.readers}</span> : null}
                   </td>
                   {shown.map((r) => {
                     const k = `${r.key}|${c.key}`;

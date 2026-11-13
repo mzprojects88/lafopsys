@@ -14,7 +14,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { removeGoal, saveGoal, type Goal } from "@/lib/hooks/use-budgets";
-import { moneyGoal, useGoalActuals } from "@/lib/hooks/use-goal-actuals";
+import { moneyGoal as money, useGoalActuals } from "@/lib/hooks/use-goal-actuals";
 import { useProgramsData } from "@/lib/hooks/use-programs-collection";
 import { useRole } from "@/lib/rbac/use-role";
 import { GOAL_MEASURES, MEASURES, type GoalMeasure, type Measure } from "@/lib/utils/budgets";
@@ -22,7 +22,6 @@ import { formatCurrency } from "@/lib/utils/currency";
 import { STATUS_TONE_CLASSES } from "@/lib/utils/status-colors";
 
 const NONE = "__org";
-const money = moneyGoal;
 type Draft = { id: string | null; goal: Omit<Goal, "id">; targets: Record<number, string> };
 
 /**
@@ -34,7 +33,7 @@ export default function GoalsPage() {
   const { roles } = useRole();
   const canEdit = roles.includes("ceo") || roles.includes("admin");
   // What ArkOS counts against each goal: one rule with the dashboard's Goals card (lib/hooks/use-goal-actuals).
-  const { goals, targets, loading, actual } = useGoalActuals();
+  const { goals, targets, goalsLoading: loading, actual } = useGoalActuals();
   const { programs } = useProgramsData();
   const [editing, setEditing] = React.useState<Draft | null>(null);
   const [busy, setBusy] = React.useState(false);
