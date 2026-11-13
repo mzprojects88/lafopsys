@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   ShoppingBasket,
   Sigma,
+  Target,
   Stethoscope,
   UserCheck,
   Users,
@@ -35,6 +36,7 @@ import { useHolidays } from "@/lib/hooks/use-hr-reference-collections";
 import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { useVehicleExpenses } from "@/lib/hooks/use-vehicle-expenses-collection";
 import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
+import { useGoalActuals } from "@/lib/hooks/use-goal-actuals";
 import { useRole } from "@/lib/rbac/use-role";
 import { complianceCalendar } from "@/lib/utils/compliance";
 import { formatCurrency } from "@/lib/utils/currency";
@@ -47,6 +49,8 @@ export interface NowContext {
   inHouseNow: number;
   occupiedPct: number;
   capacity: number;
+  /** Of the capacity, the temporary mattresses (0092). */
+  temporaryBeds: number;
   expiringSoon: number;
   lowStock: number;
 }
@@ -118,6 +122,18 @@ export function DashboardCard({ k, f, period, window, now }: { k: CardKey; f: Da
       return <FuelCard window={window} period={period} />;
     case "staff_in":
       return <StaffInCard />;
+    case "goals":
+      return <GoalsCard />;
+    case "beds":
+      return (
+        <Card
+          href="/patients/floor-plan"
+          label="Beds"
+          value={now.capacity}
+          sublabel={`${now.capacity - now.temporaryBeds} regular · ${now.temporaryBeds} temporary · ${now.inHouseNow} in use, ${Math.max(0, now.capacity - now.inHouseNow)} free · now`}
+          icon={BedDouble}
+        />
+      );
   }
 }
 
@@ -189,6 +205,38 @@ function FuelCard({ window, period }: { window: DayWindow; period: string }) {
   const fuel = expenses.filter((e) => !e.voidedAt && e.kind === "fuel" && e.date >= window.from && e.date <= window.to);
   const litres = fuel.reduce((t, e) => t + (e.litres ?? 0), 0);
   return <Card href="/transport/fuel" label="Fuel spent" value={formatCurrency(fuel.reduce((t, e) => t + e.amount, 0))} sublabel={`${litres.toLocaleString("en-PH", { maximumFractionDigits: 1 })} litres · ${period}`} icon={Fuel} />;
+}
+
+/** The share of a year already gone (0 to 1). */
+function yearGone(year: number): number {
+  const start = Date.parse(`${year}-01-01`);
+  return Math.min(1, Math.max(0, (Date.now() - start) / (Date.parse(`${year + 1}-01-01`) - start)));
+}
+
+/** Each active goal's progress this year (counted as Executive › Goals counts it): how many are on pace for the
+ * share of the year gone, and the one furthest behind. Goals are read by the CEO, the Trustees and the Super Admin. */
+function GoalsCard() {
+  const { goals, actual, target, loading } = useGoalActuals();
+  const year = Number(todayIso().slice(0, 4));
+  const gone = yearGone(year);
+  const rows = goals
+    .filter((g) => g.status === "active" && g.measure !== "none")
+    .map((g) => ({ g, t: target(g, year), a: actual(g, year) }))
+    .filter((r): r is { g: typeof r.g; t: number; a: number } => r.t != null && r.t > 0 && r.a != null)
+    .map((r) => ({ ...r, pct: Math.round((r.a / r.t) * 100) }));
+  const onPace = rows.filter((r) => r.pct >= gone * 100 - 5).length;
+  const behind = [...rows].sort((x, y) => x.pct - y.pct)[0];
+  if (loading) return <Card href="/executive/goals" label={`Goals ${year}`} value="…" icon={Target} />;
+  return (
+    <Card
+      href="/executive/goals"
+      label={`Goals ${year}`}
+      value={rows.length ? `${onPace} of ${rows.length} on pace` : "—"}
+      sublabel={rows.length ? `${Math.round(gone * 100)}% of the year gone${behind ? ` · furthest behind: ${behind.g.title} ${behind.pct}%` : ""}` : "No goal with a target this year (Executive › Goals)"}
+      icon={Target}
+      tone={rows.length && onPace < rows.length ? "warning" : "default"}
+    />
+  );
 }
 
 function StaffInCard() {

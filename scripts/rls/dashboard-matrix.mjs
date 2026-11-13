@@ -41,6 +41,7 @@ try {
   await c.query("begin");
   await c.query(readFileSync(new URL("../../supabase/migrations/0147_dashboard_profiles.sql", import.meta.url), "utf8"));
   await c.query(readFileSync(new URL("../../supabase/migrations/0148_house_sheet_nights_fallback.sql", import.meta.url), "utf8"));
+  await c.query(readFileSync(new URL("../../supabase/migrations/0151_dashboard_goals_beds.sql", import.meta.url), "utf8"));
   const ids = (await c.query(`select
     (select id from shared.staff where active and role = 'admin' order by id limit 1) admin,
     (select id from shared.staff where active and role = 'finance' and not ('admin' = any(extra_roles)) limit 1) finance,
@@ -89,6 +90,8 @@ try {
     `select (select coalesce(sum(native), 0) from ops.program_impact_range_rows($1::date, ($1::date + interval '1 month' - interval '1 day')::date, 'month') where line = 'housing') >=
             (select coalesce(sum(1 + s.people_with_child), 0) from ops.bed_nights b join ops.stays s on s.id = b.stay_id where b.night between $1::date and ($1::date + interval '1 month' - interval '1 day')::date) + $2 ok`,
     [monthOf, people], (r) => r.ok && r.rows[0].ok === true);
+  await step("0151: Goals for the CEO and the Trustees, Beds for every staff role", null, "select (select count(*) from shared.role_dashboard_cards where card = 'goals' and role in ('ceo', 'board'))::int + (select count(*) from shared.role_dashboard_cards where card = 'goals' and role not in ('ceo', 'board'))::int * 100 n", [], n(2));
+  await step("... Beds for the driver", null, "select count(*)::int n from shared.role_dashboard_cards where card = 'beds' and role = 'driver'", [], n(1));
   await step("a range over ten years is refused", ids.driver, "select ops.dashboard_figures('2000-01-01', '2026-01-01')", [], refused("22023"), false);
   await c.query("select set_config('request.jwt.claims', '', true)");
   await step("signed out: refused", null, "select ops.dashboard_figures('2026-01-01', '2026-02-01')", [], refused("42501"), false);
