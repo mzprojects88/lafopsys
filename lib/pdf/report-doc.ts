@@ -160,7 +160,7 @@ function kpis(flow: Flow, items: ReportKpi[]): void {
     row.forEach((k, j) => {
       const x = MARGIN + j * (w + gap);
       flow.page.fillRect(x, flow.y, w, h, 0.96);
-      flow.page.text(x + 8, flow.y + 7, 7.5, k.label, { gray: 0.45 });
+      flow.page.text(x + 8, flow.y + 7, fitSize(k.label, w - 16, 7.5, false, 5.5), k.label, { gray: 0.45 });
       flow.page.text(x + 8, flow.y + 19, fitSize(k.value, w - 16, 14, true), k.value, { bold: true });
       if (k.previous || k.change) {
         const prev = k.previous ? `prev. ${k.previous}` : "";
@@ -246,20 +246,35 @@ function chart(flow: Flow, c: ReportChart): void {
     return;
   }
   const height = 120;
-  const legendH = c.series.length > 1 ? 12 : 0;
+  // The legend's items, wrapped onto lines that fit the width.
+  const legendRows: { label: string; k: number; x: number }[][] = [];
+  if (c.series.length > 1) {
+    let lx = MARGIN;
+    let row: { label: string; k: number; x: number }[] = [];
+    c.series.forEach((s, k) => {
+      const w = textWidth(s.label, 7.5) + 22;
+      if (row.length && lx + w > A4.width - MARGIN) {
+        legendRows.push(row);
+        row = [];
+        lx = MARGIN;
+      }
+      row.push({ label: s.label, k, x: lx });
+      lx += w;
+    });
+    legendRows.push(row);
+  }
+  const legendH = legendRows.length * 12;
   flow.ensure(height + 30 + legendH);
   const top = flow.y + legendH;
   const base = top + height;
   const totals = c.labels.map((_, i) => (c.kind === "stacked" ? c.series.reduce((s, x) => s + (x.values[i] ?? 0), 0) : Math.max(...c.series.map((x) => x.values[i] ?? 0))));
   const max = Math.max(1, ...totals);
-  if (legendH) {
-    let lx = MARGIN;
-    c.series.forEach((s, k) => {
-      flow.page.fillRectRgb(lx, flow.y + 2, 7, 7, PALETTE[k % PALETTE.length]!);
-      flow.page.text(lx + 10, flow.y + 1, 7.5, s.label, { gray: 0.35 });
-      lx += textWidth(s.label, 7.5) + 22;
-    });
-  }
+  legendRows.forEach((row, r) =>
+    row.forEach(({ label, k, x }) => {
+      flow.page.fillRectRgb(x, flow.y + r * 12 + 2, 7, 7, PALETTE[k % PALETTE.length]!);
+      flow.page.text(x + 10, flow.y + r * 12 + 1, 7.5, label, { gray: 0.35 });
+    }),
+  );
   flow.page.line(MARGIN, base, A4.width - MARGIN, base, 0.7);
   const slot = INNER / n;
   const groupW = Math.min(slot * 0.7, 40);
@@ -312,7 +327,9 @@ export function layoutReportDoc(spec: ReportSpec, branding: ReportBranding): Pdf
   if (spec.analysis) analysisBox(flow, spec.analysis);
 
   for (const s of spec.sections) {
-    flow.ensure(60);
+    const descH = s.description ? wrap(s.description, INNER, 8.5).length * 12.5 + 4 : 0;
+    const firstH = s.kpis?.length ? 58 : s.chart ? 162 : s.table ? ROW * 3 + 6 : 0;
+    flow.ensure(28 + descH + firstH);
     flow.y += 6;
     flow.page.text(MARGIN, flow.y, 12, s.heading, { bold: true });
     flow.y += 16;

@@ -73,3 +73,15 @@ it("the expenses section: by account and by fund, in the profile's order, with i
   const c = operationsReport({ ...base, totalsOnly: false, comparisons: ["previous"] }).spec.sections[0];
   assert.deepEqual(c.table.columns, ["Line", "Oct", "Total"]);
 });
+
+it("a group of mixed units: the chart and the Total row keep the first line's unit (people, not volunteers)", () => {
+  const rows = [
+    { line: "care_cart_1000", bucket: "2026-10-01", native: 10, fromSheet: 0 },
+    { line: "care_cart_1200", bucket: "2026-10-01", native: 20, fromSheet: 0 },
+    { line: "care_cart_volunteers", bucket: "2026-10-01", native: 5, fromSheet: 0 },
+  ];
+  const s = operationsReport({ ...base, sections: ["care_cart"], rows, previous: [], totalsOnly: false }).spec.sections[0];
+  assert.equal(s.table.totals[0], "Total (people)");
+  assert.equal(s.table.totals[1], 30);
+  assert.ok(!s.chart.series.some((x) => x.label === "Volunteers"));
+});

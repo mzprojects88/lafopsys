@@ -127,8 +127,9 @@ export function operationsReport(args: {
   comparisons?: readonly ComparisonKey[];
   /** A note under a section's description (e.g. how many nights came from the House Sheet). */
   notes?: Partial<Record<string, string>>;
-  /** The report's title (a profile's name). */
+  /** The report's title (a profile's name) and its subtitle (the profile's description). */
   title?: string;
+  subtitle?: string;
 }): { spec: ReportSpec; input: AnalysisInput } {
   const { sections, rows, previous, buckets, extras, period, previousPeriod, totalsOnly = false, ytdRows = [], ytdLabel = "Year to date", goalYear = 0, goals = {} } = args;
   const columnsShown = new Set<ComparisonKey>(args.comparisons ?? ["previous", "ytd", "goal"]);
@@ -144,6 +145,8 @@ export function operationsReport(args: {
   const inputs: AnalysisSection[] = [];
   const program = (groupName: string) => {
     const g = IMPACT_GROUPS.find((x) => x.group === groupName)!;
+    // The lines in the first line's unit (people, not volunteers or hours): the chart and the Total row add only these.
+    const same = g.lines.filter((l) => l.unit === g.lines[0]!.unit);
     const figures: Figure[] = g.lines.map((l) => ({ label: `${l.label} (${l.unit})`, value: total(rows, l.key), previous: total(previous, l.key), ytd: ytdOf(l.key) }));
     // The year's goal counts some of the group's lines together: its own row, against the year to date.
     const goal = goals[g.group];
@@ -157,14 +160,16 @@ export function operationsReport(args: {
       kpis: figureKpis(figures),
       table: totalsOnly
         ? compare(compared)
-        : { columns: ["Line", ...buckets.map((b) => b.label), "Total", ...(withYtd ? [ytdLabel] : [])], rows: tableRows, totals: g.lines.length > 1 ? ["Total", ...buckets.map((b) => g.lines.reduce((s, l) => s + shown(cell(rows, l.key, b.key)), 0)), g.lines.reduce((s, l) => s + total(rows, l.key), 0), ...(withYtd ? [g.lines.reduce((s, l) => s + ytdOf(l.key), 0)] : [])] : undefined },
-      chart: totalsOnly ? twoBars(figures) : { kind: g.lines.length > 1 ? "stacked" : "bar", labels: buckets.map((b) => b.label), series: g.lines.map((l) => ({ label: l.label, values: buckets.map((b) => shown(cell(rows, l.key, b.key))) })) },
+        : { columns: ["Line", ...buckets.map((b) => b.label), "Total", ...(withYtd ? [ytdLabel] : [])], rows: tableRows, totals: same.length > 1 ? [same.length < g.lines.length ? `Total (${g.lines[0]!.unit})` : "Total", ...buckets.map((b) => same.reduce((s, l) => s + shown(cell(rows, l.key, b.key)), 0)), same.reduce((s, l) => s + total(rows, l.key), 0), ...(withYtd ? [same.reduce((s, l) => s + ytdOf(l.key), 0)] : [])] : undefined },
+      chart: totalsOnly
+        ? twoBars(figures.filter((_, i) => same.includes(g.lines[i]!)))
+        : { kind: g.lines.length > 1 ? "stacked" : "bar", labels: buckets.map((b) => b.label), series: same.map((l) => ({ label: l.label, values: buckets.map((b) => shown(cell(rows, l.key, b.key))) })) },
     });
     inputs.push({ heading: g.group, description: g.description, kpis: figureInput(figures) });
   };
   // A section of figures only (no columns by period): the comparison table, the two-bar chart, and any table of its own.
   const figuresSection = (heading: string, description: string, figures: Figure[]) => {
-    out.push({ heading, description, kpis: figureKpis(figures), table: compare(figures), chart: twoBars(figures) });
+    out.push({ heading, description, kpis: figureKpis(figures), table: compare(figures) });
     inputs.push({ heading, description, kpis: figureInput(figures) });
   };
   const extra = (heading: string, description: string, x: { figures: Figure[]; rows: Record<string, string | number>[] } | undefined, columns: string[], keys: string[], chart: { kind: "bar" | "stacked"; series: { label: string; key: string }[] }) => {
@@ -183,12 +188,12 @@ export function operationsReport(args: {
     const group = GROUP_OF[key];
     if (group) {
       program(group);
-      if (key === "transportation") extra("Transport & fuel", "Trips driven, kilometres from the odometer readings and pesos spent on fuel, from Transport.", extras.transport, ["Period", "Trips", "Km", "Fuel (PHP)"], ["label", "trips", "km", "fuel"], { kind: "bar", series: [{ label: "Trips", key: "trips" }, { label: "Km", key: "km" }] });
+      if (key === "transportation") extra("Transport & fuel", "Trips driven, kilometres from the odometer readings and pesos spent on fuel, from Transport.", extras.transport, ["Period", "Trips", "Km", "Fuel (PHP)"], ["label", "trips", "km", "fuel"], { kind: "bar", series: [{ label: "Trips", key: "trips" }] });
       if (key === "caf") extra("NCH billing", "The NCH Cancer Assistance Fund bills: pesos billed and paid, and the nights above the monthly cap that LAF absorbed.", extras.caf, ["Month", "Billed (PHP)", "Paid (PHP)", "Nights absorbed"], ["label", "billed", "paid", "absorbed"], { kind: "bar", series: [{ label: "Billed", key: "billed" }, { label: "Paid", key: "paid" }] });
       continue;
     }
     if (key === "donations") extra("Donations", "Cash gifts in pesos from the Donation Tracker and gifts in kind by the category each line was received under in LAF Inventory.", extras.donations, ["Period", "Cash (PHP)", "Food (PHP)", "Non-food (PHP)"], ["label", "cash", "food", "nonFood"], { kind: "stacked", series: [{ label: "Cash", key: "cash" }, { label: "Food", key: "food" }, { label: "Non-food", key: "nonFood" }] });
-    if (key === "staff") extra("Staff hours", "Hours worked and late arrivals from the staff's clock-ins and clock-outs.", extras.staff, ["Period", "Hours", "Late arrivals"], ["label", "hours", "late"], { kind: "bar", series: [{ label: "Hours", key: "hours" }, { label: "Late", key: "late" }] });
+    if (key === "staff") extra("Staff hours", "Hours worked and late arrivals from the staff's clock-ins and clock-outs.", extras.staff, ["Period", "Hours", "Late arrivals"], ["label", "hours", "late"], { kind: "bar", series: [{ label: "Hours", key: "hours" }] });
     if (key === "headline" && extras.headline) figuresSection("Headline figures", "The foundation's main figures for the period, counted as the dashboard counts them.", extras.headline.figures);
     if (key === "occupancy" && extras.occupancy) figuresSection("Occupancy & beds", extras.occupancy.note, extras.occupancy.figures);
     if (key === "expenses" && extras.expenses) {
@@ -218,7 +223,7 @@ export function operationsReport(args: {
     return sec;
   });
   return {
-    spec: { title, subtitle: "The foundation's programs and operations for the period, from the app's records", period, previousPeriod, sections: styled },
+    spec: { title, subtitle: args.subtitle?.trim() || "The foundation's programs and operations for the period, from the app's records", period, previousPeriod, sections: styled },
     input: { title, period, previousPeriod, sections: inputs },
   };
 }

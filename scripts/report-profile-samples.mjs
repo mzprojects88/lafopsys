@@ -81,7 +81,7 @@ for (const p of profiles) {
             fig("Paid", 241800 * scale, 228950 * scale, 2361000, "PHP"),
             fig("Approved budget for these days", 260000 * scale, 260000 * scale, 2600000, "PHP"),
             fig("Vouchers paid", 87, 79, 812, ""),
-            fig("Spending per person-night (all spending ÷ bed nights)", 237.06, 243.56, 249.05, "PHP"),
+            fig("Spending per bed night", 237.06, 243.56, 249.05, "PHP"),
           ],
       byAccount: [
         ["5100 Food and provisions", 92400], ["5932 Travels and meals", 41250], ["5210 Utilities", 33800], ["5310 Fuel and oil", 28600],
@@ -90,7 +90,7 @@ for (const p of profiles) {
       byFund: p.fund_code ? [{ label: "One Child (OC)", amount: 64250 * scale }] : [{ label: "Unrestricted (UNR)", amount: 151300 * scale }, { label: "One Child (OC)", amount: 64250 * scale }, { label: "LIFE (LIFE)", amount: 26250 * scale }],
       note: p.fund_code
         ? `Paid from the ${p.fund_code} fund only, by the day paid. Budgets aren't set by fund, so there is no budget line.`
-        : "Paid vouchers by the day paid (fund top-ups and cash advances left out; a liquidation counts the spending), against the approved budget's share of these days.",
+        : "Paid vouchers by the day paid (fund top-ups and cash advances left out; a liquidation counts the spending), against the approved budget's share of these days. Spending per bed night is all spending divided by the period's bed nights.",
     },
     transport: { figures: [fig("Trips", 58, 61, 552), fig("Kilometres", 1840, 1912, 17420, "km"), fig("Fuel spent", 28600, 30150, 271900, "PHP")], rows: byBucket(() => ({ trips: between(8, 20), km: between(250, 600), fuel: money(40, 90) })) },
     caf: { figures: [fig("Billed", 84000, 79500, 812000, "PHP"), fig("Paid", 79500, 72000, 744000, "PHP"), fig("Nights absorbed", 12, 9, 101)], rows: [{ label: period.label, billed: 84000, paid: 79500, absorbed: 12 }] },
@@ -129,6 +129,7 @@ for (const p of profiles) {
     comparisons: p.comparisons,
     notes: { Housing: "3 nights of this period came from the House Sheet: nobody finalized them in the app." },
     title: p.name,
+    subtitle: p.description,
   });
   spec.filters = ["SAMPLE WITH DUMMY FIGURES - for reviewing the layout only, not real data"];
   if (p.include_ai) {

@@ -372,13 +372,13 @@ function Generator() {
         fig("Paid", a.total, b.total, c.total, "PHP"),
         ...(a.budget != null ? [fig("Approved budget for these days", a.budget, b.budget ?? 0, c.budget ?? 0, "PHP")] : []),
         fig("Vouchers paid", a.vouchers, b.vouchers, c.vouchers),
-        ...(fund ? [] : [fig("Spending per person-night (all spending ÷ bed nights)", perNight(a.total, nights(programs.rows)), perNight(b.total, nights(programsBefore.rows)), perNight(c.total, ytdNights), "PHP")]),
+        ...(fund ? [] : [fig("Spending per bed night", perNight(a.total, nights(programs.rows)), perNight(b.total, nights(programsBefore.rows)), perNight(c.total, ytdNights), "PHP")]),
       ],
       byAccount: a.by_account.map((x) => ({ label: `${x.code} ${x.name}`, amount: Number(x.amount) })),
       byFund: a.by_fund.map((x) => ({ label: `${x.name} (${x.code})`, amount: Number(x.amount) })),
       note: fund
         ? `Paid from the ${fund} fund only, by the day paid. Budgets aren't set by fund, so there is no budget line.`
-        : "Paid vouchers by the day paid (fund top-ups and cash advances left out; a liquidation counts the spending), against the approved budget's share of these days.",
+        : "Paid vouchers by the day paid (fund top-ups and cash advances left out; a liquidation counts the spending), against the approved budget's share of these days. Spending per bed night is all spending divided by the period's bed nights.",
     };
   }
 
@@ -392,6 +392,7 @@ function Generator() {
       comparisons: profile?.comparisons,
       notes: filled ? { Housing: `${filled} night${filled === 1 ? "" : "s"} of this period came from the House Sheet: nobody finalized them in the app.` } : undefined,
       title: profile?.name,
+      subtitle: profile?.description,
     });
   // Every table of the report as one CSV, section by section.
   const exportCsv = () => {
