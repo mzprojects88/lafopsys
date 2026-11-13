@@ -289,6 +289,8 @@ function Generator() {
         { ...fig("Gifts in kind: food", food(extras), food(extrasBefore), food(extrasYtd), "PHP"), part: true },
         { ...fig("Gifts in kind: non-food", nonFood(extras), nonFood(extrasBefore), nonFood(extrasYtd), "PHP"), part: true },
         fig("Cash gifts (count)", cash(window).length, cash(previous).length, cash(ytdWindow).length),
+        // One a receipt for goods (ops.gik_batches gives a row per receipt in LAF Inventory).
+        fig("Gifts in kind (count)", extras.gifts.length, extrasBefore.gifts.length, extrasYtd.gifts.length),
         // The money-raised goal, counted as Executive › Goals counts it: every gift on the donor ledger.
         ...((g) => (g ? [{ ...fig(`Goal: ${g.title}`, raised(window), raised(previous), raised(ytdWindow), "PHP", g.target), derived: true }] : []))(goalOf("donations")),
       ],

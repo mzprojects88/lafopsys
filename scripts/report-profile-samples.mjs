@@ -101,6 +101,7 @@ for (const p of profiles) {
         { ...fig("Gifts in kind: food", 41800, 46300, 412500, "PHP"), part: true },
         { ...fig("Gifts in kind: non-food", 22400, 25500, 243400, "PHP"), part: true },
         fig("Cash gifts (count)", 34, 29, 311, ""),
+        fig("Gifts in kind (count)", 21, 24, 198, ""),
       ],
       rows: byBucket(() => ({ cash: money(200, 900), food: money(80, 300), nonFood: money(40, 200) })),
     },
