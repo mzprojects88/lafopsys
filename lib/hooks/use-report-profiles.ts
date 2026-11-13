@@ -4,8 +4,9 @@ import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
 import { createCollection } from "@/lib/data/collection-store";
 import type { DayWindow } from "@/lib/utils/period";
+import type { GraphDef } from "@/lib/utils/report-graphs";
 
-export type ChartStyle = "chart" | "rank" | "table" | "figures";
+export type ChartStyle = "chart" | "bars" | "rank" | "table" | "figures";
 export type Comparison = "previous" | "ytd" | "goal";
 
 /** A saved report design (0150). */
@@ -20,6 +21,8 @@ export interface ReportProfile {
   period: string;
   fundCode: string | null;
   includeAi: boolean;
+  /** The profile's own graphs (0152), hidden ones kept. */
+  graphs: GraphDef[];
   builtIn: boolean;
   sort: number;
 }
@@ -42,6 +45,7 @@ export const reportProfilesStore = createCollection<ReportProfile[]>({
       period: String(r.period),
       fundCode: (r.fund_code as string | null) ?? null,
       includeAi: Boolean(r.include_ai),
+      graphs: Array.isArray(r.graphs) ? (r.graphs as GraphDef[]) : [],
       builtIn: Boolean(r.built_in),
       sort: Number(r.sort ?? 0),
     }));
@@ -53,7 +57,7 @@ export type ProfileInput = Omit<ReportProfile, "id" | "builtIn">;
 /** Saves a profile (new when id is null); the database decides who may (the Super Admin, the CEO, Finance). Gives
  * the profile's id, or the error. */
 export async function saveReportProfile(id: string | null, p: ProfileInput): Promise<{ id: string } | { error: string }> {
-  const row = { name: p.name.trim(), description: p.description.trim(), sections: p.sections, charts: p.charts, comparisons: p.comparisons, columns_mode: p.columnsMode, period: p.period, fund_code: p.fundCode || null, include_ai: p.includeAi, sort: p.sort };
+  const row = { name: p.name.trim(), description: p.description.trim(), sections: p.sections, charts: p.charts, comparisons: p.comparisons, columns_mode: p.columnsMode, period: p.period, fund_code: p.fundCode || null, include_ai: p.includeAi, graphs: p.graphs, sort: p.sort };
   const t = createClient().schema("ops").from("report_profiles");
   const { data, error } = id ? await t.update(row).eq("id", id).select("id").single() : await t.insert(row).select("id").single();
   await reportProfilesStore.refetch();

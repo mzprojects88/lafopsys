@@ -3,8 +3,9 @@
 // each with the previous range beside it, as one ReportSpec and one AnalysisInput. Pure.
 
 import type { AnalysisInput, AnalysisSection } from "../ai/report-analysis.ts";
-import type { ReportSection, ReportSpec } from "../pdf/report-doc.ts";
+import type { ReportChart, ReportSection, ReportSpec } from "../pdf/report-doc.ts";
 import { IMPACT_GROUPS, cell, changeLabel, shown, total, type Bucket, type ImpactRow } from "./program-impact.ts";
+import { EXTRA_MEASURES, PROGRAM_SECTION, resolveGraph, scorecardOf, yearShare, type GraphContext, type GraphDef, type GraphFigure } from "./report-graphs.ts";
 
 export type GeneratorSectionKey = "headline" | "housing" | "occupancy" | "transportation" | "meals" | "care_cart" | "center" | "activities" | "caf" | "donations" | "expenses" | "staff" | "inventory";
 
@@ -38,6 +39,8 @@ const GROUP_OF: Partial<Record<GeneratorSectionKey, string>> = { housing: "Housi
 
 /** A simple figure with its previous value. */
 export interface Figure {
+  /** The figure's fixed id (report-graphs.ts), by which a profile's graphs pick it. */
+  id?: string;
   label: string;
   value: number;
   previous: number;
@@ -51,10 +54,13 @@ export interface Figure {
   derived?: boolean;
   /** A part of the figure before it (e.g. gifts in kind: food): in the boxes and the table, not in the chart. */
   part?: boolean;
+  /** Going up is bad news (spending, late arrivals): the variance reads red. */
+  lowerIsBetter?: boolean;
 }
 
-/** How a profile draws a section (0150): the chart, sideways bars, the table without a chart, or the figures only. */
-export type SectionStyle = "chart" | "rank" | "table" | "figures";
+/** How a profile draws a section (0150, 0152): its own graph (a scorecard when totals, over time when by columns),
+ * the period against the one before as bars, sideways bars, the table without a graph, or the figures only. */
+export type SectionStyle = "chart" | "bars" | "rank" | "table" | "figures";
 /** The comparison columns a profile shows beside the period. */
 export type ComparisonKey = "previous" | "ytd" | "goal";
 
@@ -130,7 +136,14 @@ export function operationsReport(args: {
   /** The report's title (a profile's name) and its subtitle (the profile's description). */
   title?: string;
   subtitle?: string;
-}): { spec: ReportSpec; input: AnalysisInput } {
+  /** The profile's own graphs (0152), the year to date's last day (the goals' pace, the months January to now), the
+   * period's first day and grain, and the months January to now of the figures that aren't Programs lines. */
+  graphs?: readonly GraphDef[];
+  ytdEnd?: string;
+  windowFrom?: string;
+  grain?: "day" | "week" | "month";
+  monthly?: Readonly<Record<string, number[]>>;
+}): { spec: ReportSpec; input: AnalysisInput; context: GraphContext } {
   const { sections, rows, previous, buckets, extras, period, previousPeriod, totalsOnly = false, ytdRows = [], ytdLabel = "Year to date", goalYear = 0, goals = {} } = args;
   const columnsShown = new Set<ComparisonKey>(args.comparisons ?? ["previous", "ytd", "goal"]);
   const compare = (figures: Figure[]) => comparison(figures, period, previousPeriod, ytdLabel, goalYear, columnsShown);
@@ -143,11 +156,39 @@ export function operationsReport(args: {
   const asGoals = (rs: readonly ImpactRow[], lines: readonly string[]) => rs.filter((r) => lines.includes(r.line)).reduce((s, r) => s + (r.native || r.fromSheet), 0);
   const out: ReportSection[] = [];
   const inputs: AnalysisSection[] = [];
+  // The graphs' side: the pace of the year, the months January to now, every figure by its id.
+  const pace = args.ytdEnd ? yearShare(args.ytdEnd) : undefined;
+  const monthCount = args.ytdEnd ? Number(args.ytdEnd.slice(5, 7)) : 0;
+  const monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].slice(0, monthCount);
+  const linesMonths = (lines: readonly string[]) => {
+    const m: number[] = Array.from({ length: monthCount }, () => 0);
+    const add = (r: ImpactRow, key: string) => {
+      const i = Number(key.slice(5, 7)) - 1;
+      if (lines.includes(r.line) && i >= 0 && i < monthCount) m[i]! += shown(r);
+    };
+    ytdRows.forEach((r) => add(r, r.bucket));
+    // A week's key is its Monday, which may sit in the month before the period: it counts in the period's month.
+    rows.forEach((r) => add(r, args.windowFrom && r.bucket < args.windowFrom ? args.windowFrom : r.bucket));
+    return m;
+  };
+  const linesSeries = (lines: readonly string[]) => buckets.map((b) => rows.filter((r) => r.bucket === b.key && lines.includes(r.line)).reduce((s, r) => s + shown(r), 0));
+  const figMap = new Map<string, GraphFigure>();
+  const register = (f: Figure, opts: { lines?: readonly string[]; rows?: Record<string, string | number>[] } = {}) => {
+    if (!f.id) return;
+    const meta = EXTRA_MEASURES[f.id];
+    const lines = opts.lines ?? meta?.lines;
+    const series = lines ? linesSeries(lines) : meta?.row && opts.rows ? opts.rows.map((r) => meta.row!.reduce((s, k) => s + Number(r[k] ?? 0), 0)) : undefined;
+    figMap.set(f.id, { ...f, id: f.id, lowerIsBetter: f.lowerIsBetter ?? meta?.lowerIsBetter, series, months: lines ? linesMonths(lines) : args.monthly?.[f.id] });
+  };
+  const scoreCtx = { period, previousPeriod, comparisons: columnsShown, pace };
+  // The period against the one before as bars: what "bars" (and sideways bars) draws instead of the scorecard.
+  const alt = new Map<string, ReportChart>();
   const program = (groupName: string) => {
     const g = IMPACT_GROUPS.find((x) => x.group === groupName)!;
     // The lines in the first line's unit (people, not volunteers or hours): the chart and the Total row add only these.
     const same = g.lines.filter((l) => l.unit === g.lines[0]!.unit);
-    const figures: Figure[] = g.lines.map((l) => ({ label: `${l.label} (${l.unit})`, value: total(rows, l.key), previous: total(previous, l.key), ytd: ytdOf(l.key) }));
+    const figures: Figure[] = g.lines.map((l) => ({ id: `${PROGRAM_SECTION[g.group]}.${l.key}`, label: `${l.label} (${l.unit})`, value: total(rows, l.key), previous: total(previous, l.key), ytd: ytdOf(l.key) }));
+    figures.forEach((f, i) => register(f, { lines: [g.lines[i]!.key] }));
     // The year's goal counts some of the group's lines together: its own row, against the year to date.
     const goal = goals[g.group];
     const sumOf = (rs: readonly ImpactRow[]) => (goal ? asGoals(rs, goal.lines) : 0);
@@ -162,24 +203,29 @@ export function operationsReport(args: {
         ? compare(compared)
         : { columns: ["Line", ...buckets.map((b) => b.label), "Total", ...(withYtd ? [ytdLabel] : [])], rows: tableRows, totals: same.length > 1 ? [same.length < g.lines.length ? `Total (${g.lines[0]!.unit})` : "Total", ...buckets.map((b) => same.reduce((s, l) => s + shown(cell(rows, l.key, b.key)), 0)), same.reduce((s, l) => s + total(rows, l.key), 0), ...(withYtd ? [same.reduce((s, l) => s + ytdOf(l.key), 0)] : [])] : undefined },
       chart: totalsOnly
-        ? twoBars(figures.filter((_, i) => same.includes(g.lines[i]!)))
+        ? scorecardOf(compared, scoreCtx)
         : { kind: g.lines.length > 1 ? "stacked" : "bar", labels: buckets.map((b) => b.label), series: same.map((l) => ({ label: l.label, values: buckets.map((b) => shown(cell(rows, l.key, b.key))) })) },
     });
+    alt.set(g.group, twoBars(figures.filter((_, i) => same.includes(g.lines[i]!))));
     inputs.push({ heading: g.group, description: g.description, kpis: figureInput(figures) });
   };
   // A section of figures only (no columns by period): the comparison table, the two-bar chart, and any table of its own.
   const figuresSection = (heading: string, description: string, figures: Figure[]) => {
-    out.push({ heading, description, kpis: figureKpis(figures), table: compare(figures) });
+    figures.forEach((f) => register(f));
+    out.push({ heading, description, kpis: figureKpis(figures), table: compare(figures), chart: scorecardOf(figures, scoreCtx) });
+    alt.set(heading, twoBars(figures));
     inputs.push({ heading, description, kpis: figureInput(figures) });
   };
   const extra = (heading: string, description: string, x: { figures: Figure[]; rows: Record<string, string | number>[] } | undefined, columns: string[], keys: string[], chart: { kind: "bar" | "stacked"; series: { label: string; key: string }[] }) => {
     if (!x) return;
+    x.figures.forEach((f) => register(f, { rows: x.rows }));
+    alt.set(heading, twoBars(x.figures));
     out.push({
       heading,
       description,
       kpis: figureKpis(x.figures),
       table: totalsOnly ? compare(x.figures) : { columns, rows: x.rows.map((r) => keys.map((k) => r[k] ?? "")), totals: ["Total", ...keys.slice(1).map((k) => x.rows.reduce((s, r) => s + Number(r[k] ?? 0), 0))] },
-      chart: totalsOnly ? twoBars(x.figures) : { kind: chart.kind, labels: x.rows.map((r) => String(r.label)), series: chart.series.map((s) => ({ label: s.label, values: x.rows.map((r) => Number(r[s.key] ?? 0)) })) },
+      chart: totalsOnly ? scorecardOf(x.figures, scoreCtx) : { kind: chart.kind, labels: x.rows.map((r) => String(r.label)), series: chart.series.map((s) => ({ label: s.label, values: x.rows.map((r) => Number(r[s.key] ?? 0)) })) },
     });
     inputs.push({ heading, description, kpis: figureInput(x.figures) });
   };
@@ -215,15 +261,41 @@ export function operationsReport(args: {
     const key = sections.find((k) => headingsOf(k).includes(heading));
     return key ? args.styles?.[key] : undefined;
   };
-  const styled = out.map((sec) => {
+  const styled = out.map((sec): ReportSection => {
     const st = styleOf(sec.heading);
     if (st === "figures") return { ...sec, table: undefined, chart: undefined };
     if (st === "table") return { ...sec, chart: undefined };
-    if (st === "rank" && sec.chart && sec.chart.series.length === 1) return { ...sec, chart: { ...sec.chart, kind: "rank" as const } };
+    if (st === "bars") return { ...sec, chart: alt.get(sec.heading) ?? sec.chart };
+    if (st === "rank") {
+      const c = sec.chart?.kind === "scorecard" ? alt.get(sec.heading) : sec.chart;
+      return { ...sec, chart: c && c.series.length === 1 ? { ...c, kind: "rank" } : c };
+    }
     return sec;
   });
+  // The profile's graphs, each after its section's figures (or at the top, or when its section isn't in the report).
+  const ctx: GraphContext = {
+    figures: figMap,
+    sets: new Map(extras.expenses && sections.includes("expenses") ? [["expenses.by_account", extras.expenses.byAccount], ["expenses.by_fund", extras.expenses.byFund]] : []),
+    period, previousPeriod, ytdLabel, goalYear,
+    bucketLabels: buckets.map((b) => b.label),
+    monthLabels,
+    perYear: args.grain === "day" ? 365 : args.grain === "week" ? 52 : 12,
+    comparisons: columnsShown,
+    pace,
+  };
+  const top: ReportChart[] = [];
+  for (const g of args.graphs ?? []) {
+    if (g.hidden) continue;
+    const chart = resolveGraph(g, ctx);
+    const home = g.place === "top" ? undefined : styled.find((s) => headingsOf(g.place as GeneratorSectionKey).includes(s.heading));
+    if (home) home.graphs = [...(home.graphs ?? []), chart];
+    else top.push(chart);
+  }
+  const placed: ReportSection[] = top.length ? [{ heading: "At a glance", graphs: top }, ...styled] : styled;
   return {
-    spec: { title, subtitle: args.subtitle?.trim() || "The foundation's programs and operations for the period, from the app's records", period, previousPeriod, sections: styled },
+    spec: { title, subtitle: args.subtitle?.trim() || "The foundation's programs and operations for the period, from the app's records", period, previousPeriod, sections: placed },
     input: { title, period, previousPeriod, sections: inputs },
+    // The figures the graphs drew from, for the graph builder's preview.
+    context: ctx,
   };
 }

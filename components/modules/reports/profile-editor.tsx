@@ -15,9 +15,12 @@ import { deleteReportProfile, saveReportProfile, type ChartStyle, type Compariso
 import { move } from "@/lib/utils/dashboard-catalog";
 import { GENERATOR_SECTIONS, type GeneratorSectionKey } from "@/lib/utils/operations-report";
 import { PRESETS } from "@/lib/utils/period-presets";
+import { defaultGraphs, type GraphContext } from "@/lib/utils/report-graphs";
+import { GraphsEditor } from "./graph-builder";
 
 const STYLES: { value: ChartStyle; label: string }[] = [
-  { value: "chart", label: "Chart and table" },
+  { value: "chart", label: "Scorecard and table" },
+  { value: "bars", label: "Bars vs before, and table" },
   { value: "rank", label: "Sideways bars and table" },
   { value: "table", label: "Table only" },
   { value: "figures", label: "Figures only" },
@@ -34,9 +37,10 @@ const label = (k: string) => GENERATOR_SECTIONS.find((s) => s.key === k)?.label 
  * A report profile's design (0150), for the Super Admin, the CEO and Finance: its sections in order with how each is
  * drawn, the comparison columns, totals or columns, the period it opens on, one fund for the expenses, and the AI.
  */
-export function ProfileEditor({ profile, funds, onClose, onSaved }: { profile: ReportProfile | null; funds: { code: string; name: string }[]; onClose: () => void; onSaved: (id: string, saved: Pick<ProfileInput, "period" | "columnsMode">) => void }) {
+export function ProfileEditor({ profile, funds, context, onClose, onSaved }: { profile: ReportProfile | null; funds: { code: string; name: string }[]; context: GraphContext | null; onClose: () => void; onSaved: (id: string, saved: Pick<ProfileInput, "period" | "columnsMode">) => void }) {
+  // A new profile starts with graphs (hiding one is the way to keep it out).
   const [p, setP] = React.useState<ProfileInput>(
-    profile ?? { name: "", description: "", sections: ["headline", "housing"], charts: {}, comparisons: ["previous", "ytd", "goal"], columnsMode: "total", period: "this_month", fundCode: null, includeAi: true, sort: 100 },
+    profile ?? { name: "", description: "", sections: ["headline", "housing"], charts: {}, comparisons: ["previous", "ytd", "goal"], columnsMode: "total", period: "this_month", fundCode: null, includeAi: true, graphs: defaultGraphs(["headline", "housing"]), sort: 100 },
   );
   const [busy, setBusy] = React.useState(false);
   const set = <K extends keyof ProfileInput>(k: K, v: ProfileInput[K]) => setP((o) => ({ ...o, [k]: v }));
@@ -62,7 +66,7 @@ export function ProfileEditor({ profile, funds, onClose, onSaved }: { profile: R
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{profile ? `Edit ${profile.name}` : "New report profile"}</DialogTitle>
           <DialogDescription>What the report shows, in which order and how. Everyone who may open Reports can pick it.</DialogDescription>
@@ -99,8 +103,10 @@ export function ProfileEditor({ profile, funds, onClose, onSaved }: { profile: R
                 </li>
               ))}
             </ul>
-            <p className="text-theme-xs text-muted-foreground">Money sections (Donations, Expenses) show only to those who may see them.</p>
+            <p className="text-theme-xs text-muted-foreground">Money sections (Donations, Expenses) show only to those who may see them. A section&apos;s scorecard shows each figure&apos;s period, year to date and goal with the variance; by day, week or month it shows the figures over the period.</p>
           </section>
+
+          <GraphsEditor graphs={p.graphs} onChange={(g) => set("graphs", g)} sections={p.sections} comparisons={p.comparisons} context={context} />
 
           <section className="flex flex-col gap-2">
             <h3 className="text-theme-sm font-semibold">Comparisons</h3>

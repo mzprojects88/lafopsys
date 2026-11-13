@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Download, FolderOpen, List, Pencil, Plus } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ProfileEditor } from "@/components/modules/reports/profile-editor";
+import { ChartPreview } from "@/components/modules/reports/graph-builder";
 import { useCollection } from "@/lib/data/collection-store";
 import { reportProfilesStore, useReportExtra, type ReportExtra, type ReportProfile } from "@/lib/hooks/use-report-profiles";
 import { dashboardProfilesStore, useDashboardFigures, type DashboardFigures } from "@/lib/hooks/use-dashboard";
@@ -35,7 +36,8 @@ import { useRole } from "@/context/role-provider";
 import { holdsPower } from "@/lib/rbac/roles";
 import { cafAmounts, cafMonthLabel } from "@/lib/utils/caf";
 import { bucketsFor, periodGrain, type Grain } from "@/lib/utils/program-impact";
-import { GENERATOR_SECTIONS, operationsReport, type Figure, type GeneratorExtras, type GeneratorSectionKey } from "@/lib/utils/operations-report";
+import { GENERATOR_SECTIONS, operationsReport, type Figure, type GeneratorExtras, type GeneratorSectionKey, type SectionStyle } from "@/lib/utils/operations-report";
+import { EXTRA_MEASURES } from "@/lib/utils/report-graphs";
 import { periodLabel, periodWindow, previousWindow, type DayWindow, type RangeKind } from "@/lib/utils/period";
 import { addDays } from "@/lib/utils/dtr";
 import { bucketOf } from "@/lib/utils/report-series";
@@ -252,7 +254,24 @@ function Generator() {
       rows.filter((r) => bucketOf(dateOf(r), grain) === b.key).forEach((r) => sum(acc, r));
       return { label: b.label, ...acc };
     });
-  const fig = (label: string, cur: number, prev: number, ytd: number, unit?: Figure["unit"], goal?: number): Figure => ({ label, value: cur, previous: prev, ytd, unit, goal });
+  // A figure by its id: its name, unit and reading come from the graphs' catalogue (one place for them).
+  const fig = (id: string, cur: number, prev: number, ytd: number, goal?: number): Figure => {
+    const m = EXTRA_MEASURES[id]!;
+    return { id, label: m.label, unit: m.unit, part: m.part, lowerIsBetter: m.lowerIsBetter, value: cur, previous: prev, ytd, goal };
+  };
+  const goalFig = (label: string, cur: number, prev: number, ytd: number, unit: Figure["unit"], goal: number): Figure => ({ label, value: cur, previous: prev, ytd, unit, goal, derived: true });
+  // The months January to now of the figures with dates (the year to date's rows), for the graphs.
+  const monthCount = Number(ytdEnd.slice(5, 7));
+  const byMonth = <T,>(items: T[], dateOf: (x: T) => string, val: (x: T) => number) => {
+    const m: number[] = Array.from({ length: monthCount }, () => 0);
+    for (const x of items) {
+      const d = dateOf(x);
+      const i = Number(d.slice(5, 7)) - 1;
+      if (d.slice(0, 4) === String(year) && i >= 0 && i < monthCount) m[i]! += val(x);
+    }
+    return m;
+  };
+  const monthly: Record<string, number[]> = {};
 
   const cash = (w: DayWindow) => donations.filter((d) => d.kind === "cash" && d.currency === "PHP" && d.date >= w.from && d.date <= w.to);
   const built: GeneratorExtras = {};
@@ -261,7 +280,7 @@ function Generator() {
     const fuel = (x: Extra) => x.trips.reduce((s, t) => s + t.fuel, 0);
     const tripCount = (x: Extra) => x.trips.filter((t) => (t as { trip?: number }).trip === 1).length;
     built.transport = {
-      figures: [fig("Trips", tripCount(extras), tripCount(extrasBefore), tripCount(extrasYtd)), fig("Kilometres", km(extras), km(extrasBefore), km(extrasYtd), "km"), fig("Fuel spent", fuel(extras), fuel(extrasBefore), fuel(extrasYtd), "PHP")],
+      figures: [fig("transportation.trips", tripCount(extras), tripCount(extrasBefore), tripCount(extrasYtd)), fig("transportation.km", km(extras), km(extrasBefore), km(extrasYtd)), fig("transportation.fuel", fuel(extras), fuel(extrasBefore), fuel(extrasYtd))],
       rows: inBuckets(extras.trips, (t) => t.date, (a, t) => {
         a.trips = (a.trips ?? 0) + ((t as { trip?: number }).trip ?? 0);
         a.km = (a.km ?? 0) + t.km;
@@ -271,7 +290,7 @@ function Generator() {
     const hoursOf = (x: Extra) => Math.round((x.hours.reduce((s, h) => s + h.minutes, 0) / 60) * 10) / 10;
     const lateOf = (x: Extra) => x.hours.filter((h) => h.late).length;
     built.staff = {
-      figures: [fig("Hours worked", hoursOf(extras), hoursOf(extrasBefore), hoursOf(extrasYtd), "h"), fig("Late arrivals", lateOf(extras), lateOf(extrasBefore), lateOf(extrasYtd))],
+      figures: [fig("staff.hours", hoursOf(extras), hoursOf(extrasBefore), hoursOf(extrasYtd)), fig("staff.late", lateOf(extras), lateOf(extrasBefore), lateOf(extrasYtd))],
       rows: inBuckets(extras.hours, (h) => h.date, (a, h) => {
         a.hours = Math.round(((a.hours ?? 0) + h.minutes / 60) * 10) / 10;
         a.late = (a.late ?? 0) + (h.late ? 1 : 0);
@@ -283,16 +302,16 @@ function Generator() {
     const raised = (w: DayWindow) => donations.filter((d) => d.date >= w.from && d.date <= w.to).reduce((s, d) => s + Number(d.totalValue ?? 0), 0);
     built.donations = {
       figures: [
-        fig("Cash gifts", cashOf(window), cashOf(previous), cashOf(ytdWindow), "PHP"),
-        fig("Gifts in kind", food(extras) + nonFood(extras), food(extrasBefore) + nonFood(extrasBefore), food(extrasYtd) + nonFood(extrasYtd), "PHP"),
+        fig("donations.cash", cashOf(window), cashOf(previous), cashOf(ytdWindow)),
+        fig("donations.gik", food(extras) + nonFood(extras), food(extrasBefore) + nonFood(extrasBefore), food(extrasYtd) + nonFood(extrasYtd)),
         // The gifts in kind by what they are (the category each line was received under in LAF Inventory).
-        { ...fig("Gifts in kind: food", food(extras), food(extrasBefore), food(extrasYtd), "PHP"), part: true },
-        { ...fig("Gifts in kind: non-food", nonFood(extras), nonFood(extrasBefore), nonFood(extrasYtd), "PHP"), part: true },
-        fig("Cash gifts (count)", cash(window).length, cash(previous).length, cash(ytdWindow).length),
+        fig("donations.gik_food", food(extras), food(extrasBefore), food(extrasYtd)),
+        fig("donations.gik_nonfood", nonFood(extras), nonFood(extrasBefore), nonFood(extrasYtd)),
+        fig("donations.cash_count", cash(window).length, cash(previous).length, cash(ytdWindow).length),
         // One a receipt for goods (ops.gik_batches gives a row per receipt in LAF Inventory).
-        fig("Gifts in kind (count)", extras.gifts.length, extrasBefore.gifts.length, extrasYtd.gifts.length),
+        fig("donations.gik_count", extras.gifts.length, extrasBefore.gifts.length, extrasYtd.gifts.length),
         // The money-raised goal, counted as Executive › Goals counts it: every gift on the donor ledger.
-        ...((g) => (g ? [{ ...fig(`Goal: ${g.title}`, raised(window), raised(previous), raised(ytdWindow), "PHP", g.target), derived: true }] : []))(goalOf("donations")),
+        ...((g) => (g ? [goalFig(`Goal: ${g.title}`, raised(window), raised(previous), raised(ytdWindow), "PHP", g.target)] : []))(goalOf("donations")),
       ],
       rows: inBuckets([...extras.gifts.map((g) => ({ date: g.date, cash: 0, food: g.food, nonFood: g.nonFood })), ...cash(window).map((d) => ({ date: d.date, cash: d.totalValue, food: 0, nonFood: 0 }))], (r) => r.date, (a, r) => {
         a.cash = (a.cash ?? 0) + r.cash;
@@ -301,12 +320,30 @@ function Generator() {
       }) as { label: string; cash: number; food: number; nonFood: number }[],
     };
     built.inventory = {
-      figures: [fig("Food received", food(extras), food(extrasBefore), food(extrasYtd), "PHP"), fig("Non-food received", nonFood(extras), nonFood(extrasBefore), nonFood(extrasYtd), "PHP")],
+      figures: [fig("inventory.food", food(extras), food(extrasBefore), food(extrasYtd)), fig("inventory.nonfood", nonFood(extras), nonFood(extrasBefore), nonFood(extrasYtd))],
       rows: inBuckets(extras.gifts, (g) => g.date, (a, g) => {
         a.food = (a.food ?? 0) + g.food;
         a.nonFood = (a.nonFood ?? 0) + g.nonFood;
       }) as { label: string; food: number; nonFood: number }[],
     };
+    // Month by month from the year to date's dated rows.
+    const ytdCash = cash(ytdWindow);
+    const tripsY = extrasYtd.trips as { date: string; km: number; fuel: number; trip?: number }[];
+    Object.assign(monthly, {
+      "donations.cash": byMonth(ytdCash, (d) => d.date, (d) => d.totalValue),
+      "donations.cash_count": byMonth(ytdCash, (d) => d.date, () => 1),
+      "donations.gik": byMonth(extrasYtd.gifts, (g) => g.date, (g) => g.food + g.nonFood),
+      "donations.gik_food": byMonth(extrasYtd.gifts, (g) => g.date, (g) => g.food),
+      "donations.gik_nonfood": byMonth(extrasYtd.gifts, (g) => g.date, (g) => g.nonFood),
+      "donations.gik_count": byMonth(extrasYtd.gifts, (g) => g.date, () => 1),
+      "inventory.food": byMonth(extrasYtd.gifts, (g) => g.date, (g) => g.food),
+      "inventory.nonfood": byMonth(extrasYtd.gifts, (g) => g.date, (g) => g.nonFood),
+      "transportation.trips": byMonth(tripsY, (t) => t.date, (t) => t.trip ?? 0),
+      "transportation.km": byMonth(tripsY, (t) => t.date, (t) => t.km),
+      "transportation.fuel": byMonth(tripsY, (t) => t.date, (t) => t.fuel),
+      "staff.hours": byMonth(extrasYtd.hours, (h) => h.date, (h) => Math.round((h.minutes / 60) * 10) / 10),
+      "staff.late": byMonth(extrasYtd.hours, (h) => h.date, (h) => (h.late ? 1 : 0)),
+    });
   }
   if (see.caf) {
     const months = (w: DayWindow) =>
@@ -323,24 +360,32 @@ function Generator() {
     const prev = months(previous);
     const ytd = months(ytdWindow);
     const sum = (rows: typeof cur, k: "billed" | "paid" | "absorbed") => rows.reduce((s, r) => s + r[k], 0);
-    built.caf = { figures: [fig("Billed", sum(cur, "billed"), sum(prev, "billed"), sum(ytd, "billed"), "PHP"), fig("Paid", sum(cur, "paid"), sum(prev, "paid"), sum(ytd, "paid"), "PHP"), fig("Nights absorbed", sum(cur, "absorbed"), sum(prev, "absorbed"), sum(ytd, "absorbed"))], rows: cur };
+    built.caf = { figures: [fig("caf.billed", sum(cur, "billed"), sum(prev, "billed"), sum(ytd, "billed")), fig("caf.paid", sum(cur, "paid"), sum(prev, "paid"), sum(ytd, "paid")), fig("caf.absorbed", sum(cur, "absorbed"), sum(prev, "absorbed"), sum(ytd, "absorbed"))], rows: cur };
   }
 
   // Headline: the dashboard's own figures for the three windows (money only where the dashboard shows it).
   const sumLines = (x: DashboardFigures | null, ...lines: string[]) => lines.reduce((t, l) => t + Number(x?.lines[l] ?? 0), 0);
   if (needHeadline && headNow.figures && headPrev.figures && headYtd.figures) {
     const [a, b, c] = [headNow.figures, headPrev.figures, headYtd.figures];
-    const line = (name: string, unit: Figure["unit"], ...lines: string[]) => fig(name, sumLines(a, ...lines), sumLines(b, ...lines), sumLines(c, ...lines), unit);
+    // A headline figure counting exactly a goal's lines carries that goal (Executive › Goals) against its year to date.
+    const goalFor = (lines: string[]) => {
+      const m = (Object.keys(GOAL_GROUP) as Measure[]).find((k) => [...MEASURES[k].lines].sort().join() === [...lines].sort().join());
+      return m ? goalOf(m)?.target : undefined;
+    };
+    const line = (id: string) => {
+      const lines = EXTRA_MEASURES[id]!.lines!;
+      return fig(id, sumLines(a, ...lines), sumLines(b, ...lines), sumLines(c, ...lines), goalFor(lines));
+    };
     built.headline = {
       figures: [
-        line("Bed nights provided", "", "housing"),
-        line("Patient and caregiver rides", "", "transport_to_nch", "transport_to_laf"),
-        line("Meals served", "", "meals_breakfast", "meals_lunch", "meals_dinner"),
-        line("Child visits (Activity Center @ NCH)", "", "center_nch_participants"),
-        line("Care Cart meals (served at NCH)", "", "care_cart_1000", "care_cart_1200", "care_cart_1700"),
-        fig("Unique patients admitted", a.unique_patients, b.unique_patients, c.unique_patients),
-        ...(a.cash && b.cash && c.cash ? [fig("Cash donations", a.cash.amount, b.cash.amount, c.cash.amount, "PHP")] : []),
-        ...(a.expenses && b.expenses && c.expenses ? [fig("Expenses (paid vouchers)", a.expenses.amount, b.expenses.amount, c.expenses.amount, "PHP")] : []),
+        line("headline.bed_nights"),
+        line("headline.rides"),
+        line("headline.meals"),
+        line("headline.child_visits"),
+        line("headline.care_cart"),
+        fig("headline.patients", a.unique_patients, b.unique_patients, c.unique_patients),
+        ...(a.cash && b.cash && c.cash ? [fig("headline.cash", a.cash.amount, b.cash.amount, c.cash.amount)] : []),
+        ...(a.expenses && b.expenses && c.expenses ? [fig("headline.expenses", a.expenses.amount, b.expenses.amount, c.expenses.amount)] : []),
       ],
     };
   }
@@ -352,10 +397,10 @@ function Generator() {
     const pct = (o: typeof a) => (o.beds && o.days ? Math.round((o.family_nights / o.days / o.beds) * 1000) / 10 : 0);
     built.occupancy = {
       figures: [
-        fig("Families a night (average)", avg(a), avg(b), avg(c)),
-        fig("Beds in use (average, %)", pct(a), pct(b), pct(c)),
-        fig("Family-nights", a.family_nights, b.family_nights, c.family_nights),
-        fig("Nights with nobody in", a.empty_nights, b.empty_nights, c.empty_nights),
+        fig("occupancy.families", avg(a), avg(b), avg(c)),
+        fig("occupancy.beds_pct", pct(a), pct(b), pct(c)),
+        fig("occupancy.family_nights", a.family_nights, b.family_nights, c.family_nights),
+        fig("occupancy.empty_nights", a.empty_nights, b.empty_nights, c.empty_nights),
       ],
       note: `${a.beds} beds (${a.regular_beds} regular, ${a.beds - a.regular_beds} temporary mattresses) on the floor plan; families housed each night from the nights finalized in the app, else the House Sheet. ${a.busiest ? `Busiest night: ${a.busiest.night} with ${a.busiest.families} families.` : ""}`.trim(),
     };
@@ -369,10 +414,10 @@ function Generator() {
     const ytdNights = nights(programsYtd.rows) + nights(programs.rows);
     built.expenses = {
       figures: [
-        fig("Paid", a.total, b.total, c.total, "PHP"),
-        ...(a.budget != null ? [fig("Approved budget for these days", a.budget, b.budget ?? 0, c.budget ?? 0, "PHP")] : []),
-        fig("Vouchers paid", a.vouchers, b.vouchers, c.vouchers),
-        ...(fund ? [] : [fig("Spending per bed night", perNight(a.total, nights(programs.rows)), perNight(b.total, nights(programsBefore.rows)), perNight(c.total, ytdNights), "PHP")]),
+        fig("expenses.paid", a.total, b.total, c.total),
+        ...(a.budget != null ? [fig("expenses.budget", a.budget, b.budget ?? 0, c.budget ?? 0)] : []),
+        fig("expenses.vouchers", a.vouchers, b.vouchers, c.vouchers),
+        ...(fund ? [] : [fig("expenses.per_night", perNight(a.total, nights(programs.rows)), perNight(b.total, nights(programsBefore.rows)), perNight(c.total, ytdNights))]),
       ],
       byAccount: a.by_account.map((x) => ({ label: `${x.code} ${x.name}`, amount: Number(x.amount) })),
       byFund: a.by_fund.map((x) => ({ label: `${x.name} (${x.code})`, amount: Number(x.amount) })),
@@ -388,7 +433,12 @@ function Generator() {
   const report = (plain = false) =>
     operationsReport({
       sections, rows: programs.rows, previous: programsBefore.rows, buckets, extras: built, period: label, previousPeriod: prevLabel, totalsOnly, ytdRows: programsYtd.rows, ytdLabel, goalYear: year, goals: programGoals,
-      styles: plain ? undefined : (profile?.charts as Partial<Record<GeneratorSectionKey, "chart" | "rank" | "table" | "figures">> | undefined),
+      styles: plain ? undefined : (profile?.charts as Partial<Record<GeneratorSectionKey, SectionStyle>> | undefined),
+      graphs: plain ? undefined : profile?.graphs,
+      ytdEnd,
+      windowFrom: window.from,
+      grain,
+      monthly,
       comparisons: profile?.comparisons,
       notes: filled ? { Housing: `${filled} night${filled === 1 ? "" : "s"} of this period came from the House Sheet: nobody finalized them in the app.` } : undefined,
       title: profile?.name,
@@ -404,7 +454,8 @@ function Generator() {
     }
     downloadCsv(csvLines(lines[0].map(String), lines.slice(1).map((r) => r.map(String))), `LAF-${(profile?.name ?? "Report").replace(/[^A-Za-z0-9]+/g, "-")}-${window.from}-${window.to}.csv`);
   };
-  const preview = ready ? report().spec : null;
+  const current = ready ? report() : null;
+  const preview = current?.spec ?? null;
   const toggle = (k: GeneratorSectionKey) =>
     setPicked((s) => {
       const n = new Set(s);
@@ -445,6 +496,7 @@ function Generator() {
         <ProfileEditor
           profile={editing === "new" ? null : editing}
           funds={fundCodes.filter((c) => c.tier === "T2" && c.active !== false).map((c) => ({ code: String(c.code), name: String(c.name) }))}
+          context={current?.context ?? null}
           onClose={() => setEditing(null)}
           onSaved={(id, saved) => {
             setEditing(null);
@@ -493,6 +545,11 @@ function Generator() {
               ))}
             </KpiGrid>
           ) : null}
+          {[...(s.chart ? [s.chart] : []), ...(s.graphs ?? [])].map((c, i) => (
+            <div key={i} className="mt-3 rounded-lg bg-white p-2">
+              <ChartPreview chart={c} />
+            </div>
+          ))}
           {s.table ? (
             <div className="mt-3 overflow-x-auto">
               <table className="w-full text-theme-sm">

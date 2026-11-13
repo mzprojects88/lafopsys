@@ -15,7 +15,10 @@ it("totals only: the period, the one before, the variance, the year to date", ()
   assert.deepEqual(s.table.columns, ["Figure", "Oct 2026", "Sep 2026", "Variance", "YTD 2026"]);
   assert.deepEqual(s.table.rows[0].slice(1), [788, 628, "+160 (+25%)", 5788]);
   assert.equal(s.kpis[0].change, "+25%");
-  assert.deepEqual(s.chart.labels, ["Sep 2026", "Oct 2026"]);
+  // Its graph is the scorecard; the profile's "bars" brings back the period against the one before.
+  assert.equal(s.chart.kind, "scorecard");
+  assert.match(s.chart.rows[0].text, /788 +\+25% vs Sep/);
+  assert.deepEqual(operationsReport({ ...base, totalsOnly: true, styles: { housing: "bars" } }).spec.sections[0].chart.labels, ["Sep 2026", "Oct 2026"]);
 });
 
 it("a goal adds its row and columns, set against the year to date", () => {
@@ -51,7 +54,10 @@ it("a part (gifts in kind: food) is in the boxes and the table but not the chart
   const s = operationsReport({ ...base, sections: ["donations"], extras: { donations }, totalsOnly: true }).spec.sections[0];
   assert.equal(s.kpis.length, 3);
   assert.equal(s.table.rows.length, 3);
-  assert.deepEqual(s.chart.series.map((x) => x.label), ["Gifts in kind"]);
+  // The scorecard gives each its own row (no adding up); the bars leave the parts out.
+  assert.equal(s.chart.rows.length, 3);
+  const b = operationsReport({ ...base, sections: ["donations"], extras: { donations }, totalsOnly: true, styles: { donations: "bars" } }).spec.sections[0];
+  assert.deepEqual(b.chart.series.map((x) => x.label), ["Gifts in kind"]);
 });
 
 it("the expenses section: by account and by fund, in the profile's order, with its title", () => {

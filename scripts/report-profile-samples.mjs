@@ -6,6 +6,12 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { operationsReport } from "../lib/utils/operations-report.ts";
 import { IMPACT_GROUPS, bucketsFor, periodGrain } from "../lib/utils/program-impact.ts";
 import { buildReportPdf } from "../lib/pdf/report-doc.ts";
+import { cleanSpec } from "../lib/pdf/clean-spec.ts";
+import { EXTRA_MEASURES } from "../lib/utils/report-graphs.ts";
+
+// The sample graphs of 0152, for a profile whose saved graphs aren't given.
+const sql = readFileSync(new URL("../supabase/migrations/0152_report_graphs.sql", import.meta.url), "utf8");
+const SEEDED = Object.fromEntries([...sql.matchAll(/\('([a-z ]+)', '(\[[\s\S]*?\])'::jsonb\)/g)].map((m) => [m[1], JSON.parse(m[2])]));
 
 const [profilesFile, outDir] = process.argv.slice(2);
 if (!profilesFile || !outDir) throw new Error("usage: node scripts/report-profile-samples.mjs <profiles.json> <out-dir>");
@@ -42,7 +48,15 @@ function rowsFor(w, grain) {
     }),
   );
 }
-const fig = (label, value, previous, ytd, unit, goal) => ({ label, value, previous, ytd, unit, goal });
+// A figure by its id (labels and units from the report's catalogue), as the report page builds them.
+const fig = (id, value, previous, ytd, goal) => {
+  const m = EXTRA_MEASURES[id];
+  // Whole numbers above 100 (a year's sample is a month's times 12.2).
+  const r = (v) => (Math.abs(v) >= 100 ? Math.round(v) : v);
+  return { id, label: m.label, unit: m.unit, part: m.part, lowerIsBetter: m.lowerIsBetter, value: r(value), previous: r(previous), ytd: r(Math.max(ytd, value)), goal };
+};
+const MONTHS = 11;
+const monthsOf = (ytd) => Array.from({ length: MONTHS }, () => Math.round((ytd / MONTHS) * (0.7 + rand() * 0.6)));
 const money = (lo, hi) => between(lo, hi) * 100;
 
 for (const p of profiles) {
@@ -60,28 +74,28 @@ for (const p of profiles) {
   const extras = {
     headline: {
       figures: [
-        fig("Bed nights provided", 1020 * scale, 940 * scale, 9480, ""),
-        fig("Patient and caregiver rides", 236 * scale, 251 * scale, 2134, ""),
-        fig("Meals served", 2610 * scale, 2402 * scale, 23950, ""),
-        fig("Child visits (Activity Center @ NCH)", 158 * scale, 141 * scale, 1460, ""),
-        fig("Care Cart meals (served at NCH)", 2210 * scale, 2075 * scale, 19840, ""),
-        fig("Unique patients admitted", 41, 37, 128, ""),
-        fig("Cash donations", 186500 * scale, 152300 * scale, 1620400, "PHP"),
-        fig("Expenses (paid vouchers)", 241800 * scale, 228950 * scale, 2361000, "PHP"),
+        fig("headline.bed_nights", 1020 * scale, 940 * scale, 9480, 12000),
+        fig("headline.rides", 236 * scale, 251 * scale, 2134),
+        fig("headline.meals", 2610 * scale, 2402 * scale, 23950, 30000),
+        fig("headline.child_visits", 158 * scale, 141 * scale, 1460),
+        fig("headline.care_cart", 2210 * scale, 2075 * scale, 19840),
+        fig("headline.patients", 41, 37, 128),
+        fig("headline.cash", 186500 * scale, 152300 * scale, 1620400),
+        fig("headline.expenses", 241800 * scale, 228950 * scale, 2361000),
       ],
     },
     occupancy: {
-      figures: [fig("Families a night (average)", 15.6, 14.9, 15.1, ""), fig("Beds in use (average, %)", 86.7, 82.8, 83.9, ""), fig("Family-nights", 468 * scale, 446 * scale, 4612, ""), fig("Nights with nobody in", 0, 1, 2, "")],
+      figures: [fig("occupancy.families", 15.6, 14.9, 15.1), fig("occupancy.beds_pct", 86.7, 82.8, 83.9), fig("occupancy.family_nights", 468 * scale, 446 * scale, 4612), fig("occupancy.empty_nights", 0, 1, 2)],
       note: "18 beds (13 regular, 5 temporary mattresses) on the floor plan; families housed each night from the nights finalized in the app, else the House Sheet. Busiest night: 2026-11-07 with 18 families.",
     },
     expenses: {
       figures: p.fund_code
-        ? [fig("Paid", 64250 * scale, 58900 * scale, 612400, "PHP"), fig("Vouchers paid", 23, 19, 214, "")]
+        ? [fig("expenses.paid", 64250 * scale, 58900 * scale, 612400), fig("expenses.vouchers", 23, 19, 214)]
         : [
-            fig("Paid", 241800 * scale, 228950 * scale, 2361000, "PHP"),
-            fig("Approved budget for these days", 260000 * scale, 260000 * scale, 2600000, "PHP"),
-            fig("Vouchers paid", 87, 79, 812, ""),
-            fig("Spending per bed night", 237.06, 243.56, 249.05, "PHP"),
+            fig("expenses.paid", 241800 * scale, 228950 * scale, 2361000),
+            fig("expenses.budget", 260000 * scale, 260000 * scale, 2600000),
+            fig("expenses.vouchers", 87, 79, 812),
+            fig("expenses.per_night", 237.06, 243.56, 249.05),
           ],
       byAccount: [
         ["5100 Food and provisions", 92400], ["5932 Travels and meals", 41250], ["5210 Utilities", 33800], ["5310 Fuel and oil", 28600],
@@ -92,24 +106,26 @@ for (const p of profiles) {
         ? `Paid from the ${p.fund_code} fund only, by the day paid. Budgets aren't set by fund, so there is no budget line.`
         : "Paid vouchers by the day paid (fund top-ups and cash advances left out; a liquidation counts the spending), against the approved budget's share of these days. Spending per bed night is all spending divided by the period's bed nights.",
     },
-    transport: { figures: [fig("Trips", 58, 61, 552), fig("Kilometres", 1840, 1912, 17420, "km"), fig("Fuel spent", 28600, 30150, 271900, "PHP")], rows: byBucket(() => ({ trips: between(8, 20), km: between(250, 600), fuel: money(40, 90) })) },
-    caf: { figures: [fig("Billed", 84000, 79500, 812000, "PHP"), fig("Paid", 79500, 72000, 744000, "PHP"), fig("Nights absorbed", 12, 9, 101)], rows: [{ label: period.label, billed: 84000, paid: 79500, absorbed: 12 }] },
+    transport: { figures: [fig("transportation.trips", 58, 61, 552), fig("transportation.km", 1840, 1912, 17420), fig("transportation.fuel", 28600, 30150, 271900)], rows: byBucket(() => ({ trips: between(8, 20), km: between(250, 600), fuel: money(40, 90) })) },
+    caf: { figures: [fig("caf.billed", 84000, 79500, 812000), fig("caf.paid", 79500, 72000, 744000), fig("caf.absorbed", 12, 9, 101)], rows: [{ label: period.label, billed: 84000, paid: 79500, absorbed: 12 }] },
     donations: {
       figures: [
-        fig("Cash gifts", 186500, 152300, 1620400, "PHP"),
-        fig("Gifts in kind", 64200, 71800, 655900, "PHP"),
-        { ...fig("Gifts in kind: food", 41800, 46300, 412500, "PHP"), part: true },
-        { ...fig("Gifts in kind: non-food", 22400, 25500, 243400, "PHP"), part: true },
-        fig("Cash gifts (count)", 34, 29, 311, ""),
-        fig("Gifts in kind (count)", 21, 24, 198, ""),
+        fig("donations.cash", 186500, 152300, 1620400),
+        fig("donations.gik", 64200, 71800, 655900),
+        fig("donations.gik_food", 41800, 46300, 412500),
+        fig("donations.gik_nonfood", 22400, 25500, 243400),
+        fig("donations.cash_count", 34, 29, 311),
+        fig("donations.gik_count", 21, 24, 198),
       ],
       rows: byBucket(() => ({ cash: money(200, 900), food: money(80, 300), nonFood: money(40, 200) })),
     },
-    staff: { figures: [fig("Hours worked", 1612, 1580, 15230, "h"), fig("Late arrivals", 6, 9, 71)], rows: byBucket(() => ({ hours: between(300, 450), late: between(0, 4) })) },
-    inventory: { figures: [fig("Food received", 41800, 46300, 412500, "PHP"), fig("Non-food received", 22400, 25500, 243400, "PHP")], rows: byBucket(() => ({ food: money(60, 160), nonFood: money(30, 90) })) },
+    staff: { figures: [fig("staff.hours", 1612, 1580, 15230), fig("staff.late", 6, 9, 71)], rows: byBucket(() => ({ hours: between(300, 450), late: between(0, 4) })) },
+    inventory: { figures: [fig("inventory.food", 41800, 46300, 412500), fig("inventory.nonfood", 22400, 25500, 243400)], rows: byBucket(() => ({ food: money(60, 160), nonFood: money(30, 90) })) },
   };
 
-  const { spec } = operationsReport({
+  // The dated figures' months January to now.
+  const monthly = Object.fromEntries(Object.values(extras).flatMap((x) => x.figures ?? []).filter((x) => x.id && x.ytd).map((x) => [x.id, monthsOf(x.ytd)]));
+  const { spec: raw } = operationsReport({
     sections: p.sections,
     rows,
     previous: prevRows,
@@ -130,7 +146,14 @@ for (const p of profiles) {
     notes: { Housing: "3 nights of this period came from the House Sheet: nobody finalized them in the app." },
     title: p.name,
     subtitle: p.description,
+    graphs: p.graphs?.length ? p.graphs : SEEDED[p.name.toLowerCase()],
+    ytdEnd: window.to < "2026-11-13" ? window.to : "2026-11-13",
+    windowFrom: window.from,
+    grain,
+    monthly,
   });
+  // Through the print route's own check, so what prints here prints in a real download.
+  const spec = cleanSpec(JSON.parse(JSON.stringify(raw)));
   spec.filters = ["SAMPLE WITH DUMMY FIGURES - for reviewing the layout only, not real data"];
   if (p.include_ai) {
     spec.analysis = "Sample analysis (dummy): the period's figures are compared with the period before and the year so far; the AI writes two or three sentences here per report and one per section when the AI analysis is kept.";

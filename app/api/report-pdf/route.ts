@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { accreditationLine } from "@/lib/pdf/accreditation";
-import { buildReportPdf, type ReportSpec } from "@/lib/pdf/report-doc";
+import { buildReportPdf } from "@/lib/pdf/report-doc";
+import { cleanSpec } from "@/lib/pdf/clean-spec";
 
 /**
  * Any report as a branded PDF (Nov 2026). The page posts the ReportSpec it shows on screen; this
@@ -10,64 +11,6 @@ import { buildReportPdf, type ReportSpec } from "@/lib/pdf/report-doc";
  * "prepared by" line, and lays it out. Nothing in the spec reaches the database.
  */
 const MAX_BYTES = 1_000_000;
-const LIMITS = { sections: 40, rows: 2000, text: 4000 };
-
-function cleanSpec(raw: unknown): ReportSpec | null {
-  if (!raw || typeof raw !== "object") return null;
-  const r = raw as Record<string, unknown>;
-  const str = (v: unknown, max = 200) => (typeof v === "string" ? v.slice(0, max) : undefined);
-  const cell = (v: unknown): string | number => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" ? v.slice(0, 120) : "");
-  const title = str(r.title, 120);
-  const period = str(r.period, 80);
-  if (!title || !period || !Array.isArray(r.sections)) return null;
-  const sections: ReportSpec["sections"] = [];
-  for (const s of (r.sections as unknown[]).slice(0, LIMITS.sections)) {
-    if (!s || typeof s !== "object") continue;
-    const o = s as Record<string, unknown>;
-    const heading = str(o.heading, 120);
-    if (!heading) continue;
-    const kpis = Array.isArray(o.kpis)
-      ? (o.kpis as unknown[]).slice(0, 24).flatMap((k) => {
-          const kk = (k ?? {}) as Record<string, unknown>;
-          const label = str(kk.label, 80);
-          const value = str(kk.value, 40);
-          return label && value !== undefined ? [{ label, value, previous: str(kk.previous, 40), change: str(kk.change, 24) }] : [];
-        })
-      : undefined;
-    const t = o.table as Record<string, unknown> | undefined;
-    const table =
-      t && Array.isArray(t.columns) && Array.isArray(t.rows)
-        ? {
-            columns: (t.columns as unknown[]).slice(0, 16).map((c) => str(c, 60) ?? ""),
-            rows: (t.rows as unknown[]).slice(0, LIMITS.rows).map((row) => (Array.isArray(row) ? row.slice(0, 16).map(cell) : [])),
-            totals: Array.isArray(t.totals) ? (t.totals as unknown[]).slice(0, 16).map(cell) : undefined,
-          }
-        : undefined;
-    const c = o.chart as Record<string, unknown> | undefined;
-    const chart =
-      c && (c.kind === "bar" || c.kind === "stacked" || c.kind === "rank") && Array.isArray(c.labels) && Array.isArray(c.series)
-        ? {
-            kind: c.kind as "bar" | "stacked" | "rank",
-            labels: (c.labels as unknown[]).slice(0, 400).map((l) => str(l, 40) ?? ""),
-            series: (c.series as unknown[]).slice(0, 8).flatMap((x) => {
-              const xx = (x ?? {}) as Record<string, unknown>;
-              const label = str(xx.label, 60);
-              return label && Array.isArray(xx.values) ? [{ label, values: (xx.values as unknown[]).slice(0, 400).map((v) => (typeof v === "number" && Number.isFinite(v) ? Math.max(0, v) : 0)) }] : [];
-            }),
-          }
-        : undefined;
-    sections.push({ heading, description: str(o.description, 600), kpis, table, chart, analysis: str(o.analysis, LIMITS.text) });
-  }
-  return {
-    title,
-    subtitle: str(r.subtitle, 200),
-    period,
-    previousPeriod: str(r.previousPeriod, 80),
-    filters: Array.isArray(r.filters) ? (r.filters as unknown[]).slice(0, 20).flatMap((f) => (typeof f === "string" ? [f.slice(0, 120)] : [])) : undefined,
-    analysis: str(r.analysis, LIMITS.text),
-    sections,
-  };
-}
 
 /** "5 Nov 2026, 3:12 PM" in Manila. */
 function manilaNow(): string {

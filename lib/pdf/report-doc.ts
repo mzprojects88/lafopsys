@@ -1,4 +1,7 @@
-import { A4, PdfPage, buildPdf, fitSize, textWidth, wrap } from "./writer.ts";
+import { A4, PdfPage, buildPdf, fitSize, wrap } from "./writer.ts";
+import { chartHeight, drawChart, type ReportChart } from "./charts.ts";
+
+export type { ChartKind, ChartRow, ReportChart } from "./charts.ts";
 import { drawLetterhead } from "./cash-ar.ts";
 
 /**
@@ -27,13 +30,6 @@ export interface ReportTable {
   totals?: (string | number)[];
 }
 
-export interface ReportChart {
-  /** Bars over the labels, series stacked on each other, or a sideways ranking. */
-  kind: "bar" | "stacked" | "rank";
-  labels: string[];
-  series: { label: string; values: number[] }[];
-}
-
 export interface ReportSection {
   heading: string;
   /** What the figures count and where they come from. */
@@ -41,6 +37,8 @@ export interface ReportSection {
   kpis?: ReportKpi[];
   table?: ReportTable;
   chart?: ReportChart;
+  /** More graphs after the section's own (a profile's graphs, 0152), each with its title. */
+  graphs?: ReportChart[];
   /** The AI's comparison for this section, printed only when the person kept it. */
   analysis?: string;
 }
@@ -75,13 +73,6 @@ const MARGIN = 44;
 const INNER = A4.width - MARGIN * 2;
 const BOTTOM = A4.height - MARGIN - 26;
 const AI_LABEL = "AI-generated analysis - review before sharing";
-const PALETTE: [number, number, number][] = [
-  [0.15, 0.39, 0.92],
-  [0.03, 0.46, 0.28],
-  [0.71, 0.28, 0.03],
-  [0.47, 0.21, 0.74],
-  [0.0, 0.55, 0.65],
-];
 const TINT: [number, number, number] = [0.94, 0.96, 1];
 const ROW = 14;
 
@@ -226,82 +217,9 @@ function table(flow: Flow, t: ReportTable): void {
 }
 
 function chart(flow: Flow, c: ReportChart): void {
-  const n = c.labels.length;
-  if (!n || !c.series.length) return;
-  if (c.kind === "rank") {
-    const rowH = 13;
-    const labelW = INNER * 0.38;
-    const max = Math.max(1, ...c.series[0]!.values);
-    flow.ensure(Math.min(n, 6) * rowH + 10);
-    c.labels.forEach((label, i) => {
-      if (flow.y + rowH > BOTTOM) flow.newPage();
-      const v = c.series[0]!.values[i] ?? 0;
-      flow.page.text(MARGIN, flow.y + 2, 8, label, { gray: 0.2 });
-      const barW = Math.max(1, ((INNER - labelW - 50) * v) / max);
-      flow.page.fillRectRgb(MARGIN + labelW, flow.y + 2, barW, rowH - 5, PALETTE[0]!);
-      flow.page.text(MARGIN + labelW + barW + 4, flow.y + 2, 8, fmt(v), { gray: 0.3 });
-      flow.y += rowH;
-    });
-    flow.y += 8;
-    return;
-  }
-  const height = 120;
-  // The legend's items, wrapped onto lines that fit the width.
-  const legendRows: { label: string; k: number; x: number }[][] = [];
-  if (c.series.length > 1) {
-    let lx = MARGIN;
-    let row: { label: string; k: number; x: number }[] = [];
-    c.series.forEach((s, k) => {
-      const w = textWidth(s.label, 7.5) + 22;
-      if (row.length && lx + w > A4.width - MARGIN) {
-        legendRows.push(row);
-        row = [];
-        lx = MARGIN;
-      }
-      row.push({ label: s.label, k, x: lx });
-      lx += w;
-    });
-    legendRows.push(row);
-  }
-  const legendH = legendRows.length * 12;
-  flow.ensure(height + 30 + legendH);
-  const top = flow.y + legendH;
-  const base = top + height;
-  const totals = c.labels.map((_, i) => (c.kind === "stacked" ? c.series.reduce((s, x) => s + (x.values[i] ?? 0), 0) : Math.max(...c.series.map((x) => x.values[i] ?? 0))));
-  const max = Math.max(1, ...totals);
-  legendRows.forEach((row, r) =>
-    row.forEach(({ label, k, x }) => {
-      flow.page.fillRectRgb(x, flow.y + r * 12 + 2, 7, 7, PALETTE[k % PALETTE.length]!);
-      flow.page.text(x + 10, flow.y + r * 12 + 1, 7.5, label, { gray: 0.35 });
-    }),
-  );
-  flow.page.line(MARGIN, base, A4.width - MARGIN, base, 0.7);
-  const slot = INNER / n;
-  const groupW = Math.min(slot * 0.7, 40);
-  const showValues = n <= 16;
-  c.labels.forEach((label, i) => {
-    const x0 = MARGIN + i * slot + (slot - groupW) / 2;
-    if (c.kind === "stacked") {
-      let y = base;
-      c.series.forEach((s, k) => {
-        const h = ((s.values[i] ?? 0) / max) * height;
-        if (h > 0) flow.page.fillRectRgb(x0, y - h, groupW, h, PALETTE[k % PALETTE.length]!);
-        y -= h;
-      });
-      if (showValues && totals[i]) flow.page.text(x0 + groupW / 2, y - 9, 7, fmt(totals[i]!), { gray: 0.3, align: "center" });
-    } else {
-      const bw = groupW / c.series.length;
-      c.series.forEach((s, k) => {
-        const v = s.values[i] ?? 0;
-        const h = (v / max) * height;
-        if (h > 0) flow.page.fillRectRgb(x0 + k * bw, base - h, bw - 1, h, PALETTE[k % PALETTE.length]!);
-        if (showValues && v && c.series.length === 1) flow.page.text(x0 + groupW / 2, base - h - 9, 7, fmt(v), { gray: 0.3, align: "center" });
-      });
-    }
-    const every = Math.max(1, Math.ceil(n / 16));
-    if (i % every === 0) flow.page.text(MARGIN + i * slot + slot / 2, base + 3, fitSize(label, slot - 2, 7, false, 5), label, { gray: 0.4, align: "center" });
-  });
-  flow.y = base + 14 + 8;
+  if (!c.labels.length && !c.rows?.length) return;
+  flow.ensure(chartHeight(c, INNER) + 8);
+  flow.y += drawChart(flow.page, MARGIN, flow.y, INNER, c) + 8;
 }
 
 /** All pages, laid out; separate from the file build so it can be tested. */
@@ -328,7 +246,8 @@ export function layoutReportDoc(spec: ReportSpec, branding: ReportBranding): Pdf
 
   for (const s of spec.sections) {
     const descH = s.description ? wrap(s.description, INNER, 8.5).length * 12.5 + 4 : 0;
-    const firstH = s.kpis?.length ? 58 : s.chart ? 162 : s.table ? ROW * 3 + 6 : 0;
+    const firstGraph = s.chart ?? s.graphs?.[0];
+    const firstH = s.kpis?.length ? 58 : firstGraph ? chartHeight(firstGraph, INNER) + 8 : s.table ? ROW * 3 + 6 : 0;
     flow.ensure(28 + descH + firstH);
     flow.y += 6;
     flow.page.text(MARGIN, flow.y, 12, s.heading, { bold: true });
@@ -341,6 +260,7 @@ export function layoutReportDoc(spec: ReportSpec, branding: ReportBranding): Pdf
     }
     if (s.kpis?.length) kpis(flow, s.kpis);
     if (s.chart) chart(flow, s.chart);
+    for (const g of s.graphs ?? []) chart(flow, g);
     if (s.table) table(flow, s.table);
     if (s.analysis) analysisBox(flow, s.analysis);
   }
