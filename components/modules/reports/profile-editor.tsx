@@ -72,7 +72,8 @@ export function ProfileEditor({ profile, funds, context, onClose, onSaved }: { p
           <DialogTitle>{profile ? `Edit ${profile.name}` : "New report profile"}</DialogTitle>
           <DialogDescription>What the report shows, in which order and how. Everyone who may open Reports can pick it.</DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-4">
+        {/* min-w-0: the dialog is a grid, and a grid item is as wide as its widest line unless told otherwise. */}
+        <div className="flex min-w-0 flex-col gap-4">
           <Field>
             <FieldLabel htmlFor="rp-name">Name</FieldLabel>
             <Input id="rp-name" maxLength={80} value={p.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Board meeting report" />
@@ -88,7 +89,7 @@ export function ProfileEditor({ profile, funds, context, onClose, onSaved }: { p
               {p.sections.map((k, i) => (
                 <li key={k} className="flex flex-wrap items-center gap-2 px-3 py-1.5 text-theme-sm">
                   <Checkbox checked onCheckedChange={() => set("sections", p.sections.filter((x) => x !== k))} aria-label={`Leave out ${label(k)}`} />
-                  <span className="min-w-0 flex-1 truncate">{label(k)}</span>
+                  <span className="min-w-32 flex-1 truncate">{label(k)}</span>
                   <Select value={p.charts[k] ?? "chart"} onValueChange={(v) => set("charts", { ...p.charts, [k]: v as ChartStyle })}>
                     <SelectTrigger size="sm" className="w-44" aria-label={`How ${label(k)} is drawn`}><SelectValue /></SelectTrigger>
                     <SelectContent>{STYLES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>

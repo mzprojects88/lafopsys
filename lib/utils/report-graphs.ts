@@ -270,7 +270,7 @@ export function resolveGraph(g: GraphDef, ctx: GraphContext): ReportChart {
       const r = scoreRow(f, ctx);
       if (g.type === "variance") {
         const pct = f.previous ? Math.round(((f.value - f.previous) / Math.abs(f.previous)) * 1000) / 10 : 0;
-        return { label: r.label, value: pct, text: f.previous ? changeLabel(f.value, f.previous) : "new", good: goodOf(f) };
+        return { label: r.label, value: pct, text: changeLabel(f.value, f.previous) || "no change", good: goodOf(f) };
       }
       if (g.type === "kpi") return { label: f.label, value: f.value, text: money(f, f.value), sub: ctx.comparisons.has("previous") ? `${changeLabel(f.value, f.previous) || "no change"} vs ${firstWord(ctx.previousPeriod)}` : "", good: ctx.comparisons.has("previous") ? goodOf(f) : null };
       if (g.type === "gauge") {

@@ -88,7 +88,7 @@ export function GraphsEditor({ graphs, onChange, sections, comparisons, context,
   };
   if (editing) return <GraphForm initial={editing} sections={sections} comparisons={comparisons} context={context} onCancel={() => setEditing(null)} onDone={put} />;
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex min-w-0 flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-theme-sm font-semibold">Graphs</h3>
         <Button
@@ -147,7 +147,7 @@ function GraphForm({ initial, sections, comparisons, context, onCancel, onDone }
   const toggle = (id: string, on: boolean) => set("measures", on ? [...g.measures, id] : g.measures.filter((x) => x !== id));
 
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-border p-3">
+    <section className="flex min-w-0 flex-col gap-3 rounded-xl border border-border p-3">
       <h3 className="text-theme-sm font-semibold">{initial.title ? `Edit graph: ${initial.title}` : "New graph"}</h3>
       <Field>
         <FieldLabel htmlFor="gb-title">Title</FieldLabel>
