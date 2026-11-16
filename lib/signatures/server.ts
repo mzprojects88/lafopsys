@@ -15,8 +15,8 @@ async function allowed(doc: SignatureDoc, staffIds: readonly (string | null | un
   const ids = [...new Set(staffIds.filter((x): x is string => !!x))];
   if (!ids.length) return [];
   const db = createAdminClient().schema("shared");
-  const { data } = await db.from("staff_signatures").select("staff_id, object_key, content_type").in("staff_id", ids).contains("allowed_docs", [doc]);
-  const rows = (data ?? []) as { staff_id: string; object_key: string; content_type: string }[];
+  const { data } = await db.from("staff_signatures").select("staff_id, object_key, content_type, image_b64").in("staff_id", ids).contains("allowed_docs", [doc]);
+  const rows = (data ?? []) as { staff_id: string; object_key: string; content_type: string; image_b64: string | null }[];
   if (!rows.length) return [];
   const { error } = await db.from("signature_uses").insert(rows.map((r) => ({ staff_id: r.staff_id, doc_type: doc, doc_ref: ref.slice(0, 120) || "-", by_staff_id: by })));
   return error ? [] : rows;
@@ -43,9 +43,15 @@ export async function signatureImages(doc: SignatureDoc, staffIds: readonly (str
   await Promise.all(
     (await allowed(doc, staffIds, ref, by)).map(async (r) => {
       try {
-        const res = await fetch(await presignGet(r.object_key, "signature", r.content_type, true), { cache: "no-store" });
-        if (!res.ok) return;
-        const img = signatureImage(new Uint8Array(await res.arrayBuffer()), r.content_type);
+        // The copy on the row (0154); a signature uploaded before it is read from the file store.
+        let bytes: Uint8Array;
+        if (r.image_b64) bytes = Buffer.from(r.image_b64, "base64");
+        else {
+          const res = await fetch(await presignGet(r.object_key, "signature", r.content_type, true), { cache: "no-store" });
+          if (!res.ok) return;
+          bytes = new Uint8Array(await res.arrayBuffer());
+        }
+        const img = signatureImage(bytes, r.content_type);
         if (img) out.set(r.staff_id, img);
       } catch {
         // No storage, or an unreadable file: the document prints without the picture.

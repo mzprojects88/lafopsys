@@ -41,7 +41,7 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ ok: false, error: "The signature couldn't be stored; try again." }, { status: 502 });
   }
-  const { error } = await db.from("staff_signatures").upsert({ staff_id: user.id, object_key: key, content_type: file.type, bytes: file.bytes.length, uploaded_at: new Date().toISOString() });
+  const { error } = await db.from("staff_signatures").upsert({ staff_id: user.id, object_key: key, content_type: file.type, bytes: file.bytes.length, uploaded_at: new Date().toISOString(), image_b64: Buffer.from(file.bytes).toString("base64") });
   if (error) {
     await deleteObject(key).catch(() => undefined);
     return NextResponse.json({ ok: false, error: `The signature couldn't be saved: ${error.message}` }, { status: 500 });
