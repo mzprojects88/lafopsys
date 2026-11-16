@@ -11,6 +11,7 @@ import { formatDate } from "@/lib/utils/date";
 import { PrintButton } from "@/app/(print)/hr/payslips/[id]/print/print-button";
 import { hasAnyRole, rolesOfRow } from "@/lib/rbac/roles";
 import { nameFormat, titleFor } from "@/lib/utils/staff-name";
+import { signatureLinks } from "@/lib/signatures/server";
 
 /**
  * The printed DTR for one pay period (DTR plan phase 5): each day's arrival
@@ -137,6 +138,7 @@ export default async function DtrPrintPage({ params, searchParams }: { params: P
   const width = Math.max(2, ...dtr.rows.map((r) => r.sessions.length));
   const shown = Math.min(width, 3);
 
+  const signature = (await signatureLinks("dtr", [staffId], `DTR ${staffId} ${period ?? "current period"}`, user.id)).get(staffId);
   return (
     <div className="mx-auto max-w-3xl p-6 text-sm text-neutral-900 print:max-w-none print:p-0">
       <div className="mb-4 flex items-center justify-between print:hidden">
@@ -245,10 +247,13 @@ export default async function DtrPrintPage({ params, searchParams }: { params: P
         </p>
         <div className="mt-10 grid grid-cols-2 gap-10 text-xs">
           <div>
+            {/* The employee's own signature, if they allowed it on their time record (0153). */}
+            <div className="flex h-10 items-end">{signature ? <img src={signature} alt="" className="max-h-10 max-w-[70%] object-contain" /> : null}</div>
             <div className="border-t border-neutral-500 pt-1 font-semibold">{name}</div>
             <div className="text-neutral-600">{jobTitle ? `Employee · ${jobTitle}` : "Employee"}</div>
           </div>
           <div>
+            <div className="h-10" />
             <div className="border-t border-neutral-500 pt-1 font-semibold">&nbsp;</div>
             <div className="text-neutral-600">Verified by: Supervisor / HR</div>
           </div>

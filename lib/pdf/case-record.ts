@@ -1,3 +1,4 @@
+import type { PdfImage } from "./page.ts";
 import { A4, PdfPage, buildPdf, wrap } from "./writer.ts";
 import { drawLetterhead, longDate } from "./cash-ar.ts";
 import { FORMS, NOTE_LABEL, noteKey, type FormData, type FormId } from "../case-files/forms.ts";
@@ -27,6 +28,8 @@ export interface CaseRecordPdfData {
   ceoTitle?: string;
   header?: string;
   accreditation?: string;
+  /** The staff signers' signatures, each when they allowed it on case records (0153). */
+  signatures?: { prepared?: PdfImage; approved?: PdfImage; ceo?: PdfImage };
 }
 
 const MARGIN = 48;
@@ -148,10 +151,10 @@ export function layoutCaseRecord(d: CaseRecordPdfData): PdfPage[] {
   }
 
   // Signatures: each a line with the name above and the role below.
-  const signers: { name: string; role: string }[] = [
-    { name: d.preparedBy, role: "Prepared by: Resident Social Worker" },
-    { name: d.approvedBy, role: `Reviewed and approved by: Social Worker · ${longDate(d.approvedOn)}` },
-    { name: d.ceoName ?? "", role: `Noted by: ${d.ceoTitle ?? "Chief Executive Officer"}` },
+  const signers: { name: string; role: string; image?: PdfImage }[] = [
+    { name: d.preparedBy, role: "Prepared by: Resident Social Worker", image: d.signatures?.prepared },
+    { name: d.approvedBy, role: `Reviewed and approved by: Social Worker · ${longDate(d.approvedOn)}`, image: d.signatures?.approved },
+    { name: d.ceoName ?? "", role: `Noted by: ${d.ceoTitle ?? "Chief Executive Officer"}`, image: d.signatures?.ceo },
     ...(def.conforme ? [{ name: "", role: "Conforme: Name and Signature of Parent/Caregiver" }] : []),
     ...(def.extraSigners ?? []).map((role) => ({ name: "", role })),
   ];
@@ -161,6 +164,7 @@ export function layoutCaseRecord(d: CaseRecordPdfData): PdfPage[] {
   signers.forEach((s, i) => {
     const x = MARGIN + (i % 2) * (width + 32);
     const rowY = y + Math.floor(i / 2) * 64;
+    page.signature(s.image, x + width / 2, rowY, width, 24, true);
     page.text(x + width / 2, rowY, 9.5, s.name, { align: "center" });
     page.fillRect(x, rowY + 14, width, 0.75, 0.3);
     page.text(x + width / 2, rowY + 20, 8, s.role, { align: "center", gray: 0.3 });
@@ -225,6 +229,7 @@ export function buildCasePeriodPdf(d: {
   ceoTitle?: string;
   header?: string;
   accreditation?: string;
+  signatures?: { prepared?: PdfImage; ceo?: PdfImage };
 }): Buffer {
   const page = new PdfPage();
   let y = MARGIN;
@@ -250,10 +255,11 @@ export function buildCasePeriodPdf(d: {
   y += 40;
   const width = INNER / 2 - 16;
   [
-    { name: d.preparedBy, role: "Prepared by: Resident Social Worker" },
-    { name: d.ceoName ?? "", role: `Noted by: ${d.ceoTitle ?? "Chief Executive Officer"}` },
+    { name: d.preparedBy, role: "Prepared by: Resident Social Worker", image: d.signatures?.prepared },
+    { name: d.ceoName ?? "", role: `Noted by: ${d.ceoTitle ?? "Chief Executive Officer"}`, image: d.signatures?.ceo },
   ].forEach((s, i) => {
     const x = MARGIN + i * (width + 32);
+    page.signature(s.image, x + width / 2, y, width, 30, true);
     page.text(x + width / 2, y, 9.5, s.name, { align: "center" });
     page.fillRect(x, y + 14, width, 0.75, 0.3);
     page.text(x + width / 2, y + 20, 8, s.role, { align: "center", gray: 0.3 });

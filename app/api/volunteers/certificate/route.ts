@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildVolunteerCert } from "@/lib/pdf/volunteer-cert";
+import { signatureImages } from "@/lib/signatures/server";
 import { nameFormat, titleFor } from "@/lib/utils/staff-name";
 import { todayIso } from "@/lib/utils/date";
 
@@ -43,6 +44,7 @@ export async function POST(req: Request) {
   const { data: signatory } = signatoryId ? await admin.schema("shared").from("staff").select("first_name, last_name, position").eq("id", signatoryId).maybeSingle() : { data: null };
   const name = `${volunteer.first_name} ${volunteer.last_name}`.trim();
 
+  const sigs = await signatureImages("volunteer_certificate", [signatoryId], `volunteer ${volunteerId} ${from} to ${to}`, userData.user.id);
   const pdf = buildVolunteerCert({
     volunteerName: name,
     from,
@@ -53,6 +55,7 @@ export async function POST(req: Request) {
     issuedOn: todayIso(),
     header: settings?.report_header || undefined,
     signatoryName: signatory ? `${signatory.first_name} ${signatory.last_name}` : undefined,
+    signatorySignature: signatoryId ? sigs.get(signatoryId) : undefined,
     signatoryPosition: titleFor(nameFormat(settings?.document_names, "donee_cert"), signatory?.position) ?? undefined,
   });
   await admin.schema("ops").from("volunteers").update({ certificates_issued: (volunteer.certificates_issued ?? 0) + 1 }).eq("id", volunteerId);

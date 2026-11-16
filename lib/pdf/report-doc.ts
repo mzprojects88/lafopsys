@@ -1,3 +1,4 @@
+import type { PdfImage } from "./page.ts";
 import { A4, PdfPage, buildPdf, fitSize, wrap } from "./writer.ts";
 import { chartHeight, drawChart, type ReportChart } from "./charts.ts";
 
@@ -67,6 +68,8 @@ export interface ReportBranding {
   generatedAt: string;
   /** "Jane Doe, Office Admin". */
   generatedBy: string;
+  /** The preparer's signature, when they allowed it on reports (0153): beside "Prepared by" on the cover. */
+  signature?: PdfImage;
 }
 
 const MARGIN = 44;
@@ -240,6 +243,7 @@ export function layoutReportDoc(spec: ReportSpec, branding: ReportBranding): Pdf
     paragraph(flow, `Filters: ${spec.filters.join("; ")}`, 8, 0.45);
     flow.y += 2;
   }
+  flow.page.signature(branding.signature, A4.width - MARGIN - 130, flow.y + 6, 130, 36);
   flow.page.text(MARGIN, flow.y, 8, `Prepared by ${branding.generatedBy}, ${branding.generatedAt}`, { gray: 0.45 });
   flow.y += 16;
   if (spec.analysis) analysisBox(flow, spec.analysis);

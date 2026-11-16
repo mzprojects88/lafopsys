@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildCaseFolderPdf, buildCasePeriodPdf, buildCaseRecordPdf, type CaseRecordPdfData } from "@/lib/pdf/case-record";
+import { signatureImages } from "@/lib/signatures/server";
 import { accreditationLine } from "@/lib/pdf/accreditation";
 import { FORMS, caseNumberFor, folderOrder, folderStatus, periodRange, periodReportRows, type CasePeriodCounts, type DocumentKind, type FormId } from "@/lib/case-files/forms";
 import { computeAge } from "@/lib/utils/age";
@@ -51,9 +52,11 @@ export async function POST(req: Request) {
   const admin = createAdminClient();
   const [{ data: signers }, { data: ceo }, { data: settings }] = await Promise.all([
     admin.schema("shared").from("staff").select("id, first_name, last_name").in("id", [...new Set(recs.flatMap((r) => [r.prepared_by, r.approved_by]).filter(Boolean))]),
-    admin.schema("shared").from("staff").select("first_name, last_name, position").eq("active", true).or("role.eq.ceo,extra_roles.cs.{ceo}").limit(1).maybeSingle(),
+    admin.schema("shared").from("staff").select("id, first_name, last_name, position").eq("active", true).or("role.eq.ceo,extra_roles.cs.{ceo}").limit(1).maybeSingle(),
     admin.schema("shared").from("app_settings").select("report_header, dswd_label, dswd_number").eq("id", true).maybeSingle(),
   ]);
+  // Their signatures, each only if its owner allowed it on case records (0153); every use is logged.
+  const sigs = await signatureImages("case_record", [...recs.flatMap((r) => [r.prepared_by as string | null, r.approved_by as string | null]), ceo?.id], recordId ? `case record ${recordId}` : `case folder ${folderOf}`, userData.user.id);
   const nameOf = (sid: string | null) => fullName(signers?.find((s) => s.id === sid));
   const caseNumber = caseNumberFor({ caseNumber: patient.case_number, legacyCode: patient.legacy_code }, body?.original === true);
 
@@ -72,6 +75,7 @@ export async function POST(req: Request) {
     preparedBy: nameOf(rec.prepared_by),
     approvedBy: nameOf(rec.approved_by),
     approvedOn: String(rec.approved_at).slice(0, 10),
+    signatures: { prepared: sigs.get(rec.prepared_by), approved: sigs.get(rec.approved_by), ceo: ceo?.id ? sigs.get(ceo.id) : undefined },
     ceoName: fullName(ceo) || undefined,
     ceoTitle: ceo?.position || undefined,
     header: settings?.report_header || undefined,
@@ -103,13 +107,15 @@ async function periodReport(supabase: Awaited<ReturnType<typeof createClient>>, 
   const admin = createAdminClient();
   const [{ data: me }, { data: ceo }, { data: settings }] = await Promise.all([
     admin.schema("shared").from("staff").select("first_name, last_name").eq("id", userId).maybeSingle(),
-    admin.schema("shared").from("staff").select("first_name, last_name, position").eq("active", true).or("role.eq.ceo,extra_roles.cs.{ceo}").limit(1).maybeSingle(),
+    admin.schema("shared").from("staff").select("id, first_name, last_name, position").eq("active", true).or("role.eq.ceo,extra_roles.cs.{ceo}").limit(1).maybeSingle(),
     admin.schema("shared").from("app_settings").select("report_header, dswd_label, dswd_number").eq("id", true).maybeSingle(),
   ]);
+  const sigs = await signatureImages("case_record", [userId, ceo?.id], `social worker's report ${range.title}`, userId);
   const pdf = buildCasePeriodPdf({
     title: range.title,
     rows: periodReportRows(data as CasePeriodCounts),
     preparedBy: fullName(me),
+    signatures: { prepared: sigs.get(userId), ceo: ceo?.id ? sigs.get(ceo.id) : undefined },
     ceoName: fullName(ceo) || undefined,
     ceoTitle: ceo?.position || undefined,
     header: settings?.report_header || undefined,

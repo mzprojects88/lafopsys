@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildDoneeCert, type DoneeCertLine } from "@/lib/pdf/donee-cert";
+import { signatureImages } from "@/lib/signatures/server";
 import { nameFormat, titleFor } from "@/lib/utils/staff-name";
 
 /**
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
     lines.push({ name: donation.item_description || "Donated items", quantity: Number(donation.quantity ?? 1), uom: "", value: Number(donation.total_value) });
   }
 
+  const sigs = await signatureImages("donee_certificate", [signatoryId], cert.control_number, userData.user.id);
   const pdf = buildDoneeCert({
     controlNumber: cert.control_number,
     date: donation.date,
@@ -71,6 +73,7 @@ export async function POST(req: Request) {
     orgTin: settings?.org_tin || undefined,
     header: settings?.report_header || undefined,
     signatoryName: signatory ? `${signatory.first_name} ${signatory.last_name}` : undefined,
+    signatorySignature: signatoryId ? sigs.get(signatoryId) : undefined,
     signatoryPosition: titleFor(nameFormat(settings?.document_names, "donee_cert"), signatory?.position) ?? undefined,
   });
 

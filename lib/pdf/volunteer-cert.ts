@@ -1,3 +1,4 @@
+import type { PdfImage } from "./page.ts";
 import { A4, PdfPage, buildPdf, fitSize, wrap } from "./writer.ts";
 import { drawLetterhead, longDate } from "./cash-ar.ts";
 
@@ -15,6 +16,8 @@ export interface VolunteerCertData {
   byActivity: { activity: string; hours: number }[];
   issuedOn: string;
   header?: string;
+  /** The signatory's signature, when they allowed it on certificates (0153). */
+  signatorySignature?: PdfImage;
   signatoryName?: string;
   signatoryPosition?: string;
 }
@@ -64,6 +67,7 @@ export function layoutVolunteerCert(d: VolunteerCertData): PdfPage[] {
   const signY = Math.max(y + 80, A4.height - MARGIN - 110);
   const width = INNER / 2;
   const left = MARGIN + (INNER - width) / 2;
+  page.signature(d.signatorySignature, A4.width / 2, signY - 16, width, 34, true);
   page.text(A4.width / 2, signY - 16, 10.5, d.signatoryName ?? "", { align: "center" });
   page.fillRect(left, signY, width, 0.75, 0.3);
   let captionY = signY + 8;

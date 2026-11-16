@@ -3,6 +3,7 @@ import { accreditationLine } from "@/lib/pdf/accreditation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildCashAr } from "@/lib/pdf/cash-ar";
+import { signatureImages } from "@/lib/signatures/server";
 import { nameFormat, titleFor } from "@/lib/utils/staff-name";
 
 /**
@@ -47,6 +48,7 @@ export async function POST(req: Request) {
   const donor = donation.donors as unknown as { name: string } | null;
   const campaign = donation.campaigns as unknown as { name: string } | null;
 
+  const sigs = await signatureImages("cash_receipt", [receipt.issued_by], receipt.sequence_number, userData.user.id);
   const pdf = buildCashAr({
     arNumber: receipt.sequence_number,
     bookletNumber: receipt.booklet_number ?? undefined,
@@ -58,6 +60,7 @@ export async function POST(req: Request) {
     campaign: campaign?.name ?? undefined,
     notes: donation.notes ?? undefined,
     receivedBy: issuer ? `${issuer.first_name} ${issuer.last_name}` : undefined,
+    receivedBySignature: receipt.issued_by ? sigs.get(receipt.issued_by) : undefined,
     receivedByPosition: titleFor(nameFormat(settings?.document_names, "cash_ar"), issuer?.position) ?? undefined,
     header: settings?.report_header || undefined,
     accreditation: accreditationLine(settings),

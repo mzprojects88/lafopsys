@@ -58,7 +58,14 @@ export function buildPdf(pages: PdfPage[], title: string): Buffer {
   const rendered = pages.length > 0 ? pages : [new PdfPage()];
   // Images are written after the info object; pages refer ahead to them.
   const images = [...new Set(rendered.flatMap((page) => page.images))];
-  const imageId = (img: PdfImage) => firstPage + pageCount * 2 + 1 + images.indexOf(img);
+  // A PNG with transparency takes a second object (its soft mask), numbered straight after it.
+  const imageIds = new Map<PdfImage, number>();
+  let nextId = firstPage + pageCount * 2 + 1;
+  for (const img of images) {
+    imageIds.set(img, nextId);
+    nextId += img.alpha && !img.jpeg ? 2 : 1;
+  }
+  const imageId = (img: PdfImage) => imageIds.get(img)!;
   rendered.forEach((page, index) => {
     const pageId = pageIds[index]!;
     const contentId = pageId + 1;
@@ -81,17 +88,27 @@ export function buildPdf(pages: PdfPage[], title: string): Buffer {
   push(`<< /Title (${escapeText(title)}) /Producer (LAF Inventory) >>\nendobj\n`);
 
   images.forEach((img) => {
-    startObject(imageId(img));
+    const id = imageId(img);
+    const data = img.jpeg ?? img.rgb ?? Buffer.alloc(0);
+    const alpha = img.jpeg ? undefined : img.alpha;
+    const mask = alpha ? ` /SMask ${id + 1} 0 R` : "";
+    startObject(id);
     push(
       `<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} /ColorSpace /DeviceRGB ` +
-        `/BitsPerComponent 8 /Filter /DCTDecode /Length ${img.jpeg.length} >>\nstream\n`
+        `/BitsPerComponent 8 /Filter /${img.jpeg ? "DCTDecode" : "FlateDecode"}${mask} /Length ${data.length} >>\nstream\n`
     );
-    push(img.jpeg);
+    push(data);
     push("\nendstream\nendobj\n");
+    if (alpha) {
+      startObject(id + 1);
+      push(`<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length ${alpha.length} >>\nstream\n`);
+      push(alpha);
+      push("\nendstream\nendobj\n");
+    }
   });
 
   const xrefOffset = length;
-  const maxId = infoId + images.length;
+  const maxId = nextId - 1;
   push(`xref\n0 ${maxId + 1}\n`);
   push("0000000000 65535 f \n");
   for (let id = 1; id <= maxId; id += 1) {

@@ -2,6 +2,7 @@
 // Statement, then for each child a Statement of Account and an Endorsement Letter (LAF copy and
 // NCH copy on one page). The figures come from lib/utils/caf.ts; nothing is computed here.
 // Relative, with extensions, so node --test can load the layout without a bundler.
+import type { PdfImage } from "./page.ts";
 import { A4, PdfPage, buildPdf, fitSize, wrap } from "./writer.ts";
 import { drawLetterhead } from "./cash-ar.ts";
 import { cafAmounts, cafDay, cafMonthLabel, cafPeriod, cafTotals, pesosInWords, type CafTerms } from "../utils/caf.ts";
@@ -24,8 +25,9 @@ export interface CafPackage {
   payerName: string;
   payerAddress: string;
   bank: { name: string; accountName: string; accountNo: string; accountType: string };
-  preparedBy?: { name: string; title?: string };
-  approvedBy?: { name: string; title?: string };
+  /** Each with their signature when they allowed it on the billing package (0153). */
+  preparedBy?: { name: string; title?: string; signature?: PdfImage };
+  approvedBy?: { name: string; title?: string; signature?: PdfImage };
   nchLetterhead: string[];
   /** The registration line (SEC, BIR, DSWD) from Settings. */
   header?: string;
@@ -64,8 +66,9 @@ function addressee(page: PdfPage, y: number, data: CafPackage, dateLabel: string
 
 function signatures(page: PdfPage, y: number, data: CafPackage) {
   const half = (INNER - 40) / 2;
-  const sign = (x: number, label: string, who?: { name: string; title?: string }) => {
+  const sign = (x: number, label: string, who?: { name: string; title?: string; signature?: PdfImage }) => {
     page.text(x, y, 8.5, label, { gray: 0.35 });
+    page.signature(who?.signature, x + half / 2, y + 28, half, 26, true);
     page.text(x + half / 2, y + 28, 9.5, who?.name ?? "", { align: "center" });
     page.fillRect(x, y + 41, half, 0.6, 0.3);
     if (who?.title) page.text(x + half / 2, y + 45, 8, who.title, { align: "center", gray: 0.25 });

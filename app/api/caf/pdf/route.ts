@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildCafPackage, type CafChild } from "@/lib/pdf/caf";
+import { signatureImages } from "@/lib/signatures/server";
 import { ageOn, cafMonthLabel } from "@/lib/utils/caf";
 import { todayIso } from "@/lib/utils/date";
 
@@ -58,9 +59,10 @@ export async function POST(req: Request) {
   const { data: signers } = signerIds.length
     ? await admin.schema("shared").from("staff").select("id, first_name, last_name, position").in("id", signerIds)
     : { data: [] as { id: string; first_name: string; last_name: string; position: string | null }[] };
+  const sigs = await signatureImages("nch_billing", signerIds, `NCH bill ${bill.month}${patientId ? ` ${patientId}` : ""}`, userData.user.id);
   const signer = (id?: string | null) => {
     const s = (signers ?? []).find((x) => x.id === id);
-    return s ? { name: `${s.first_name} ${s.last_name}`, title: s.position ? `LAF, ${s.position}` : undefined } : undefined;
+    return s ? { name: `${s.first_name} ${s.last_name}`, title: s.position ? `LAF, ${s.position}` : undefined, signature: sigs.get(s.id) } : undefined;
   };
 
   const invoiceDate = bill.invoice_date ?? todayIso();

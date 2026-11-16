@@ -6,6 +6,7 @@ import { formatDate } from "@/lib/utils/date";
 import { formatTime12 } from "@/lib/utils/time12";
 import { PrintButton } from "@/app/(print)/hr/payslips/[id]/print/print-button";
 import { nameFormat, titleFor } from "@/lib/utils/staff-name";
+import { signatureLinks } from "@/lib/signatures/server";
 import { DEFAULT_HOSPITAL, tripWords } from "@/lib/utils/trip-direction";
 import { directionsUrl, estimateRoadKm, findPlace, placesFromSettings } from "@/lib/utils/places";
 import { ManifestMap } from "./manifest-map";
@@ -36,6 +37,8 @@ export default async function ManifestPrintPage({ params }: { params: Promise<{ 
   const place = findPlace(placesFromSettings(docSettings?.transport_places), trip.destination ?? (trip.direction === "from_hospital" ? DEFAULT_HOSPITAL : null));
   const home = docSettings?.laf_house_latitude != null && docSettings?.laf_house_longitude != null ? { lat: Number(docSettings.laf_house_latitude), lng: Number(docSettings.laf_house_longitude) } : null;
   const driverTitle = titleFor(nameFormat(docSettings?.document_names, "manifest"), driver?.position);
+  const { data: viewer } = await supabase.auth.getUser();
+  const signature = trip.driver_staff_id ? (await signatureLinks("manifest", [trip.driver_staff_id], `manifest ${tripId}`, viewer.user?.id ?? null)).get(trip.driver_staff_id) : undefined;
   const manifest = ((trip.trip_manifest ?? []) as { id: string; name: string; carer_name: string | null; note: string | null; boarded_at: string | null }[]).sort((a, b) => a.name.localeCompare(b.name));
   const boarded = manifest.filter((m) => m.boarded_at).length;
 
@@ -110,6 +113,8 @@ export default async function ManifestPrintPage({ params }: { params: Promise<{ 
         <footer className="mt-6 flex items-end justify-between gap-6 text-xs text-neutral-600">
           <p>{boarded} of {manifest.length} on board. Families are checked in on the House Sheet on arrival.</p>
           <div className="w-56">
+            {/* The driver's signature, if they allowed it on manifests (0153). */}
+            <div className="flex h-10 items-end justify-center">{signature ? <img src={signature} alt="" className="max-h-10 max-w-[80%] object-contain" /> : null}</div>
             <div className="h-6 border-b border-neutral-400 text-center text-sm font-medium text-neutral-900">{driver ? `${driver.first_name} ${driver.last_name}` : ""}</div>
             <p className="pt-1">{driverTitle ? `Driver · ${driverTitle}` : "Driver"}</p>
           </div>

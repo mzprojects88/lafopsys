@@ -1,9 +1,9 @@
 import Image from "next/image";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchAll } from "@/lib/supabase/fetch-all";
 import { presignGet } from "@/lib/files/b2";
+import { signatureLinks } from "@/lib/signatures/server";
 import { amountInWords } from "@/lib/utils/amount-words";
 import { DEFAULT_VOUCHER_CERTIFICATION } from "@/lib/utils/documents";
 import { nameFormat, titleFor } from "@/lib/utils/staff-name";
@@ -236,24 +236,6 @@ export function sheetFor(
   );
 }
 
-/** Five-minute links to these people's own signature images, read by the server. Private to this file: only the
- * signers of printed boxes (loadVoucherSheets) reach it; the preview uses ownSignatureLink. */
-async function signatureLinks(staffIds: readonly string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  if (!staffIds.length) return out;
-  const { data: sigs } = await createAdminClient().schema("shared").from("staff_signatures").select("staff_id, object_key, content_type").in("staff_id", [...staffIds]);
-  await Promise.all(
-    (sigs ?? []).map(async (s) => {
-      try {
-        out.set(s.staff_id as string, await presignGet(s.object_key as string, "signature", s.content_type as string, true));
-      } catch {
-        // Storage not set up on this hosting: the voucher prints without the image.
-      }
-    }),
-  );
-  return out;
-}
-
 /** The signed-in person's own signature (read as them, RLS), for the preview. */
 export async function ownSignatureLink(): Promise<Map<string, string>> {
   const supabase = await createClient();
@@ -312,7 +294,9 @@ export async function loadVoucherSheets(ids: readonly string[]): Promise<{ id: s
   const actorIds = [...new Set([...(found as Row[]).map((v) => v.requested_by), ...events.map((e) => e.actor)].filter(Boolean))] as string[];
   const { data: people } = actorIds.length ? await supabase.schema("shared").from("staff").select("id, first_name, last_name, position").in("id", actorIds) : { data: [] };
   const signerIds = [...new Set((found as Row[]).flatMap((v) => boxes(v, eventsOf(v.id)).map((b) => imageSigner(v, b.e)).filter((x): x is string => !!x)))];
-  const signatures = await signatureLinks(signerIds);
+  // Only the signers who allowed their signature on vouchers (0153); each use is logged against the vouchers printed.
+  const { data: viewer } = await supabase.auth.getUser();
+  const signatures = await signatureLinks("voucher", signerIds, (found as Row[]).map((v) => String(v.voucher_number ?? v.request_number ?? v.id)).join(", "), viewer.user?.id ?? null);
 
   const origin = await siteOrigin();
   const org = orgFrom(settings);

@@ -79,9 +79,14 @@ export function num(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
-/** A JPEG to place on a page; the same object on several pages is stored once. */
+/** A picture to place on a page; the same object on several pages is stored once. Either a JPEG as it is, or a PNG
+ * already decoded (lib/pdf/png.ts): its colours deflated, its transparency deflated as a soft mask, and the file
+ * itself for the on-screen copy. */
 export interface PdfImage {
-  jpeg: Buffer;
+  jpeg?: Buffer;
+  rgb?: Buffer;
+  alpha?: Buffer;
+  png?: Buffer;
   width: number;
   height: number;
 }
@@ -97,7 +102,17 @@ export class PdfPage {
     let index = this.images.indexOf(img);
     if (index < 0) index = this.images.push(img) - 1;
     this.ops.push(`q ${num(width)} 0 0 ${num(height)} ${num(x)} ${num(A4.height - yTop - height)} cm /Im${index + 1} Do Q`);
-    this.svg.push(`<image x="${num(x)}" y="${num(yTop)}" width="${num(width)}" height="${num(height)}" href="data:image/jpeg;base64,${img.jpeg.toString("base64")}"/>`);
+    this.svg.push(`<image x="${num(x)}" y="${num(yTop)}" width="${num(width)}" height="${num(height)}" href="data:image/${img.jpeg ? "jpeg" : "png"};base64,${(img.jpeg ?? img.png ?? Buffer.alloc(0)).toString("base64")}"/>`);
+  }
+
+  /** A person's signature above their signing line (0153): fitted into the box and resting on the line, centred
+   * on `centerX` or starting at `x`. Nothing is drawn without a picture. */
+  signature(img: PdfImage | undefined, x: number, lineY: number, maxWidth: number, maxHeight = 34, center = false): void {
+    if (!img || !img.width || !img.height) return;
+    const scale = Math.min(maxWidth / img.width, maxHeight / img.height);
+    const w = img.width * scale;
+    const h = img.height * scale;
+    this.image(img, center ? x - w / 2 : x, lineY - h + 4, w, h);
   }
 
   /** PDF's origin is the bottom left; every caller here thinks top-down, so y

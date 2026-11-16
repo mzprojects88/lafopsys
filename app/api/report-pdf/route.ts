@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { accreditationLine } from "@/lib/pdf/accreditation";
 import { buildReportPdf } from "@/lib/pdf/report-doc";
 import { cleanSpec } from "@/lib/pdf/clean-spec";
+import { signatureImages } from "@/lib/signatures/server";
 
 /**
  * Any report as a branded PDF (Nov 2026). The page posts the ReportSpec it shows on screen; this
@@ -39,7 +40,10 @@ export async function POST(req: Request) {
     admin.schema("shared").from("staff").select("first_name, last_name, position").eq("id", userData.user.id).maybeSingle(),
   ]);
   const who = staff ? `${staff.first_name} ${staff.last_name}${staff.position ? `, ${staff.position}` : ""}` : "LAF staff";
+  // The preparer's own signature, if they allowed it on reports (0153).
+  const sigs = await signatureImages("report", [userData.user.id], `${spec.title}, ${spec.period}`, userData.user.id);
   const pdf = buildReportPdf(spec, {
+    signature: sigs.get(userData.user.id),
     header: settings?.report_header || undefined,
     accreditation: accreditationLine(settings),
     orgAddress: settings?.org_address || undefined,

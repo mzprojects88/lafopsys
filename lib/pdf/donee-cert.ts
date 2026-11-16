@@ -1,3 +1,4 @@
+import type { PdfImage } from "./page.ts";
 import { A4, PdfPage, buildPdf, fitSize, textWidth, wrap } from "./writer.ts";
 import { drawLetterhead, longDate, money } from "./cash-ar.ts";
 
@@ -32,6 +33,8 @@ export interface DoneeCertData {
   header?: string;
   signatoryName?: string;
   signatoryPosition?: string;
+  /** The signatory's signature, when they allowed it on certificates (0153). */
+  signatorySignature?: PdfImage;
 }
 
 const MARGIN = 48;
@@ -144,6 +147,7 @@ export function layoutDoneeCert(data: DoneeCertData): PdfPage[] {
       });
       const signY = Math.max(y + 70, A4.height - MARGIN - 100);
       const half = (INNER - 40) / 2;
+      page.signature(data.signatorySignature, MARGIN, signY - 16, half);
       page.text(MARGIN, signY - 16, 10, data.signatoryName ?? "");
       page.fillRect(MARGIN, signY, half, 0.75, 0.3);
       let captionY = signY + 6;

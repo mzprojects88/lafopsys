@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { deleteObject, presignGet, putObject } from "@/lib/files/b2";
 import { decodeDataUrl, tooLarge } from "@/lib/files/data-url";
+import { SIGNATURE_DOC_KEYS } from "@/lib/signatures/docs";
 
 export const dynamic = "force-dynamic";
 
@@ -60,10 +61,30 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
   const asked = new URL(request.url).searchParams.get("staff") ?? user.id;
   if (!UUID_RE.test(asked)) return NextResponse.json({ ok: false, error: "Bad staff id." }, { status: 400 });
-  const { data } = await supabase.schema("shared").from("staff_signatures").select("object_key, content_type, uploaded_at").eq("staff_id", asked).maybeSingle();
-  if (!data) return NextResponse.json({ ok: true, url: null }, { headers: { "cache-control": "no-store" } });
+  const { data } = await supabase.schema("shared").from("staff_signatures").select("object_key, content_type, uploaded_at, allowed_docs").eq("staff_id", asked).maybeSingle();
+  if (!data) return NextResponse.json({ ok: true, url: null, allowedDocs: [] }, { headers: { "cache-control": "no-store" } });
   const url = await presignGet(data.object_key as string, "signature", data.content_type as string, true);
-  return NextResponse.json({ ok: true, url, uploadedAt: data.uploaded_at }, { headers: { "cache-control": "no-store" } });
+  return NextResponse.json({ ok: true, url, uploadedAt: data.uploaded_at, allowedDocs: (data.allowed_docs as string[] | null) ?? [] }, { headers: { "cache-control": "no-store" } });
+}
+
+/**
+ * PATCH /api/signature: the signed-in person chooses which kinds of document may carry THEIR signature (0153).
+ * Nobody chooses for someone else, the Super Admin included. The server writes the row and logs the new list.
+ */
+export async function PATCH(request: Request) {
+  const { user } = await caller();
+  if (!user) return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
+  if (tooLarge(request, 4096)) return NextResponse.json({ ok: false, error: "Bad request." }, { status: 400 });
+  const body = (await request.json().catch(() => null)) as { docs?: unknown } | null;
+  const docs = Array.isArray(body?.docs) ? [...new Set(body.docs.filter((d): d is string => typeof d === "string"))] : null;
+  if (!docs || docs.some((d) => !SIGNATURE_DOC_KEYS.includes(d))) return NextResponse.json({ ok: false, error: "Unknown kind of document." }, { status: 400 });
+  const db = createAdminClient().schema("shared");
+  const { data, error } = await db.from("staff_signatures").update({ allowed_docs: docs }).eq("staff_id", user.id).select("staff_id");
+  if (error) return NextResponse.json({ ok: false, error: `The choice couldn't be saved: ${error.message}` }, { status: 500 });
+  if (!data?.length) return NextResponse.json({ ok: false, error: "Upload your signature first." }, { status: 404 });
+  const { error: logError } = await db.from("staff_signature_log").insert({ staff_id: user.id, action: "allowed", by_staff_id: user.id, docs });
+  if (logError) return NextResponse.json({ ok: false, error: `Saved, but the change log failed: ${logError.message}` }, { status: 500 });
+  return NextResponse.json({ ok: true });
 }
 
 /** Removes a signature: your own, or anyone's for the Super Admin (someone who has left); logged. */

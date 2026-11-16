@@ -28,6 +28,8 @@ export interface CashArData {
   /** The signed-in issuer's full name and position, from their staff record. */
   receivedBy?: string;
   receivedByPosition?: string;
+  /** The issuer's signature, when they allowed it on receipts (0153). */
+  receivedBySignature?: PdfImage;
   /** The registration line (SEC, BIR, DSWD) from Settings. */
   header?: string;
   /** "DSWD Accreditation No. ..." (0119): under the letterhead and in the footer. */
@@ -126,6 +128,7 @@ export function layoutCashAr(data: CashArData): PdfPage[] {
   // Signatures, kept to the lower part of the page.
   const signY = Math.max(y + 70, A4.height - MARGIN - 110);
   const half = (INNER - 40) / 2;
+  page.signature(data.receivedBySignature, MARGIN, signY - 16, half);
   page.text(MARGIN, signY - 16, 10, data.receivedBy ?? "");
   page.fillRect(MARGIN, signY, half, 0.75, 0.3);
   let captionY = signY + 6;
