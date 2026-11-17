@@ -86,3 +86,22 @@ it("the public site's login is granted the storefront function and nothing else"
   assert.deepEqual(grants, ["usage on schema shop", "execute on function shop.web_catalog()"]);
   assert.ok(!/create role shop_web[^;]*(login|password)/i.test(sql.replace(/nologin/g, "")), "no password or login in the migration");
 });
+
+it("every shop function is closed to the public, and the site's login gets only the storefront ones (0155, 0156)", () => {
+  for (const file of ["0155_shop_catalogue.sql", "0156_shop_orders.sql"]) {
+    const text = readFileSync(new URL(`../supabase/migrations/${file}`, import.meta.url), "utf8");
+    const made = [...new Set([...text.matchAll(/create or replace function shop\.([a-z_]+)\(/g)].map((m) => m[1]))];
+    assert.ok(made.length > 0, file);
+    const revoke = text.match(/revoke all on (all functions in schema shop|function [^;]+) from public, anon, authenticated, shop_web;/);
+    assert.ok(revoke, `${file} revokes its functions from the public`);
+    for (const fn of made) {
+      // A trigger function is not callable by anyone anyway; every other function must be named in the revoke.
+      if (fn === "touch") continue;
+      assert.ok(revoke[1].startsWith("all functions") || revoke[1].includes(`shop.${fn}(`), `${file}: ${fn} is revoked from the public`);
+      const toSite = new RegExp(`grant execute on function shop\\.${fn}\\([^)]*\\) to shop_web;`).test(text);
+      assert.equal(toSite, fn.startsWith("web_"), `${file}: ${fn} ${fn.startsWith("web_") ? "is" : "is not"} granted to the site`);
+    }
+    for (const m of text.matchAll(/grant ([^;]+) to shop_web;/g)) assert.match(m[1].trim(), /^usage on schema shop$|^execute on function shop\.web_/, m[1]);
+    assert.ok(!/grant[^;]*\bon (table )?shop\.[a-z_]+[^;]*to shop_web/.test(text.replace(/grant execute on function[^;]+;/g, "")), `${file} grants the site no table`);
+  }
+});
