@@ -53,8 +53,8 @@ try {
     (select id from shared.staff where role = 'driver' and active order by id limit 1) driver,
     (select id from shared.staff where active and role not in ('admin', 'finance', 'driver', 'partner_viewer') order by id limit 1) shop`);
   for (const [k, v] of Object.entries(ids)) if (!v) throw new Error(`fixture missing: ${k}`);
-  // Another account stands in for Shop Staff (rolled back with everything else).
-  await c.query(`update shared.staff set role = 'shop_staff', extra_roles = '{}' where id = $1`, [ids.shop]);
+  // Another account stands in for Shop Admin (rolled back with everything else).
+  await c.query(`update shared.staff set role = 'shop_admin', extra_roles = '{}' where id = $1`, [ids.shop]);
 
   // A catalogue of our own: a counted tee (10 pieces) and a made-to-order hoodie.
   const TEE = "aaaaaaaa-0000-4000-8000-000000000001", TEE_M = "aaaaaaaa-0000-4000-8000-000000000011";
@@ -103,11 +103,11 @@ try {
   r = await step("shop_web", A.id, "deliver", {}, false);
   check("nor can the public site", refused(r, "42501"));
   r = await run(ids.shop, `update shop.orders set status = 'delivered' where id = $1`, [A.id]);
-  check("Shop Staff cannot change an order behind the steps", refused(r, "42501"), brief(r));
+  check("Shop Admin cannot change an order behind the steps", refused(r, "42501"), brief(r));
   r = await run(ids.shop, `insert into shop.outbox (to_address, subject, body_html) values ('x@example.com', 'x', 'x')`);
   check("nor write an email into the outbox", refused(r, "42501"), brief(r));
   r = await run(ids.shop, `select count(*)::int n from shop.outbox`);
-  check("Shop Staff can see what was emailed", r.ok && r.rows[0].n >= 1);
+  check("Shop Admin can see what was emailed", r.ok && r.rows[0].n >= 1);
   r = await run(ids.driver, `select count(*)::int n from shop.outbox`);
   check("someone without the Shop sees none of it", r.ok && r.rows[0].n === 0, brief(r));
   r = await run("shop_web", `select 1 from shop.outbox`);
@@ -117,7 +117,7 @@ try {
   r = await step(ids.shop, A.id, "ship", { courier: "LBC", tracking_number: "123" }, false);
   check("an order is packed before it is shipped", refused(r, "23514"), brief(r));
   r = await step(ids.shop, A.id, "pack");
-  check("Shop Staff pack a paid order", r.ok && r.rows[0].r === "packed" && (await row(A.id)).packed, brief(r));
+  check("Shop Admin pack a paid order", r.ok && r.rows[0].r === "packed" && (await row(A.id)).packed, brief(r));
   r = await step(ids.shop, A.id, "pack", {}, false);
   check("it cannot be packed twice", refused(r, "23514"));
   r = await step(ids.shop, A.id, "ready", {}, false);
@@ -236,7 +236,7 @@ try {
   const entries = async () => (await one(`select count(*)::int n from ops.cash_entries where source_id like 'shop:%'`)).n;
   const had = await entries();
   r = await post(ids.shop, yesterday, false);
-  check("Shop Staff cannot post to the cash book", refused(r, "42501"), brief(r));
+  check("Shop Admin cannot post to the cash book", refused(r, "42501"), brief(r));
   r = await post(ids.driver, yesterday, false);
   check("nor can someone outside Finance and the Shop", refused(r, "42501"));
   r = await post("shop_web", yesterday, false);
@@ -271,13 +271,13 @@ try {
   r = await run("anon", `select shop.web_policies()`);
   check("a signed-out visitor to the API does not", refused(r, "42501"));
   r = await run(ids.shop, `update shop.settings set couriers = array['LBC', 'Ninja Van'], site_url = 'https://shop.littlearkfoundation.org'`, [], true);
-  check("Shop Staff keep the list of couriers", r.ok && r.n === 1, brief(r));
+  check("Shop Admin keep the list of couriers", r.ok && r.n === 1, brief(r));
   r = await run(ids.shop, `update shop.settings set site_url = 'javascript:alert(1)'`);
   check("the site's address must be a web address", refused(r, "23514"), brief(r));
   r = await run(ids.finance, `update shop.settings set cash_posting = false`);
   check("Finance (read-only in the Shop) changes no Shop setting", r.ok && r.n === 0, brief(r));
   const pages = await one(`select count(*)::int n from shared.role_page_access where page in ('shop.orders', 'shop.proceeds')`);
-  check("the two new pages are given to Shop Staff, Finance, the Office Admin and the CEO", pages.n === 8, brief(pages));
+  check("the two new pages are given to the Shop Admin, Finance and the CEO, and not to the Office Admin", pages.n === 6 && (await one(`select count(*)::int n from shared.role_page_access where page like 'shop.%' and role = 'office_admin'`)).n === 0, brief(pages));
   const priv = await one(`select
     has_function_privilege('anon', 'shop.order_step(uuid, text, jsonb)', 'execute') a, has_function_privilege('shop_web', 'shop.order_step(uuid, text, jsonb)', 'execute') b,
     has_function_privilege('anon', 'shop.post_proceeds(date)', 'execute') c, has_function_privilege('shop_web', 'shop.post_proceeds(date)', 'execute') d,

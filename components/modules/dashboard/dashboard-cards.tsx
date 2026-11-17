@@ -14,6 +14,7 @@ import {
   PiggyBank,
   Receipt,
   ShieldCheck,
+  ShoppingBag,
   ShoppingBasket,
   Sigma,
   Target,
@@ -37,6 +38,8 @@ import { useAppSettings } from "@/lib/hooks/use-app-settings";
 import { useVehicleExpenses } from "@/lib/hooks/use-vehicle-expenses-collection";
 import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
 import { useGoalActuals } from "@/lib/hooks/use-goal-actuals";
+import { useShopOrders } from "@/lib/hooks/use-shop-collection";
+import { proceedsOf, soldIn } from "@/lib/utils/shop";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useBedReservations } from "@/lib/hooks/use-bed-reservations";
@@ -128,6 +131,8 @@ export function DashboardCard({ k, f, period, window, now }: { k: CardKey; f: Da
       return <GoalsCard />;
     case "beds":
       return <BedsCard />;
+    case "shop":
+      return <ShopCard window={window} period={period} />;
   }
 }
 
@@ -205,6 +210,24 @@ function FuelCard({ window, period }: { window: DayWindow; period: string }) {
 function yearGone(year: number): number {
   const start = Date.parse(`${year}-01-01T00:00:00+08:00`);
   return Math.min(1, Math.max(0, (Date.now() - start) / (Date.parse(`${year + 1}-01-01T00:00:00+08:00`) - start)));
+}
+
+/** The shop (0155 to 0158): what was sold in the period, counted as Shop › Proceeds counts it, and the paid orders
+ * still to pack. Read under the person's own Shop access: without it the list is empty and the card says so. */
+function ShopCard({ window, period }: { window: DayWindow; period: string }) {
+  const { orders, items, loading } = useShopOrders();
+  const sold = proceedsOf(soldIn(orders, window), items);
+  const toPack = orders.filter((o) => o.status === "paid").length;
+  return (
+    <Card
+      href="/shop/orders"
+      label="Shop sales"
+      value={loading ? "…" : formatCurrency(sold.sold)}
+      sublabel={`${sold.orders} paid order${sold.orders === 1 ? "" : "s"} · ${period}${toPack ? ` · ${toPack} to pack now` : ""}`}
+      icon={ShoppingBag}
+      tone={toPack ? "warning" : undefined}
+    />
+  );
 }
 
 /** The beds as the floor plan counts them (bedCounts): beds, not admission slots; tonight's use, holds and repairs. */

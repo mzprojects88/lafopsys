@@ -51,14 +51,14 @@ import { CustomizeSheet } from "@/components/modules/dashboard/customize-sheet";
 import { ACTIONS, CARDS, resolveLayout, type ActionKey } from "@/lib/utils/dashboard-catalog";
 import type { PresetKey } from "@/lib/utils/period-presets";
 import {
-  BedDouble, Bus, CalendarCheck, ClipboardCheck, Fingerprint, Fuel, Gift, HandHeart, Landmark, LayoutGrid, ListChecks, Map as MapIcon, NotebookPen, ShoppingBasket, Stethoscope, Wallet as WalletIcon,
+  BedDouble, Bus, CalendarCheck, ClipboardCheck, Fingerprint, Fuel, Gift, HandHeart, Landmark, LayoutGrid, ListChecks, Map as MapIcon, NotebookPen, ShoppingBag, ShoppingBasket, Stethoscope, Wallet as WalletIcon,
 } from "lucide-react";
 
 /** The quick actions' icons (0147). */
 const ACTION_ICONS: Record<ActionKey, LucideIcon> = {
   admit: Send, house_today: BedDouble, floor_plan: MapIcon, new_request: FileSignature, requests: ClipboardCheck, ledger: Landmark, funds: WalletIcon,
   receive_donation: HandCoins, cash_gift: Gift, donors: HandHeart, new_trip: Bus, log_fuel: Fuel, care_cart: ShoppingBasket, activity_center: Stethoscope,
-  clock: Fingerprint, punches: ListChecks, dtr: Clock, leave: CalendarCheck, generate_report: BarChart3, programs_report: NotebookPen, compliance: CheckCircle2,
+  clock: Fingerprint, punches: ListChecks, dtr: Clock, leave: CalendarCheck, generate_report: BarChart3, programs_report: NotebookPen, compliance: CheckCircle2, shop_orders: ShoppingBag,
 };
 import { bucketOf, daysOf } from "@/lib/utils/period-presets";
 import { naturalGrain } from "@/lib/utils/period";

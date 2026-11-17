@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BedDouble, Bus, CalendarClock, ClipboardCheck, FileSpreadsheet, FileText, MoonStar, Printer, Receipt, type LucideIcon } from "lucide-react";
+import { BedDouble, Bus, CalendarClock, ClipboardCheck, FileSpreadsheet, FileText, MoonStar, Printer, Receipt, ShoppingBag, type LucideIcon } from "lucide-react";
 import { SectionCard } from "@/components/patterns/section-card";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import { holdsPower, type ModuleKey } from "@/lib/rbac/roles";
@@ -37,6 +37,7 @@ const REPORTS: ReportLink[] = [
   { href: "/finance/registers", label: "AR & Donee Certificate Registers", what: "Every receipt and certificate number, with gaps flagged.", out: "Screen", icon: Receipt, module: "finance" },
   { href: "/reports/caf-billing", label: "NCH Billing (Cancer Assistance Fund)", what: "The month's bill to NCH from the nights at LAF: Billing Statement, Statements of Account and Endorsement Letters.", out: "Screen · PDF", icon: Receipt, module: "reports", power: "caf_billing_view" },
   { href: "/reports/programs", label: "Programs report", what: "Housing, transportation, meals, Care Cart, LAF Center and CAF by month and year to date, from the app's records, with the sheet's figure beside each until a source is switched off.", out: "Screen · CSV", icon: FileSpreadsheet, module: "reports" },
+  { href: "/shop/proceeds", label: "Shop proceeds", what: "What the online shop sold in a period, the payment fees, what reached the foundation and what the goods earned, by day and by item, with refunds.", out: "Screen · CSV", icon: ShoppingBag, module: "shop" },
   { href: "/compliance", label: "DSWD Annex E & G", what: "The yearly DSWD report, printed from the records.", out: "Print / PDF", icon: Printer, module: "compliance" },
 ];
 

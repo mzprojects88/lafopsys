@@ -5,7 +5,7 @@
 export type CardKey =
   | "housing" | "rides" | "meals" | "child_visits" | "care_cart" | "patients" | "cash" | "gifts" | "expenses"
   | "in_house" | "since_2024" | "waiting" | "funds" | "budget" | "compliance" | "volunteers" | "stock"
-  | "transport_costs" | "caf_nights" | "staff_in" | "goals" | "beds";
+  | "transport_costs" | "caf_nights" | "staff_in" | "goals" | "beds" | "shop";
 
 /** In the order a new dashboard shows them; `main` cards are on by default, the others are switched on by the person.
  * `money`: a peso figure the database sends only to profiles that have the card (shared.dashboard_card_ok). */
@@ -32,12 +32,13 @@ export const CARDS: { key: CardKey; title: string; main: boolean; now?: boolean;
   { key: "staff_in", title: "Staff clocked in", main: false, now: true },
   { key: "goals", title: "Goals this year", main: false, readers: "Only the CEO, the Trustees and the Super Admin may read the goals: other roles see none." },
   { key: "beds", title: "Beds", main: false, now: true },
+  { key: "shop", title: "Shop sales", main: false, readers: "Only those who can open the Shop see its figures: other roles see an empty card." },
 ];
 
 export type ActionKey =
   | "admit" | "house_today" | "floor_plan" | "new_request" | "requests" | "ledger" | "funds" | "receive_donation" | "cash_gift"
   | "donors" | "new_trip" | "log_fuel" | "care_cart" | "activity_center" | "clock" | "punches" | "dtr" | "leave"
-  | "generate_report" | "programs_report" | "compliance";
+  | "generate_report" | "programs_report" | "compliance" | "shop_orders";
 
 /** `inventory`: the path is in the LAF Inventory app (the page links there). `edit`: offered only to those who may
  * change that page (else seeing it is enough). `roles`: who starts with it. */
@@ -63,6 +64,7 @@ export const ACTIONS: { key: ActionKey; label: string; href: string; inventory?:
   { key: "generate_report", label: "Generate report", href: "/reports", roles: ["ceo", "admin", "board"] },
   { key: "programs_report", label: "Programs report", href: "/reports/programs", roles: ["ceo", "board"] },
   { key: "compliance", label: "Compliances", href: "/compliance", roles: ["office_admin", "finance"] },
+  { key: "shop_orders", label: "Shop orders", href: "/shop/orders", roles: ["shop_admin"] },
 ];
 
 export const MAX_ACTIONS = 8;

@@ -24,7 +24,7 @@ grant usage on schema shop to authenticated, service_role;
 alter role authenticator set pgrst.db_schemas = 'public, ops, inventory, shared, hr, sync, shop';
 notify pgrst, 'reload config';
 
--- 2. The Shop menu: a new module with three pages, and the Shop Staff role.
+-- 2. The Shop menu: a new module with three pages, and the Shop Admin role.
 alter table shared.module_access drop constraint if exists module_access_module_check;
 alter table shared.module_access add constraint module_access_module_check
   check (module = any (array['executive', 'dashboard', 'calendar', 'staff', 'hr', 'patients', 'house_ops', 'donors', 'inventory', 'finance', 'compliance',
@@ -37,16 +37,17 @@ alter table shared.role_page_access drop constraint if exists role_page_access_p
 alter table shared.role_page_access add constraint role_page_access_page_check
   check (page ~ '^(executive|dashboard|calendar|staff|hr|patients|house_ops|donors|inventory|finance|compliance|analytics|reports|transport|requests|shop)\.[a-z_]+$');
 
--- Shop Staff is an ordinary role, like one made in Settings > Roles & access: the Super Admin may rename it, change
+-- Shop Admin is an ordinary role, like one made in Settings > Roles & access: the Super Admin may rename it, change
 -- its pages or archive it. If a role with that name already exists, it is left alone and nothing is seeded for it.
 insert into shared.roles (key, name, description, built_in)
-values ('shop_staff', 'Shop Staff', 'Runs the online shop: products, stock, orders and deliveries.', false)
+values ('shop_admin', 'Shop Admin', 'Runs the online shop: products, stock, orders and deliveries.', false)
 on conflict do nothing;
 
--- Shop Staff work in every Shop page; Finance, the Office Admin and the CEO read them. The Super Admin always may.
+-- The Shop Admin works in every Shop page; Finance and the CEO read them. The Super Admin always may. Shop Admin is
+-- its own role, or an extra role given to someone who already has another (Settings > Staff).
 insert into shared.role_page_access (role, page, level)
 select r.role, p.page, r.level from (values ('shop.overview'), ('shop.products'), ('shop.settings')) p(page)
-cross join (values ('shop_staff', 'edit'), ('finance', 'view'), ('office_admin', 'view'), ('ceo', 'view')) r(role, level)
+cross join (values ('shop_admin', 'edit'), ('finance', 'view'), ('ceo', 'view')) r(role, level)
 where exists (select 1 from shared.roles where key = r.role)
 on conflict do nothing;
 

@@ -321,11 +321,11 @@ grant execute on function shop.web_policies() to shop_web;
 grant execute on function shop.web_order(text) to shop_web;
 grant execute on all functions in schema shop to service_role;
 
--- 7. The two new pages of the Shop menu, with the same levels as the rest: Shop Staff work in them; Finance, the
--- Office Admin and the CEO read. (Posting proceeds to the cash book also needs Finance's own edit level.)
+-- 7. The two new pages of the Shop menu, with the same levels as the rest: Shop Admin work in them; Finance, the
+-- CEO read. (Posting proceeds to the cash book also needs Finance's own edit level.)
 insert into shared.role_page_access (role, page, level)
 select r.role, p.page, r.level from (values ('shop.orders'), ('shop.proceeds')) p(page)
-cross join (values ('shop_staff', 'edit'), ('finance', 'view'), ('office_admin', 'view'), ('ceo', 'view')) r(role, level)
+cross join (values ('shop_admin', 'edit'), ('finance', 'view'), ('ceo', 'view')) r(role, level)
 where exists (select 1 from shared.roles where key = r.role)
 on conflict do nothing;
 

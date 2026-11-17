@@ -193,3 +193,13 @@ it("a payment method reads in plain words", async () => {
   assert.equal(payMethodLabel("some_new_way"), "some new way");
   assert.equal(payMethodLabel(""), "Online payment");
 });
+
+it("the Shop sales card is in the catalogue and in the database's list of cards (0158)", async () => {
+  const { CARDS, ACTIONS } = await import("../lib/utils/dashboard-catalog.ts");
+  const text = readFileSync(new URL("../supabase/migrations/0158_shop_dashboard_card.sql", import.meta.url), "utf8");
+  const allowed = text.match(/check \(card in \(([^;]+)\)\);/)[1].replace(/\s+/g, " ").split(",").map((s) => s.trim().replace(/'/g, ""));
+  assert.deepEqual(allowed.slice().sort(), CARDS.map((c) => c.key).sort(), "the database allows exactly the catalogue's cards");
+  assert.equal(CARDS.find((c) => c.key === "shop").main, false, "it is offered, not forced onto everyone's dashboard");
+  assert.match(text, /unnest\(array\['shop_admin', 'finance', 'ceo'\]\)/);
+  assert.equal(ACTIONS.find((a) => a.key === "shop_orders").href, "/shop/orders");
+});
