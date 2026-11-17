@@ -5,6 +5,7 @@
 import { readFileSync } from "node:fs";
 import pg from "pg";
 import { pgUrl, isProd } from "../lib/db-url.mjs";
+import { seedShopAccess } from "./shop-access-seed.mjs";
 
 if (isProd() || !pgUrl().includes("kptftyuzrnummbcjakro")) throw new Error("dev only");
 const c = new pg.Client({ connectionString: pgUrl(), ssl: { rejectUnauthorized: false } });
@@ -40,6 +41,7 @@ const one = async (sql, params = []) => (await c.query(sql, params)).rows[0];
 
 try {
   await c.query("begin");
+  await seedShopAccess(c);
   await c.query(readFileSync(new URL("../../supabase/migrations/0156_shop_orders.sql", import.meta.url), "utf8"));
   await c.query("grant shop_web to current_user");
   if (!(await one("select pg_has_role(current_user, 'shop_web', 'SET') as ok")).ok) throw new Error("cannot act as shop_web: its limits would not be tested");

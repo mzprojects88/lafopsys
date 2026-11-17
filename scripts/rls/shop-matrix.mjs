@@ -50,6 +50,10 @@ const failsWith = (code) => (r) => !r.ok && r.code === code;
 try {
   await c.query("begin");
   await c.query(readFileSync(new URL("../../supabase/migrations/0155_shop_catalogue.sql", import.meta.url), "utf8"));
+  // The checks count their own rows: whatever the shop holds on development is set aside for this run (rolled back).
+  const tables = (await c.query("select string_agg(format('shop.%I', tablename), ', ') t from pg_tables where schemaname = 'shop' and tablename not in ('settings', 'order_counters')")).rows[0].t;
+  await c.query(`truncate ${tables}`);
+  await c.query("update shop.settings set shop_open = false, pickup_enabled = true, pickup_address = '', pickup_note = ''");
   // For this check only (rolled back): let the owner act as the site's login, so its limits are really exercised.
   await c.query("grant shop_web to current_user");
   const canSet = (await c.query("select pg_has_role(current_user, 'shop_web', 'SET') as ok")).rows[0].ok;
