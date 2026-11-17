@@ -231,6 +231,19 @@ export const STATUS_DOMAIN_MAP: Record<string, Record<string, StatusTone>> = {
     other: "neutral",
     holiday: "warning",
   },
+  // Shop orders (0156, 0157); "flagged" is the Needs a look chip beside the status.
+  shop_order: {
+    placed: "warning",
+    paid: "info",
+    packed: "info",
+    shipped: "info",
+    ready: "info",
+    delivered: "positive",
+    expired: "neutral",
+    cancelled: "neutral",
+    refunded: "negative",
+    flagged: "warning",
+  },
 };
 
 export function getStatusTone(domain: string, status: string): StatusTone {

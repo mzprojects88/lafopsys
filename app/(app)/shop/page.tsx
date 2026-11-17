@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Circle, Package, Settings2, ShoppingBag, Store, Tags } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Circle, ClipboardList, Package, PackageCheck, Settings2, ShoppingBag, Store, Truck, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { SectionCard } from "@/components/patterns/section-card";
@@ -10,22 +10,31 @@ import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/modul
 import { LoadingState } from "@/components/patterns/loading-state";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useShopData } from "@/lib/hooks/use-shop-collection";
-import { isLow, leftToSell, publishProblems } from "@/lib/utils/shop";
+import { useShopData, useShopOrders } from "@/lib/hooks/use-shop-collection";
+import { isLow, leftToSell, manilaDay, proceedsOf, publishProblems, soldIn } from "@/lib/utils/shop";
+import { formatPesoCents } from "@/lib/utils/vehicle-expenses";
 
 const SUB_NAV: ModuleSubNavItem[] = [
+  { href: "/shop/orders", label: "Orders", icon: ClipboardList },
+  { href: "/shop/proceeds", label: "Proceeds", icon: Wallet },
   { href: "/shop/products", label: "Products", icon: Package },
   { href: "/shop/settings", label: "Shop settings", icon: Settings2 },
 ];
 
 /**
- * Shop (0155): what is sold on shop.littlearkfoundation.org. This first part keeps the catalogue: what is on the
- * site, what still stops the shop from opening, and the counted items to reorder. Orders, deliveries and proceeds
- * join it in part 2.
+ * Shop (0155 to 0157): what is sold on shop.littlearkfoundation.org. The work waiting on orders, this month's
+ * sales, what still stops the shop from opening, and the counted items to reorder.
  */
 export default function ShopPage() {
   const { products, variants, photos, settings, fees, loading } = useShopData();
+  const { orders, items } = useShopOrders();
   if (loading) return <LoadingState />;
+
+  const month = manilaDay(new Date().toISOString()).slice(0, 7);
+  const thisMonth = proceedsOf(soldIn(orders, { from: `${month}-01`, to: `${month}-31` }), items);
+  const toPack = orders.filter((o) => o.status === "paid").length;
+  const toSend = orders.filter((o) => o.status === "packed").length;
+  const flagged = orders.filter((o) => o.attention).length;
 
   const onSite = products.filter((p) => !publishProblems(p, variants.filter((v) => v.productId === p.id), photos.filter((f) => f.productId === p.id)).length);
   const onSiteIds = new Set(onSite.map((p) => p.id));
@@ -40,16 +49,25 @@ export default function ShopPage() {
     { done: fees.length > 0, text: fees.length ? "Delivery fees are set" : "Set the delivery fees by area and weight", href: "/shop/settings" },
     { done: noWeight === 0, text: noWeight ? `${noWeight} product${noWeight === 1 ? " has" : "s have"} no packed weight, so no delivery fee can be worked out` : "Every product has its packed weight", href: "/shop/products" },
     { done: !settings.pickupEnabled || settings.pickupAddress.trim().length > 0, text: settings.pickupEnabled && !settings.pickupAddress.trim() ? "Give the pick-up address, or switch pick-up off" : "Pick-up is set", href: "/shop/settings" },
+    { done: settings.couriers.length > 0, text: settings.couriers.length ? `Couriers: ${settings.couriers.join(", ")}` : "List the couriers the shop ships with", href: "/shop/settings" },
+    { done: [settings.termsText, settings.privacyText, settings.returnsText].every((t) => t.trim().length > 0), text: "The terms of sale, privacy notice and returns text are written (review the starter texts)", href: "/shop/settings" },
     { done: settings.shopOpen, text: settings.shopOpen ? "The shop is open" : "Open the shop when everything above is ready", href: "/shop/settings" },
   ];
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Shop" description="What is sold on shop.littlearkfoundation.org: the products, their stock and the delivery fees." action={<ModuleSubNav items={SUB_NAV} />} />
+      <PageHeader title="Shop" description="The online shop at shop.littlearkfoundation.org: orders, proceeds, products and stock." action={<ModuleSubNav items={SUB_NAV} />} />
+
+      <KpiGrid>
+        <KpiCard label="To pack" value={toPack} sublabel={flagged ? `${flagged} order${flagged === 1 ? " needs" : "s need"} a look` : "Paid and waiting"} icon={Package} tone={toPack || flagged ? "warning" : "default"} />
+        <KpiCard label="To send or hand over" value={toSend} sublabel="Packed" icon={PackageCheck} />
+        <KpiCard label="On the way" value={orders.filter((o) => o.status === "shipped" || o.status === "ready").length} sublabel="With the courier, or ready for pick-up" icon={Truck} />
+        <KpiCard label="Sold this month" value={formatPesoCents(thisMonth.sold)} sublabel={`${thisMonth.orders} paid order${thisMonth.orders === 1 ? "" : "s"}`} icon={Wallet} />
+      </KpiGrid>
 
       <KpiGrid>
         <KpiCard label="Products on the site" value={onSite.length} sublabel={`of ${products.length} in the catalogue`} icon={ShoppingBag} />
-        <KpiCard label="Items on sale" value={variants.filter((v) => v.active && onSiteIds.has(v.productId)).length} sublabel="One per colour and size" icon={Tags} />
+        <KpiCard label="Items on sale" value={variants.filter((v) => v.active && onSiteIds.has(v.productId)).length} sublabel="One per colour and size" icon={ShoppingBag} />
         <KpiCard label="Low or out of stock" value={low.length} sublabel="Counted items at their reorder point" icon={AlertTriangle} tone={low.length ? "warning" : "default"} />
         <KpiCard label="The shop" value={settings.shopOpen ? "Open" : "Closed"} sublabel={settings.shopOpen ? "Taking orders" : "Products show; no orders are taken"} icon={Store} />
       </KpiGrid>

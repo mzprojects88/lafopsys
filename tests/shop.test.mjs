@@ -87,8 +87,8 @@ it("the public site's login is granted the storefront function and nothing else"
   assert.ok(!/create role shop_web[^;]*(login|password)/i.test(sql.replace(/nologin/g, "")), "no password or login in the migration");
 });
 
-it("every shop function is closed to the public, and the site's login gets only the storefront ones (0155, 0156)", () => {
-  for (const file of ["0155_shop_catalogue.sql", "0156_shop_orders.sql"]) {
+it("every shop function is closed to the public, and the site's login gets only the storefront ones (0155 to 0157)", () => {
+  for (const file of ["0155_shop_catalogue.sql", "0156_shop_orders.sql", "0157_shop_fulfilment.sql"]) {
     const text = readFileSync(new URL(`../supabase/migrations/${file}`, import.meta.url), "utf8");
     const made = [...new Set([...text.matchAll(/create or replace function shop\.([a-z_]+)\(/g)].map((m) => m[1]))];
     assert.ok(made.length > 0, file);
@@ -104,4 +104,92 @@ it("every shop function is closed to the public, and the site's login gets only 
     for (const m of text.matchAll(/grant ([^;]+) to shop_web;/g)) assert.match(m[1].trim(), /^usage on schema shop$|^execute on function shop\.web_/, m[1]);
     assert.ok(!/grant[^;]*\bon (table )?shop\.[a-z_]+[^;]*to shop_web/.test(text.replace(/grant execute on function[^;]+;/g, "")), `${file} grants the site no table`);
   }
+});
+
+// ---- Orders and proceeds (0156, 0157) ----
+const { ORDER_QUEUES, ORDER_STATUS_LABEL, addressOf, earned, isSold, manilaDay, nextStep, proceedsByDay, proceedsOf, queueOf, soldByItem, soldIn } = await import("../lib/utils/shop.ts");
+const order = (over = {}) => ({ id: "o1", status: "paid", delivery: "courier", paidAt: "2026-11-17T01:00:00Z", subtotal: 900, deliveryFee: 95, total: 995, payFee: 15, payNet: 980, postedSourceId: "", ...over });
+
+it("each order has one next step, and a finished or unpaid one has none", () => {
+  assert.deepEqual(nextStep({ status: "paid", delivery: "courier" }), { step: "pack", label: "Mark packed" });
+  assert.equal(nextStep({ status: "packed", delivery: "courier" }).step, "ship");
+  assert.equal(nextStep({ status: "packed", delivery: "pickup" }).step, "ready");
+  assert.equal(nextStep({ status: "shipped", delivery: "courier" }).label, "Mark delivered");
+  assert.equal(nextStep({ status: "ready", delivery: "pickup" }).label, "Mark picked up");
+  for (const status of ["placed", "delivered", "expired", "cancelled", "refunded"]) assert.equal(nextStep({ status, delivery: "courier" }), null, status);
+});
+
+it("every status has a name and a list on the Orders page, as the database lists them", () => {
+  const orders = readFileSync(new URL("../supabase/migrations/0156_shop_orders.sql", import.meta.url), "utf8");
+  const statuses = orders.match(/status in \(([^)]+)\)\)/)[1].split(",").map((s) => s.trim().replace(/'/g, ""));
+  assert.deepEqual(Object.keys(ORDER_STATUS_LABEL).sort(), statuses.slice().sort());
+  const keys = ORDER_QUEUES.map((q) => q.key);
+  for (const status of statuses) assert.ok(keys.includes(queueOf({ status })), status);
+  assert.deepEqual(statuses.filter((status) => isSold({ status })), ["paid", "packed", "shipped", "ready", "delivered"]);
+  assert.equal(queueOf({ status: "packed" }), "todo");
+  assert.equal(queueOf({ status: "ready" }), "out");
+  assert.equal(queueOf({ status: "refunded" }), "closed");
+});
+
+it("an order counts on the Manila day its payment arrived", () => {
+  assert.equal(manilaDay("2026-11-16T15:59:59Z"), "2026-11-16");
+  assert.equal(manilaDay("2026-11-16T16:00:00Z"), "2026-11-17");
+  const all = [order(), order({ id: "o2", paidAt: "2026-11-16T16:30:00Z" }), order({ id: "o3", paidAt: "2026-11-15T10:00:00Z" }), order({ id: "o4", status: "refunded" }), order({ id: "o5", status: "placed", paidAt: null })];
+  assert.deepEqual(soldIn(all, { from: "2026-11-17", to: "2026-11-17" }).map((o) => o.id), ["o1", "o2"]);
+  assert.deepEqual(soldIn(all, null).map((o) => o.id), ["o1", "o2", "o3"]);
+});
+
+it("proceeds: what was sold, the fees, what reached the foundation, and what the goods earned", () => {
+  const sold = [order(), order({ id: "o2", subtotal: 280, deliveryFee: 0, total: 280, payFee: null, payNet: null })];
+  const lines = [{ orderId: "o1", qty: 2, unitCost: 190 }, { orderId: "o2", qty: 1, unitCost: 120 }, { orderId: "other", qty: 9, unitCost: 1 }];
+  const t = proceedsOf(sold, lines);
+  assert.deepEqual(t, { orders: 2, sold: 1275, goods: 1180, delivery: 95, fees: 15, net: 1260, cost: 500, costMissing: 0 });
+  assert.equal(earned(t), 665, "goods 1,180 less cost 500 and fees 15; delivery fees are the courier's");
+  assert.equal(earned(proceedsOf(sold, [{ orderId: "o1", qty: 2, unitCost: null }])), null, "no earnings figure while a sold line has no cost");
+  assert.equal(proceedsOf([], lines).sold, 0);
+});
+
+it("proceeds by day, newest first, with the day's cash book entry", () => {
+  const days = proceedsByDay([order(), order({ paidAt: "2026-11-17T05:00:00Z", total: 100, payFee: 2, payNet: 98 }), order({ paidAt: "2026-11-15T05:00:00Z", postedSourceId: "shop:2026-11-15" })]);
+  assert.deepEqual(days, [
+    { day: "2026-11-17", orders: 2, sold: 1095, fees: 17, net: 1078, posted: "" },
+    { day: "2026-11-15", orders: 1, sold: 995, fees: 15, net: 980, posted: "shop:2026-11-15" },
+  ]);
+});
+
+it("what sold by item, best seller first; a line without cost leaves the item's cost unknown", () => {
+  const lines = [
+    { orderId: "o1", name: "Tee", option: "Navy, M", qty: 2, unitCost: 190, lineTotal: 900 },
+    { orderId: "o1", name: "Mug", option: "", qty: 1, unitCost: null, lineTotal: 280 },
+    { orderId: "o2", name: "Tee", option: "Navy, M", qty: 1, unitCost: 190, lineTotal: 450 },
+    { orderId: "unsold", name: "Tee", option: "Navy, M", qty: 5, unitCost: 190, lineTotal: 2250 },
+  ];
+  assert.deepEqual(soldByItem([{ id: "o1" }, { id: "o2" }], lines), [
+    { name: "Tee", option: "Navy, M", qty: 3, sales: 1350, cost: 570 },
+    { name: "Mug", option: "", qty: 1, sales: 280, cost: null },
+  ]);
+});
+
+it("a delivery address reads on one line", () => {
+  assert.equal(addressOf({ addressLine: "00 Sample Street", barangay: "Roxas", city: "Quezon City", province: "Metro Manila", postalCode: "1103" }), "00 Sample Street, Brgy. Roxas, Quezon City, Metro Manila, 1103");
+  assert.equal(addressOf({ addressLine: "00 Sample Street", barangay: "", city: "Cebu City", province: "Cebu", postalCode: "" }), "00 Sample Street, Cebu City, Cebu");
+});
+
+it("the staff step and the cash book posting keep their guards (0157)", () => {
+  const text = readFileSync(new URL("../supabase/migrations/0157_shop_fulfilment.sql", import.meta.url), "utf8");
+  assert.match(text, /if not shared\.module_editable\('shop'\) then\s+raise exception 'Only people who may edit the Shop work on orders'/);
+  assert.match(text, /if not \(shared\.module_editable\('finance'\) and shared\.module_viewable\('shop'\)\) then/);
+  assert.match(text, /if not \(select cash_posting from shop\.settings\) then/);
+  assert.match(text, /cash_posting boolean not null default false/, "posting to the cash book starts switched off");
+  assert.match(text, /grant execute on function shop\.order_step\(uuid, text, jsonb\) to authenticated;/);
+  assert.ok(!/grant[^;]*on shop\.outbox to (anon|shop_web|public)/.test(text), "the outbox is not open to the site");
+  assert.ok(!/grant (insert|update|delete|all)[^;]*on shop\.(orders|outbox)[^;]*to authenticated/.test(text), "staff change orders only through the step function");
+});
+
+it("a payment method reads in plain words", async () => {
+  const { payMethodLabel } = await import("../lib/utils/shop.ts");
+  assert.equal(payMethodLabel("qrph"), "QR Ph");
+  assert.equal(payMethodLabel("GCASH"), "GCash");
+  assert.equal(payMethodLabel("some_new_way"), "some new way");
+  assert.equal(payMethodLabel(""), "Online payment");
 });

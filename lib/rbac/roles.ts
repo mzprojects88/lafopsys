@@ -96,7 +96,7 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Financial", href: "/finance", group: "Work", icon: Wallet, module: "finance" },
   { title: "Payment Requests", href: "/requests", group: "Work", icon: Receipt, module: "requests", note: "Ask for a payment, reimbursement or cash advance, and follow it to approval; signers sign here." },
   // The online shop (0155): what is sold on shop.littlearkfoundation.org.
-  { title: "Shop", href: "/shop", group: "Work", icon: ShoppingBag, module: "shop", note: "The online shop's products, stock and delivery fees." },
+  { title: "Shop", href: "/shop", group: "Work", icon: ShoppingBag, module: "shop", note: "The online shop: orders from payment to delivery, proceeds, products and stock." },
   // Every government deadline the foundation carries (0043/0044); HR-flagged
   // people reach the same page through the HR sub-menu.
   { title: "Compliances", href: "/compliance", group: "Work", icon: ShieldCheck, module: "compliance" },

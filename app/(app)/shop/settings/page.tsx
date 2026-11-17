@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useShopData } from "@/lib/hooks/use-shop-collection";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
-import { DELIVERY_AREAS, readAmount, type DeliveryArea, type ShopSettings } from "@/lib/utils/shop";
+import { COURIER_NAME_RE, DELIVERY_AREAS, readAmount, type DeliveryArea, type ShopSettings } from "@/lib/utils/shop";
 import { formatPesoCents } from "@/lib/utils/vehicle-expenses";
 
 const listOf = (text: string): string[] => [...new Set(text.split(/[\n,]/).map((s) => s.trim()).filter((s) => s.length >= 2 && s.length <= 40))];
@@ -23,21 +23,22 @@ const days = (text: string, max: number): number | null => (/^\d{1,2}$/.test(tex
 const grams = (g: number) => (g % 1000 === 0 ? `${g / 1000} kg` : `${g.toLocaleString("en-PH")} g`);
 
 /**
- * Shop › Shop settings (0155): whether the shop takes orders, how long packing takes, pick-up, the lists the
- * products choose from, and the delivery fees by area and weight. Every figure the site shows comes from here.
+ * Shop › Shop settings (0155, 0157): whether the shop takes orders, how long packing takes, pick-up, the lists the
+ * products choose from, the delivery fees by area and weight, the couriers, the texts of the site's policy pages
+ * and whether proceeds may be posted to the cash book. Every figure and text the site shows comes from here.
  */
 export default function ShopSettingsPage() {
   const access = useModuleAccess();
   const canEdit = access.levelOfPath("/shop/settings") === "edit";
   const { settings, fees, settingsLoading, saveSettings, saveFee, removeFee } = useShopData();
   const [draft, setDraft] = React.useState<ShopSettings | null>(null);
-  const [lists, setLists] = React.useState<{ categories: string; collections: string } | null>(null);
+  const [lists, setLists] = React.useState<{ categories: string; collections: string; couriers: string } | null>(null);
   const [fee, setFee] = React.useState<{ area: DeliveryArea; kilos: string; fee: string }>({ area: "Metro Manila", kilos: "1", fee: "" });
   const [busy, setBusy] = React.useState(false);
 
   if (settingsLoading) return <LoadingState />;
   const s = draft ?? settings;
-  const l = lists ?? { categories: settings.categories.join(", "), collections: settings.collections.join(", ") };
+  const l = lists ?? { categories: settings.categories.join(", "), collections: settings.collections.join(", "), couriers: settings.couriers.join(", ") };
   const set = <K extends keyof ShopSettings>(key: K, value: ShopSettings[K]) => setDraft({ ...s, [key]: value });
   const dirty = draft !== null || lists !== null;
 
@@ -47,8 +48,12 @@ export default function ShopSettingsPage() {
     if (s.packMax < s.packMin) return void toast.error("The longest packing time can't be shorter than the shortest.");
     if (s.shopOpen && !fees.length) return void toast.error("Set the delivery fees before opening the shop.");
     if (s.shopOpen && s.pickupEnabled && !s.pickupAddress.trim()) return void toast.error("Give the pick-up address, or switch pick-up off, before opening the shop.");
+    const couriers = listOf(l.couriers);
+    if (couriers.length > 12 || couriers.some((c) => !COURIER_NAME_RE.test(c))) return void toast.error("List up to 12 couriers, by name only.");
+    if (!/^https?:\/\/[a-z0-9.:-]+$/.test(s.siteUrl.trim().replace(/\/+$/, ""))) return void toast.error("Give the shop site's address, like https://shop.littlearkfoundation.org.");
+    if (s.shopOpen && [s.termsText, s.privacyText, s.returnsText].some((t) => !t.trim())) return void toast.error("Write the terms of sale, the privacy notice and the returns text before opening the shop.");
     setBusy(true);
-    const r = await saveSettings({ ...s, categories, collections: listOf(l.collections) });
+    const r = await saveSettings({ ...s, categories, collections: listOf(l.collections), couriers });
     setBusy(false);
     if (!r.ok) return void toast.error(r.error);
     setDraft(null);
@@ -122,6 +127,43 @@ export default function ShopSettingsPage() {
             <FieldLabel htmlFor="shop-collections">Collections</FieldLabel>
             <Textarea id="shop-collections" rows={2} value={l.collections} disabled={!canEdit} onChange={(e) => setLists({ ...l, collections: e.target.value })} />
           </Field>
+        </div>
+      </SectionCard>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <SectionCard title="Shipping and emails" description="What staff choose from when an order ships, and where the links in order emails lead.">
+          <div className="flex flex-col gap-4 px-5 pb-5">
+            <Field>
+              <FieldLabel htmlFor="shop-couriers">Couriers</FieldLabel>
+              <Input id="shop-couriers" value={l.couriers} disabled={!canEdit} onChange={(e) => setLists({ ...l, couriers: e.target.value })} />
+              <FieldDescription>Separate the names with commas. The first one is offered first.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="shop-site-url">The shop site&apos;s address</FieldLabel>
+              <Input id="shop-site-url" inputMode="url" maxLength={120} value={s.siteUrl} disabled={!canEdit} onChange={(e) => set("siteUrl", e.target.value)} />
+              <FieldDescription>Order emails link to the customer&apos;s order page at this address.</FieldDescription>
+            </Field>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Cash book" description="How the shop's proceeds reach Finance.">
+          <div className="flex flex-col gap-4 px-5 pb-5">
+            <label className="flex items-center justify-between gap-4 text-theme-sm">
+              <span><span className="font-medium text-foreground">Finance may post proceeds to the cash book</span><br /><span className="text-muted-foreground">Off until Finance and the accountant agree how shop sales are booked. On, Finance posts each finished day from Shop › Proceeds.</span></span>
+              <Switch checked={s.cashPosting} disabled={!canEdit} onCheckedChange={(v) => set("cashPosting", v)} aria-label="Finance may post proceeds to the cash book" />
+            </label>
+          </div>
+        </SectionCard>
+      </div>
+
+      <SectionCard title="Policy pages" description="The texts of the site's Terms of sale, Privacy and Returns pages. A paragraph that starts with “# ” shows as a heading; leave a blank line between paragraphs.">
+        <div className="grid gap-4 px-5 pb-5 lg:grid-cols-3">
+          {([["termsText", "Terms of sale"], ["privacyText", "Privacy notice"], ["returnsText", "Returns and refunds"]] as const).map(([key, label]) => (
+            <Field key={key}>
+              <FieldLabel htmlFor={`shop-${key}`}>{label}</FieldLabel>
+              <Textarea id={`shop-${key}`} rows={14} maxLength={8000} value={s[key]} disabled={!canEdit} onChange={(e) => set(key, e.target.value)} />
+            </Field>
+          ))}
         </div>
       </SectionCard>
 

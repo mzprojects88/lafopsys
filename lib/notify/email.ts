@@ -6,11 +6,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * through ops.outbox first; without RESEND_API_KEY on the hosting the rows wait as "held" and are
  * sent on the first run after the key is set. RESEND_FROM is the sender, e.g.
  * "Little Ark Foundation <reports@littlearkfoundation.org>" once the domain is verified in Resend.
+ *
+ * The shop keeps its own outbox (shop.outbox, 0157) in the same shape: ops is carried between development and
+ * production every hour, and a test order's email must never be sent from production. `schema` picks the outbox.
  */
 export const emailReady = () => !!process.env.RESEND_API_KEY;
 
-export async function sendPending(admin: SupabaseClient): Promise<{ sent: number; failed: number; held: number }> {
-  const ops = admin.schema("ops");
+export async function sendPending(admin: SupabaseClient, schema: "ops" | "shop" = "ops"): Promise<{ sent: number; failed: number; held: number }> {
+  const ops = admin.schema(schema);
   const key = process.env.RESEND_API_KEY;
   if (!key) {
     const { data } = await ops.from("outbox").update({ status: "held" }).eq("status", "queued").select("id");

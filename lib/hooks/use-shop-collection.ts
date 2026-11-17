@@ -3,7 +3,8 @@
 import { createClient } from "@/lib/supabase/client";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
 import { shrinkImage } from "@/lib/utils/shrink-image";
-import type { DeliveryArea, ShopDeliveryFee, ShopPhoto, ShopProduct, ShopSettings, ShopStatus, ShopSupply, ShopVariant, StockReason } from "@/lib/utils/shop";
+import { fetchAll } from "@/lib/supabase/fetch-all";
+import type { DeliveryArea, OrderStep, ShopDeliveryFee, ShopOrder, ShopOrderEvent, ShopOrderItem, ShopOrderStatus, ShopPhoto, ShopProduct, ShopSettings, ShopStatus, ShopSupply, ShopVariant, StockReason } from "@/lib/utils/shop";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
 
@@ -78,14 +79,14 @@ export const shopPhotosStore = createCollection<ShopPhoto[]>({
   },
 });
 
-const BLANK_SETTINGS: ShopSettings = { shopOpen: false, packMin: 1, packMax: 2, pickupEnabled: true, pickupAddress: "", pickupNote: "", categories: [], collections: [] };
+const BLANK_SETTINGS: ShopSettings = { shopOpen: false, packMin: 1, packMax: 2, pickupEnabled: true, pickupAddress: "", pickupNote: "", categories: [], collections: [], couriers: [], siteUrl: "", cashPosting: false, termsText: "", privacyText: "", returnsText: "" };
 
 export const shopSettingsStore = createCollection<ShopSettings>({
   key: "shop.settings",
   empty: BLANK_SETTINGS,
   tables: [{ schema: "shop", table: "settings" }],
   fetch: async () => {
-    const { data, error } = await shop().from("settings").select("shop_open, pack_min, pack_max, pickup_enabled, pickup_address, pickup_note, categories, collections").maybeSingle();
+    const { data, error } = await shop().from("settings").select("shop_open, pack_min, pack_max, pickup_enabled, pickup_address, pickup_note, categories, collections, couriers, site_url, cash_posting, terms_text, privacy_text, returns_text").maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return BLANK_SETTINGS;
     return {
@@ -97,6 +98,12 @@ export const shopSettingsStore = createCollection<ShopSettings>({
       pickupNote: (data.pickup_note as string) ?? "",
       categories: (data.categories as string[] | null) ?? [],
       collections: (data.collections as string[] | null) ?? [],
+      couriers: (data.couriers as string[] | null) ?? [],
+      siteUrl: (data.site_url as string) ?? "",
+      cashPosting: data.cash_posting === true,
+      termsText: (data.terms_text as string) ?? "",
+      privacyText: (data.privacy_text as string) ?? "",
+      returnsText: (data.returns_text as string) ?? "",
     };
   },
 });
@@ -111,6 +118,119 @@ export const shopFeesStore = createCollection<ShopDeliveryFee[]>({
     return (data ?? []).map((r) => ({ id: r.id as string, area: r.area as DeliveryArea, maxGrams: num(r.max_grams), fee: num(r.fee) }));
   },
 });
+
+const text = (v: unknown): string => (typeof v === "string" ? v : "");
+const amount = (v: unknown): number | null => (v == null ? null : Number(v));
+
+const ORDER_COLUMNS =
+  "id, number, token, status, name, email, phone, delivery, area, province, city, barangay, postal_code, address_line, landmark, weight_grams, subtotal, delivery_fee, total, placed_at, hold_until, paid_at, packed_at, shipped_at, delivered_at, closed_at, pay_method, pay_fee, pay_net, attention, courier, tracking_number, tracking_url, invoice_number, refund_reason, restocked, posted_source_id";
+
+/** shop.orders (0156, 0157), newest first.
+ * ponytail: every order is loaded; page them by period once there are a few thousand. */
+export const shopOrdersStore = createCollection<ShopOrder[]>({
+  key: "shop.orders",
+  empty: [],
+  tables: [{ schema: "shop", table: "orders" }],
+  fetch: async () => {
+    const rows = await fetchAll<Record<string, unknown>>((from, to) => shop().from("orders").select(ORDER_COLUMNS).order("placed_at", { ascending: false }).order("id").range(from, to));
+    return rows.map((r) => ({
+      id: r.id as string,
+      number: r.number as string,
+      token: r.token as string,
+      status: r.status as ShopOrderStatus,
+      name: text(r.name),
+      email: text(r.email),
+      phone: text(r.phone),
+      delivery: r.delivery === "pickup" ? "pickup" : "courier",
+      area: text(r.area),
+      province: text(r.province),
+      city: text(r.city),
+      barangay: text(r.barangay),
+      postalCode: text(r.postal_code),
+      addressLine: text(r.address_line),
+      landmark: text(r.landmark),
+      weightGrams: num(r.weight_grams as number),
+      subtotal: num(r.subtotal as number),
+      deliveryFee: num(r.delivery_fee as number),
+      total: num(r.total as number),
+      placedAt: r.placed_at as string,
+      holdUntil: r.hold_until as string,
+      paidAt: (r.paid_at as string | null) ?? null,
+      packedAt: (r.packed_at as string | null) ?? null,
+      shippedAt: (r.shipped_at as string | null) ?? null,
+      deliveredAt: (r.delivered_at as string | null) ?? null,
+      closedAt: (r.closed_at as string | null) ?? null,
+      payMethod: text(r.pay_method),
+      payFee: amount(r.pay_fee),
+      payNet: amount(r.pay_net),
+      attention: text(r.attention),
+      courier: text(r.courier),
+      trackingNumber: text(r.tracking_number),
+      trackingUrl: text(r.tracking_url),
+      invoiceNumber: text(r.invoice_number),
+      refundReason: text(r.refund_reason),
+      restocked: (r.restocked as boolean | null) ?? null,
+      postedSourceId: text(r.posted_source_id),
+    }));
+  },
+});
+
+/** shop.order_items: what each order bought, as it was at that moment. */
+export const shopOrderItemsStore = createCollection<ShopOrderItem[]>({
+  key: "shop.order_items",
+  empty: [],
+  tables: [{ schema: "shop", table: "order_items" }],
+  fetch: async () => {
+    const rows = await fetchAll<Record<string, unknown>>((from, to) => shop().from("order_items").select("id, order_id, sku, name, option, counted, qty, unit_price, unit_cost, line_total, sort").order("order_id").order("sort").order("id").range(from, to));
+    return rows.map((r) => ({
+      id: r.id as string,
+      orderId: r.order_id as string,
+      sku: text(r.sku),
+      name: text(r.name),
+      option: text(r.option),
+      counted: r.counted === true,
+      qty: num(r.qty as number),
+      unitPrice: num(r.unit_price as number),
+      unitCost: amount(r.unit_cost),
+      lineTotal: num(r.line_total as number),
+    }));
+  },
+});
+
+/** Messages the database gives for an order's steps, shortened to what staff need. */
+const stepMessage = (message: string): string => (/permission denied|42501/.test(message) ? "You can look at orders but not change them." : message);
+
+/** Orders, their lines, and the steps staff take on them (0157). */
+export function useShopOrders() {
+  const { data: orders, loading } = useCollection(shopOrdersStore);
+  const { data: items } = useCollection(shopOrderItemsStore);
+  return {
+    orders,
+    items,
+    loading,
+    /** One staff step on an order (pack, ship, ready, deliver, invoice, looked, cancel, refund), through the
+     * database's function: it checks the order's state, records who did it, and queues the customer's email. */
+    step: async (orderId: string, step: OrderStep, data: Record<string, string | boolean> = {}): Promise<MutationResult> => {
+      const { error } = await shop().rpc("order_step", { p_order: orderId, p_step: step, p_data: data });
+      if (error) return { ok: false, error: stepMessage(error.message) };
+      await Promise.all([shopOrdersStore.refetch(), ...(step === "cancel" || step === "refund" ? [shopVariantsStore.refetch()] : [])]);
+      return { ok: true };
+    },
+    /** The trail of one order, oldest first. */
+    trail: async (orderId: string): Promise<ShopOrderEvent[]> => {
+      const { data } = await shop().from("order_events").select("id, event, detail, by_staff_id, at").eq("order_id", orderId).order("at").order("id");
+      return (data ?? []).map((r) => ({ id: r.id as string, event: text(r.event), detail: text(r.detail), byStaffId: (r.by_staff_id as string | null) ?? null, at: r.at as string }));
+    },
+    /** Posts one finished day's proceeds to the cash book (Finance only; off until Shop settings switch it on). */
+    postDay: async (day: string): Promise<MutationResult & { posted?: number; amount?: number }> => {
+      const { data, error } = await shop().rpc("post_proceeds", { p_day: day });
+      if (error) return { ok: false, error: /42501|Only Finance/.test(error.message) ? "Only Finance posts shop proceeds to the cash book." : error.message };
+      await shopOrdersStore.refetch();
+      const r = (data ?? {}) as { posted?: number; amount?: number };
+      return { ok: true, posted: Number(r.posted ?? 0), amount: Number(r.amount ?? 0) };
+    },
+  };
+}
 
 export type ProductDraft = Omit<ShopProduct, "id" | "updatedAt">;
 export type VariantDraft = Pick<ShopVariant, "sku" | "colour" | "size" | "price" | "cost" | "reorderAt" | "active" | "sort">;
@@ -143,6 +263,7 @@ const variantRow = (v: VariantDraft) => ({
 
 /** Messages the database gives for the catalogue's rules, in plain words. */
 function plain(message: string): string {
+  if (/settings_fulfilment_check/.test(message)) return "Check the shop site's address (https://…), the couriers (12 at most) and the length of the policy texts.";
   if (/products_slug_key/.test(message)) return "Another product already uses that address.";
   if (/variants_sku_key/.test(message)) return "Another item already uses that code.";
   if (/variants_one_per_option/.test(message)) return "This product already has an item in that colour and size.";
@@ -233,7 +354,7 @@ export function useShopData() {
         (
           await shop()
             .from("settings")
-            .update({ shop_open: s.shopOpen, pack_min: s.packMin, pack_max: s.packMax, pickup_enabled: s.pickupEnabled, pickup_address: s.pickupAddress.trim(), pickup_note: s.pickupNote.trim(), categories: s.categories, collections: s.collections })
+            .update({ shop_open: s.shopOpen, pack_min: s.packMin, pack_max: s.packMax, pickup_enabled: s.pickupEnabled, pickup_address: s.pickupAddress.trim(), pickup_note: s.pickupNote.trim(), categories: s.categories, collections: s.collections, couriers: s.couriers, site_url: s.siteUrl.trim().replace(/\/+$/, ""), cash_posting: s.cashPosting, terms_text: s.termsText.trim(), privacy_text: s.privacyText.trim(), returns_text: s.returnsText.trim() })
             .eq("id", true)
         ).error,
         [shopSettingsStore],

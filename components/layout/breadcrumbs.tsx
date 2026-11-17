@@ -88,6 +88,10 @@ const SEGMENT_LABELS: Record<string, string> = {
   impact: "Public Impact Feed",
   totals: "Donation Totals",
   "caf-billing": "NCH Billing",
+  shop: "Shop",
+  orders: "Orders",
+  proceeds: "Proceeds",
+  products: "Products",
 };
 
 function labelFor(segment: string) {
