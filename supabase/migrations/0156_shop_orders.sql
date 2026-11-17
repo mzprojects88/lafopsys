@@ -296,7 +296,7 @@ begin
     'address_line', o.address_line, 'landmark', o.landmark,
     'subtotal', o.subtotal, 'delivery_fee', o.delivery_fee, 'total', o.total,
     'placed_at', o.placed_at, 'hold_until', o.hold_until, 'paid_at', o.paid_at, 'packed_at', o.packed_at, 'shipped_at', o.shipped_at,
-    'delivered_at', o.delivered_at, 'closed_at', o.closed_at, 'pay_method', o.pay_method, 'has_session', o.pay_session_id is not null,
+    'delivered_at', o.delivered_at, 'closed_at', o.closed_at, 'pay_method', o.pay_method, 'pay_session_id', o.pay_session_id,
     'courier', o.courier, 'tracking_number', o.tracking_number, 'invoice_number', o.invoice_number,
     'items', (select jsonb_agg(jsonb_build_object('name', i.name, 'option', i.option, 'qty', i.qty, 'unit_price', i.unit_price, 'line_total', i.line_total,
                 'photo', (select f.path from shop.photos f where f.product_id = i.product_id order by f.sort, f.created_at limit 1)) order by i.sort)
