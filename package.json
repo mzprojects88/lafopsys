@@ -54,11 +54,13 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.13.0",
+    "picomatch": "file:vendor/picomatch-4.0.8-laf.1.tgz",
     "tailwindcss": "^4",
     "typescript": "^5",
     "typescript-eslint": "^8.71.2"
   },
   "overrides": {
-    "minimatch": "^11.0.1"
+    "minimatch": "^11.0.1",
+    "picomatch": "$picomatch"
   }
 }
