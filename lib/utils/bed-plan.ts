@@ -6,7 +6,7 @@
  * judges it. Pure; relative imports so tests/ can run it under node --test.
  * The AI never invents a plan: it only chooses among these and explains.
  */
-import type { Sex } from "./bed-rules.ts";
+import { RULES_ON, type BedRuleSwitches, type Sex } from "./bed-rules.ts";
 
 export interface PlanBed {
   id: string;
@@ -52,10 +52,17 @@ export const NEWCOMER = "__newcomer__";
 export const ARRIVAL_PREFIX = "new:";
 export const isArrival = (key: string) => key === NEWCOMER || key.startsWith(ARRIVAL_PREFIX);
 
-const clash = (a: PlanPerson, b: PlanPerson) => !!a.sex && !!b.sex && a.sex !== b.sex && !(a.familyId && a.familyId === b.familyId);
+const clashOf = (a: PlanPerson, b: PlanPerson) => !!a.sex && !!b.sex && a.sex !== b.sex && !(a.familyId && a.familyId === b.familyId);
 
-/** Does this arrangement keep every rule? (unitOf: person key -> bed id) */
-export function isValidArrangement(people: PlanPerson[], beds: PlanBed[], unitOf: Map<string, string | null>, bedById = new Map(beds.map((b) => [b.id, b]))): boolean {
+/** Does this arrangement keep every rule Settings has on (0163)? (unitOf: person key -> bed id) */
+export function isValidArrangement(
+  people: PlanPerson[],
+  beds: PlanBed[],
+  unitOf: Map<string, string | null>,
+  bedById = new Map(beds.map((b) => [b.id, b])),
+  rules: BedRuleSwitches = RULES_ON
+): boolean {
+  const clash = (a: PlanPerson, b: PlanPerson) => rules.singleSex && clashOf(a, b);
   const perBed = new Map<string, number>();
   const perRoom = new Map<string, PlanPerson[]>();
   const roomOf = new Map<string, PlanBed>();
@@ -75,11 +82,13 @@ export function isValidArrangement(people: PlanPerson[], beds: PlanBed[], unitOf
       const here = perRoom.get(bed.roomId);
       // Single-sex rooms, families excepted.
       if (here) {
-        if (here.some((o) => clash(o, p))) return false;
+        // Two families who both keep their bed (holds, long stays: 0163) are accepted as they are.
+        if (here.some((o) => clash(o, p) && !(o.fixed && p.fixed))) return false;
         here.push(p);
       } else perRoom.set(bed.roomId, [p]);
     }
   }
+  if (!rules.fillOrder) return true;
   // Rooms in order: nobody sits in a later room while an earlier room that
   // would take them still has a free usable REGULAR bed, and nobody sits on a
   // temporary bed while any room would take them on a regular one (0092).
@@ -144,6 +153,9 @@ function planByRooms(people: PlanPerson[], beds: PlanBed[], byKey: Map<string, P
     const bed = bedById.get(p.unitId ?? "");
     return p.fixed || !p.sex || !bed || !bed.usable || !bed.roomId;
   });
+  // Pinned families of both sexes in one room (a long stay kept beside the other sex, 0163) fit no
+  // labelling: the move-by-move search below decides.
+  if (pinned.some((a) => pinned.some((b) => a.unitId && b.unitId && bedById.get(a.unitId)?.roomId && bedById.get(a.unitId)?.roomId === bedById.get(b.unitId)?.roomId && clashOf(a, b)))) return null;
   const pinnedKeys = new Set(pinned.map((p) => p.key));
   const movers = people.filter((p) => !pinnedKeys.has(p.key) && p.sex);
   const plans: BedPlan[] = [];
@@ -209,7 +221,8 @@ function planByRooms(people: PlanPerson[], beds: PlanBed[], byKey: Map<string, P
  * falls back to breadth-first over moves and swaps, capped at `maxMoves` and
  * `timeLimitMs` (ponytail: fine for 13 beds; a bigger house wants a solver).
  */
-export function findBedPlans(people: PlanPerson[], beds: PlanBed[], opts: { maxMoves?: number; limit?: number; timeLimitMs?: number } = {}): BedPlan[] {
+export function findBedPlans(people: PlanPerson[], beds: PlanBed[], opts: { maxMoves?: number; limit?: number; timeLimitMs?: number; rules?: BedRuleSwitches } = {}): BedPlan[] {
+  const rules = opts.rules ?? RULES_ON;
   const maxMoves = opts.maxMoves ?? 4;
   const limit = opts.limit ?? 5;
   const deadline = Date.now() + (opts.timeLimitMs ?? 4000);
@@ -218,9 +231,10 @@ export function findBedPlans(people: PlanPerson[], beds: PlanBed[], opts: { maxM
   const bedById = new Map(beds.map((b) => [b.id, b]));
   const arrivals = people.filter((p) => isArrival(p.key)).length;
   const hasNewcomer = arrivals > 0;
-  if (!hasNewcomer && isValidArrangement(people, beds, start)) return [];
+  if (!hasNewcomer && isValidArrangement(people, beds, start, bedById, rules)) return [];
 
-  const byRooms = planByRooms(people, beds, byKey, bedById);
+  // The room-by-room plan assumes both rules; with one switched off (0163) the search below decides.
+  const byRooms = rules.fillOrder && rules.singleSex ? planByRooms(people, beds, byKey, bedById) : null;
   if (byRooms) return rank(byRooms, limit);
 
   const usable = beds.filter((b) => b.usable);
@@ -244,7 +258,7 @@ export function findBedPlans(people: PlanPerson[], beds: PlanBed[], opts: { maxM
         const k = keyOf(m);
         if (seen.has(k)) return;
         seen.add(k);
-        if (isValidArrangement(people, beds, m, bedById)) found.push({ moves: collapse(all, start), disruption: disruptionOf(collapse(all, start), byKey, bedById) });
+        if (isValidArrangement(people, beds, m, bedById, rules)) found.push({ moves: collapse(all, start), disruption: disruptionOf(collapse(all, start), byKey, bedById) });
         else next.push({ unitOf: m, moves: all });
       };
       for (const p of movable) {

@@ -422,6 +422,32 @@ export async function updateLafHouseLocation(input: { lat: number | null; lng: n
  * When families may be moved between beds (bed plans, 0071): hospitals do
  * not move patients at night. Admins only; the column CHECK keeps from < until.
  */
+/**
+ * Settings › Bed rules (0163): rooms filled in order and single-sex rooms, each on or off, and from
+ * which night a long-stay family keeps its bed (2-30, or null = off). Admin only; RLS on
+ * shared.app_settings is the real gate, and the database's check refuses another night.
+ */
+export async function updateBedRules(input: { fillOrder: boolean; singleSex: boolean; keepFromNight: number | null }): Promise<UpdateClockInRequirementResult> {
+  if (typeof input.fillOrder !== "boolean" || typeof input.singleSex !== "boolean") return { ok: false, error: "Say whether each rule is on or off." };
+  const night = input.keepFromNight;
+  if (night !== null && !(Number.isInteger(night) && night >= 2 && night <= 30)) return { ok: false, error: "The night is a whole number from 2 to 30, or leave it off." };
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+  if (!caller) return { ok: false, error: "Not signed in." };
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") return { ok: false, error: "Only admins can change this setting." };
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({ bed_fill_order: input.fillOrder, bed_single_sex: input.singleSex, bed_keep_from_night: night, updated_at: new Date().toISOString(), updated_by: caller.id })
+    .eq("id", true);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
 export async function updateBedMoveHours(input: { from: string; until: string }): Promise<UpdateClockInRequirementResult> {
   const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
   if (!hhmm.test(input.from) || !hhmm.test(input.until)) return { ok: false, error: "Give both times as HH:MM." };

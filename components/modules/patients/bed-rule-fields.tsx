@@ -10,8 +10,26 @@ import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { useBedReservations } from "@/lib/hooks/use-bed-reservations";
 import { useRole } from "@/lib/rbac/use-role";
 import { canAllowBedException } from "@/lib/rbac/roles";
-import { bedChoices, occupantsOf, roomBreaches, type BlockedBed, type Sex, type Sleeper } from "@/lib/utils/bed-rules";
+import { useAppSettings } from "@/lib/hooks/use-app-settings";
+import { bedChoices, keptBeds, occupantsOf, roomBreaches, type BedRuleSwitches, type BlockedBed, type Occupant, type Sex, type Sleeper } from "@/lib/utils/bed-rules";
 import type { AssignableBed } from "@/lib/utils/beds";
+import { nowTimeLabel, todayIso } from "@/lib/utils/date";
+
+/** Settings' bed-rule switches and the beds kept for long-stay families right now (0163). */
+function useBedRuleContext(): { rules: BedRuleSwitches; kept: Occupant[]; loading: boolean } {
+  const { bedRules, admissions, loading } = useAppSettings();
+  const { units, bedPositions } = useHouseLayout();
+  const { patients, carers, stays } = usePatientsData();
+  const rules = React.useMemo(
+    () => ({ fillOrder: bedRules.fillOrder, singleSex: bedRules.singleSex, keptUntil: admissions.finalizeBy }),
+    [bedRules.fillOrder, bedRules.singleSex, admissions.finalizeBy]
+  );
+  const kept = React.useMemo(
+    () => keptBeds(units, bedPositions, stays, carers, patients, { fromNight: bedRules.keepFromNight, until: admissions.finalizeBy, today: todayIso(), now: nowTimeLabel() }),
+    [units, bedPositions, stays, carers, patients, bedRules.keepFromNight, admissions.finalizeBy]
+  );
+  return { rules, kept, loading };
+}
 
 /** The carer's sex: it decides which room they (and the child) sleep in (0070). */
 export function CarerSexField({ id, value, onChange, hint }: { id: string; value: Sex | ""; onChange: (sex: Sex) => void; hint?: string }) {
@@ -50,6 +68,7 @@ export function useBedChoices(
   const { rooms, units, bedPositions, loading: layoutLoading } = useHouseLayout();
   const { patients, carers, stays, loading: patientsLoading } = usePatientsData();
   const { reservations, loading: holdsLoading } = useBedReservations();
+  const { rules, kept, loading: settingsLoading } = useBedRuleContext();
   const { sex, familyId } = opts.who;
   const { excludeUnitId, forHoldId, ignoreStayId, patientId } = opts;
   const { allowed, blocked } = React.useMemo(
@@ -61,8 +80,10 @@ export function useBedChoices(
         ignoreStayId,
         patientId,
         holds: reservations,
+        kept,
+        rules,
       }),
-    [units, bedPositions, stays, rooms, carers, patients, reservations, sex, familyId, excludeUnitId, forHoldId, ignoreStayId, patientId]
+    [units, bedPositions, stays, rooms, carers, patients, reservations, sex, familyId, excludeUnitId, forHoldId, ignoreStayId, patientId, kept, rules]
   );
   const blockedIds = React.useMemo(() => new Set(blocked.map((b) => b.unit.id)), [blocked]);
   return {
@@ -70,7 +91,7 @@ export function useBedChoices(
     blocked,
     isException: (unitId) => exception.on && blockedIds.has(unitId),
     // Until the house is in, "no bed" means "not loaded yet", not "full".
-    loading: layoutLoading || patientsLoading || holdsLoading,
+    loading: layoutLoading || patientsLoading || holdsLoading || settingsLoading,
   };
 }
 
@@ -111,9 +132,10 @@ export function BedRuleBreaches() {
   const { rooms, units, bedPositions } = useHouseLayout();
   const { patients, carers, stays } = usePatientsData();
   const { reservations } = useBedReservations();
+  const { rules, kept } = useBedRuleContext();
   const breaches = React.useMemo(
-    () => roomBreaches(rooms, occupantsOf(units, bedPositions, stays, carers, patients, reservations)),
-    [rooms, units, bedPositions, stays, carers, patients, reservations]
+    () => roomBreaches(rooms, occupantsOf(units, bedPositions, stays, carers, patients, reservations, {}, kept), rules),
+    [rooms, units, bedPositions, stays, carers, patients, reservations, kept, rules]
   );
   if (!breaches.length) return null;
   return (

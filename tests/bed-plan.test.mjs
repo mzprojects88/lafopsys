@@ -114,3 +114,34 @@ describe("tonight's arrivals together (bed plan polish, 2026-10-15)", () => {
     assert.equal(isValidArrangement(people, beds, new Map([["a", "B1"], ["new:x", null]])), false);
   });
 });
+
+describe("Settings switches and long stays (0163)", () => {
+  it("with fill order off a woman alone in Room 2 is fine; mixing still is not", () => {
+    const rules = { fillOrder: false, singleSex: true };
+    const alone = [person("a", "F", "B3")];
+    assert.equal(isValidArrangement(alone, beds, new Map(alone.map((p) => [p.key, p.unitId])), undefined, rules), true);
+    assert.deepEqual(findBedPlans(alone, beds, { rules }), []);
+    const mixed = [person("a", "F", "B1"), person("c", "M", "B2")];
+    assert.equal(isValidArrangement(mixed, beds, new Map(mixed.map((p) => [p.key, p.unitId])), undefined, rules), false);
+  });
+
+  it("with single-sex off a newcomer man takes Room 1 beside a woman, no move", () => {
+    const rules = { fillOrder: true, singleSex: false };
+    const [plan] = findBedPlans([person("a", "F", "B1"), person(NEWCOMER, "M", null)], beds, { rules });
+    assert.equal(moves(plan), `${NEWCOMER}:->B2`);
+  });
+
+  it("a long stay (fixed) is never moved: the gap waits for someone else", () => {
+    const plans = findBedPlans([person("a", "F", "B3", { fixed: true })], beds);
+    assert.ok(plans.every((p) => p.moves.every((m) => m.key !== "a")));
+  });
+});
+
+describe("long stays kept beside the other sex (0163)", () => {
+  it("two pinned families of both sexes in one room still leave a plan for a newcomer", () => {
+    const people = [person("longwoman", "F", "B1", { fixed: true }), person("longman", "M", "B2", { fixed: true }), person(NEWCOMER, "F", null)];
+    const [plan] = findBedPlans(people, beds);
+    assert.ok(plan, "a plan is found");
+    assert.ok(plan.moves.every((m) => m.key === NEWCOMER), "nobody pinned moves");
+  });
+});

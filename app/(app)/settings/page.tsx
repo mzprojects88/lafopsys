@@ -22,6 +22,7 @@ import { DbSyncCard } from "@/components/modules/settings/db-sync-card";
 import { ClientErrorsCard } from "@/components/modules/settings/client-errors-card";
 import { AiConsentCard } from "@/components/modules/settings/ai-consent-card";
 import { BedMoveHours } from "@/components/modules/settings/bed-move-hours";
+import { BedRulesSettings } from "@/components/modules/settings/bed-rules-settings";
 import { HrSettingsCard } from "@/components/modules/settings/hr-settings-card";
 import { VehiclesCard } from "@/components/modules/settings/vehicles-card";
 
@@ -114,6 +115,9 @@ export default function SettingsPage() {
 
         <SectionCard title="Admissions: daily reset">
           <AdmissionTimes />
+        </SectionCard>
+        <SectionCard id="bed-rules" className="scroll-mt-24" title="Bed rules">
+          <BedRulesSettings />
         </SectionCard>
         <SectionCard title="Bed moves">
           <BedMoveHours />

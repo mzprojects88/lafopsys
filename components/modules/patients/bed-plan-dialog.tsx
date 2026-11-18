@@ -17,7 +17,7 @@ import { FloorPlanCanvas } from "@/components/modules/house-ops/floor-plan/floor
 import { buildBedViews } from "@/components/modules/house-ops/floor-plan/bed-view";
 import { bedLabel } from "@/lib/utils/beds";
 import { isValidArrangement, type PlanBed, type PlanPerson } from "@/lib/utils/bed-plan";
-import type { Sex } from "@/lib/utils/bed-rules";
+import type { BedRuleSwitches, Sex } from "@/lib/utils/bed-rules";
 import { todayIso } from "@/lib/utils/date";
 import { plainError } from "@/lib/utils/plain-error";
 
@@ -38,7 +38,7 @@ interface PlanAnswer {
   explanation?: string;
   letters?: Record<string, string>;
   plans?: { moves: PlanMove[]; whyNot?: string | null }[];
-  layout?: { people: PlanPerson[]; beds: PlanBed[] };
+  layout?: { people: PlanPerson[]; beds: PlanBed[]; rules?: BedRuleSwitches };
   /** Arrivals no bed within the rules was found for tonight, in NCH's priority order. */
   waiting?: string[];
 }
@@ -128,7 +128,7 @@ export function BedPlanDialog({
     const people = answer.layout.people.filter((p) => !(p.key.startsWith("new:") && left.has(p.key)));
     const unitOf = new Map(people.map((p) => [p.key, p.unitId]));
     for (const m of plan.moves) if (isOn(m)) unitOf.set(m.stayId ?? m.arrivalKey ?? "__newcomer__", m.toUnitId);
-    return isValidArrangement(people, answer.layout.beds, unitOf);
+    return isValidArrangement(people, answer.layout.beds, unitOf, undefined, answer.layout.rules);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- isOn reads `skipped` and `pick`, both listed.
   }, [plan, answer, skipped, pick]);
 

@@ -75,6 +75,11 @@ async function scenario(ids, name, actor, opts, body, expect) {
       // current_staff_role() (0026) only answers for active staff.
       await client.query("update shared.staff set active = true, role = $2 where id = $1", [ids[actor], actor]);
     }
+    // An empty house first, so the live families never decide a result (rolled back with the scenario).
+    await client.query(`update ops.stays set status = 'checked_out', check_out_at = ${TODAY} where status in ('in_house', 'overdue')`);
+    await client.query("update ops.bed_reservations set status = 'released', closed_at = now() where status = 'active'");
+    await client.query(`delete from ops.bed_nights where night = ${TODAY}`);
+    await client.query("update ops.units set active = false where temporary and active");
     if (opts?.setup) await opts.setup();
     await client.query("set local role authenticated");
     if (actor) await client.query("select set_config('request.jwt.claims', $1, true)", [claims(ids[actor])]);

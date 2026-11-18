@@ -100,6 +100,8 @@ async function emptyHouse() {
   await client.query(`update ops.stays set status = 'checked_out', check_out_at = ${TODAY} where status in ('in_house', 'overdue')`);
   await client.query("update ops.bed_reservations set status = 'released', closed_at = now() where status = 'active'");
   await client.query("update ops.units set status = 'available', lock_reason = null where active");
+  // The house's own temporary mattresses are put away: the scenarios add their own (RT1, RT2).
+  await client.query("update ops.units set active = false where temporary and active");
   await client.query(
     `insert into ops.patients (id, first_name, last_name, sex, status, admitted_at, family_id) values
        ('${KID_A}', 'Rule', 'A', 'F', 'ongoing', current_date, null),
@@ -191,8 +193,8 @@ async function main() {
     const tempBed = (n, room) =>
       client.query(
         `insert into ops.units (id, code, room_id, status, shared_unit, capacity, active, temporary, added_reason, added_at, w, h)
-         values ('unit-T${n}', 'T${n}', '${room}', 'available', false, 1, true, true, 'matrix', now(), 0.05, 0.13);
-         insert into ops.bed_positions (id, unit_id, label) select 'unit-T${n}-' || l, 'unit-T${n}', l from unnest(array['A', 'B', 'C', 'D']) l`
+         values ('unit-RT${n}', 'RT${n}', '${room}', 'available', false, 1, true, true, 'matrix', now(), 0.05, 0.13);
+         insert into ops.bed_positions (id, unit_id, label) select 'unit-RT${n}-' || l, 'unit-RT${n}', l from unnest(array['A', 'B', 'C', 'D']) l`
       );
     const KID_E = id("06");
     const womenFillRoom1 = async () => {
@@ -208,23 +210,90 @@ async function main() {
       q(checkIn(KID_E, "B5", null)), ok);
     await scenario(ids, "0092: a temporary bed is refused while a regular bed is free", "social_worker",
       async () => { await tempBed(1, "room-3"); },
-      q(checkIn(KID_A, "T1", MOM_A)), refused("Room 1 still has a free bed"));
+      q(checkIn(KID_A, "RT1", MOM_A)), refused("Room 1 still has a free bed"));
     await scenario(ids, "0092: the temporary bed opens once the regular beds are full or locked", "social_worker",
       async () => { await womenFillRoom1(); await lockRooms2And3(); await tempBed(1, "room-3"); },
-      q(checkIn(KID_E, "T1", null)), ok);
+      q(checkIn(KID_E, "RT1", null)), ok);
     await scenario(ids, "0092: the area below Room 3 waits for a room's free temporary bed", "social_worker",
       async () => { await womenFillRoom1(); await lockRooms2And3(); await tempBed(1, "room-3"); await tempBed(2, "room-below-3"); },
-      q(checkIn(KID_E, "T2", null)), refused("Room 1 still has a free bed"));
+      q(checkIn(KID_E, "RT2", null)), refused("Room 1 still has a free bed"));
     await scenario(ids, "0092: the area below Room 3 opens once the rooms' temporary beds are taken", "social_worker",
       async () => {
         await womenFillRoom1(); await lockRooms2And3(); await tempBed(1, "room-3"); await tempBed(2, "room-below-3");
-        await client.query("update ops.units set status = 'maintenance', lock_reason = 'matrix' where id = 'unit-T1'");
+        await client.query("update ops.units set status = 'maintenance', lock_reason = 'matrix' where id = 'unit-RT1'");
       },
-      q(checkIn(KID_E, "T2", null)), ok);
+      q(checkIn(KID_E, "RT2", null)), ok);
     await scenario(ids, "0092: a hold cannot sit on a temporary bed", "social_worker",
       async () => { await tempBed(1, "room-3"); },
-      q(`insert into ops.bed_reservations (unit_id, patient_id, reserved_for, expected_on, carer_sex) values ('unit-T1', '${KID_A}', 'Rule A', current_date, 'F')`),
+      q(`insert into ops.bed_reservations (unit_id, patient_id, reserved_for, expected_on, carer_sex) values ('unit-RT1', '${KID_A}', 'Rule A', current_date, 'F')`),
       refused("temporary bed"));
+  }
+
+  // ---- switches in Settings and long stays (0163) ----
+  const has0163 = (await client.query("select to_regprocedure('ops.kept_beds()') is not null as y")).rows[0].y;
+  if (has0163) {
+    const setting = (sql) => () => client.query(`update shared.app_settings set ${sql} where id`);
+    const waivers = (kid) => `select count(*)::int as n, min(reason) as reason from ops.bed_rule_exceptions where stay_id = ${stayOf(kid)}`;
+    const lockRoom1 = () => client.query("update ops.units set status = 'maintenance', lock_reason = 'matrix' where id in ('unit-B2', 'unit-B3', 'unit-B4')");
+    // A visit of `nights` nights in `unit`, its last night closed by this morning's reset.
+    const longStay = (kid, carer, unit, nights) => async () => {
+      for (let n = nights; n >= 1; n--) {
+        await client.query(
+          `insert into ops.stays (id, patient_id, carer_id, bed_position_id, check_in_at, check_out_at, check_out_reason, status, visit_id)
+           values ('${id("8" + n)}', '${kid}', ${carer ? `'${carer}'` : "null"}, 'unit-${unit}-A', ${TODAY} - ${n}, ${TODAY} - ${n - 1}, 'daily_reset', 'checked_out', '${id("8" + nights)}')`
+        );
+      }
+      await client.query("update shared.app_settings set admission_finalize_by = '23:59' where id");
+    };
+    const readmit = (kid, unit) => `select ops.readmit_for_tonight('${kid}'${unit ? `, 'unit-${unit}'` : ""})`;
+    const readmitted = (kid) => `select count(*)::int as n, min(reason) as reason from ops.bed_rule_exceptions where stay_id = ${stayOf(kid)}`;
+
+    await scenario(ids, "0163: rules on by default, a normal check-in leaves no trail", "social_worker", null,
+      steps(checkIn(KID_A, "B1", MOM_A), waivers(KID_A)), (r) => r.ok && r.data[0].n === 0);
+    await scenario(ids, "0163: fill order off: Room 2 while Room 1 is free, logged", "social_worker", setting("bed_fill_order = false"),
+      steps(checkIn(KID_A, "B5", MOM_A), waivers(KID_A)), (r) => r.ok && r.data[0].n === 1 && r.data[0].reason.startsWith("Allowed by Settings"));
+    await scenario(ids, "0163: fill order off, single-sex still on", "social_worker",
+      async () => { await setting("bed_fill_order = false")(); await placed(KID_A, "B1", MOM_A)(); },
+      q(checkIn(KID_D, "B2", DAD_D)), refused("women's room"));
+    await scenario(ids, "0163: single-sex off: a man may join a women's room, logged", "social_worker",
+      async () => { await setting("bed_single_sex = false")(); await placed(KID_A, "B1", MOM_A)(); },
+      steps(checkIn(KID_D, "B2", DAD_D), waivers(KID_D)), (r) => r.ok && r.data[0].n === 1);
+    await scenario(ids, "0163: single-sex off: Room 1 is his to fill first", "social_worker",
+      async () => { await setting("bed_single_sex = false")(); await placed(KID_A, "B1", MOM_A)(); },
+      q(checkIn(KID_D, "B5", DAD_D)), refused("Room 1 still has a free bed"));
+    await scenario(ids, "0163: a hold follows the switch", "social_worker", setting("bed_fill_order = false"),
+      q(`insert into ops.bed_reservations (unit_id, patient_id, reserved_for, expected_on, carer_sex) values ('unit-B5', '${KID_A}', 'x', ${TODAY}, 'F')`), ok);
+    await scenario(ids, "0163: only an admin changes the switches", "social_worker", null,
+      q("update shared.app_settings set bed_fill_order = false where id"), (r) => r.ok && r.rows === 0);
+    await scenario(ids, "0163: the keep-bed night is 2 to 30, or off", "admin", null,
+      q("update shared.app_settings set bed_keep_from_night = 1 where id"), (r) => !r.ok && r.code === "23514");
+
+    await scenario(ids, "0163: night 3 keeps last night's bed while Room 1 is free, logged", "social_worker",
+      longStay(KID_A, MOM_A, "B5", 2),
+      steps(readmit(KID_A), readmitted(KID_A)), (r) => r.ok && r.data[0].n === 1 && r.data[0].reason === "Long stay: same bed as last night, night 3");
+    await scenario(ids, "0163: night 2 follows the rules, as before", "social_worker",
+      longStay(KID_A, MOM_A, "B5", 1), q(readmit(KID_A)), refused("Room 1 still has a free bed"));
+    await scenario(ids, "0163: keep-bed off: night 3 follows the rules", "social_worker",
+      async () => { await longStay(KID_A, MOM_A, "B5", 2)(); await setting("bed_keep_from_night = null")(); },
+      q(readmit(KID_A)), refused("Room 1 still has a free bed"));
+    await scenario(ids, "0163: another bed on night 3 follows the rules", "social_worker",
+      longStay(KID_A, MOM_A, "B5", 2), q(readmit(KID_A, "B6")), refused("Room 1 still has a free bed"));
+    await scenario(ids, "0163: a newcomer cannot take a kept bed", "social_worker",
+      async () => { await longStay(KID_A, MOM_A, "B5", 2)(); await lockRoom1(); await client.query("update ops.units set status = 'maintenance', lock_reason = 'matrix' where id = 'unit-B1'"); },
+      q(checkIn(KID_B, "B5", MOM_B)), refused("is kept for a family on their night 3"));
+    await scenario(ids, "0163: ...an approver may, with a reason, logged", "social_worker",
+      async () => { await longStay(KID_A, MOM_A, "B5", 2)(); await lockRoom1(); await client.query("update ops.units set status = 'maintenance', lock_reason = 'matrix' where id = 'unit-B1'"); },
+      steps(checkIn(KID_B, "B5", MOM_B, exception("their family left NCH")), waivers(KID_B)), (r) => r.ok && r.data[0].n === 1);
+    await scenario(ids, "0163: after the finalize time the kept bed is free", "social_worker",
+      async () => { await longStay(KID_A, MOM_A, "B5", 2)(); await lockRoom1(); await client.query("update ops.units set status = 'maintenance', lock_reason = 'matrix' where id = 'unit-B1'"); await setting("admission_finalize_by = '00:00'")(); },
+      q(checkIn(KID_B, "B5", MOM_B)), ok);
+    await scenario(ids, "0163: a kept bed counts as taken for the room order", "social_worker",
+      async () => { await longStay(KID_A, MOM_A, "B1", 2)(); await lockRoom1(); },
+      q(checkIn(KID_B, "B5", MOM_B)), ok);
+    await scenario(ids, "0163: a kept bed counts for the room's sex", "social_worker",
+      longStay(KID_A, MOM_A, "B1", 2), q(checkIn(KID_D, "B2", DAD_D)), refused("women's room"));
+    await scenario(ids, "0163: the new helpers are not callable from the app", "social_worker", null,
+      q("select * from ops.kept_beds()"), denied);
   }
 
   // ---- moving: Move tonight / Transfer bed ----

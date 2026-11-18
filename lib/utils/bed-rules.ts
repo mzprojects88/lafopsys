@@ -11,6 +11,7 @@
 import type { BedPosition, Room, Unit } from "../types/house-ops";
 import type { Carer, Patient, Stay } from "../types/patient";
 import { bedLabel, isActiveStay, isBedAssignable, nextFreePosition, roomForUnit, type AssignableBed, type BedHold } from "./beds.ts";
+import { formatTime12 } from "./time12.ts";
 
 export type Sex = "F" | "M";
 
@@ -25,6 +26,51 @@ export interface Occupant {
   unitId: string;
   sex?: Sex;
   familyId?: string;
+  /** A bed kept for a long-stay family after the morning reset (0163): their patient id and tonight's night. */
+  keptFor?: string;
+  keptNight?: number;
+}
+
+/** The switches in Settings › Bed rules (0163), and until when a kept bed is held (HH:mm). */
+export interface BedRuleSwitches {
+  fillOrder: boolean;
+  singleSex: boolean;
+  keptUntil?: string;
+}
+export const RULES_ON: BedRuleSwitches = { fillOrder: true, singleSex: true };
+
+/**
+ * Beds kept for long-stay families (0163), as ops.kept_beds(): this morning's reset closed
+ * last night's stay, tonight is that visit's night `fromNight` or later, it is before `until`
+ * (HH:mm, Manila) and the family is not back in the house. Each counts as taken for everyone else.
+ */
+export function keptBeds(
+  units: Unit[],
+  positions: BedPosition[],
+  stays: Stay[],
+  carers: Carer[],
+  patients: Patient[],
+  opts: { fromNight: number | null; until: string; today: string; now: string }
+): Occupant[] {
+  if (opts.fromNight === null || opts.now >= opts.until) return [];
+  const nights = new Map<string, number>();
+  for (const s of stays) if (s.visitId) nights.set(s.visitId, (nights.get(s.visitId) ?? 0) + 1);
+  const inHouse = new Set(stays.filter(isActiveStay).map((s) => s.patientId));
+  const last = new Map<string, Stay>();
+  for (const s of stays) {
+    if (s.checkOutReason !== "daily_reset" || s.checkOutAt !== opts.today || inHouse.has(s.patientId)) continue;
+    const seen = last.get(s.patientId);
+    if (!seen || s.checkInAt > seen.checkInAt) last.set(s.patientId, s);
+  }
+  const unitOf = new Map(positions.map((p) => [p.id, units.find((u) => u.id === p.unitId)]));
+  const out: Occupant[] = [];
+  for (const s of last.values()) {
+    const night = (s.visitId ? (nights.get(s.visitId) ?? 0) : 0) + 1;
+    const unit = unitOf.get(s.bedPositionId);
+    if (night < opts.fromNight || !unit?.active) continue;
+    out.push({ roomId: unit.roomId ?? null, unitId: unit.id, ...sleeperOfStay(s, carers, patients), keptFor: s.patientId, keptNight: night });
+  }
+  return out;
 }
 
 const F_RELATIONSHIPS = ["mother", "grandmother", "aunt", "sister", "stepmother", "step-mother", "godmother", "nanay", "ina", "lola", "tita", "tiya", "ate", "ninang"];
@@ -53,10 +99,11 @@ export function occupantsOf(
   carers: Carer[],
   patients: Patient[],
   holds: readonly BedHold[],
-  ignore: { stayId?: string; patientId?: string | null; holdId?: string } = {}
+  ignore: { stayId?: string; patientId?: string | null; holdId?: string } = {},
+  kept: readonly Occupant[] = []
 ): Occupant[] {
   const unitOf = new Map(positions.map((p) => [p.id, units.find((u) => u.id === p.unitId)]));
-  const out: Occupant[] = [];
+  const out: Occupant[] = kept.filter((k) => !ignore.patientId || k.keptFor !== ignore.patientId);
   for (const s of stays) {
     if (!isActiveStay(s) || s.id === ignore.stayId) continue;
     const unit = unitOf.get(s.bedPositionId);
@@ -75,19 +122,27 @@ export function occupantsOf(
 
 const clashes = (o: Occupant, who: Sleeper) => !!o.sex && o.sex !== who.sex && !(who.familyId && o.familyId === who.familyId);
 
-/** Why this sleeper may not take this bed, or null. Mirrors ops.bed_rule_problem. */
-export function bedRuleProblem(unit: Unit, who: Sleeper, units: Unit[], rooms: Room[], occupants: Occupant[]): string | null {
+/** Why this sleeper may not take this bed, or null. Mirrors ops.bed_rule_problem, Settings' switches included (0163). */
+export function bedRuleProblem(unit: Unit, who: Sleeper, units: Unit[], rooms: Room[], occupants: Occupant[], rules: BedRuleSwitches = RULES_ON): string | null {
+  // A long-stay family's bed is theirs until the finalize time (0163), whatever the switches say.
+  const here = occupants.filter((o) => o.unitId === unit.id);
+  const kept = here.find((o) => o.keptFor);
+  if (kept && here.length >= unit.capacity) {
+    return `Bed ${unit.code} is kept for a family on their night ${kept.keptNight} until ${formatTime12(rules.keptUntil ?? "18:00")}`;
+  }
   const room = roomForUnit(unit, rooms);
   if (!room || !who.sex) return null;
-  if (occupants.some((o) => o.roomId === room.id && clashes(o, who))) {
+  const clash = (o: Occupant) => rules.singleSex && clashes(o, who);
+  if (occupants.some((o) => o.roomId === room.id && clash(o))) {
     return `${room.name} is a ${who.sex === "F" ? "men's" : "women's"} room now`;
   }
+  if (!rules.fillOrder) return null;
   // Regular beds first (0092): for a regular bed the earlier rooms count; for a temporary bed,
   // any room's free regular bed does, and so does an earlier room's free temporary bed (the
   // area below Room 3 comes last). A free temporary bed never makes a later room wait.
   const candidates = unit.temporary ? rooms : rooms.filter((r) => r.sortOrder < room.sortOrder);
   for (const other of [...candidates].sort((a, b) => a.sortOrder - b.sortOrder)) {
-    if (occupants.some((o) => o.roomId === other.id && clashes(o, who))) continue;
+    if (occupants.some((o) => o.roomId === other.id && clash(o))) continue;
     const free = units.some(
       (u) =>
         u.roomId === other.id &&
@@ -123,14 +178,28 @@ export function bedChoices(
   stays: Stay[],
   rooms: Room[],
   people: { carers: Carer[]; patients: Patient[] },
-  opts: { who: Sleeper; excludeUnitId?: string; holds?: readonly BedHold[]; forHoldId?: string; ignoreStayId?: string; patientId?: string | null }
+  opts: {
+    who: Sleeper;
+    excludeUnitId?: string;
+    holds?: readonly BedHold[];
+    forHoldId?: string;
+    ignoreStayId?: string;
+    patientId?: string | null;
+    kept?: readonly Occupant[];
+    rules?: BedRuleSwitches;
+  }
 ): { allowed: AssignableBed[]; blocked: BlockedBed[] } {
   const holds = opts.holds ?? [];
-  const occupants = occupantsOf(units, positions, stays, people.carers, people.patients, holds, {
-    stayId: opts.ignoreStayId,
-    patientId: opts.patientId,
-    holdId: opts.forHoldId,
-  });
+  const occupants = occupantsOf(
+    units,
+    positions,
+    stays,
+    people.carers,
+    people.patients,
+    holds,
+    { stayId: opts.ignoreStayId, patientId: opts.patientId, holdId: opts.forHoldId },
+    opts.kept
+  );
   const allowed: AssignableBed[] = [];
   const blocked: BlockedBed[] = [];
   for (const unit of units) {
@@ -139,7 +208,7 @@ export function bedChoices(
     const position = nextFreePosition(unit, positions, stays);
     if (!position) continue;
     const bed = { unit, position, room: roomForUnit(unit, rooms), label: bedLabel(unit, rooms) };
-    const reason = bedRuleProblem(unit, opts.who, units, rooms, occupants);
+    const reason = bedRuleProblem(unit, opts.who, units, rooms, occupants, opts.rules);
     if (reason) blocked.push({ ...bed, reason });
     else allowed.push(bed);
   }
@@ -150,8 +219,10 @@ export function bedChoices(
 }
 
 /** Rooms where carers of both sexes sleep and they are not one family: a
- * breach (an allowed exception, or someone placed before the rules) to fix. */
-export function roomBreaches(rooms: Room[], occupants: Occupant[]): Room[] {
+ * breach (an allowed exception, or someone placed before the rules) to fix.
+ * None while single-sex rooms are switched off in Settings (0163). */
+export function roomBreaches(rooms: Room[], occupants: Occupant[], rules: BedRuleSwitches = RULES_ON): Room[] {
+  if (!rules.singleSex) return [];
   return rooms.filter((room) => {
     const here = occupants.filter((o) => o.roomId === room.id && o.sex);
     return here.some((a) => here.some((b) => clashes(b, { sex: a.sex, familyId: a.familyId })));

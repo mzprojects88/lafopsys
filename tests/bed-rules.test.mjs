@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { bedChoices, bedRuleProblem, familyLink, occupantsOf, relationshipFromText, roomBreaches, roomSex, sexFromRelationship } from "../lib/utils/bed-rules.ts";
+import { bedChoices, bedRuleProblem, familyLink, keptBeds, occupantsOf, relationshipFromText, roomBreaches, roomSex, sexFromRelationship } from "../lib/utils/bed-rules.ts";
 
 // Room 1 (B1, B2), Room 2 (B3, B4), Room 3 (B5): the house in miniature.
 const rooms = [
@@ -155,5 +155,50 @@ describe("temporary beds (0092)", () => {
     const { allowed, blocked } = bedChoices(unitsT, positionsT, stays, roomsT, people, { who: { sex: "F" } });
     assert.equal(codes(allowed), "T1");
     assert.equal(blocked.find((b) => b.unit.code === "T2")?.reason, "Room 1 still has a free bed: fill it first");
+  });
+});
+
+describe("Settings switches and long stays (0163)", () => {
+  const today = "2026-11-18";
+  const closed = (id, patientId, unitCode, carerId, checkInAt, visitId) => ({
+    id, patientId, bedPositionId: `u-${unitCode}-A`, carerId, checkInAt, checkOutAt: checkInAt === today ? undefined : today,
+    checkOutReason: "daily_reset", status: "checked_out", visitId,
+  });
+  // kid-a's visit: two nights in B3, the second closed by this morning's reset; tonight is night 3.
+  const visitA = [
+    { ...closed("n1", "kid-a", "B3", "mom-a", "2026-11-16", "n1"), checkOutAt: "2026-11-17" },
+    closed("n2", "kid-a", "B3", "mom-a", "2026-11-17", "n1"),
+  ];
+  const keptOf = (stays, fromNight = 3, now = "10:00") => keptBeds(units, positions, stays, carers, patients, { fromNight, until: "18:00", today, now });
+
+  it("fill order off: Room 2 is offered while Room 1 is free", () => {
+    const { allowed } = bedChoices(units, positions, [], rooms, people, { who: { sex: "F" }, rules: { fillOrder: false, singleSex: true } });
+    assert.equal(codes(allowed), "B1,B2,B3,B4,B5");
+  });
+
+  it("single-sex off: a man may join a women's room, and Room 1 is his to fill first", () => {
+    const stays = [stay("s1", "kid-a", "B1", "mom-a")];
+    const rules = { fillOrder: true, singleSex: false };
+    const { allowed, blocked } = bedChoices(units, positions, stays, rooms, people, { who: { sex: "M" }, rules });
+    assert.equal(codes(allowed), "B2");
+    assert.equal(blocked.find((b) => b.unit.code === "B3")?.reason, "Room 1 still has a free bed: fill it first");
+    assert.deepEqual(roomBreaches(rooms, occupantsOf(units, positions, [...stays, stay("s2", "kid-boy", "B2")], carers, patients, []), rules), []);
+  });
+
+  it("a long stay's bed is kept for them, counts as taken, and is theirs to take back", () => {
+    const kept = keptOf(visitA);
+    assert.deepEqual(kept.map((k) => [k.unitId, k.keptFor, k.keptNight]), [["u-B3", "kid-a", 3]]);
+    const rules = { fillOrder: true, singleSex: true, keptUntil: "18:00" };
+    const other = bedChoices(units, positions, visitA, rooms, people, { who: { sex: "F" }, kept, rules });
+    assert.equal(other.blocked.find((b) => b.unit.code === "B3")?.reason, "Bed B3 is kept for a family on their night 3 until 6:00 PM");
+    const own = bedChoices(units, positions, visitA, rooms, people, { who: { sex: "F" }, kept, rules, patientId: "kid-a" });
+    assert.equal(own.blocked.find((b) => b.unit.code === "B3")?.reason, "Room 1 still has a free bed: fill it first");
+  });
+
+  it("nothing is kept on night 2, after the finalize time, once they are back, or with the setting off", () => {
+    assert.equal(keptOf(visitA.slice(1).map((s) => ({ ...s, visitId: "n2" }))).length, 0);
+    assert.equal(keptOf(visitA, 3, "18:00").length, 0);
+    assert.equal(keptOf([...visitA, stay("s3", "kid-a", "B4", "mom-a")]).length, 0);
+    assert.equal(keptOf(visitA, null).length, 0);
   });
 });

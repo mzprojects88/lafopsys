@@ -80,7 +80,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const mealsFromSheet = useAppSettings().programsFromAppSince === null;
   const canTickMeals = !mealsFromSheet && (access.canEdit("patients") || access.canEdit("house_ops"));
   const { patients, stays, carers, loading: patientsLoading, updateStay } = usePatientsData();
-  const { units, bedPositions, loading: layoutLoading } = useHouseLayout();
+  const { units, bedPositions, rooms, loading: layoutLoading } = useHouseLayout();
   const { nights, confirmNight, readmitForTonight } = useBedNights();
   // The admission resets every morning (0089): the reset log and the finalize time.
   const { resets } = useAdmissionResets();
@@ -173,7 +173,14 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   async function readmitAllSame() {
     setBusy("readmit-all");
     let failed = 0;
-    for (const p of continuing) if (!(await readmitForTonight(settledPatientId(p)!)).ok) failed += 1;
+    // Room by room, Room 1 first (0163): a later room's family is then never refused for an earlier room's bed
+    // whose family simply is not back yet.
+    const roomOrderOf = (p: HouseSheetPerson) => {
+      const last = resetStayFor(settledPatientId(p));
+      const unit = last ? unitForBedPosition(last.bedPositionId, units, bedPositions) : undefined;
+      return rooms.find((r) => r.id === unit?.roomId)?.sortOrder ?? Number.MAX_SAFE_INTEGER;
+    };
+    for (const p of [...continuing].sort((a, b) => roomOrderOf(a) - roomOrderOf(b))) if (!(await readmitForTonight(settledPatientId(p)!)).ok) failed += 1;
     setBusy(null);
     if (failed) toast.error(`${failed} could not be given last night's bed; do them one by one.`);
     else toast.success(`${continuing.length} back in last night's bed${continuing.length === 1 ? "" : "s"}`);

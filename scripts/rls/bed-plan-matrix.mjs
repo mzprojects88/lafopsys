@@ -100,6 +100,9 @@ async function emptyHouse() {
   await client.query(`update ops.stays set status = 'checked_out', check_out_at = ${TODAY} where status in ('in_house', 'overdue')`);
   await client.query("update ops.bed_reservations set status = 'released', closed_at = now() where status = 'active'");
   await client.query("update ops.units set status = 'available', lock_reason = null where active");
+  // The live families' nights and temporary mattresses would collide with the fixtures (rolled back).
+  await client.query(`delete from ops.bed_nights where night = ${TODAY}`);
+  await client.query("update ops.units set active = false where temporary and active");
   await client.query(
     `insert into ops.patients (id, first_name, last_name, sex, status, admitted_at, family_id) values
        ('${KID_A}', 'Rule', 'A', 'F', 'ongoing', current_date, null),

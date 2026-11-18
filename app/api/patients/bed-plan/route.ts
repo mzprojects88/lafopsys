@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { chooseBedPlan, type BedPlanPerson } from "@/lib/ai/openai";
 import { openaiConfigured } from "@/lib/ai/env";
 import { ARRIVAL_PREFIX, NEWCOMER, findBedPlans, isArrival, type PlanBed, type PlanPerson } from "@/lib/utils/bed-plan";
-import { todayIso } from "@/lib/utils/date";
+import { nowTimeLabel, todayIso } from "@/lib/utils/date";
 
 export const maxDuration = 60;
 
@@ -38,23 +38,39 @@ export async function POST(request: Request) {
   if (body.newcomer && !newcomerSex) return NextResponse.json({ ok: false, error: "Say whether the arriving carer is a woman or a man." }, { status: 400 });
 
   const ops = supabase.schema("ops");
-  const [units, rooms, positions, stays, holds] = await Promise.all([
+  const today = todayIso();
+  const [units, rooms, positions, stays, holds, settings, closedToday] = await Promise.all([
     ops.from("units").select("id, code, room_id, active, status, capacity, temporary"),
     ops.from("rooms").select("id, name, sort_order"),
     ops.from("bed_positions").select("id, unit_id"),
     ops.from("stays").select("id, patient_id, bed_position_id, carer_id, check_in_at, expected_checkout_at, visit_id").in("status", ["in_house", "overdue"]),
     ops.from("bed_reservations").select("id, unit_id, patient_id, carer_sex").eq("status", "active"),
+    supabase.schema("shared").from("app_settings").select("bed_fill_order, bed_single_sex, bed_keep_from_night, admission_finalize_by").maybeSingle(),
+    // Families this morning's reset checked out: a long stay's bed is kept for them until the finalize time (0163).
+    ops.from("stays").select("id, patient_id, bed_position_id, carer_id, check_in_at, visit_id").eq("check_out_reason", "daily_reset").eq("check_out_at", today),
   ]);
-  const failed = [units, rooms, positions, stays, holds].find((r) => r.error);
+  const failed = [units, rooms, positions, stays, holds, settings, closedToday].find((r) => r.error);
   if (failed?.error) return NextResponse.json({ ok: false, error: failed.error.message }, { status: 500 });
   // The first night of each open visit (0089).
-  const visitIds = [...new Set((stays.data ?? []).map((s) => s.visit_id ?? s.id))];
+  const visitIds = [...new Set([...(stays.data ?? []), ...(closedToday.data ?? [])].map((s) => s.visit_id ?? s.id))];
   const firstNights = visitIds.length ? await ops.from("stays").select("visit_id, check_in_at").in("visit_id", visitIds).order("check_in_at") : { data: [] as { visit_id: string; check_in_at: string }[] };
   const visitStart = new Map<string, string>();
-  for (const n of firstNights.data ?? []) if (!visitStart.has(n.visit_id)) visitStart.set(n.visit_id, n.check_in_at);
+  const visitNights = new Map<string, number>();
+  for (const n of firstNights.data ?? []) {
+    if (!visitStart.has(n.visit_id)) visitStart.set(n.visit_id, n.check_in_at);
+    visitNights.set(n.visit_id, (visitNights.get(n.visit_id) ?? 0) + 1);
+  }
+  // Settings › Bed rules (0163): the switches, and from which night a long stay keeps its bed.
+  const rules = { fillOrder: settings.data?.bed_fill_order !== false, singleSex: settings.data?.bed_single_sex !== false };
+  const keepFrom: number | null = settings.data ? (settings.data.bed_keep_from_night ?? null) : 3;
+  const keptUntil = String(settings.data?.admission_finalize_by ?? "18:00").slice(0, 5);
 
-  const patientIds = [...new Set((stays.data ?? []).map((s) => s.patient_id as string))];
-  const carerIds = (stays.data ?? []).flatMap((s) => (s.carer_id ? [s.carer_id as string] : []));
+  const inHouse = new Set((stays.data ?? []).map((s) => s.patient_id as string));
+  const kept = keepFrom === null || nowTimeLabel() >= keptUntil
+    ? []
+    : (closedToday.data ?? []).filter((s) => !inHouse.has(s.patient_id) && (visitNights.get(s.visit_id ?? s.id) ?? 1) + 1 >= keepFrom);
+  const patientIds = [...new Set([...(stays.data ?? []), ...kept].map((s) => s.patient_id as string))];
+  const carerIds = [...(stays.data ?? []), ...kept].flatMap((s) => (s.carer_id ? [s.carer_id as string] : []));
   const [patients, carers] = await Promise.all([
     patientIds.length ? ops.from("patients").select("id, sex, family_id").in("id", patientIds) : Promise.resolve({ data: [], error: null }),
     carerIds.length ? ops.from("carers").select("id, sex").in("id", carerIds) : Promise.resolve({ data: [], error: null }),
@@ -83,21 +99,27 @@ export async function POST(request: Request) {
   const unitOfPosition = new Map((positions.data ?? []).map((p) => [p.id as string, p.unit_id as string]));
   const patientById = new Map((patients.data ?? []).map((p) => [p.id as string, p]));
   const carerSex = new Map((carers.data ?? []).map((c) => [c.id as string, c.sex as Sex | null]));
-  const today = todayIso();
-
   const people: PlanPerson[] = (stays.data ?? []).map((s) => {
     const patient = patientById.get(s.patient_id);
     const sex = (s.carer_id ? carerSex.get(s.carer_id) : patient?.sex) ?? undefined;
+    // A stay is one night (0089): the visit's first night is what counts.
+    const nightsHere = daysBetween(visitStart.get(s.visit_id ?? s.id) ?? s.check_in_at, today);
     return {
       key: s.id,
       sex: sex ?? undefined,
       familyId: patient?.family_id ?? undefined,
       unitId: unitOfPosition.get(s.bed_position_id) ?? null,
-      // A stay is one night (0089): the visit's first night is what counts.
-      nightsHere: daysBetween(visitStart.get(s.visit_id ?? s.id) ?? s.check_in_at, today),
+      nightsHere,
       leavesIn: s.expected_checkout_at ? daysBetween(today, s.expected_checkout_at) : undefined,
+      // A long stay keeps its bed (0163): the plan never moves them.
+      fixed: keepFrom !== null && nightsHere + 1 >= keepFrom,
     };
   });
+  // Their kept beds count as taken, as the database counts them.
+  for (const s of kept) {
+    const patient = patientById.get(s.patient_id);
+    people.push({ key: `kept:${s.id}`, sex: (s.carer_id ? carerSex.get(s.carer_id) : patient?.sex) ?? undefined, familyId: patient?.family_id ?? undefined, unitId: unitOfPosition.get(s.bed_position_id) ?? null, fixed: true });
+  }
   for (const h of holds.data ?? []) people.push({ key: `hold:${h.id}`, sex: h.carer_sex ?? undefined, familyId: undefined, unitId: h.unit_id, fixed: true });
   if (newcomerSex) people.push({ key: NEWCOMER, sex: newcomerSex, familyId: typeof body.newcomer?.familyId === "string" ? body.newcomer.familyId : undefined, unitId: null });
   // As many of tonight's arrivals as the rules allow, in the order sent (NCH's priority): if all of
@@ -105,7 +127,7 @@ export async function POST(request: Request) {
   // many fit (about four searches for twelve arrivals).
   // ponytail: assumes fewer arrivals never fit worse; a best-subset search if evenings get bigger.
   const withFirst = (n: number) => [...people, ...arrivals.slice(0, n).map((a) => ({ key: a.key, sex: a.sex, familyId: a.familyId, unitId: null as string | null }))];
-  const plansFor = (n: number) => findBedPlans(withFirst(n), beds, { timeLimitMs: 1500 });
+  const plansFor = (n: number) => findBedPlans(withFirst(n), beds, { timeLimitMs: 1500, rules });
   let placedArrivals = arrivals.length;
   let plans = plansFor(placedArrivals);
   if (!plans.length && arrivals.length) {
@@ -150,7 +172,9 @@ export async function POST(request: Request) {
       now: bedLabel(p.unitId),
     }));
   let chosen = 0;
-  let explanation = "The plan with the fewest moves that keeps the rooms single-sex and fills Room 1 first.";
+  let explanation = rules.fillOrder && rules.singleSex
+    ? "The plan with the fewest moves that keeps the rooms single-sex and fills Room 1 first."
+    : "The plan with the fewest moves that keeps the bed rules switched on in Settings.";
   let reasons: Record<string, string> = {};
   let letters: Record<string, string> = {};
   let ai = false;
@@ -191,7 +215,7 @@ export async function POST(request: Request) {
     })),
     // The house as the planner saw it -- keys, sexes, families, beds; no names -- so the social
     // worker can leave a move out and see at once whether the rest still keeps the rules.
-    layout: { people, beds },
+    layout: { people, beds, rules },
     // Arrivals for whom no bed within the rules was found tonight.
     waiting,
   });

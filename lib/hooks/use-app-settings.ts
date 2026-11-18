@@ -61,6 +61,8 @@ export interface AppSettings extends HrSettings {
    * when tonight's beds must be assigned. */
   /** mealsBy (0148): by when the day's meals should be ticked (the social worker's reminder). */
   admissions: { resetAt: string; finalizeBy: string; mealsBy: string };
+  /** Settings › Bed rules (0163): the two rules an admin may switch off, and from which night a long stay keeps its bed (null = off). */
+  bedRules: { fillOrder: boolean; singleSex: boolean; keepFromNight: number | null };
 }
 
 interface AppSettingsRow {
@@ -102,6 +104,9 @@ interface AppSettingsRow {
   admission_reset_at: string | null;
   admission_finalize_by: string | null;
   admission_meals_by: string | null;
+  bed_fill_order?: boolean;
+  bed_single_sex?: boolean;
+  bed_keep_from_night?: number | null;
 }
 
 export const HR_SETTINGS_DEFAULTS: HrSettings = {
@@ -132,6 +137,7 @@ const DEFAULTS: AppSettings = {
   bedMoves: { from: "07:00", until: "20:00" },
   documents: { header: "", orgAddress: "", orgTin: "", signatoryId: null, names: {}, dswdLabel: "DSWD Accreditation No.", dswdNumber: "", cashReceiptTitle: "Acknowledgement Receipt", cashReceiptPurpose: "", voucherCertification: DEFAULT_VOUCHER_CERTIFICATION },
   admissions: { resetAt: "06:00", finalizeBy: "18:00", mealsBy: "20:00" },
+  bedRules: { fillOrder: true, singleSex: true, keepFromNight: 3 },
   ...HR_SETTINGS_DEFAULTS,
 };
 
@@ -141,7 +147,7 @@ const SELECT =
   "leave_vl_days_per_year, leave_sl_days_per_year, leave_vl_convertible, minimum_wage_region, " +
   "compliance_pen_last_digit, compliance_employer_initial, compliance_tracking_from, compliance_lead_days, " +
   "laf_house_latitude, laf_house_longitude, laf_house_radius_m, transport_places, case_ai_reading, bed_moves_from, bed_moves_until, " +
-  "report_header, org_address, org_tin, certificate_signatory_id, admission_reset_at, admission_finalize_by, admission_meals_by, document_names, dswd_label, dswd_number, voucher_certification";
+  "report_header, org_address, org_tin, certificate_signatory_id, admission_reset_at, admission_finalize_by, admission_meals_by, bed_fill_order, bed_single_sex, bed_keep_from_night, document_names, dswd_label, dswd_number, voucher_certification";
 
 export const appSettingsStore = createCollection<AppSettings>({
   key: "shared.app_settings",
@@ -181,6 +187,7 @@ export const appSettingsStore = createCollection<AppSettings>({
       bedMoves: { from: (row.bed_moves_from ?? "07:00").slice(0, 5), until: (row.bed_moves_until ?? "20:00").slice(0, 5) },
       documents: { header: row.report_header ?? "", orgAddress: row.org_address ?? "", orgTin: row.org_tin ?? "", signatoryId: row.certificate_signatory_id ?? null, names: row.document_names ?? {}, dswdLabel: row.dswd_label ?? "DSWD Accreditation No.", dswdNumber: row.dswd_number ?? "", cashReceiptTitle: row.cash_receipt_title ?? "Acknowledgement Receipt", cashReceiptPurpose: row.cash_receipt_purpose ?? "", voucherCertification: row.voucher_certification ?? DEFAULT_VOUCHER_CERTIFICATION },
       admissions: { resetAt: (row.admission_reset_at ?? "06:00").slice(0, 5), finalizeBy: (row.admission_finalize_by ?? "18:00").slice(0, 5), mealsBy: (row.admission_meals_by ?? "20:00").slice(0, 5) },
+      bedRules: { fillOrder: row.bed_fill_order !== false, singleSex: row.bed_single_sex !== false, keepFromNight: row.bed_keep_from_night ?? null },
     };
   },
 });
