@@ -448,6 +448,26 @@ export async function updateBedRules(input: { fillOrder: boolean; singleSex: boo
   return { ok: true };
 }
 
+/** How many days back a meal may be recorded (0166): 0 to 365; admins may always fix an older day. Admin only. */
+export async function updateMealsBackDays(days: number): Promise<UpdateClockInRequirementResult> {
+  if (!Number.isInteger(days) || days < 0 || days > 365) return { ok: false, error: "A whole number of days from 0 to 365." };
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+  if (!caller) return { ok: false, error: "Not signed in." };
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") return { ok: false, error: "Only admins can change this setting." };
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({ meals_back_days: days, updated_at: new Date().toISOString(), updated_by: caller.id })
+    .eq("id", true);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
 export async function updateBedMoveHours(input: { from: string; until: string }): Promise<UpdateClockInRequirementResult> {
   const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
   if (!hhmm.test(input.from) || !hhmm.test(input.until)) return { ok: false, error: "Give both times as HH:MM." };

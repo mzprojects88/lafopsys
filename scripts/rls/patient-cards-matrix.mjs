@@ -18,7 +18,7 @@ if (!password) {
 }
 const client = new Client({ connectionString: pgUrl(password) });
 
-const ROLES = ["admin", "social_worker", "house_staff", "ceo"];
+const ROLES = ["admin", "social_worker", "house_staff", "ceo", "driver"];
 const results = [];
 const record = (name, verdict, detail = "") => results.push({ scenario: name, result: verdict, detail: String(detail).replace(/\s+/g, " ").slice(0, 90) });
 
@@ -130,6 +130,129 @@ async function main() {
   await scenario(ids, "nobody edits a card directly", "admin", issued(KID), q(`update ops.patient_cards set status = 'replaced', ended_at = now() where patient_id = '${KID}'`), denied);
   await scenario(ids, "without a sign-in nothing is readable", null, issued(KID), q("select count(*) from ops.patient_cards"), denied);
   await scenario(ids, "without a sign-in no card can be issued", null, null, q(issue(KID)), denied);
+
+  // ---- phase 2: scanning (0165) ----
+  const has0165 = (await client.query("select to_regprocedure('ops.scan_card(text)') is not null as y")).rows[0].y;
+  if (has0165) {
+    const TODAY = "(now() at time zone 'Asia/Manila')::date";
+    // The code comes from the QR, not from the table: setup (as postgres) keeps it in a setting the scanning role reads.
+    const tokenOf = () => "current_setting('test.card_token')";
+    const keepToken = (kid, status = "active") => client.query(`select set_config('test.card_token', (select token from ops.patient_cards where patient_id = '${kid}' and status = '${status}' order by version limit 1), true)`);
+    const scan = (kid) => `select ops.scan_card(${tokenOf(kid)}) as s`;
+    const meal = (kid, m) => `select ops.record_meal_by_card(${tokenOf(kid)}, '${m}') as r`;
+    // An empty house (live families never decide a result), meals switched to the app, KID in bed B1 tonight.
+    const emptyHouse = async () => {
+      await client.query(`update ops.stays set status = 'checked_out', check_out_at = ${TODAY} where status in ('in_house', 'overdue')`);
+      await client.query("update ops.bed_reservations set status = 'released', closed_at = now() where status = 'active'");
+      await client.query(`delete from ops.bed_nights where night = ${TODAY}`);
+      await client.query("update ops.units set status = 'available', lock_reason = null where active");
+      await client.query("update ops.units set active = false where temporary and active");
+    };
+    const mealsInApp = () => client.query(`update shared.app_settings set programs_from_app_since = ${TODAY} - 1 where id`);
+    const inHouse = async () => {
+      await emptyHouse();
+      await client.query(`insert into ops.stays (patient_id, bed_position_id, check_in_at, status) values ('${KID}', 'unit-B1-A', ${TODAY}, 'in_house')`);
+    };
+    // Last night in B1, closed by this morning's reset: tonight continues the visit.
+    const continuing = async () => {
+      await emptyHouse();
+      await client.query(
+        `insert into ops.stays (id, patient_id, bed_position_id, check_in_at, check_out_at, check_out_reason, status, visit_id)
+         values ('00000000-0000-4000-8000-0000000016b1', '${KID}', 'unit-B1-A', ${TODAY} - 1, ${TODAY}, 'daily_reset', 'checked_out', '00000000-0000-4000-8000-0000000016b1')`
+      );
+    };
+    const withCard = (more) => async () => { await issued(KID)(); await keepToken(KID); if (more) await more(); };
+
+    await scenario(ids, "0165: a social worker's scan shows the child, the case number and the bed", "social_worker", withCard(inHouse), q(scan(KID)),
+      (r) => r.ok && r.data[0].s.status === "active" && r.data[0].s.name === "Card Child" && r.data[0].s.bed === "B1" && r.data[0].s.patientId === KID && r.data[0].s.canAdmit === true);
+    await scenario(ids, "0165: house staff see only what a meal needs", "house_staff", withCard(inHouse), q(scan(KID)),
+      (r) => r.ok && r.data[0].s.name === "Card Child" && r.data[0].s.canMeal === true && r.data[0].s.canAdmit === false && r.data[0].s.caseNumber === null && r.data[0].s.bed === null && r.data[0].s.patientId === null);
+    await scenario(ids, "0165: every scan is logged", "social_worker", withCard(inHouse),
+      steps(scan(KID), `select count(*)::int as n from ops.card_scans where patient_id = '${KID}' and purpose = 'look'`), (r) => r.ok && r.data[0].n === 1);
+    await scenario(ids, "0165: an unknown or malformed code shows nothing", "social_worker", null,
+      q("select ops.scan_card('0123456789abcdef0123456789abcdef') as a, ops.scan_card('LFCN-2026-0001') as b"),
+      (r) => r.ok && r.data[0].a.status === "unknown" && r.data[0].b.status === "unknown");
+    await scenario(ids, "0165: a replaced card says so and names the newer card", "social_worker",
+      async () => { await issued(KID)(); await keepToken(KID); await client.query(issue(KID, "Lost")); },
+      q(scan(KID)), (r) => r.ok && r.data[0].s.status === "replaced" && r.data[0].s.newerVersion === 2);
+    // 0166 lets drivers scan and records meals whatever the Programs sheet does.
+    const has0166 = (await client.query("select to_regprocedure('ops.add_passenger_by_card(text,uuid,smallint)') is not null as y")).rows[0].y;
+    await scenario(ids, "0165: a role that neither sees Patients nor edits House Ops (or Transport) cannot scan", "admin",
+      async () => { await issued(KID)(); await keepToken(KID); await client.query("update shared.staff set role = $2 where id = $1", [ids.admin, has0166 ? "volunteer" : "driver"]); }, q(scan(KID)), denied);
+    if (!has0166) {
+      await scenario(ids, "0165: no meal by scan while meals are on the Programs sheet", "social_worker", withCard(inHouse), q(meal(KID, "lunch")), (r) => !r.ok && r.code === "23514" && r.msg.includes("Programs sheet"));
+    } else {
+      await scenario(ids, "0166: a meal is recorded while the Programs sheet is still read", "social_worker", withCard(inHouse), q(meal(KID, "lunch")), (r) => r.ok && r.data[0].r.added === true);
+    }
+    await scenario(ids, "0165: house staff record a meal by scan, logged; a second scan adds nothing", "house_staff",
+      withCard(async () => { await inHouse(); await mealsInApp(); }),
+      steps(meal(KID, "lunch"), meal(KID, "lunch"),
+        `select (select count(*)::int from ops.meals_served where patient_id = '${KID}' and date = ${TODAY}) as meals,
+                (select count(*)::int from ops.card_scans where patient_id = '${KID}' and purpose = 'meal') as logged,
+                (select served_by = auth.uid() from ops.meals_served where patient_id = '${KID}' and date = ${TODAY}) as mine`),
+      (r) => r.ok && r.data[0].meals === 1 && r.data[0].mine === true);
+    await scenario(ids, "0165: ...both scans are in the log (read by Patients viewers)", "social_worker",
+      withCard(async () => { await inHouse(); await mealsInApp(); }),
+      steps(meal(KID, "dinner"), meal(KID, "dinner"), `select count(*)::int as logged from ops.card_scans where patient_id = '${KID}' and purpose = 'meal'`),
+      (r) => r.ok && r.data[0].logged === 2);
+    await scenario(ids, "0165: no meal for a child not staying at the house", "social_worker",
+      withCard(async () => { await emptyHouse(); await mealsInApp(); }), q(meal(KID, "dinner")), (r) => !r.ok && r.code === "23514");
+    await scenario(ids, "0165: breakfast is fine for last night's family before tonight's bed", "social_worker",
+      withCard(async () => { await continuing(); await mealsInApp(); }), q(meal(KID, "breakfast")), (r) => r.ok && r.data[0].r.added === true);
+    await scenario(ids, "0165: same bed as last night by scan, logged", "social_worker", withCard(continuing),
+      steps(`select ops.readmit_by_card(${tokenOf(KID)})`,
+        `select (select count(*)::int from ops.stays where patient_id = '${KID}' and status = 'in_house') as tonight,
+                (select count(*)::int from ops.card_scans where patient_id = '${KID}' and purpose = 'admission') as logged`),
+      (r) => r.ok && r.data[0].tonight === 1 && r.data[0].logged === 1);
+    await scenario(ids, "0165: house staff cannot admit by scan", "house_staff", withCard(continuing), q(`select ops.readmit_by_card(${tokenOf(KID)})`), denied);
+    await scenario(ids, "0165: no photo without consent", "social_worker", withCard(inHouse), q(`select ops.card_photo_path(${tokenOf(KID)}) as p`), (r) => r.ok && r.data[0].p === null);
+    await scenario(ids, "0165: without a sign-in a scan shows nothing", null, withCard(), q(scan(KID)), denied);
+
+    // ---- 0166: Housing, Meals (any day the settings allow), Transport ----
+    if (has0166) {
+      const mealOn = (m, day) => `select ops.record_meal_by_card(${tokenOf()}, '${m}', ${day}) as r`;
+      // KID stayed the last 5 nights (one stay per night), the last one closed by this morning's reset.
+      const stayedDays = async () => {
+        await emptyHouse();
+        for (let n = 5; n >= 1; n--) {
+          await client.query(`insert into ops.stays (patient_id, bed_position_id, check_in_at, check_out_at, check_out_reason, status)
+                              values ('${KID}', 'unit-B1-A', ${TODAY} - ${n}, ${TODAY} - ${n - 1}, 'daily_reset', 'checked_out')`);
+        }
+      };
+      const TRIP = "00000000-0000-4000-8000-0000000016c1";
+      const OTHER_TRIP = "00000000-0000-4000-8000-0000000016c2";
+      // Today's open pick-up from NCH, driven by the driver account; another trip driven by someone else.
+      const trips = async () => {
+        await client.query(`insert into ops.trips (id, date, direction, driver_staff_id, status, carries_passengers, vehicle, departure_time) values
+          ('${TRIP}', ${TODAY}, 'from_hospital', $1, 'scheduled', true, 'Matrix van', '09:00'),
+          ('${OTHER_TRIP}', ${TODAY}, 'to_hospital', $2, 'in_progress', true, 'Matrix van', '10:00')`, [ids.driver, ids.admin]);
+      };
+      const board = (trip, people = 2) => `select ops.add_passenger_by_card(${tokenOf()}, '${trip}', ${people}::smallint) as r`;
+
+      await scenario(ids, "0166: a meal 4 days back is fine (the family stayed)", "social_worker", withCard(stayedDays), q(mealOn("dinner", `${TODAY} - 4`)), (r) => r.ok && r.data[0].r.added === true);
+      await scenario(ids, "0166: no meal for a day to come", "social_worker", withCard(inHouse), q(mealOn("lunch", `${TODAY} + 1`)), (r) => !r.ok && r.code === "22023");
+      await scenario(ids, "0166: no meal further back than Settings allow", "social_worker",
+        withCard(async () => { await stayedDays(); await client.query("update shared.app_settings set meals_back_days = 2 where id"); }),
+        q(mealOn("dinner", `${TODAY} - 4`)), denied);
+      await scenario(ids, "0166: no meal for a day the family was not staying", "social_worker", withCard(stayedDays), q(mealOn("lunch", `${TODAY} - 20`)), (r) => !r.ok && r.code === "23514");
+      await scenario(ids, "0166: the meal days are 0 to 365", "admin", null, q("update shared.app_settings set meals_back_days = 400 where id"), (r) => !r.ok && r.code === "23514");
+      await scenario(ids, "0166: a driver's scan shows only their own open trip, and no case number", "driver", withCard(async () => { await inHouse(); await trips(); }), q(scan(KID)),
+        (r) => r.ok && r.data[0].s.canTransport === true && r.data[0].s.canMeal === false && r.data[0].s.caseNumber === null && r.data[0].s.trips.length === 1 && r.data[0].s.trips[0].id === TRIP);
+      await scenario(ids, "0166: the driver adds the child to their trip", "driver", withCard(async () => { await inHouse(); await trips(); }),
+        steps(board(TRIP, 3), `select people from ops.trip_passengers where trip_id = '${TRIP}' and patient_id = '${KID}'`), (r) => r.ok && r.data[0]?.people === 3);
+      await scenario(ids, "0166: ...not to a trip someone else drives", "driver", withCard(async () => { await inHouse(); await trips(); }), q(board(OTHER_TRIP)), denied);
+      // Owner, 19 Nov 2026: a driver is not allowed to tick meals, by scan either.
+      await scenario(ids, "0166: a driver cannot record a meal by scan", "driver", withCard(inHouse), q(mealOn("lunch", TODAY)), denied);
+      await scenario(ids, "0166: a social worker picks any open trip today", "social_worker", withCard(async () => { await inHouse(); await trips(); }),
+        steps(board(OTHER_TRIP), `select count(*)::int as n from ops.card_scans where patient_id = '${KID}' and purpose = 'transport'`), (r) => r.ok && r.data[0].n === 1);
+      await scenario(ids, "0166: a trip already completed takes nobody", "social_worker",
+        withCard(async () => { await inHouse(); await trips(); await client.query(`update ops.trips set status = 'completed' where id = '${TRIP}'`); }), q(board(TRIP)), (r) => !r.ok && r.code === "23514");
+      await scenario(ids, "0166: house staff add no passengers", "house_staff", withCard(async () => { await inHouse(); await trips(); }), q(board(TRIP)), denied);
+      await scenario(ids, "0166: another bed tonight by scan follows the bed rules", "social_worker", withCard(continuing),
+        q(`select ops.readmit_by_card(${tokenOf()}, 'unit-B5')`), (r) => !r.ok && r.code === "23514" && r.msg.includes("Room 1 still has a free bed"));
+      await scenario(ids, "0166: a check-in after a scan is logged; house staff cannot log one", "house_staff", withCard(), q(`select ops.log_card_scan(${tokenOf()}, 'admission', 'checked in')`), denied);
+    }
+  }
 
   if (PREFLIGHT.length) await client.query("rollback");
   await client.end();

@@ -107,7 +107,8 @@ export function Breadcrumbs() {
 
   // A top-level page's only crumb would repeat its title; the donor portal is
   // four flat tabs with no trail to follow.
-  if (segments.length < 2 || segments[0] === "portal") return null;
+  // A scanned ID card (/c/<code>, 0165) is a page of its own, not a place in the menu.
+  if (segments.length < 2 || segments[0] === "portal" || segments[0] === "c") return null;
 
   return (
     <Breadcrumb className="min-w-0 text-theme-sm">

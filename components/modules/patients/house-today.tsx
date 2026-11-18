@@ -78,8 +78,8 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   // Meals are ticked by anyone who edits Patients or House Ops (0095), not only bed editors.
   const access = useModuleAccess();
   // While the LAF Programs sheet is the record of meals (0103) its figures show here, read only.
-  const mealsFromSheet = useAppSettings().programsFromAppSince === null;
-  const canTickMeals = !mealsFromSheet && (access.canEdit("patients") || access.canEdit("house_ops"));
+  // Meals are recorded here whatever the LAF Programs sheet does (0166, owner 19 Nov 2026).
+  const canTickMeals = access.canEdit("patients") || access.canEdit("house_ops");
   const { patients, stays, carers, loading: patientsLoading, updateStay } = usePatientsData();
   const { units, bedPositions, rooms, loading: layoutLoading } = useHouseLayout();
   const { nights, confirmNight, readmitForTonight } = useBedNights();
@@ -226,6 +226,9 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
         </span>
         {canEdit && (
           <span className="ml-auto flex gap-4">
+            <a href="/scan" className="font-medium text-primary hover:underline">
+              Scan ID cards
+            </a>
             <button type="button" className="font-medium text-primary hover:underline disabled:opacity-50" disabled={busy === "cards"} onClick={() => void printHouseCards()}>
               Print ID cards
             </button>
@@ -448,7 +451,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
                   </span>
                 </div>
                 <PeopleWithChild value={s.peopleWithChild ?? 1} name={nameOf(s.patientId)} canEdit={canEdit} onChange={(next) => updateStay(s.id, { peopleWithChild: next })} />
-                <MealTicks patientId={s.patientId} name={nameOf(s.patientId)} canTick={canTickMeals} fromSheet={mealsFromSheet} />
+                <MealTicks patientId={s.patientId} name={nameOf(s.patientId)} canTick={canTickMeals} />
                 <DietChip patientId={s.patientId} />
                 {canEdit && (
                   <Button size="sm" variant="outline" className="text-destructive" aria-label={`Urgent call: send ${nameOf(s.patientId)} to the hospital`} onClick={() => setUrgent({ stayId: s.id, name: nameOf(s.patientId) })}>
@@ -606,7 +609,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
 }
 
 /** Tonight in a different bed, chosen on the floor plan, under the bed rules (0070). */
-function MoveTonightDialog({
+export function MoveTonightDialog({
   stay,
   currentUnitId,
   name,

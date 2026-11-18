@@ -147,10 +147,10 @@ const withSeed = (extra) => ({
   },
 });
 const stayP2InB2 = () =>
-  client.query(`insert into ops.stays (patient_id, bed_position_id, check_in_at, status) values ($1, 'unit-B2-A', current_date, 'in_house')`, [P2]);
+  client.query(`insert into ops.stays (patient_id, bed_position_id, check_in_at, status) values ($1, 'unit-B2-A', ${TODAY}, 'in_house')`, [P2]);
 const stayP1InB1 = () =>
   client.query(`insert into ops.stays (id, patient_id, bed_position_id, check_in_at, status)
-                values ('00000000-0000-4000-8000-0000000000f1', $1, 'unit-B1-A', current_date - 1, 'in_house')`, [P1]);
+                values ('00000000-0000-4000-8000-0000000000f1', $1, 'unit-B1-A', ${TODAY} - 1, 'in_house')`, [P1]);
 const STAY1 = "00000000-0000-4000-8000-0000000000f1";
 
 async function main() {
@@ -249,11 +249,20 @@ async function main() {
     await scenario(ids, "house staff tick lunch", "house_staff", withSeed(), q(tick("lunch")), rows(1));
     await scenario(ids, "the same meal twice for one child is one row", "social_worker", withSeed(),
       last({ sql: tick("dinner") }, { sql: tick("dinner") }), duplicate);
-    await scenario(ids, "yesterday can't be ticked after the fact", "social_worker", withSeed(), q(tick("dinner", `${TODAY} - 1`)), denied);
+    // 0166 (owner, 19 Nov 2026): a meal may be recorded up to Settings' meals_back_days (60) back; before, today only.
+    const has0166 = (await client.query("select exists (select 1 from information_schema.columns where table_schema = 'shared' and table_name = 'app_settings' and column_name = 'meals_back_days') as y")).rows[0].y;
+    if (has0166) {
+      await scenario(ids, "0166: yesterday's dinner may be recorded the next morning", "social_worker", withSeed(), q(tick("dinner", `${TODAY} - 1`)), rows(1));
+      await scenario(ids, "0166: ...but not further back than Settings allow", "social_worker",
+        withSeed(() => client.query("update shared.app_settings set meals_back_days = 2 where id")), q(tick("dinner", `${TODAY} - 3`)), denied);
+    } else {
+      await scenario(ids, "yesterday can't be ticked after the fact", "social_worker", withSeed(), q(tick("dinner", `${TODAY} - 1`)), denied);
+    }
     await scenario(ids, "only breakfast, lunch or dinner", "social_worker", withSeed(), q(tick("snack")), (r) => !r.ok && r.code === "23514");
     await scenario(ids, "a tick is undone the same day", "social_worker", withSeed(),
       last({ sql: tick("lunch") }, { sql: `delete from ops.meals_served where patient_id = '${P1}' and meal = 'lunch'` }), rows(1));
-    await scenario(ids, "the driver (House Ops edit) may tick a meal", "driver", withSeed(), q(tick("breakfast")), rows(1));
+    // Owner, 19 Nov 2026: a driver is not allowed to tick meals (drivers have House Ops view, not edit).
+    await scenario(ids, "a driver cannot tick a meal", "driver", withSeed(), q(tick("breakfast")), denied);
     await scenario(ids, "finance (no Patients or House Ops edit) can't tick a meal", "finance", withSeed(), q(tick("breakfast")), denied);
   } else record("0095 meals scenarios", "SKIP", "0095 not applied (pass it as a pre-flight file)");
 

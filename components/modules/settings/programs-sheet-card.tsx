@@ -68,10 +68,10 @@ export function ProgramsSheetCard() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-col gap-0.5">
-          <span className="text-sm font-medium">The LAF Programs sheet is the record of meals and the Care Cart</span>
+          <span className="text-sm font-medium">Keep reading the LAF Programs sheet alongside the app</span>
           <span className="text-xs text-muted-foreground">
             {sheetIsRecord
-              ? "Every half hour the month tabs (breakfast, lunch and dinner per patient), the Care Cart tab and the Activity Center tab are read into the app: House Today, House Ops and LAF Inventory show them. Turn off when staff record in the app: House Today's ticks and LAF Inventory's Meals and Care Cart count from that day."
+              ? "Every half hour the month tabs (breakfast, lunch and dinner per patient), the Care Cart tab and the Activity Center tab are read into the app. Meals are recorded in the app all the while (House Today's ticks, ID card scans); the reports show the higher of the two per day, never the sum. Turn off once the app's figures match the sheet for a month: from that day only the app counts."
               : `The app's records count from ${formatDate(programsFromAppSince!)}; the sheet is no longer read.`}
           </span>
         </div>

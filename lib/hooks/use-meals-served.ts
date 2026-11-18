@@ -13,12 +13,11 @@ export type MutationResult = { ok: true } | { ok: false; error: string };
 export const mealsServedStore = createCollection<Set<string>>({
   key: "ops.meal_record",
   empty: new Set(),
-  tables: [
-    { schema: "ops", table: "meals_served" },
-    { schema: "ops", table: "sheet_meals" },
-  ],
+  tables: [{ schema: "ops", table: "meals_served" }],
+  // The app's own ticks (0166, owner 19 Nov 2026): recorded here whatever the LAF Programs sheet does; the
+  // sheet's figures still reach the reports, which show the higher of the two per day.
   fetch: async () => {
-    const { data, error } = await createClient().schema("ops").from("meal_record").select("patient_id, meal").eq("date", todayIso());
+    const { data, error } = await createClient().schema("ops").from("meals_served").select("patient_id, meal").eq("date", todayIso());
     if (error) throw new Error(error.message);
     return new Set((data ?? []).map((r) => `${r.patient_id}|${r.meal}`));
   },

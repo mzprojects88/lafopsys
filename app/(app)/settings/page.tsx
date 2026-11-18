@@ -13,6 +13,7 @@ import { DocumentNames } from "@/components/modules/settings/document-names";
 import { CafBillingSettings } from "@/components/modules/settings/caf-billing-settings";
 import { ExecSummarySettings } from "@/components/modules/settings/exec-summary-settings";
 import { AdmissionTimes } from "@/components/modules/settings/admission-times";
+import { MealsBackDays } from "@/components/modules/settings/meals-back-days";
 import { CalendarSheetSyncToggle } from "@/components/modules/settings/calendar-sheet-sync-toggle";
 import { HouseSheetSyncToggle } from "@/components/modules/settings/house-sheet-sync-toggle";
 import { CaseAiReadingToggle } from "@/components/modules/settings/case-ai-reading-toggle";
@@ -115,6 +116,7 @@ export default function SettingsPage() {
 
         <SectionCard title="Admissions: daily reset">
           <AdmissionTimes />
+          <MealsBackDays />
         </SectionCard>
         <SectionCard id="bed-rules" className="scroll-mt-24" title="Bed rules">
           <BedRulesSettings />

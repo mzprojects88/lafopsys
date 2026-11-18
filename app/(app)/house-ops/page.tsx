@@ -6,7 +6,7 @@ import { PeriodPresetsBar, usePeriodPresets } from "@/components/patterns/period
 import { PageHeader } from "@/components/patterns/page-header";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
-import { Users, Home, Share2, Percent, Car, Utensils, HeartPulse, Sparkles, Warehouse, CalendarDays } from "lucide-react";
+import { Users, Home, Share2, Percent, Car, Utensils, HeartPulse, Sparkles, Warehouse, CalendarDays, ScanLine } from "lucide-react";
 import { useCensusData } from "@/lib/hooks/use-census-collection";
 import { useBedOccupancy } from "@/lib/hooks/use-bed-occupancy";
 import { useTripsData } from "@/lib/hooks/use-trips-collection";
@@ -15,6 +15,8 @@ import { todayIso } from "@/lib/utils/date";
 
 const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/house-ops/meals", label: "Meals", icon: Utensils },
+  // Patient ID cards (0165): house staff record meals by scanning a card.
+  { href: "/scan", label: "Scan ID cards", icon: ScanLine },
   { href: "/house-ops/menu", label: "Weekly Menu", icon: CalendarDays },
   { href: "/transport", label: "Trips", icon: Car },
   { href: "/house-ops/care-cart", label: "Care Cart", icon: HeartPulse },

@@ -36,3 +36,15 @@ describe("Patient ID cards (0164)", () => {
     assert.equal(initials("Juan Miguel Sample-Delacruz Jr."), "JS");
   });
 });
+
+describe("reading a card's QR (0165)", async () => {
+  const { cardToken } = await import("../lib/utils/card-token.ts");
+  it("takes the code from the card's link, or a bare code; anything else is not a card", () => {
+    const code = "0123456789abcdef0123456789abcdef";
+    assert.equal(cardToken(`https://arkos.littlearkfoundation.org/c/${code}`), code);
+    assert.equal(cardToken(`https://lafopsys.vercel.app/c/${code}?x=1`), code);
+    assert.equal(cardToken(code), code);
+    assert.equal(cardToken("LFCN-2026-0123"), null);
+    assert.equal(cardToken(`https://example.com/c/${code}0`), null);
+  });
+});
