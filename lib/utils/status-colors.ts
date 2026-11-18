@@ -244,6 +244,13 @@ export const STATUS_DOMAIN_MAP: Record<string, Record<string, StatusTone>> = {
     refunded: "negative",
     flagged: "warning",
   },
+  // The kind of a shop customer (0160): an account, a buyer without one, a blocked or a closed account.
+  shop_customer: {
+    active: "positive",
+    guest: "neutral",
+    blocked: "negative",
+    closed: "neutral",
+  },
 };
 
 export function getStatusTone(domain: string, status: string): StatusTone {

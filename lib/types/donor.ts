@@ -22,7 +22,8 @@ export interface Donor {
 
 export type DonationKind = "cash" | "in_kind";
 /** How a cash gift was paid (0084). */
-export type PaymentMethod = "cash" | "check" | "bank_transfer" | "gcash" | "instapay" | "other";
+// "online": paid through the payment partner of the shop site (0161); it reaches the bank inside a payout.
+export type PaymentMethod = "cash" | "check" | "bank_transfer" | "gcash" | "instapay" | "other" | "online";
 
 export interface Donation {
   id: string;

@@ -88,7 +88,7 @@ it("the public site's login is granted the storefront function and nothing else"
 });
 
 it("every shop function is closed to the public, and the site's login gets only the storefront ones (0155 to 0157)", () => {
-  for (const file of ["0155_shop_catalogue.sql", "0156_shop_orders.sql", "0157_shop_fulfilment.sql", "0159_shop_menu_order.sql"]) {
+  for (const file of ["0155_shop_catalogue.sql", "0156_shop_orders.sql", "0157_shop_fulfilment.sql", "0159_shop_menu_order.sql", "0160_shop_customers.sql", "0161_shop_gifts.sql"]) {
     const text = readFileSync(new URL(`../supabase/migrations/${file}`, import.meta.url), "utf8");
     const made = [...new Set([...text.matchAll(/create or replace function shop\.([a-z_]+)\(/g)].map((m) => m[1]))];
     assert.ok(made.length > 0, file);
@@ -202,4 +202,127 @@ it("the Shop sales card is in the catalogue and in the database's list of cards 
   assert.equal(CARDS.find((c) => c.key === "shop").main, false, "it is offered, not forced onto everyone's dashboard");
   assert.match(text, /unnest\(array\['shop_admin', 'finance', 'ceo'\]\)/);
   assert.equal(ACTIONS.find((a) => a.key === "shop_orders").href, "/shop/orders");
+});
+
+// ---- Customers (0160) ----
+const { CUSTOMER_VIEWS, customerMatches, customerRows, customerViewDate, customersIn, isGiven, readGiving } = await import("../lib/utils/shop.ts");
+const cust = (over = {}) => ({ id: "c1", email: "one@example.com", name: "Sample One", phone: "0917 000 0001", area: "Luzon", province: "Laguna", city: "Calamba", barangay: "", postalCode: "", addressLine: "1 Sample St", landmark: "", status: "active", statusAt: null, createdAt: "2026-11-10T02:00:00Z", lastSignInAt: "2026-11-17T02:00:00Z", signInCount: 3, ...over });
+const sale = (over = {}) => ({ id: "o1", customerId: null, number: "LAF-SHP-2026-00001", status: "paid", name: "Guest Buyer", email: "Guest@Example.com", phone: "0918 111 1111", area: "Metro Manila", city: "Quezon City", total: 500, placedAt: "2026-11-12T03:00:00Z", ...over });
+
+it("the customer list has each account once and each guest address once, with their orders", () => {
+  const rows = customerRows(
+    [cust(), cust({ id: "c2", email: "two@example.com", name: "Sample Two", createdAt: "2026-11-16T02:00:00Z", lastSignInAt: null })],
+    [
+      sale({ id: "o1", customerId: "c1", total: 450, placedAt: "2026-11-11T03:00:00Z", status: "delivered" }),
+      sale({ id: "o2", customerId: "c1", number: "LAF-SHP-2026-00002", total: 300, placedAt: "2026-11-15T03:00:00Z", status: "expired" }),
+      sale({ id: "o3", number: "LAF-SHP-2026-00003", total: 500, placedAt: "2026-11-12T03:00:00Z" }),
+      sale({ id: "o4", number: "LAF-SHP-2026-00004", email: "guest@example.com", total: 200, placedAt: "2026-11-14T03:00:00Z", status: "refunded", name: "Guest Buyer Again" }),
+    ],
+  );
+  assert.deepEqual(rows.map((r) => r.key), ["c1", "c2", "guest:guest@example.com"], "two accounts, and one guest for two spellings of an address");
+  const [one, two, guest] = rows;
+  assert.deepEqual([one.state, one.orders, one.spent, one.lastOrderStatus, one.orderIds], ["active", 1, 450, "expired", ["o2", "o1"]], "an unpaid order that lapsed is not counted; only paid orders are money");
+  assert.deepEqual([two.orders, two.spent, two.lastOrderAt, two.lastSignInAt], [0, 0, null, null], "an account that never ordered");
+  assert.deepEqual([guest.state, guest.customerId, guest.name, guest.orders, guest.spent], ["guest", null, "Guest Buyer Again", 2, 500], "a refunded order is an order, but not money kept");
+  assert.equal(guest.createdAt, "2026-11-12T03:00:00Z", "a guest is known since their first order");
+  assert.deepEqual([one.gifts, one.given, one.lastGiftAt], [0, 0, null], "no gifts were passed in");
+});
+
+it("a closed account keeps its orders and shows no personal details", () => {
+  const [row] = customerRows([cust({ status: "closed", email: "closed-c1@closed.invalid", name: "", phone: "", addressLine: "" })], [sale({ customerId: "c1", email: "one@example.com" })]);
+  assert.deepEqual([row.state, row.name, row.email, row.orders], ["closed", "", "", 1]);
+});
+
+it("the page opens on customers with orders, latest order first; the other lists are the newest accounts and the latest donors", () => {
+  assert.deepEqual(CUSTOMER_VIEWS.map((v) => v.key), ["with_orders", "new", "donors", "all"]);
+  const rows = customerRows(
+    [cust(), cust({ id: "c2", email: "two@example.com", createdAt: "2026-11-16T02:00:00Z", lastSignInAt: null }), cust({ id: "c3", email: "closed-c3@closed.invalid", status: "closed", createdAt: "2026-11-17T02:00:00Z" })],
+    [sale({ id: "o1", customerId: "c1", placedAt: "2026-11-11T03:00:00Z" }), sale({ id: "o3", placedAt: "2026-11-14T03:00:00Z" })],
+  );
+  assert.deepEqual(customersIn(rows, "with_orders").map((r) => r.key), ["guest:guest@example.com", "c1"], "only those who ordered, latest order first");
+  assert.deepEqual(customersIn(rows, "new").map((r) => r.key), ["c2", "c1"], "accounts by when they were made: no guests, no closed accounts");
+  assert.deepEqual(customersIn(rows, "donors"), [], "nobody has given yet");
+  assert.equal(customersIn(rows, "all").length, 4, "everyone, closed accounts too");
+  assert.equal(customerViewDate(rows[0], "with_orders"), "2026-11-11T03:00:00Z");
+  assert.equal(customerViewDate(rows[0], "new"), "2026-11-10T02:00:00Z");
+  assert.equal(customerViewDate(rows[0], "all"), "2026-11-17T02:00:00Z", "the latest of order, sign-in and creation");
+});
+
+it("a customer is found by name, address, mobile number or order number", () => {
+  const [row] = customerRows([], [sale()]);
+  for (const term of ["guest buyer", "GUEST@EXAMPLE", "0918 111", "shp-2026-00001", "  "]) assert.equal(customerMatches(row, term), true, term);
+  assert.equal(customerMatches(row, "nobody"), false);
+});
+
+it("the Customers page is registered, and its data hook never asks for a code or a session", () => {
+  const pages = readFileSync(new URL("../lib/rbac/pages.ts", import.meta.url), "utf8");
+  assert.match(pages, /p\("shop", "customers", "\/shop\/customers", "Customers"\)/);
+  const hook = readFileSync(new URL("../lib/hooks/use-shop-collection.ts", import.meta.url), "utf8");
+  assert.ok(!/customer_sessions|sign_in_codes|token_hash|code_hash/.test(hook), "the browser never reads sessions or codes");
+  const sql = readFileSync(new URL("../supabase/migrations/0160_shop_customers.sql", import.meta.url), "utf8");
+  assert.ok(!/grant[^;]*on shop\.(customer_sessions|sign_in_codes)[^;]*to authenticated/.test(sql), "staff get no grant on sessions or codes");
+  assert.match(sql, /grant select on shop\.customers, shop\.customer_events to authenticated;/);
+  assert.ok(!/auth\.users/.test(sql.replace(/--.*$/gm, "")), "a customer is never a Supabase sign-in");
+});
+
+// ---- Giving from the account (0161) ----
+const gift = (over = {}) => ({ id: "g1", reference: "LAF-GFT-2026-00001", customerId: "c1", amount: 500, anonymous: false, status: "paid", createdAt: "2026-11-15T01:00:00Z", paidAt: "2026-11-15T01:05:00Z", payMethod: "gcash", payFee: 11.15, live: true, receiptNo: "LAF-CSH-2026-0001", attention: "", ...over });
+
+it("a customer's gifts are counted when they were paid with real money, and never for a guest", () => {
+  const rows = customerRows(
+    [cust(), cust({ id: "c2", email: "two@example.com" })],
+    [sale({ id: "o3" })],
+    [
+      gift(),
+      gift({ id: "g2", amount: 1000.5, paidAt: "2026-11-17T04:00:00Z", anonymous: true }),
+      gift({ id: "g3", amount: 300, live: false, receiptNo: "" }),
+      gift({ id: "g4", amount: 700, status: "pending", paidAt: null, receiptNo: "" }),
+      gift({ id: "g5", amount: 900, status: "expired", paidAt: null, receiptNo: "" }),
+    ],
+  );
+  const [one, two, guest] = rows;
+  assert.deepEqual([one.gifts, one.given, one.lastGiftAt], [2, 1500.5, "2026-11-17T04:00:00Z"], "a test payment, an unpaid gift and a lapsed one are not gifts");
+  assert.deepEqual([two.gifts, two.given, two.lastGiftAt], [0, 0, null]);
+  assert.deepEqual([guest.gifts, guest.given], [0, 0], "giving needs an account");
+  assert.deepEqual(customersIn(rows, "donors").map((r) => r.key), ["c1"], "Latest donors lists who gave");
+  assert.equal(customerViewDate(one, "donors"), "2026-11-17T04:00:00Z", "by their latest gift");
+  assert.equal(isGiven(gift({ live: false })), false);
+  assert.equal(isGiven(gift({ status: "pending" })), false);
+});
+
+it("the Giving card of Shop settings reads up to six amounts between the smallest and the largest gift", () => {
+  assert.deepEqual(readGiving(["500", "200", "", "1,000", "₱2,500", ""], "100", "50,000"), { ok: true, amounts: [200, 500, 1000, 2500], min: 100, max: 50000 }, "sorted, empty boxes left out");
+  assert.deepEqual(readGiving(["500", "500"], "100", "500"), { ok: true, amounts: [500], min: 100, max: 500 }, "the same amount twice is one amount");
+  for (const [boxes, min, max, why] of [
+    [["", ""], "100", "50000", "no amount"],
+    [["abc"], "100", "50000", "not an amount"],
+    [["50"], "100", "50000", "below the smallest"],
+    [["60000"], "100", "50000", "above the largest"],
+    [["500"], "0", "50000", "a smallest gift of nothing"],
+    [["500"], "600", "500", "the largest below the smallest"],
+    [["500"], "100", "2000000", "more than the database allows"],
+    [["100", "200", "300", "400", "500", "600", "700"], "100", "50000", "seven amounts"],
+  ]) assert.equal(readGiving(boxes, min, max).ok, false, why);
+});
+
+it("gifts (0161): the site reads no table, a test payment never reaches Donors, and staff only read", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/0161_shop_gifts.sql", import.meta.url), "utf8");
+  const code = sql.replace(/--.*$/gm, "");
+  assert.match(sql, /grant select on shop\.gifts to authenticated;/);
+  assert.ok(!/grant (insert|update|delete|all)[^;]*on shop\.gifts[^;]*to authenticated/.test(code), "nobody writes a gift from the browser");
+  assert.ok(!/grant[^;]*on (table )?(shop\.gifts|ops\.[a-z_]+)[^;]*to shop_web/.test(code.replace(/grant execute on function[^;]+;/g, "")), "the site's login gets no table, in the shop or in Donors");
+  // The one place a donation is written checks that the payment was a live one, first.
+  assert.match(code, /if not found or g\.status <> 'paid' or not g\.live or g\.receipt_no is not null then return null; end if;/);
+  assert.equal(code.split("insert into ops.donations").length - 1, 1, "one place writes a donation");
+  assert.equal(code.split("ops.next_doc_number('LAF-CSH'").length - 1, 1, "one place takes a receipt number");
+  for (const fn of ["gift_to_donors", "gifts_sweep"]) assert.ok(!new RegExp(`grant execute on function shop\\.${fn}\\(`).test(code), `${fn} is nobody's to call`);
+  assert.match(code, /live = coalesce\(p_live, false\)/, "a payment is a test unless the site says it was live");
+  // An online gift stays out of the automatic matching to deposits (both steps that look at deposits).
+  assert.equal(code.split("g.payment_method is distinct from 'online'").length - 1, 2);
+  assert.match(code, /'other', 'online'\)\);/, "the register takes the online method");
+  assert.ok(!/auth\.users/.test(code), "a customer is never a Supabase sign-in");
+  const hook = readFileSync(new URL("../lib/hooks/use-shop-collection.ts", import.meta.url), "utf8");
+  assert.ok(!/from\("gifts"\)\.(insert|update|delete|upsert)/.test(hook), "the browser only reads gifts");
+  const labels = readFileSync(new URL("../lib/utils/cash-gifts.ts", import.meta.url), "utf8") + readFileSync(new URL("../lib/pdf/cash-ar.ts", import.meta.url), "utf8");
+  assert.equal(labels.split('online: "Online payment"').length - 1, 2, "Donors and the receipt both name the online method");
 });

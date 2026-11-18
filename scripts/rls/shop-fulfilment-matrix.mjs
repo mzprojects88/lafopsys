@@ -65,6 +65,9 @@ try {
   await c.query(`insert into shop.variants (id, product_id, sku, colour, size, price, cost, stock) values ($1, $3, 'ZZ-TEE-M', 'White', 'M', 450, 190, 10), ($2, $4, 'ZZ-HOOD-S', null, 'S', 1250, 600, 0)`, [TEE_M, HOOD_S, TEE, HOOD]);
   await c.query(`update shop.settings set shop_open = true, pickup_enabled = true, pickup_address = 'Sample pick-up <address>', pickup_note = 'Weekdays', hold_minutes = 60, cash_posting = false, site_url = 'https://shop.example.org'`);
   await c.query(`delete from shop.outbox`);
+  // Orders already on development (from browser checks) would join this run's own in the day totals: none are
+  // kept for the run. Like everything here, this is rolled back.
+  await c.query(`delete from shop.order_events; delete from shop.order_items; delete from shop.orders`);
   const stock = async () => one(`select stock, held from shop.variants where id = $1`, [TEE_M]);
   let n = 0;
   /** Places an order as the site and returns it; `pay` also records its payment (fee 30.00). */

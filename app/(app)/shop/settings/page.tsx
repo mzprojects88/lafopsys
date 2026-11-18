@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useShopData } from "@/lib/hooks/use-shop-collection";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
-import { COURIER_NAME_RE, DELIVERY_AREAS, readAmount, type DeliveryArea, type ShopSettings } from "@/lib/utils/shop";
+import { COURIER_NAME_RE, DELIVERY_AREAS, readAmount, readGiving, type DeliveryArea, type ShopSettings } from "@/lib/utils/shop";
 import { formatPesoCents } from "@/lib/utils/vehicle-expenses";
 
 const listOf = (text: string): string[] => [...new Set(text.split(/[\n,]/).map((s) => s.trim()).filter((s) => s.length >= 2 && s.length <= 40))];
@@ -24,8 +24,9 @@ const grams = (g: number) => (g % 1000 === 0 ? `${g / 1000} kg` : `${g.toLocaleS
 
 /**
  * Shop › Shop settings (0155, 0157): whether the shop takes orders, how long packing takes, pick-up, the lists the
- * products choose from, the delivery fees by area and weight, the couriers, the texts of the site's policy pages
- * and whether proceeds may be posted to the cash book. Every figure and text the site shows comes from here.
+ * products choose from, the delivery fees by area and weight, the couriers, the texts of the site's policy pages,
+ * whether proceeds may be posted to the cash book, and giving from a customer's account (0161: open or not, the
+ * amounts offered, the smallest and largest gift). Every figure and text the site shows comes from here.
  */
 export default function ShopSettingsPage() {
   const access = useModuleAccess();
@@ -33,6 +34,8 @@ export default function ShopSettingsPage() {
   const { settings, fees, settingsLoading, saveSettings, saveFee, removeFee } = useShopData();
   const [draft, setDraft] = React.useState<ShopSettings | null>(null);
   const [lists, setLists] = React.useState<{ categories: string; collections: string; couriers: string } | null>(null);
+  // The Giving card's boxes as typed: six amounts to offer, the smallest and the largest gift.
+  const [giving, setGiving] = React.useState<{ boxes: string[]; min: string; max: string } | null>(null);
   const [fee, setFee] = React.useState<{ area: DeliveryArea; kilos: string; fee: string }>({ area: "Metro Manila", kilos: "1", fee: "" });
   const [busy, setBusy] = React.useState(false);
 
@@ -40,7 +43,8 @@ export default function ShopSettingsPage() {
   const s = draft ?? settings;
   const l = lists ?? { categories: settings.categories.join(", "), collections: settings.collections.join(", "), couriers: settings.couriers.join(", ") };
   const set = <K extends keyof ShopSettings>(key: K, value: ShopSettings[K]) => setDraft({ ...s, [key]: value });
-  const dirty = draft !== null || lists !== null;
+  const g = giving ?? { boxes: Array.from({ length: 6 }, (_, i) => (settings.giftAmounts[i] === undefined ? "" : String(settings.giftAmounts[i]))), min: String(settings.giftMin), max: String(settings.giftMax) };
+  const dirty = draft !== null || lists !== null || giving !== null;
 
   async function save() {
     const categories = listOf(l.categories);
@@ -52,12 +56,15 @@ export default function ShopSettingsPage() {
     if (couriers.length > 12 || couriers.some((c) => !COURIER_NAME_RE.test(c))) return void toast.error("List up to 12 couriers, by name only.");
     if (!/^https?:\/\/[a-z0-9.:-]+$/.test(s.siteUrl.trim().replace(/\/+$/, ""))) return void toast.error("Give the shop site's address, like https://shop.littlearkfoundation.org.");
     if (s.shopOpen && [s.termsText, s.privacyText, s.returnsText].some((t) => !t.trim())) return void toast.error("Write the terms of sale, the privacy notice and the returns text before opening the shop.");
+    const gifts = readGiving(g.boxes, g.min, g.max);
+    if (!gifts.ok) return void toast.error(gifts.error);
     setBusy(true);
-    const r = await saveSettings({ ...s, categories, collections: listOf(l.collections), couriers });
+    const r = await saveSettings({ ...s, categories, collections: listOf(l.collections), couriers, giftAmounts: gifts.amounts, giftMin: gifts.min, giftMax: gifts.max });
     setBusy(false);
     if (!r.ok) return void toast.error(r.error);
     setDraft(null);
     setLists(null);
+    setGiving(null);
     toast.success("Shop settings saved");
   }
 
@@ -155,6 +162,35 @@ export default function ShopSettingsPage() {
           </div>
         </SectionCard>
       </div>
+
+      <SectionCard title="Giving" description="A signed-in customer can give a cash gift from their account on the shop site. Each paid gift is recorded in Donors with its LAF-CSH acknowledgment receipt.">
+        <div className="flex flex-col gap-4 px-5 pb-5">
+          <label className="flex items-center justify-between gap-4 text-theme-sm">
+            <span><span className="font-medium text-foreground">Giving is open</span><br /><span className="text-muted-foreground">Closed, the account&apos;s Give Hope button leads to the main site&apos;s donate page. Open it once the payment partner is connected and the accountant has agreed how online gifts are booked.</span></span>
+            <Switch checked={s.givingOpen} disabled={!canEdit} onCheckedChange={(v) => set("givingOpen", v)} aria-label="Giving is open" />
+          </label>
+          <div>
+            <p className="mb-2 text-theme-sm font-medium text-foreground">Amounts offered, ₱</p>
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+              {g.boxes.map((box, i) => (
+                <Input key={i} inputMode="decimal" aria-label={`Amount ${i + 1}`} value={box} disabled={!canEdit} onChange={(e) => setGiving({ ...g, boxes: g.boxes.map((b, j) => (j === i ? e.target.value : b)) })} />
+              ))}
+            </div>
+            <p className="mt-1.5 text-theme-xs text-muted-foreground">One to six amounts. Leave a box empty to offer fewer. The customer can also type another amount.</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="shop-gift-min">Smallest gift, ₱</FieldLabel>
+              <Input id="shop-gift-min" inputMode="decimal" value={g.min} disabled={!canEdit} onChange={(e) => setGiving({ ...g, min: e.target.value })} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="shop-gift-max">Largest gift online, ₱</FieldLabel>
+              <Input id="shop-gift-max" inputMode="decimal" value={g.max} disabled={!canEdit} onChange={(e) => setGiving({ ...g, max: e.target.value })} />
+              <FieldDescription>Above this, the site asks the giver to contact the foundation.</FieldDescription>
+            </Field>
+          </div>
+        </div>
+      </SectionCard>
 
       <SectionCard title="Policy pages" description="The texts of the site's Terms of sale, Privacy and Returns pages. A paragraph that starts with “# ” shows as a heading; leave a blank line between paragraphs.">
         <div className="grid gap-4 px-5 pb-5 lg:grid-cols-3">

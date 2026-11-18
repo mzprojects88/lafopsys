@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
 import { shrinkImage } from "@/lib/utils/shrink-image";
 import { fetchAll } from "@/lib/supabase/fetch-all";
-import type { DeliveryArea, OrderStep, ShopDeliveryFee, ShopOrder, ShopOrderEvent, ShopOrderItem, ShopOrderStatus, ShopPhoto, ShopProduct, ShopSettings, ShopStatus, ShopSupply, ShopVariant, StockReason } from "@/lib/utils/shop";
+import type { CustomerStep, DeliveryArea, OrderStep, ShopCustomer, ShopCustomerEvent, ShopCustomerStatus, ShopDeliveryFee, ShopGift, ShopOrder, ShopOrderEvent, ShopOrderItem, ShopOrderStatus, ShopPhoto, ShopProduct, ShopSettings, ShopStatus, ShopSupply, ShopVariant, StockReason } from "@/lib/utils/shop";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
 
@@ -79,14 +79,14 @@ export const shopPhotosStore = createCollection<ShopPhoto[]>({
   },
 });
 
-const BLANK_SETTINGS: ShopSettings = { shopOpen: false, packMin: 1, packMax: 2, pickupEnabled: true, pickupAddress: "", pickupNote: "", categories: [], collections: [], couriers: [], siteUrl: "", cashPosting: false, termsText: "", privacyText: "", returnsText: "" };
+const BLANK_SETTINGS: ShopSettings = { shopOpen: false, packMin: 1, packMax: 2, pickupEnabled: true, pickupAddress: "", pickupNote: "", categories: [], collections: [], couriers: [], siteUrl: "", cashPosting: false, givingOpen: false, giftAmounts: [], giftMin: 100, giftMax: 50000, termsText: "", privacyText: "", returnsText: "" };
 
 export const shopSettingsStore = createCollection<ShopSettings>({
   key: "shop.settings",
   empty: BLANK_SETTINGS,
   tables: [{ schema: "shop", table: "settings" }],
   fetch: async () => {
-    const { data, error } = await shop().from("settings").select("shop_open, pack_min, pack_max, pickup_enabled, pickup_address, pickup_note, categories, collections, couriers, site_url, cash_posting, terms_text, privacy_text, returns_text").maybeSingle();
+    const { data, error } = await shop().from("settings").select("shop_open, pack_min, pack_max, pickup_enabled, pickup_address, pickup_note, categories, collections, couriers, site_url, cash_posting, giving_open, gift_amounts, gift_min, gift_max, terms_text, privacy_text, returns_text").maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return BLANK_SETTINGS;
     return {
@@ -101,6 +101,10 @@ export const shopSettingsStore = createCollection<ShopSettings>({
       couriers: (data.couriers as string[] | null) ?? [],
       siteUrl: (data.site_url as string) ?? "",
       cashPosting: data.cash_posting === true,
+      givingOpen: data.giving_open === true,
+      giftAmounts: ((data.gift_amounts as (number | string)[] | null) ?? []).map(Number),
+      giftMin: num(data.gift_min as number),
+      giftMax: num(data.gift_max as number),
       termsText: (data.terms_text as string) ?? "",
       privacyText: (data.privacy_text as string) ?? "",
       returnsText: (data.returns_text as string) ?? "",
@@ -123,7 +127,7 @@ const text = (v: unknown): string => (typeof v === "string" ? v : "");
 const amount = (v: unknown): number | null => (v == null ? null : Number(v));
 
 const ORDER_COLUMNS =
-  "id, number, token, status, name, email, phone, delivery, area, province, city, barangay, postal_code, address_line, landmark, weight_grams, subtotal, delivery_fee, total, placed_at, hold_until, paid_at, packed_at, shipped_at, delivered_at, closed_at, pay_method, pay_fee, pay_net, attention, courier, tracking_number, tracking_url, invoice_number, refund_reason, restocked, posted_source_id";
+  "id, customer_id, number, token, status, name, email, phone, delivery, area, province, city, barangay, postal_code, address_line, landmark, weight_grams, subtotal, delivery_fee, total, placed_at, hold_until, paid_at, packed_at, shipped_at, delivered_at, closed_at, pay_method, pay_fee, pay_net, attention, courier, tracking_number, tracking_url, invoice_number, refund_reason, restocked, posted_source_id";
 
 /** shop.orders (0156, 0157), newest first.
  * ponytail: every order is loaded; page them by period once there are a few thousand. */
@@ -135,6 +139,7 @@ export const shopOrdersStore = createCollection<ShopOrder[]>({
     const rows = await fetchAll<Record<string, unknown>>((from, to) => shop().from("orders").select(ORDER_COLUMNS).order("placed_at", { ascending: false }).order("id").range(from, to));
     return rows.map((r) => ({
       id: r.id as string,
+      customerId: (r.customer_id as string | null) ?? null,
       number: r.number as string,
       token: r.token as string,
       status: r.status as ShopOrderStatus,
@@ -196,6 +201,95 @@ export const shopOrderItemsStore = createCollection<ShopOrderItem[]>({
     }));
   },
 });
+
+/** shop.customers (0160): the accounts of the shop site's customers. A customer is never an ArkOS account, and
+ * no code, session or password is among these columns: staff cannot read those at all. */
+export const shopCustomersStore = createCollection<ShopCustomer[]>({
+  key: "shop.customers",
+  empty: [],
+  tables: [{ schema: "shop", table: "customers" }],
+  fetch: async () => {
+    const rows = await fetchAll<Record<string, unknown>>((from, to) =>
+      shop().from("customers").select("id, email, name, phone, area, province, city, barangay, postal_code, address_line, landmark, status, status_at, created_at, last_sign_in_at, sign_in_count").order("created_at", { ascending: false }).order("id").range(from, to),
+    );
+    return rows.map((r) => ({
+      id: r.id as string,
+      email: text(r.email),
+      name: text(r.name),
+      phone: text(r.phone),
+      area: text(r.area),
+      province: text(r.province),
+      city: text(r.city),
+      barangay: text(r.barangay),
+      postalCode: text(r.postal_code),
+      addressLine: text(r.address_line),
+      landmark: text(r.landmark),
+      status: r.status as ShopCustomerStatus,
+      statusAt: (r.status_at as string | null) ?? null,
+      createdAt: r.created_at as string,
+      lastSignInAt: (r.last_sign_in_at as string | null) ?? null,
+      signInCount: num(r.sign_in_count as number),
+    }));
+  },
+});
+
+/** shop.gifts (0161): the gifts customers made from their accounts. A paid one made with real money is also in
+ * Donors, with the receipt number shown here. Nothing here can be changed from the browser. */
+export const shopGiftsStore = createCollection<ShopGift[]>({
+  key: "shop.gifts",
+  empty: [],
+  tables: [{ schema: "shop", table: "gifts" }],
+  fetch: async () => {
+    const rows = await fetchAll<Record<string, unknown>>((from, to) =>
+      shop().from("gifts").select("id, reference, customer_id, amount, anonymous, status, created_at, paid_at, pay_method, pay_fee, live, receipt_no, attention").order("created_at", { ascending: false }).order("id").range(from, to),
+    );
+    return rows.map((r) => ({
+      id: r.id as string,
+      reference: text(r.reference),
+      customerId: r.customer_id as string,
+      amount: num(r.amount as number),
+      anonymous: r.anonymous === true,
+      status: r.status as ShopGift["status"],
+      createdAt: r.created_at as string,
+      paidAt: (r.paid_at as string | null) ?? null,
+      payMethod: text(r.pay_method),
+      payFee: r.pay_fee === null || r.pay_fee === undefined ? null : num(r.pay_fee as number),
+      live: r.live === true,
+      receiptNo: text(r.receipt_no),
+      attention: text(r.attention),
+    }));
+  },
+});
+
+/** Customers of the shop site with their gifts, and the steps staff take on an account (0160, 0161). */
+export function useShopCustomers() {
+  const { data: customers, loading: customersLoading } = useCollection(shopCustomersStore);
+  const { data: gifts, loading: giftsLoading } = useCollection(shopGiftsStore);
+  const loading = customersLoading || giftsLoading;
+  return {
+    customers,
+    gifts,
+    loading,
+    /** One staff step on an account (block, unblock, sign_out, close, edit), through the database's function: it
+     * checks the person's level and records who did it. The sign-in address is not something staff can change. */
+    step: async (customerId: string, step: CustomerStep, data: Record<string, string> = {}): Promise<MutationResult> => {
+      const { error } = await shop().rpc("customer_step", { p_customer: customerId, p_step: step, p_data: data });
+      if (error) return { ok: false, error: /permission denied|42501/.test(error.message) ? "You can look at customers but not change them." : error.message };
+      await shopCustomersStore.refetch();
+      return { ok: true };
+    },
+    /** The trail of one account, newest first. */
+    trail: async (customerId: string): Promise<ShopCustomerEvent[]> => {
+      const { data } = await shop().from("customer_events").select("id, event, detail, by_staff_id, at").eq("customer_id", customerId).order("at", { ascending: false }).order("id").limit(60);
+      return (data ?? []).map((r) => ({ id: r.id as string, event: text(r.event), detail: text(r.detail), byStaffId: (r.by_staff_id as string | null) ?? null, at: r.at as string }));
+    },
+    /** How many devices the customer is signed in on. The sessions themselves are read by nobody. */
+    devices: async (customerId: string): Promise<number> => {
+      const { data } = await shop().rpc("customer_devices", { p_customer: customerId });
+      return Number(data ?? 0);
+    },
+  };
+}
 
 /** Messages the database gives for an order's steps, shortened to what staff need. */
 const stepMessage = (message: string): string => (/permission denied|42501/.test(message) ? "You can look at orders but not change them." : message);
@@ -263,6 +357,7 @@ const variantRow = (v: VariantDraft) => ({
 
 /** Messages the database gives for the catalogue's rules, in plain words. */
 function plain(message: string): string {
+  if (/settings_giving_check/.test(message)) return "Check the giving amounts: one to six, each between the smallest and the largest gift.";
   if (/settings_fulfilment_check/.test(message)) return "Check the shop site's address (https://…), the couriers (12 at most) and the length of the policy texts.";
   if (/products_slug_key/.test(message)) return "Another product already uses that address.";
   if (/variants_sku_key/.test(message)) return "Another item already uses that code.";
@@ -354,7 +449,7 @@ export function useShopData() {
         (
           await shop()
             .from("settings")
-            .update({ shop_open: s.shopOpen, pack_min: s.packMin, pack_max: s.packMax, pickup_enabled: s.pickupEnabled, pickup_address: s.pickupAddress.trim(), pickup_note: s.pickupNote.trim(), categories: s.categories, collections: s.collections, couriers: s.couriers, site_url: s.siteUrl.trim().replace(/\/+$/, ""), cash_posting: s.cashPosting, terms_text: s.termsText.trim(), privacy_text: s.privacyText.trim(), returns_text: s.returnsText.trim() })
+            .update({ shop_open: s.shopOpen, pack_min: s.packMin, pack_max: s.packMax, pickup_enabled: s.pickupEnabled, pickup_address: s.pickupAddress.trim(), pickup_note: s.pickupNote.trim(), categories: s.categories, collections: s.collections, couriers: s.couriers, site_url: s.siteUrl.trim().replace(/\/+$/, ""), cash_posting: s.cashPosting, giving_open: s.givingOpen, gift_amounts: s.giftAmounts, gift_min: s.giftMin, gift_max: s.giftMax, terms_text: s.termsText.trim(), privacy_text: s.privacyText.trim(), returns_text: s.returnsText.trim() })
             .eq("id", true)
         ).error,
         [shopSettingsStore],

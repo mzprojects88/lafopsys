@@ -61,6 +61,11 @@ export interface ShopSettings {
   siteUrl: string;
   /** Whether Finance may post a day's proceeds to the cash book. */
   cashPosting: boolean;
+  /** Giving from a customer's account (0161): open or not, the amounts offered, the smallest and largest gift. */
+  givingOpen: boolean;
+  giftAmounts: number[];
+  giftMin: number;
+  giftMax: number;
   termsText: string;
   privacyText: string;
   returnsText: string;
@@ -153,6 +158,8 @@ export type ShopOrderStatus = "placed" | "paid" | "packed" | "shipped" | "ready"
 
 export interface ShopOrder {
   id: string;
+  /** The customer account the order belongs to (0160); null when it was placed without signing in. */
+  customerId: string | null;
   number: string;
   /** The customer's private link on the shop site: <site>/order/<token>. */
   token: string;
@@ -361,3 +368,217 @@ export function payMethodLabel(method: string): string {
 
 /** A courier's name as staff may type it in Shop settings. */
 export const COURIER_NAME_RE = /^[A-Za-z0-9&.' -]{2,40}$/;
+
+// ---- Customers (0160) ----
+// A customer of the shop site is never an ArkOS account: these are the shop's own records, managed here.
+
+export type ShopCustomerStatus = "active" | "blocked" | "closed";
+
+export interface ShopCustomer {
+  id: string;
+  /** The sign-in address. A closed account has none left. */
+  email: string;
+  name: string;
+  phone: string;
+  area: string;
+  province: string;
+  city: string;
+  barangay: string;
+  postalCode: string;
+  addressLine: string;
+  landmark: string;
+  status: ShopCustomerStatus;
+  statusAt: string | null;
+  createdAt: string;
+  lastSignInAt: string | null;
+  signInCount: number;
+}
+
+export interface ShopCustomerEvent {
+  id: string;
+  event: string;
+  detail: string;
+  byStaffId: string | null;
+  at: string;
+}
+
+export type CustomerStep = "block" | "unblock" | "sign_out" | "close" | "edit";
+
+/** A gift made from a customer's account on the shop site (0161). A paid, live one is also in Donors. */
+export interface ShopGift {
+  id: string;
+  /** The shop's own reference (LAF-GFT-2026-00001): what the payment partner shows. Not a receipt number. */
+  reference: string;
+  customerId: string;
+  amount: number;
+  /** The giver asked not to be named: the gift is under the anonymous donor in Donors. */
+  anonymous: boolean;
+  status: "pending" | "paid" | "expired";
+  createdAt: string;
+  paidAt: string | null;
+  payMethod: string;
+  payFee: number | null;
+  /** False for a payment made with the partner's test keys: never in Donors, never counted. */
+  live: boolean;
+  /** The LAF-CSH acknowledgment receipt, once the gift is in Donors. */
+  receiptNo: string;
+  attention: string;
+}
+
+/** A gift that counts: paid, with real money. */
+export const isGiven = (g: Pick<ShopGift, "status" | "live">): boolean => g.status === "paid" && g.live;
+
+export const GIFT_METHOD_LABEL: Record<string, string> = { gcash: "GCash", qrph: "QR Ph", card: "Card", paymaya: "Maya", maya: "Maya", grab_pay: "GrabPay" };
+
+/**
+ * The Giving card of Shop settings, read as figures: up to six amounts to offer, the smallest and the largest
+ * gift. The database holds the same rules (settings_giving_check).
+ */
+export function readGiving(boxes: string[], minText: string, maxText: string): { ok: true; amounts: number[]; min: number; max: number } | { ok: false; error: string } {
+  const min = readAmount(minText);
+  const max = readAmount(maxText);
+  if (min === null || max === null || min < 1 || max < min || max > 1_000_000) return { ok: false, error: "Give the smallest and the largest gift in pesos; the largest cannot be below the smallest." };
+  const typed = boxes.map((b) => b.trim()).filter(Boolean).map(readAmount);
+  if (!typed.length || typed.length > 6 || typed.some((a) => a === null)) return { ok: false, error: "Give one to six amounts to offer, in pesos." };
+  const amounts = [...new Set(typed as number[])].sort((a, b) => a - b);
+  if (amounts.some((a) => a < min || a > max)) return { ok: false, error: "Each amount offered must lie between the smallest and the largest gift." };
+  return { ok: true, amounts, min, max };
+}
+
+/** One line of the Customers page: a person with an account, or one who bought without one (by their address). */
+export interface CustomerRow {
+  /** The account's id, or "guest:<address>". */
+  key: string;
+  customerId: string | null;
+  state: ShopCustomerStatus | "guest";
+  name: string;
+  email: string;
+  phone: string;
+  area: string;
+  city: string;
+  /** When the account was made; for a guest, their first order. */
+  createdAt: string;
+  lastSignInAt: string | null;
+  /** Orders that were not left unpaid or cancelled. */
+  orders: number;
+  /** What they paid for (paid orders that were not refunded). */
+  spent: number;
+  lastOrderAt: string | null;
+  lastOrderStatus: ShopOrderStatus | null;
+  /** Every order of theirs, newest first. */
+  orderIds: string[];
+  orderNumbers: string[];
+  /** Gifts from the account that were paid with real money (0161). A guest has none: giving needs an account. */
+  gifts: number;
+  given: number;
+  lastGiftAt: string | null;
+}
+
+export const CUSTOMER_STATE_LABEL: Record<CustomerRow["state"], string> = { active: "Account", guest: "Guest", blocked: "Blocked", closed: "Closed" };
+
+export const CUSTOMER_VIEWS = [
+  { key: "with_orders", label: "With orders" },
+  { key: "new", label: "Newly created" },
+  { key: "donors", label: "Latest donors" },
+  { key: "all", label: "All" },
+] as const;
+export type CustomerView = (typeof CUSTOMER_VIEWS)[number]["key"];
+
+type CustomerOrder = Pick<ShopOrder, "id" | "number" | "status" | "name" | "email" | "phone" | "area" | "city" | "total" | "placedAt"> & { customerId: string | null };
+
+/**
+ * Everyone who has an account or has bought: each account once, with its orders, and each address that bought
+ * without an account once ("Guest"). A closed account keeps its orders but shows no personal details.
+ */
+export function customerRows(customers: ShopCustomer[], orders: CustomerOrder[], gifts: Pick<ShopGift, "customerId" | "amount" | "status" | "live" | "paidAt" | "createdAt">[] = []): CustomerRow[] {
+  const given = new Map<string, typeof gifts>();
+  for (const g of gifts) if (isGiven(g)) given.set(g.customerId, [...(given.get(g.customerId) ?? []), g]);
+  const giving = (customerId: string | null) => {
+    const list = customerId ? (given.get(customerId) ?? []) : [];
+    return { gifts: list.length, given: cents(list.reduce((n, g) => n + g.amount, 0)), lastGiftAt: list.map((g) => g.paidAt ?? g.createdAt).sort().pop() ?? null };
+  };
+  const newest = (list: CustomerOrder[]) => [...list].sort((a, b) => b.placedAt.localeCompare(a.placedAt));
+  const figures = (list: CustomerOrder[]) => {
+    const sorted = newest(list);
+    return {
+      orders: sorted.filter((o) => o.status !== "expired" && o.status !== "cancelled").length,
+      spent: cents(sorted.filter(isSold).reduce((n, o) => n + o.total, 0)),
+      lastOrderAt: sorted[0]?.placedAt ?? null,
+      lastOrderStatus: sorted[0]?.status ?? null,
+      orderIds: sorted.map((o) => o.id),
+      orderNumbers: sorted.map((o) => o.number),
+    };
+  };
+  const mine = new Map<string, CustomerOrder[]>();
+  const guests = new Map<string, CustomerOrder[]>();
+  for (const o of orders) {
+    const [map, key] = o.customerId ? [mine, o.customerId] : [guests, o.email.trim().toLowerCase()];
+    map.set(key, [...(map.get(key) ?? []), o]);
+  }
+  const accounts: CustomerRow[] = customers.map((c) => ({
+    key: c.id,
+    customerId: c.id,
+    state: c.status,
+    name: c.status === "closed" ? "" : c.name,
+    email: c.status === "closed" ? "" : c.email,
+    phone: c.phone,
+    area: c.area,
+    city: c.city,
+    createdAt: c.createdAt,
+    lastSignInAt: c.lastSignInAt,
+    ...figures(mine.get(c.id) ?? []),
+    ...giving(c.id),
+  }));
+  const walkIns: CustomerRow[] = [...guests].map(([email, list]) => {
+    const sorted = newest(list);
+    const latest = sorted[0]!;
+    return {
+      key: `guest:${email}`,
+      customerId: null,
+      state: "guest",
+      name: latest.name,
+      email,
+      phone: latest.phone,
+      area: latest.area,
+      city: latest.city,
+      createdAt: sorted[sorted.length - 1]!.placedAt,
+      lastSignInAt: null,
+      ...figures(list),
+      ...giving(null),
+    };
+  });
+  return [...accounts, ...walkIns];
+}
+
+/** The date a view is about: the latest order, when the account was made, the latest gift. */
+export const customerViewDate = (r: CustomerRow, view: CustomerView): string | null =>
+  view === "with_orders" ? r.lastOrderAt : view === "donors" ? r.lastGiftAt : view === "new" ? r.createdAt : [r.lastOrderAt, r.lastSignInAt, r.createdAt].filter((d): d is string => !!d).sort().pop() ?? null;
+
+/**
+ * The rows of one view, newest first by that view's date: "With orders" is everyone who has ordered, "Newly
+ * created" the accounts (not guests, not closed ones), "Latest donors" those who gave, "All" everyone.
+ */
+export function customersIn(rows: CustomerRow[], view: CustomerView): CustomerRow[] {
+  const kept = rows.filter((r) => (view === "with_orders" ? r.orders > 0 : view === "new" ? r.customerId !== null && r.state !== "closed" : view === "donors" ? r.gifts > 0 : true));
+  return kept.sort((a, b) => (customerViewDate(b, view) ?? "").localeCompare(customerViewDate(a, view) ?? "") || a.key.localeCompare(b.key));
+}
+
+/** True when a row matches what was typed: a name, an address, a mobile number or an order number. */
+export function customerMatches(r: CustomerRow, term: string): boolean {
+  const t = term.trim().toLowerCase();
+  return !t || [r.name, r.email, r.phone, ...r.orderNumbers].some((v) => v.toLowerCase().includes(t));
+}
+
+/** How a customer's trail reads. */
+export const CUSTOMER_EVENT_LABEL: Record<string, string> = {
+  created: "Account created",
+  signed_in: "Signed in",
+  signed_out: "Signed out",
+  signed_out_everywhere: "Signed out of every device",
+  details_changed: "Details changed",
+  gift: "Gave a gift",
+  email_changed: "Sign-in address changed",
+  blocked: "Sign-in blocked",
+  unblocked: "Sign-in unblocked",
+  closed: "Account closed",
+};

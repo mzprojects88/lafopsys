@@ -35,7 +35,7 @@ const schema = z.object({
   donorId: z.string().min(1, "Select a donor"),
   receivingEntity: z.enum(["US_501C3", "PH_SEC"]),
   amount: z.number({ error: "Enter the amount" }).positive("Enter the amount").max(99_999_999, "That amount is too large"),
-  paymentMethod: z.enum(["cash", "check", "bank_transfer", "gcash", "instapay", "other"]),
+  paymentMethod: z.enum(["cash", "check", "bank_transfer", "gcash", "instapay", "other", "online"]),
   invoiceNumber: z.string().trim().max(60, "60 characters at most"),
   campaignId: z.string().optional(),
   notes: z.string().trim().max(500, "500 characters at most"),

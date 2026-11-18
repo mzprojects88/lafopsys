@@ -17,7 +17,7 @@ export const CASH_SOURCE_LABEL: Record<CashSource, string> = {
   "2025_noncash": "2025 non-cash report",
   "2026": "2026 Donation Tracker",
 };
-export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = { cash: "Cash", check: "Check", bank_transfer: "Bank transfer", gcash: "GCash", instapay: "InstaPay", other: "Other" };
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = { cash: "Cash", check: "Check", bank_transfer: "Bank transfer", gcash: "GCash", instapay: "InstaPay", other: "Other", online: "Online payment" };
 
 export interface CashLine {
   source: CashSource;

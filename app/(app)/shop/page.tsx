@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Circle, ClipboardList, Package, PackageCheck, Settings2, ShoppingBag, Store, Truck, Wallet } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Circle, ClipboardList, Package, PackageCheck, Settings2, ShoppingBag, Store, Truck, Users, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { SectionCard } from "@/components/patterns/section-card";
@@ -17,6 +17,7 @@ import { formatPesoCents } from "@/lib/utils/vehicle-expenses";
 const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/shop/orders", label: "Orders", icon: ClipboardList },
   { href: "/shop/proceeds", label: "Proceeds", icon: Wallet },
+  { href: "/shop/customers", label: "Customers", icon: Users },
   { href: "/shop/products", label: "Products", icon: Package },
   { href: "/shop/settings", label: "Shop settings", icon: Settings2 },
 ];

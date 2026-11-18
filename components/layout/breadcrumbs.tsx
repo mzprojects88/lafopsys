@@ -91,6 +91,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   shop: "Shop",
   orders: "Orders",
   proceeds: "Proceeds",
+  customers: "Customers",
   products: "Products",
 };
 

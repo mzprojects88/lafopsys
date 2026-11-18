@@ -50,7 +50,7 @@ export function longDate(iso: string): string {
   return new Date(Date.UTC(y!, m! - 1, d!)).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 }
 
-export const PAYMENT_LABEL: Record<string, string> = { cash: "Cash", check: "Check", bank_transfer: "Bank transfer", gcash: "GCash", instapay: "InstaPay", other: "Other" };
+export const PAYMENT_LABEL: Record<string, string> = { cash: "Cash", check: "Check", bank_transfer: "Bank transfer", gcash: "GCash", instapay: "InstaPay", other: "Other", online: "Online payment" };
 
 /** The foundation's name and registration line at the top left; shared with the certificate. */
 export function drawLetterhead(page: PdfPage, y: number, header?: string, accreditation?: string) {

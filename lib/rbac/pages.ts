@@ -107,6 +107,7 @@ export const PAGES: PageDef[] = [
   p("shop", "overview", "/shop", "Shop"),
   p("shop", "orders", "/shop/orders", "Orders"),
   p("shop", "proceeds", "/shop/proceeds", "Proceeds"),
+  p("shop", "customers", "/shop/customers", "Customers"),
   p("shop", "products", "/shop/products", "Products"),
   p("shop", "settings", "/shop/settings", "Shop settings"),
   p("analytics", "dashboard", "/analytics", "Analytics"),
