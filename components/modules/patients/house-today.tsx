@@ -52,6 +52,7 @@ import { formatDate, todayIso } from "@/lib/utils/date";
 import { formatTime12 } from "@/lib/utils/time12";
 import { PRIORITIES } from "@/lib/utils/master-sheet";
 import { houseSheetPatientId, type HouseSheetPerson } from "@/lib/types/house-sheet";
+import { idCardsPdfUrl, usePatientCards } from "@/lib/hooks/use-patient-cards";
 import type { Stay } from "@/lib/types/patient";
 import { plainError } from "@/lib/utils/plain-error";
 import { openReferralFor } from "@/lib/utils/house-sheet";
@@ -84,6 +85,7 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
   const { nights, confirmNight, readmitForTonight } = useBedNights();
   // The admission resets every morning (0089): the reset log and the finalize time.
   const { resets } = useAdmissionResets();
+  const { activeCard, issue: issueCard } = usePatientCards();
   const { admissions } = useAppSettings();
   const [readmitting, setReadmitting] = React.useState<{ stay: Stay; name: string; from: string } | null>(null);
   const { pickups } = usePickups();
@@ -186,6 +188,20 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
     else toast.success(`${continuing.length} back in last night's bed${continuing.length === 1 ? "" : "s"}`);
   }
 
+  // Patient ID cards (0164): a card for everyone in the house who has none yet, then one sheet for all.
+  async function printHouseCards() {
+    const ids = [...new Set(activeStays.map((s) => s.patientId))];
+    if (!ids.length) return void toast.info("Nobody is checked in.");
+    // The tab opens now, while the click still counts as the user's, and gets its address once the cards exist.
+    const tab = window.open("about:blank", "_blank");
+    setBusy("cards");
+    let failed = 0;
+    for (const id of ids) if (!activeCard(id) && !(await issueCard(id)).ok) failed += 1;
+    setBusy(null);
+    if (failed) toast.error(`${failed} card${failed === 1 ? "" : "s"} could not be issued; print those from the child's page.`);
+    if (tab) tab.location.href = idCardsPdfUrl(ids);
+  }
+
   async function confirmAllSame() {
     setBusy("all");
     let failed = 0;
@@ -209,9 +225,14 @@ export function HouseToday({ people, canEdit }: { people: HouseSheetPerson[]; ca
             : `Reset at ${formatTime12(admissions.resetAt)} not run yet`}
         </span>
         {canEdit && (
-          <button type="button" className="ml-auto font-medium text-primary hover:underline" onClick={() => setAddingTemporary(true)}>
-            Add temporary bed
-          </button>
+          <span className="ml-auto flex gap-4">
+            <button type="button" className="font-medium text-primary hover:underline disabled:opacity-50" disabled={busy === "cards"} onClick={() => void printHouseCards()}>
+              Print ID cards
+            </button>
+            <button type="button" className="font-medium text-primary hover:underline" onClick={() => setAddingTemporary(true)}>
+              Add temporary bed
+            </button>
+          </span>
         )}
       </div>
       <AddTemporaryBedDialog open={addingTemporary} onOpenChange={setAddingTemporary} />
