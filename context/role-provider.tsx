@@ -69,7 +69,10 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
       setStaffId(userData.user?.id ?? null);
       setEmail(userData.user?.email ?? null);
 
-      if (userData.user) {
+      // A donor portal session (app_metadata.portal, set at account creation and not
+      // client-writable) has no staff row by design: it gets no role, and must not be
+      // taken for a switched-off staff account and signed out below.
+      if (userData.user && userData.user.app_metadata?.portal !== "donor") {
         const { data: staffRow, error: staffError } = await supabase
           .schema("shared")
           .from("staff")
