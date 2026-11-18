@@ -143,6 +143,18 @@ try {
   await step("staff cannot run the site's function", ids.shop, `select shop.web_catalog()`, [], refused);
   await step("a signed-out visitor cannot run it either", "anon", `select shop.web_catalog()`, [], refused);
 
+  console.log("-- the menu's order (0159)");
+  await c.query(readFileSync(new URL("../../supabase/migrations/0159_shop_menu_order.sql", import.meta.url), "utf8"));
+  await c.query(`update shop.settings set categories = array['Bags', 'Apparel', 'Gift sets'], collections = array['Give Hope', 'The Ark']`);
+  await step("the site reads the categories and collections in the order Shop settings gives them", "shop_web", `select shop.web_catalog() as c`, [], (r) => r.ok && JSON.stringify(r.rows[0].c.categories) === '["Bags","Apparel","Gift sets"]' && JSON.stringify(r.rows[0].c.collections) === '["Give Hope","The Ark"]' && Array.isArray(r.rows[0].c.products) && typeof r.rows[0].c.open === "boolean");
+  await step("staff still cannot run the site's function", ids.shop, `select shop.web_catalog()`, [], refused);
+  await step("nor can a signed-out visitor", "anon", `select shop.web_catalog()`, [], refused);
+  await c.query(readFileSync(new URL("../../supabase/migrations/0159_shop_menu_order.sql", import.meta.url), "utf8"));
+  await step("a list the foundation changed is left as it is", null, `select 1 from shop.settings where categories = array['Bags', 'Apparel', 'Gift sets']`, [], rows(1));
+  await c.query(`update shop.settings set categories = array['Apparel', 'Drinkware', 'Bags', 'Accessories', 'Home & desk', 'Gift sets']`);
+  await c.query(readFileSync(new URL("../../supabase/migrations/0159_shop_menu_order.sql", import.meta.url), "utf8"));
+  await step("the starting list gets the approved order: Apparel, Bags, Drinkware first", null, `select 1 from shop.settings where categories = array['Apparel', 'Bags', 'Drinkware', 'Accessories', 'Home & desk', 'Gift sets']`, [], rows(1));
+
   console.log("-- photos in storage");
   await step("the bucket is public, 2 MB, pictures only", null, `select 1 from storage.buckets where id = 'shop' and public and file_size_limit = 2097152 and allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp']`, [], rows(1));
   await step("Shop Admin add a photo file", ids.shop, `insert into storage.objects (bucket_id, name, owner) values ('shop', 'products/test-tee/front.jpg', $1)`, [ids.shop], rows(1));

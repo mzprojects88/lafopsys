@@ -88,7 +88,7 @@ it("the public site's login is granted the storefront function and nothing else"
 });
 
 it("every shop function is closed to the public, and the site's login gets only the storefront ones (0155 to 0157)", () => {
-  for (const file of ["0155_shop_catalogue.sql", "0156_shop_orders.sql", "0157_shop_fulfilment.sql"]) {
+  for (const file of ["0155_shop_catalogue.sql", "0156_shop_orders.sql", "0157_shop_fulfilment.sql", "0159_shop_menu_order.sql"]) {
     const text = readFileSync(new URL(`../supabase/migrations/${file}`, import.meta.url), "utf8");
     const made = [...new Set([...text.matchAll(/create or replace function shop\.([a-z_]+)\(/g)].map((m) => m[1]))];
     assert.ok(made.length > 0, file);
