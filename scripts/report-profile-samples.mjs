@@ -71,6 +71,13 @@ for (const p of profiles) {
   const scale = Math.max(1, days(window) / 30);
   const byBucket = (make) => buckets.map((b) => ({ label: b.label, ...make() }));
 
+  // A fund's sample spends 27% of each account; its "Paid" is the sum of those lines, so the sample adds up.
+  const byAccount = [
+    ["5100 Food and provisions", 92400], ["5932 Travels and meals", 41250], ["5210 Utilities", 33800], ["5310 Fuel and oil", 28600],
+    ["5400 Medical supplies", 19750], ["5120 Household supplies", 14300], ["5600 Repairs and maintenance", 7900], ["5700 Communication", 3800],
+  ].map(([label, amount]) => ({ label, amount: Math.round((p.fund_code ? amount * 0.27 : amount) * scale) }));
+  const fundPaid = byAccount.reduce((sum, a) => sum + a.amount, 0);
+
   const extras = {
     headline: {
       figures: [
@@ -90,18 +97,15 @@ for (const p of profiles) {
     },
     expenses: {
       figures: p.fund_code
-        ? [fig("expenses.paid", 64250 * scale, 58900 * scale, 612400), fig("expenses.vouchers", 23, 19, 214)]
+        ? [fig("expenses.paid", fundPaid, 58900 * scale, 612400), fig("expenses.vouchers", 23, 19, 214)]
         : [
             fig("expenses.paid", 241800 * scale, 228950 * scale, 2361000),
             fig("expenses.budget", 260000 * scale, 260000 * scale, 2600000),
             fig("expenses.vouchers", 87, 79, 812),
             fig("expenses.per_night", 237.06, 243.56, 249.05),
           ],
-      byAccount: [
-        ["5100 Food and provisions", 92400], ["5932 Travels and meals", 41250], ["5210 Utilities", 33800], ["5310 Fuel and oil", 28600],
-        ["5400 Medical supplies", 19750], ["5120 Household supplies", 14300], ["5600 Repairs and maintenance", 7900], ["5700 Communication", 3800],
-      ].map(([label, amount]) => ({ label, amount: Math.round((p.fund_code ? amount * 0.27 : amount) * scale) })),
-      byFund: p.fund_code ? [{ label: "One Child (OC)", amount: 64250 * scale }] : [{ label: "Unrestricted (UNR)", amount: 151300 * scale }, { label: "One Child (OC)", amount: 64250 * scale }, { label: "LIFE (LIFE)", amount: 26250 * scale }],
+      byAccount,
+      byFund: p.fund_code ? [{ label: "One Child (OC)", amount: fundPaid }] : [{ label: "Unrestricted (UNR)", amount: 151300 * scale }, { label: "One Child (OC)", amount: 64250 * scale }, { label: "LIFE (LIFE)", amount: 26250 * scale }],
       note: p.fund_code
         ? `Paid from the ${p.fund_code} fund only, by the day paid. Budgets aren't set by fund, so there is no budget line.`
         : "Paid vouchers by the day paid (fund top-ups and cash advances left out; a liquidation counts the spending), against the approved budget's share of these days. Spending per bed night is all spending divided by the period's bed nights.",
