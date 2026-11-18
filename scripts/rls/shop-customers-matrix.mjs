@@ -46,7 +46,7 @@ const one = async (sql, params = []) => (await c.query(sql, params)).rows[0];
 try {
   await c.query("begin");
   await seedShopAccess(c);
-  await c.query(readFileSync(new URL("../../supabase/migrations/0160_shop_customers.sql", import.meta.url), "utf8"));
+  for (const f of ["0160_shop_customers.sql", "0162_shop_close_clears_trail.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${f}`, import.meta.url), "utf8"));
   await c.query("grant shop_web to current_user");
   if (!(await one("select pg_has_role(current_user, 'shop_web', 'SET') as ok")).ok) throw new Error("cannot act as shop_web: its limits would not be tested");
   const ids = await one(`select
@@ -262,6 +262,11 @@ try {
   r = await call(ids.admin, "customer_step", [A.id, "close", {}], true);
   const closed = await one("select * from shop.customers where id = $1", [A.id]);
   check("closing removes the details and frees the address", got(r) === "closed" && closed.status === "closed" && /^closed-.*@closed\.invalid$/.test(closed.email) && closed.name === null && closed.phone === null && closed.address_line === null, JSON.stringify(closed));
+  // 0162: the trail of a closed account keeps what happened and when, not the wording (which held the earlier
+  // address after the change above, and the note staff typed when blocking).
+  const trailLeft = (await c.query("select event, detail, by_staff_id from shop.customer_events where customer_id = $1", [A.id])).rows;
+  check("its trail keeps what happened but not the wording: no earlier address, no staff note", trailLeft.length >= 6 && trailLeft.every((e) => e.detail === null) && ["created", "email_changed", "blocked", "closed"].every((name) => trailLeft.some((e) => e.event === name)) && trailLeft.some((e) => e.event === "closed" && e.by_staff_id === ids.admin), JSON.stringify(trailLeft));
+  check("no trace of the earlier address is left anywhere in the customer tables", Number((await one("select (select count(*) from shop.customer_events where detail ilike '%sample.buyer@example.com%') + (select count(*) from shop.customers where email ilike '%sample.buyer%') + (select count(*) from shop.sign_in_codes where email ilike '%sample.buyer%') as n")).n) === 0);
   check("the orders stay, tied to the closed account", ordersBefore === 2 && Number((await one("select count(*) n from shop.orders where customer_id = $1", [A.id])).n) === 2);
   check("the orders themselves keep what the books need", (await one("select name, email from shop.orders where number = $1", [guest.number])).email.toLowerCase() === EMAIL);
   r = await call(ids.admin, "customer_step", [A.id, "unblock", {}]);

@@ -88,7 +88,7 @@ it("the public site's login is granted the storefront function and nothing else"
 });
 
 it("every shop function is closed to the public, and the site's login gets only the storefront ones (0155 to 0157)", () => {
-  for (const file of ["0155_shop_catalogue.sql", "0156_shop_orders.sql", "0157_shop_fulfilment.sql", "0159_shop_menu_order.sql", "0160_shop_customers.sql", "0161_shop_gifts.sql"]) {
+  for (const file of ["0155_shop_catalogue.sql", "0156_shop_orders.sql", "0157_shop_fulfilment.sql", "0159_shop_menu_order.sql", "0160_shop_customers.sql", "0161_shop_gifts.sql", "0162_shop_close_clears_trail.sql"]) {
     const text = readFileSync(new URL(`../supabase/migrations/${file}`, import.meta.url), "utf8");
     const made = [...new Set([...text.matchAll(/create or replace function shop\.([a-z_]+)\(/g)].map((m) => m[1]))];
     assert.ok(made.length > 0, file);
@@ -325,4 +325,12 @@ it("gifts (0161): the site reads no table, a test payment never reaches Donors, 
   assert.ok(!/from\("gifts"\)\.(insert|update|delete|upsert)/.test(hook), "the browser only reads gifts");
   const labels = readFileSync(new URL("../lib/utils/cash-gifts.ts", import.meta.url), "utf8") + readFileSync(new URL("../lib/pdf/cash-ar.ts", import.meta.url), "utf8");
   assert.equal(labels.split('online: "Online payment"').length - 1, 2, "Donors and the receipt both name the online method");
+});
+
+it("closing an account also clears the wording of its trail, which could hold an earlier address (0162)", () => {
+  const code = readFileSync(new URL("../supabase/migrations/0162_shop_close_clears_trail.sql", import.meta.url), "utf8").replace(/--.*$/gm, "");
+  assert.match(code, /update shop\.customer_events set detail = null where customer_id = p_customer and detail is not null;/);
+  assert.match(code, /update shop\.customer_events e set detail = null\s+from shop\.customers c\s+where c\.id = e\.customer_id and c\.status = 'closed'/, "accounts closed earlier are cleared too");
+  assert.ok(!/grant execute on function shop\.customer_close/.test(code), "closing stays an inside step: nobody calls it directly");
+  assert.ok(!/delete from shop\.(orders|gifts)|update shop\.(orders|gifts)/.test(code), "orders and gifts, the foundation's records, are not touched");
 });

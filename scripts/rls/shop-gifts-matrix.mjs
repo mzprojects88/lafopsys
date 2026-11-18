@@ -47,7 +47,7 @@ const num = async (sql, params = []) => Number((await one(sql, params)).n);
 try {
   await c.query("begin");
   await seedShopAccess(c);
-  for (const f of ["0160_shop_customers.sql", "0161_shop_gifts.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${f}`, import.meta.url), "utf8"));
+  for (const f of ["0160_shop_customers.sql", "0161_shop_gifts.sql", "0162_shop_close_clears_trail.sql"]) await c.query(readFileSync(new URL(`../../supabase/migrations/${f}`, import.meta.url), "utf8"));
   await c.query("grant shop_web to current_user");
   if (!(await one("select pg_has_role(current_user, 'shop_web', 'SET') as ok")).ok) throw new Error("cannot act as shop_web: its limits would not be tested");
   const ids = await one(`select
