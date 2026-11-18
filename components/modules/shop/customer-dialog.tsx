@@ -94,7 +94,7 @@ export function CustomerDialog({ row, customer, orders, gifts, canEdit, onOpenOr
               <StatusBadge domain="shop_customer" status={row.state} label={CUSTOMER_STATE_LABEL[row.state]} />
             </DialogTitle>
             <DialogDescription>
-              {row.state === "guest" ? `Bought without an account · first order ${at(row.createdAt)}` : row.state === "closed" ? `Closed ${at(customer?.statusAt ?? null)} · the details were removed; the orders stay as sales records` : `${row.email} · account created ${at(row.createdAt)}`}
+              {row.state === "guest" ? `Bought without an account · first order ${at(row.createdAt)}` : row.state === "closed" ? `Closed ${at(customer?.statusAt ?? null)} · the details were removed; the orders and gifts stay as records` : `${row.email} · account created ${at(row.createdAt)}`}
             </DialogDescription>
           </DialogHeader>
 
@@ -323,7 +323,7 @@ export function CustomerDialog({ row, customer, orders, gifts, canEdit, onOpenOr
           <AlertDialogHeader>
             <AlertDialogTitle>Close this account?</AlertDialogTitle>
             <AlertDialogDescription>
-              Do this only when the customer asks. Their name, mobile number, address and sign-in address are removed and every device is signed out. Their orders stay as the shop&apos;s sales records. This cannot be undone; the same email address can open a new, empty account later.
+              Do this only when the customer asks. Their name, mobile number, address and sign-in address are removed and every device is signed out. Their orders and gifts stay as the foundation&apos;s sales and donation records. This cannot be undone; the same email address can open a new, empty account later.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
