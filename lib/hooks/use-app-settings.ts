@@ -63,8 +63,10 @@ export interface AppSettings extends HrSettings {
   admissions: { resetAt: string; finalizeBy: string; mealsBy: string };
   /** Settings › Bed rules (0163): the two rules an admin may switch off, and from which night a long stay keeps its bed (null = off). */
   bedRules: { fillOrder: boolean; singleSex: boolean; keepFromNight: number | null };
-  /** How many days back a meal may be recorded (0166). */
+  /** How many days back a meal may be recorded (0166); also nights and rides in Patients > History (0167). */
   mealsBackDays: number;
+  /** Patients > History asks for a note for days further back than this (0167). */
+  historyNoteDays: number;
 }
 
 interface AppSettingsRow {
@@ -110,6 +112,7 @@ interface AppSettingsRow {
   bed_single_sex?: boolean;
   bed_keep_from_night?: number | null;
   meals_back_days?: number;
+  history_note_days?: number;
 }
 
 export const HR_SETTINGS_DEFAULTS: HrSettings = {
@@ -142,6 +145,7 @@ const DEFAULTS: AppSettings = {
   admissions: { resetAt: "06:00", finalizeBy: "18:00", mealsBy: "20:00" },
   bedRules: { fillOrder: true, singleSex: true, keepFromNight: 3 },
   mealsBackDays: 60,
+  historyNoteDays: 7,
   ...HR_SETTINGS_DEFAULTS,
 };
 
@@ -151,7 +155,7 @@ const SELECT =
   "leave_vl_days_per_year, leave_sl_days_per_year, leave_vl_convertible, minimum_wage_region, " +
   "compliance_pen_last_digit, compliance_employer_initial, compliance_tracking_from, compliance_lead_days, " +
   "laf_house_latitude, laf_house_longitude, laf_house_radius_m, transport_places, case_ai_reading, bed_moves_from, bed_moves_until, " +
-  "report_header, org_address, org_tin, certificate_signatory_id, admission_reset_at, admission_finalize_by, admission_meals_by, bed_fill_order, bed_single_sex, bed_keep_from_night, meals_back_days, document_names, dswd_label, dswd_number, voucher_certification";
+  "report_header, org_address, org_tin, certificate_signatory_id, admission_reset_at, admission_finalize_by, admission_meals_by, bed_fill_order, bed_single_sex, bed_keep_from_night, meals_back_days, history_note_days, document_names, dswd_label, dswd_number, voucher_certification";
 
 export const appSettingsStore = createCollection<AppSettings>({
   key: "shared.app_settings",
@@ -193,6 +197,7 @@ export const appSettingsStore = createCollection<AppSettings>({
       admissions: { resetAt: (row.admission_reset_at ?? "06:00").slice(0, 5), finalizeBy: (row.admission_finalize_by ?? "18:00").slice(0, 5), mealsBy: (row.admission_meals_by ?? "20:00").slice(0, 5) },
       bedRules: { fillOrder: row.bed_fill_order !== false, singleSex: row.bed_single_sex !== false, keepFromNight: row.bed_keep_from_night ?? null },
       mealsBackDays: row.meals_back_days ?? 60,
+      historyNoteDays: row.history_note_days ?? 7,
     };
   },
 });

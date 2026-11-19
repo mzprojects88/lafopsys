@@ -450,6 +450,15 @@ export async function updateBedRules(input: { fillOrder: boolean; singleSex: boo
 
 /** How many days back a meal may be recorded (0166): 0 to 365; admins may always fix an older day. Admin only. */
 export async function updateMealsBackDays(days: number): Promise<UpdateClockInRequirementResult> {
+  return updateDaysSetting("meals_back_days", days);
+}
+
+/** Patients > History asks for a note for days further back than this (0167). */
+export async function updateHistoryNoteDays(days: number): Promise<UpdateClockInRequirementResult> {
+  return updateDaysSetting("history_note_days", days);
+}
+
+async function updateDaysSetting(column: "meals_back_days" | "history_note_days", days: number): Promise<UpdateClockInRequirementResult> {
   if (!Number.isInteger(days) || days < 0 || days > 365) return { ok: false, error: "A whole number of days from 0 to 365." };
   const supabase = await createClient();
   const {
@@ -461,7 +470,7 @@ export async function updateMealsBackDays(days: number): Promise<UpdateClockInRe
   const { error } = await supabase
     .schema("shared")
     .from("app_settings")
-    .update({ meals_back_days: days, updated_at: new Date().toISOString(), updated_by: caller.id })
+    .update({ [column]: days, updated_at: new Date().toISOString(), updated_by: caller.id })
     .eq("id", true);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/settings");

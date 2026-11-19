@@ -69,6 +69,9 @@ async function monthRows(ym: string): Promise<Row[]> {
   const to = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).toISOString().slice(0, 10); // the month's last day
   const { data: settings } = await createAdminClient().schema("shared").from("app_settings").select("programs_from_app_since").eq("id", true).maybeSingle();
   const since = (settings?.programs_from_app_since as string | null | undefined) ?? null;
+  // A day marked complete in Patients > History (0167) is the app's, not the sheet's.
+  const { data: doneQ } = await ops.from("history_days").select("day").gte("day", from).lte("day", to);
+  const done = new Set((doneQ ?? []).map((d) => d.day as string));
   const [sheetQ, appQ] = await Promise.all([
     ops.from("sheet_meals").select("date, patient_name, carer_name, bn, breakfast, lunch, dinner, sheet_row").gte("date", from).lte("date", to).order("date").order("sheet_row"),
     ops.from("meals_served").select("patient_id, date, meal").gte("date", from).lte("date", to),
@@ -78,11 +81,11 @@ async function monthRows(ym: string): Promise<Row[]> {
   const sheetDates = new Set((sheetQ.data ?? []).map((r) => r.date as string));
   type Line = { date: string; patient: string; carer: string; bn: number | string; b: number; l: number; d: number; order: number | string };
   const lines: Line[] = (sheetQ.data ?? [])
-    .filter((r) => !since || (r.date as string) < since)
+    .filter((r) => (!since || (r.date as string) < since) && !done.has(r.date as string))
     .map((r) => ({ date: r.date as string, patient: r.patient_name as string, carer: (r.carer_name as string | null) ?? "", bn: (r.bn as number | null) ?? "", b: r.breakfast as number, l: r.lunch as number, d: r.dinner as number, order: (r.sheet_row as number | null) ?? 0 }));
 
   // The app's ticks: days from the switch on, and days the sheet never had.
-  const appRows = (appQ.data ?? []).filter((r) => (since && (r.date as string) >= since) || !sheetDates.has(r.date as string));
+  const appRows = (appQ.data ?? []).filter((r) => (since && (r.date as string) >= since) || !sheetDates.has(r.date as string) || done.has(r.date as string));
   if (appRows.length) {
     const ids = [...new Set(appRows.map((r) => r.patient_id as string))];
     const [patientsQ, carersQ] = await Promise.all([
