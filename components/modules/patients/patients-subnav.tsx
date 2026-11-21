@@ -1,6 +1,6 @@
 "use client";
 
-import { BedDouble, Bus, CalendarClock, Car, ClipboardList, History, Home, KanbanSquare, LayoutGrid, ListOrdered, MoonStar, Share2, Users } from "lucide-react";
+import { BedDouble, Bus, CalendarClock, Car, ClipboardList, History, Home, IdCard, KanbanSquare, LayoutGrid, ListOrdered, MoonStar, Share2, Users } from "lucide-react";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { useSheetChanges } from "@/lib/hooks/use-sheet-changes";
 
@@ -20,6 +20,7 @@ export const PATIENTS_SUB_NAV: ModuleSubNavItem[] = [
   { href: "/patients/stays", label: "Stay History", icon: BedDouble },
   { href: "/patients/bed-nights", label: "Bed Nights", icon: MoonStar },
   { href: "/patients/history", label: "History", icon: History },
+  { href: "/patients/id-cards", label: "ID cards", icon: IdCard },
   { href: "/patients/waitlist", label: "Waitlist", icon: ListOrdered },
   { href: "/patients/referrals", label: "Referrals", icon: Share2 },
   { href: "/patients/sessions", label: "Case sessions", icon: ClipboardList },

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Camera, IdCard, Printer, RefreshCw, Power } from "lucide-react";
+import { Camera, IdCard, Printer, RefreshCw, Power, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { ReasonDialog } from "@/components/patterns/reason-dialog";
@@ -131,6 +131,12 @@ export function IdCardSection({ patient, canEdit }: { patient: Patient; canEdit:
             <Button size="sm" className="gap-1.5" onClick={print}>
               <Printer className="size-3.5" />
               Print card
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1.5" asChild>
+              <a href={idCardsPdfUrl([patient.id], true)} download>
+                <Download className="size-3.5" />
+                Download
+              </a>
             </Button>
             {canEdit ? (
               <>

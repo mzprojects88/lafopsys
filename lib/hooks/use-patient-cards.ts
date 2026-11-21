@@ -71,5 +71,5 @@ export function usePatientCards() {
   return { cards, loading, activeCard, issue, switchOff };
 }
 
-/** The printable sheet for these children's active cards (three a page, cut and fold). */
-export const idCardsPdfUrl = (patientIds: string[]) => `/api/patients/id-cards?patients=${patientIds.join(",")}`;
+/** The printable sheet for these children's active cards, in the saved design (0169); download saves the file. */
+export const idCardsPdfUrl = (patientIds: string[], download = false) => `/api/patients/id-cards?patients=${patientIds.join(",")}${download ? "&download=1" : ""}`;

@@ -52,6 +52,7 @@ export const PAGES: PageDef[] = [
   p("patients", "stays", "/patients/stays", "Stay History"),
   p("patients", "bed_nights", "/patients/bed-nights", "Bed Nights"),
   p("patients", "history", "/patients/history", "History"),
+  p("patients", "id_cards", "/patients/id-cards", "ID cards"),
   p("patients", "waitlist", "/patients/waitlist", "Waitlist"),
   p("patients", "referrals", "/patients/referrals", "Referrals"),
   p("patients", "sessions", "/patients/sessions", "Case sessions"),

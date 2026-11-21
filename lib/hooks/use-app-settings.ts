@@ -67,6 +67,8 @@ export interface AppSettings extends HrSettings {
   mealsBackDays: number;
   /** Patients > History asks for a note for days further back than this (0167). */
   historyNoteDays: number;
+  /** The Patient ID card design (0169), as saved: read through normalizeCardTemplate. Null = the LAF design. */
+  idCardTemplate: unknown;
 }
 
 interface AppSettingsRow {
@@ -113,6 +115,7 @@ interface AppSettingsRow {
   bed_keep_from_night?: number | null;
   meals_back_days?: number;
   history_note_days?: number;
+  id_card_template?: unknown;
 }
 
 export const HR_SETTINGS_DEFAULTS: HrSettings = {
@@ -146,6 +149,7 @@ const DEFAULTS: AppSettings = {
   bedRules: { fillOrder: true, singleSex: true, keepFromNight: 3 },
   mealsBackDays: 60,
   historyNoteDays: 7,
+  idCardTemplate: null,
   ...HR_SETTINGS_DEFAULTS,
 };
 
@@ -155,7 +159,7 @@ const SELECT =
   "leave_vl_days_per_year, leave_sl_days_per_year, leave_vl_convertible, minimum_wage_region, " +
   "compliance_pen_last_digit, compliance_employer_initial, compliance_tracking_from, compliance_lead_days, " +
   "laf_house_latitude, laf_house_longitude, laf_house_radius_m, transport_places, case_ai_reading, bed_moves_from, bed_moves_until, " +
-  "report_header, org_address, org_tin, certificate_signatory_id, admission_reset_at, admission_finalize_by, admission_meals_by, bed_fill_order, bed_single_sex, bed_keep_from_night, meals_back_days, history_note_days, document_names, dswd_label, dswd_number, voucher_certification";
+  "report_header, org_address, org_tin, certificate_signatory_id, admission_reset_at, admission_finalize_by, admission_meals_by, bed_fill_order, bed_single_sex, bed_keep_from_night, meals_back_days, history_note_days, id_card_template, document_names, dswd_label, dswd_number, voucher_certification";
 
 export const appSettingsStore = createCollection<AppSettings>({
   key: "shared.app_settings",
@@ -198,6 +202,7 @@ export const appSettingsStore = createCollection<AppSettings>({
       bedRules: { fillOrder: row.bed_fill_order !== false, singleSex: row.bed_single_sex !== false, keepFromNight: row.bed_keep_from_night ?? null },
       mealsBackDays: row.meals_back_days ?? 60,
       historyNoteDays: row.history_note_days ?? 7,
+      idCardTemplate: row.id_card_template ?? null,
     };
   },
 });

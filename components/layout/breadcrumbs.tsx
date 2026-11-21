@@ -14,6 +14,7 @@ import {
 const SEGMENT_LABELS: Record<string, string> = {
   dashboard: "Dashboard",
   history: "History",
+  "id-cards": "ID cards",
   calendar: "Calendar",
   "sync-log": "Sync log",
   executive: "Executive",

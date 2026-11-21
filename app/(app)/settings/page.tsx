@@ -14,6 +14,7 @@ import { CafBillingSettings } from "@/components/modules/settings/caf-billing-se
 import { ExecSummarySettings } from "@/components/modules/settings/exec-summary-settings";
 import { AdmissionTimes } from "@/components/modules/settings/admission-times";
 import { HistoryNoteDays, MealsBackDays } from "@/components/modules/settings/meals-back-days";
+import { IdCardMaker } from "@/components/modules/settings/id-card-maker";
 import { CalendarSheetSyncToggle } from "@/components/modules/settings/calendar-sheet-sync-toggle";
 import { HouseSheetSyncToggle } from "@/components/modules/settings/house-sheet-sync-toggle";
 import { CaseAiReadingToggle } from "@/components/modules/settings/case-ai-reading-toggle";
@@ -121,6 +122,9 @@ export default function SettingsPage() {
         </SectionCard>
         <SectionCard id="bed-rules" className="scroll-mt-24" title="Bed rules">
           <BedRulesSettings />
+        </SectionCard>
+        <SectionCard id="id-card" className="scroll-mt-24 sm:col-span-2 lg:col-span-3" title="Patient ID card">
+          <IdCardMaker />
         </SectionCard>
         <SectionCard title="Bed moves">
           <BedMoveHours />

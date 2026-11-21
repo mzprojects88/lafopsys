@@ -1,5 +1,6 @@
 "use server";
 
+import { normalizeCardTemplate } from "@/lib/utils/id-card-template";
 import { DEFAULT_VOUCHER_CERTIFICATION } from "@/lib/utils/documents";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -451,6 +452,27 @@ export async function updateBedRules(input: { fillOrder: boolean; singleSex: boo
 /** How many days back a meal may be recorded (0166): 0 to 365; admins may always fix an older day. Admin only. */
 export async function updateMealsBackDays(days: number): Promise<UpdateClockInRequirementResult> {
   return updateDaysSetting("meals_back_days", days);
+}
+
+/** The Patient ID card design (0169): the Super Admin only; stored cleaned (unknown keys dropped, texts cut to
+ * their limits). null brings back the LAF design. */
+export async function updateIdCardTemplate(template: unknown): Promise<UpdateClockInRequirementResult> {
+  const supabase = await createClient();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+  if (!caller) return { ok: false, error: "Not signed in." };
+  const { data: callerStaff } = await supabase.schema("shared").from("staff").select("role").eq("id", caller.id).single();
+  if (callerStaff?.role !== "admin") return { ok: false, error: "Only the Super Admin can change the ID card design." };
+  const value = template === null ? null : normalizeCardTemplate(template);
+  const { error } = await supabase
+    .schema("shared")
+    .from("app_settings")
+    .update({ id_card_template: value, updated_at: new Date().toISOString(), updated_by: caller.id })
+    .eq("id", true);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/settings");
+  return { ok: true };
 }
 
 /** Patients > History asks for a note for days further back than this (0167). */

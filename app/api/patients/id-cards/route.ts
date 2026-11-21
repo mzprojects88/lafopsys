@@ -5,6 +5,7 @@ import { LAF_LOGO_JPEG } from "@/lib/pdf/laf-logo";
 import { signatureImage } from "@/lib/pdf/png";
 import { formatDate } from "@/lib/utils/date";
 
+import { normalizeCardTemplate } from "@/lib/utils/id-card-template";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const logo = { jpeg: Buffer.from(LAF_LOGO_JPEG.base64, "base64"), width: LAF_LOGO_JPEG.width, height: LAF_LOGO_JPEG.height };
 
@@ -29,7 +30,7 @@ export async function GET(req: Request) {
     ops.from("carers").select("id, patient_id, name, relationship, effective_from").in("patient_id", ids).order("effective_from", { ascending: false }),
     ops.from("stays").select("patient_id, carer_id").in("patient_id", ids).in("status", ["in_house", "overdue"]),
     ops.from("patient_documents").select("patient_id, storage_path").in("patient_id", ids).eq("document_type", "patient_photo").not("storage_path", "is", null),
-    supabase.schema("shared").from("app_settings").select("org_address").maybeSingle(),
+    supabase.schema("shared").from("app_settings").select("org_address, id_card_template").maybeSingle(),
   ]);
   const failed = [patients, cards, carers, stays, photos].find((r) => r.error);
   if (failed?.error) return NextResponse.json({ error: failed.error.message }, { status: 500 });
@@ -62,11 +63,14 @@ export async function GET(req: Request) {
   }
   if (!out.length) return NextResponse.json({ error: "None of these children has a card yet: issue one first" }, { status: 404 });
 
-  const pdf = await buildIdCardsPdf(out, { logo, address: String(settings.data?.org_address ?? "").trim() });
+  // The one design every card prints with (0169), cleaned; none saved = the LAF design.
+  const template = normalizeCardTemplate(settings.data?.id_card_template ?? null);
+  const pdf = await buildIdCardsPdf(out, { logo, address: String(settings.data?.org_address ?? "").trim(), template });
+  const download = new URL(req.url).searchParams.get("download") === "1";
   return new NextResponse(new Uint8Array(pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="LAF-ID-cards.pdf"`,
+      "Content-Disposition": `${download ? "attachment" : "inline"}; filename="LAF-ID-cards.pdf"`,
       "Cache-Control": "no-store",
     },
   });
