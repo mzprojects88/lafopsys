@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import { plainError } from "@/lib/utils/plain-error";
 import { formatDate } from "@/lib/utils/date";
+import { formatTime12 } from "@/lib/utils/time12";
 import { MEALS, type Meal } from "@/lib/hooks/use-meals-served";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
 import { CheckInDialog } from "@/components/modules/patients/check-in-dialog";
@@ -264,7 +265,7 @@ export function CardScanResult({ token }: { token: string }) {
                   <div className="flex flex-col">
                     <span className="text-theme-sm font-medium">{DIRECTION[t.direction]}</span>
                     <span className="text-theme-xs text-muted-foreground">
-                      {[t.departureTime, t.driver ? `driver ${t.driver}` : null, t.status === "in_progress" ? "on the road" : "scheduled", `${t.passengers} on board`].filter(Boolean).join(" · ")}
+                      {[t.departureTime ? formatTime12(t.departureTime) : null, t.driver ? `driver ${t.driver}` : null, t.status === "in_progress" ? "on the road" : "scheduled", `${t.passengers} on board`].filter(Boolean).join(" · ")}
                     </span>
                   </div>
                   {t.onBoard ? (
