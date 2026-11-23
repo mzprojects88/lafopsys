@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
-import { Package, Archive, AlertTriangle, XCircle, Wallet, ExternalLink, MapPin, Trash2 } from "lucide-react";
+import { Package, Archive, AlertTriangle, XCircle, Wallet, ExternalLink, MapPin, Trash2, Warehouse } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { DataTable } from "@/components/patterns/data-table";
 import { StatusBadge } from "@/components/patterns/status-badge";
@@ -24,6 +24,7 @@ const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/inventory/locations", label: "Locations", icon: MapPin },
   { href: "/inventory/expiry", label: "Expiry Alerts", icon: AlertTriangle },
   { href: "/inventory/waste", label: "Waste Log", icon: Trash2 },
+  { href: "/inventory/stocks", label: "Operations Stocks", icon: Warehouse },
 ];
 
 /** v_stock_summary is one row per item per House; HQ sees the org, so fold

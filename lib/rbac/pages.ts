@@ -72,6 +72,7 @@ export const PAGES: PageDef[] = [
   p("inventory", "locations", "/inventory/locations", "Storage Locations"),
   p("inventory", "expiry", "/inventory/expiry", "Expiry Alerts"),
   p("inventory", "waste", "/inventory/waste", "Waste Log"),
+  p("inventory", "stocks", "/inventory/stocks", "Operations Stocks"),
   p("inventory", "scan", "/inventory/scan", "Find an Item"),
   p("hr", "management", "/hr", "HR management", "runs_hr"),
   p("hr", "my_leave", "/hr/leave", "My Leave"),
