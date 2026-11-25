@@ -21,7 +21,8 @@ import { dayKey, monthKey } from "@/lib/utils/dtr";
 import { inWindow, periodLabel, periodWindow, shiftAnchor, type PeriodKind } from "@/lib/utils/period";
 import { ClearFilters, FilterSelect, useFilters } from "@/components/patterns/filters";
 import { optionsOf } from "@/lib/utils/filters";
-import type { CalendarEvent } from "@/lib/types/calendar";
+import { programLabel, type CalendarEvent, type CalendarProgram } from "@/lib/types/calendar";
+import { Birthdays } from "@/components/modules/calendar/birthdays";
 
 const PERIODS: { kind: PeriodKind; label: string }[] = [
   { kind: "today", label: "Today" },
@@ -41,11 +42,14 @@ const PERIODS: { kind: PeriodKind; label: string }[] = [
  */
 export default function CalendarPage() {
   const { events: allEvents, loading, error } = useCalendarEventsData();
-  // Venue (LAF, NCH, online…) and officer on duty narrow the list and the month grid.
-  const f = useFilters("venue", "officer");
-  const events = React.useMemo(() => allEvents.filter((e) => f.ok("venue", e.venue) && f.ok("officer", e.officerOnDuty)), [allEvents, f.values]); // eslint-disable-line react-hooks/exhaustive-deps -- f.ok reads f.values
+  // Program (0171), venue (LAF, NCH, online…) and off staff narrow the list and the month grid.
+  const f = useFilters("program", "venue", "officer");
+  const events = React.useMemo(() => allEvents.filter((e) => f.ok("program", e.program) && f.ok("venue", e.venue) && f.ok("officer", e.officerOnDuty)), [allEvents, f.values]); // eslint-disable-line react-hooks/exhaustive-deps -- f.ok reads f.values
   const { calendarSheetSyncEnabled } = useAppSettings();
-  const canEdit = useModuleAccess().canEdit("calendar");
+  const access = useModuleAccess();
+  const canEdit = access.canEdit("calendar");
+  // Children's names: only for people who may see Patients.
+  const seesPatients = access.canView("patients");
   const canEditEvent = React.useCallback(
     (event: CalendarEvent) => canEditCalendarEvent(canEdit, event, calendarSheetSyncEnabled),
     [canEdit, calendarSheetSyncEnabled]
@@ -104,8 +108,9 @@ export default function CalendarPage() {
         </Button>
       </div>
       <span className="text-sm font-medium tabular-nums">{view === "month" ? periodLabel("month", periodWindow("month", anchor)) : periodLabel(kind, window)}</span>
+      <FilterSelect all="Every program" value={f.values.program} onChange={f.set("program")} options={optionsOf(allEvents, (e) => e.program, (v) => programLabel(v as CalendarProgram))} className="w-44" />
       <FilterSelect all="Every venue" value={f.values.venue} onChange={f.set("venue")} options={optionsOf(allEvents, (e) => e.venue, (v) => v)} className="w-36" />
-      <FilterSelect all="Any officer" value={f.values.officer} onChange={f.set("officer")} options={optionsOf(allEvents, (e) => e.officerOnDuty, (v) => v)} className="w-44" />
+      <FilterSelect all="Any off staff" value={f.values.officer} onChange={f.set("officer")} options={optionsOf(allEvents, (e) => e.officerOnDuty, (v) => v)} className="w-44" />
       <ClearFilters active={f.active} onClear={f.clear} />
     </div>
   );
@@ -161,6 +166,8 @@ export default function CalendarPage() {
           emptyMessage={`Nothing on the calendar for ${periodLabel(kind, window)}.`}
         />
       )}
+
+      {seesPatients ? <Birthdays month={month} today={today} /> : null}
 
       <EventDialog state={dialog} onOpenChange={(open) => (open ? undefined : setDialog({ mode: "closed" }))} />
     </div>

@@ -25,7 +25,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { CALENDAR_VENUES, type CalendarEvent } from "@/lib/types/calendar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CALENDAR_PROGRAMS, CALENDAR_VENUES, type CalendarEvent, type CalendarProgram } from "@/lib/types/calendar";
+import { weekdaysBetween } from "@/lib/utils/calendar-sheet";
 import { useCalendarEventsData, type CalendarEventInput } from "@/lib/hooks/use-calendar-events-collection";
 
 /** The people who appear in the sheet's "Off Staff" column (called "Officer on Duty" until late 2026; the label
@@ -63,7 +65,7 @@ function EventForm({
   state: Exclude<EventDialogState, { mode: "closed" }>;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { addEvent, updateEvent, deleteEvent } = useCalendarEventsData();
+  const { addEvent, addEvents, updateEvent, deleteEvent } = useCalendarEventsData();
   const existing = state.mode === "create" ? null : state.event;
   const readOnly = state.mode === "view";
   const fromSheet = existing?.source === "sheet";
@@ -77,6 +79,11 @@ function EventForm({
   const [bookedBy, setBookedBy] = React.useState(existing?.bookedBy ?? "");
   const [contactInfo, setContactInfo] = React.useState(existing?.contactInfo ?? "");
   const [remarks, setRemarks] = React.useState(existing?.remarks ?? "");
+  const [program, setProgram] = React.useState<CalendarProgram>(existing?.program ?? "general");
+  const [menu, setMenu] = React.useState(existing?.menu ?? "");
+  const [volunteers, setVolunteers] = React.useState(existing?.volunteers ?? "");
+  // Adding only: the same event on every weekday up to this day.
+  const [repeatUntil, setRepeatUntil] = React.useState("");
   const [isHoliday, setIsHoliday] = React.useState(existing?.isHoliday ?? false);
   const [saving, setSaving] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
@@ -84,19 +91,28 @@ function EventForm({
   const canSave = !readOnly && !!date && !!title.trim() && !saving;
 
   function payload(): CalendarEventInput {
-    return { date, time, title, venue, officerOnDuty: officer, staffNeeded, bookedBy, contactInfo, remarks, isHoliday };
+    return { date, time, title, venue, officerOnDuty: officer, staffNeeded, bookedBy, contactInfo, remarks, program, menu, volunteers, isHoliday };
   }
 
   async function handleSave() {
     if (!canSave) return;
+    const days = !existing && repeatUntil ? weekdaysBetween(date, repeatUntil) : [];
+    if (!existing && repeatUntil && days.length === 0) {
+      toast.error("No weekday falls between those two dates.");
+      return;
+    }
     setSaving(true);
-    const result = existing ? await updateEvent(existing.id, payload()) : await addEvent(payload());
+    const result = existing
+      ? await updateEvent(existing.id, payload())
+      : days.length > 0
+        ? await addEvents(days.map((day) => ({ ...payload(), date: day })))
+        : await addEvent(payload());
     setSaving(false);
     if (!result.ok) {
       toast.error(result.error.includes("calendar_events_natural_key") ? "That event is already on the calendar for that date and time." : result.error);
       return;
     }
-    toast.success(existing ? "Event updated" : "Event added to the calendar");
+    toast.success(existing ? "Event updated" : days.length > 1 ? `${days.length} events added to the calendar` : "Event added to the calendar");
     onOpenChange(false);
   }
 
@@ -136,6 +152,22 @@ function EventForm({
             <Input id="ev-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Gerry's Grill Care Cart" autoFocus />
           </Field>
 
+          <Field>
+            <FieldLabel htmlFor="ev-program">Program</FieldLabel>
+            <Select value={program} onValueChange={(v) => setProgram(v as CalendarProgram)}>
+              <SelectTrigger id="ev-program" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CALENDAR_PROGRAMS.map((p) => (
+                  <SelectItem key={p.key} value={p.key}>
+                    {p.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
           <div className="grid grid-cols-2 gap-3">
             <Field>
               <FieldLabel htmlFor="ev-date">Date</FieldLabel>
@@ -151,6 +183,14 @@ function EventForm({
               </datalist>
             </Field>
           </div>
+
+          {!existing ? (
+            <Field>
+              <FieldLabel htmlFor="ev-repeat">Repeat every weekday until (optional)</FieldLabel>
+              <Input id="ev-repeat" type="date" min={date} value={repeatUntil} onChange={(e) => setRepeatUntil(e.target.value)} />
+              <span className="text-xs text-muted-foreground">Leave empty for one day. Monday to Friday, up to 70 days at a time.</span>
+            </Field>
+          ) : null}
 
           <div className="grid grid-cols-2 gap-3">
             <Field>
@@ -172,6 +212,19 @@ function EventForm({
               </datalist>
             </Field>
           </div>
+
+          {program === "care_cart" ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="ev-menu">Menu</FieldLabel>
+                <Input id="ev-menu" maxLength={500} value={menu} onChange={(e) => setMenu(e.target.value)} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="ev-volunteers">Name of volunteers</FieldLabel>
+                <Input id="ev-volunteers" maxLength={1000} value={volunteers} onChange={(e) => setVolunteers(e.target.value)} />
+              </Field>
+            </div>
+          ) : null}
 
           <Field>
             <FieldLabel htmlFor="ev-staff">Staff needed</FieldLabel>

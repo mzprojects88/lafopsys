@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils/date";
 import { HOLIDAY_DOT } from "@/components/modules/calendar/month-grid";
 import type { CalendarEvent } from "@/lib/types/calendar";
+import { programLabel } from "@/lib/types/calendar";
 
 /** The sheet's own venue chip. Free text that is not one of the known
  * venues falls to the neutral tone rather than being hidden. */
@@ -64,6 +65,12 @@ export function CalendarList({
           {row.original.source === "sheet" ? <Table2 className="size-3 shrink-0 text-muted-foreground" aria-label="From the Google Sheet" /> : null}
         </span>
       ),
+    },
+    {
+      id: "program",
+      header: "Program",
+      accessorFn: (e) => programLabel(e.program),
+      cell: ({ row }) => (row.original.program === "general" ? <span className="text-muted-foreground">General</span> : <span className="whitespace-nowrap font-medium">{programLabel(row.original.program)}</span>),
     },
     { id: "venue", header: "Venue", accessorFn: (e) => e.venue ?? "", cell: ({ row }) => <VenueBadge venue={row.original.venue} /> },
     { id: "officer", header: "Off Staff", accessorFn: (e) => e.officerOnDuty ?? "", cell: ({ row }) => row.original.officerOnDuty ?? <span className="text-muted-foreground">—</span> },

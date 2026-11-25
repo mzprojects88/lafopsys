@@ -4,7 +4,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildKey, CALENDAR_SHEET_GIDS, copyRows, COPY_WIDTH, mergeSheets, normalizeTime, normalizeTitle, parseSheetCsv, reconcile, sheetCsvUrl, timeSortKey } from "../lib/utils/calendar-sheet.ts";
+import { ageOn, birthdayRows, buildKey, CALENDAR_SHEET_TABS, copyRows, COPY_WIDTH, mergeSheets, normalizeTime, normalizeTitle, parseSheetCsv, programRows, reconcile, sheetCsvUrl, timeSortKey, weekdaysBetween } from "../lib/utils/calendar-sheet.ts";
 
 describe("normalizeTime", () => {
   it("turns every clock form into HH:MM", () => {
@@ -307,8 +307,13 @@ describe("the copy sheet's rows (ArkOS is the master calendar)", () => {
 // 25 Nov 2026: the 2027 events were moved from the "2026" tab to a new "2027" tab the same afternoon.
 describe("a tab per year", () => {
   const header = " ,Date,Time,Event ,Venue,Off Staff ,Staff Needed,Booked By:,Contact Name and Number,Remarks";
-  it("reads the 2026 and the 2027 tabs", () => {
-    assert.deepEqual(CALENDAR_SHEET_GIDS, ["590670193", "452703845"]);
+  it("reads the 2026 and the 2027 tabs as the general list, and the two program tabs as their programs", () => {
+    assert.deepEqual(CALENDAR_SHEET_TABS.map((t) => [t.gid, t.program]), [
+      ["590670193", "general"],
+      ["452703845", "general"],
+      ["103238911", "spiritual_care"],
+      ["1085375219", "care_cart"],
+    ]);
   });
   it("the tabs make one calendar, and an event found in two of them is kept once", () => {
     const y26 = parseSheetCsv([header, "Thursday,12/31/2026,10:00 AM,Year-end visit,NCH", "Friday,1/1/2027,,New Year's Day,HOLIDAY"].join("\n"));
@@ -317,5 +322,74 @@ describe("a tab per year", () => {
     assert.deepEqual(all.events.map((e) => e.date), ["2026-12-31", "2027-01-01", "2027-01-04"]);
     assert.equal(all.duplicates, 1);
     assert.equal(all.events[1].isHoliday, true);
+  });
+});
+
+// 0171: the workbook's Spiritual Care and Care Cart tabs are calendar events of their program.
+describe("the program tabs", () => {
+  const spiritual = " ,Date,Time,Activity / Event ,Venue,Staff Needed,Remarks";
+  const careCart = " ,Date,Time,Activity / Event ,MENU,Venue / Area,Staff Needed,Name of Volunteers,Remarks";
+
+  it("reads a Spiritual Care row as an event of that program", () => {
+    const { events, problems } = parseSheetCsv([spiritual, "Monday,11/23/2026,8:00 AM,Morning devotion,LAF,,"].join("\n"), "spiritual_care");
+    assert.deepEqual(problems, []);
+    assert.deepEqual(events.map((e) => [e.date, e.time, e.title, e.venue, e.program]), [["2026-11-23", "8:00 AM", "Morning devotion", "LAF", "spiritual_care"]]);
+  });
+
+  it("reads the Care Cart tab's own columns: menu, venue / area, name of volunteers", () => {
+    const { events } = parseSheetCsv([careCart, "Wednesday,11/25/2026,10:00 AM,Care Cart,Arroz caldo,NCH ward 3,Sample Staff,Sample Volunteers,with eggs"].join("\n"), "care_cart");
+    assert.equal(events.length, 1);
+    assert.deepEqual([events[0].menu, events[0].venue, events[0].staffNeeded, events[0].volunteers, events[0].remarks, events[0].program], ["Arroz caldo", "NCH ward 3", "Sample Staff", "Sample Volunteers", "with eggs", "care_cart"]);
+  });
+
+  it("the yearly list has no program columns, and reads as general", () => {
+    const { events } = parseSheetCsv([" ,Date,Time,Event ,Venue", "Thursday,11/26/2026,10:00 AM,Book reading,NCH"].join("\n"));
+    assert.deepEqual([events[0].program, events[0].menu, events[0].volunteers], ["general", null, null]);
+  });
+
+  it("the sync writes the program of a new event, and corrects it on an event it already has", () => {
+    const sheet = parseSheetCsv([careCart, "Wednesday,11/25/2026,10:00 AM,Care Cart,Arroz caldo,NCH,,,"].join("\n"), "care_cart").events;
+    const fresh = reconcile({ sheet, dbSheet: [], appKeys: new Set(), today: "2026-11-25", now: "2026-11-25T02:00:00.000Z" });
+    assert.deepEqual([fresh.inserts[0].program, fresh.inserts[0].menu], ["care_cart", "Arroz caldo"]);
+    const held = { id: "e1", date: "2026-11-25", time: "10:00 AM", timeKey: "10:00", title: "Care Cart", venue: "NCH", officerOnDuty: null, staffNeeded: null, bookedBy: null, contactInfo: null, remarks: null, isHoliday: false, sheetKey: sheet[0].key, sheetRemovedAt: null, program: "general", menu: null, volunteers: null };
+    const again = reconcile({ sheet, dbSheet: [held], appKeys: new Set(), today: "2026-11-25", now: "2026-11-25T02:00:00.000Z" });
+    assert.equal(again.inserts.length, 0);
+    assert.deepEqual([again.updates[0].patch.program, again.updates[0].patch.menu], ["care_cart", "Arroz caldo"]);
+    const same = reconcile({ sheet, dbSheet: [{ ...held, program: "care_cart", menu: "Arroz caldo" }], appKeys: new Set(), today: "2026-11-25", now: "2026-11-25T02:00:00.000Z" });
+    assert.equal(same.counts.updated, 0);
+  });
+
+  it("writes a program tab's rows in that tab's own columns", () => {
+    const ev = { date: "2026-11-25", time: "10:00 AM", title: "Care Cart", venue: "NCH ward 3", officerOnDuty: null, staffNeeded: "Sample Staff", bookedBy: null, contactInfo: null, remarks: "with eggs", menu: "Arroz caldo", volunteers: "Sample Volunteers" };
+    assert.deepEqual(programRows([ev], "care_cart"), [["Wednesday", "2026-11-25", "10:00 AM", "Care Cart", "Arroz caldo", "NCH ward 3", "Sample Staff", "Sample Volunteers", "with eggs"]]);
+    assert.deepEqual(programRows([ev], "spiritual_care"), [["Wednesday", "2026-11-25", "10:00 AM", "Care Cart", "NCH ward 3", "Sample Staff", "with eggs"]]);
+    assert.deepEqual(programRows([ev], "activity_center")[0].length, 7);
+  });
+});
+
+describe("the Birthday Celebrants tab, from Patients", () => {
+  it("shows the age today, not the age they turn this year", () => {
+    assert.equal(ageOn("2018-12-14", "2026-11-25"), 7);
+    assert.equal(ageOn("2018-11-25", "2026-11-25"), 8);
+    assert.equal(ageOn("2018-01-03", "2026-11-25"), 8);
+  });
+  it("lists January first, by month and day: name, birthday, age, notes", () => {
+    const rows = birthdayRows([{ name: "Sample B", birthDate: "2018-12-14" }, { name: "Sample A", birthDate: "2015-01-03" }, { name: "Sample C", birthDate: "2020-12-14" }], "2026-11-25");
+    assert.deepEqual(rows, [["Sample A", "2015-01-03", 11, ""], ["Sample B", "2018-12-14", 7, ""], ["Sample C", "2020-12-14", 5, ""]]);
+  });
+});
+
+describe("repeat every weekday until", () => {
+  it("gives Monday to Friday only, both ends included", () => {
+    // 23 Nov 2026 is a Monday; 1 Dec is a Tuesday.
+    assert.deepEqual(weekdaysBetween("2026-11-23", "2026-12-01"), ["2026-11-23", "2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27", "2026-11-30", "2026-12-01"]);
+    assert.deepEqual(weekdaysBetween("2026-11-28", "2026-11-29"), []);
+    assert.deepEqual(weekdaysBetween("2026-11-25", "2026-11-25"), ["2026-11-25"]);
+    assert.deepEqual(weekdaysBetween("2026-12-01", "2026-11-25"), []);
+  });
+  it("the sheet's own Spiritual Care run, 23 November to 1 January, is 30 weekdays; never more than the cap", () => {
+    assert.equal(weekdaysBetween("2026-11-23", "2027-01-01").length, 30);
+    assert.equal(weekdaysBetween("2026-01-01", "2026-12-31").length, 70);
+    assert.equal(weekdaysBetween("2026-01-01", "2026-12-31", 5).length, 5);
   });
 });

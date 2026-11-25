@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { dayKey } from "@/lib/utils/dtr";
-import { CALENDAR_SHEET_GIDS, CALENDAR_SHEET_ID, mergeSheets, normalizeTime, parseSheetCsv, reconcile, sheetCsvUrl, type DbSheetRow } from "@/lib/utils/calendar-sheet";
+import { CALENDAR_SHEET_ID, CALENDAR_SHEET_TABS, mergeSheets, normalizeTime, parseSheetCsv, reconcile, sheetCsvUrl, type DbSheetRow } from "@/lib/utils/calendar-sheet";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -99,9 +99,9 @@ export async function POST(request: Request) {
 
   try {
     // ---- fetch ----
-    // Every year's tab, or nothing: a tab that does not load must stop the run, or its events would be hidden.
+    // Every tab, or nothing: a tab that does not load must stop the run, or its events would be hidden.
     const csvs: string[] = [];
-    for (const gid of CALENDAR_SHEET_GIDS) {
+    for (const { gid } of CALENDAR_SHEET_TABS) {
       const response = await fetch(sheetCsvUrl(CALENDAR_SHEET_ID, gid), { cache: "no-store", redirect: "follow", headers: { accept: "text/csv" } });
       const contentType = response.headers.get("content-type") ?? "";
       if (!response.ok || !contentType.includes("text/csv")) {
@@ -127,7 +127,7 @@ export async function POST(request: Request) {
     }
 
     // ---- read ----
-    const tabs = csvs.map(parseSheetCsv);
+    const tabs = csvs.map((csv, i) => parseSheetCsv(csv, CALENDAR_SHEET_TABS[i].program));
     // A tab whose header can't be read is a broken tab, not an empty year.
     const broken = tabs.find((t) => t.events.length === 0 && t.problems.length > 0);
     if (broken) throw new Error(broken.problems[0]);
@@ -139,7 +139,7 @@ export async function POST(request: Request) {
     const { data: dbRows, error: dbError } = await admin
       .schema("ops")
       .from("calendar_events")
-      .select("id, source, date, time, time_key, title, venue, officer_on_duty, staff_needed, booked_by, contact_info, remarks, is_holiday, sheet_key, sheet_removed_at");
+      .select("id, source, date, time, time_key, title, venue, officer_on_duty, staff_needed, booked_by, contact_info, remarks, program, menu, volunteers, is_holiday, sheet_key, sheet_removed_at");
     if (dbError) throw new Error(dbError.message);
 
     type Row = {
@@ -155,6 +155,9 @@ export async function POST(request: Request) {
       booked_by: string | null;
       contact_info: string | null;
       remarks: string | null;
+      program: DbSheetRow["program"] | null;
+      menu: string | null;
+      volunteers: string | null;
       is_holiday: boolean;
       sheet_key: string | null;
       sheet_removed_at: string | null;
@@ -174,6 +177,9 @@ export async function POST(request: Request) {
         bookedBy: r.booked_by,
         contactInfo: r.contact_info,
         remarks: r.remarks,
+        program: r.program ?? "general",
+        menu: r.menu,
+        volunteers: r.volunteers,
         isHoliday: r.is_holiday,
         sheetKey: r.sheet_key,
         sheetRemovedAt: r.sheet_removed_at,

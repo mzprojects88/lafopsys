@@ -1,4 +1,5 @@
 import { parseCsv, parseDate } from "./bank-statement.ts";
+import type { CalendarProgram } from "../types/calendar.ts";
 
 /**
  * Reading the master calendar's Google Sheet, and working out what changed.
@@ -18,9 +19,15 @@ import { parseCsv, parseDate } from "./bank-statement.ts";
 export const CALENDAR_SHEET_ID = "1krxg8BjkZgd0kSHlwm3w25Nq40MMW5DIzJC6gtgj5_g";
 /** The list tab of 2026. */
 export const CALENDAR_SHEET_GID = "590670193";
-/** Every list tab, one per year: on 25 Nov 2026 the 2027 events were moved to a tab of their own ("2027"),
- * and a sync that read only the 2026 tab would have hidden them all. Same columns in each. */
-export const CALENDAR_SHEET_GIDS = [CALENDAR_SHEET_GID, "452703845"];
+/** Every tab that holds events. The yearly lists: on 25 Nov 2026 the 2027 events were moved to a tab of their
+ * own ("2027"), and a sync that read only the 2026 tab would have hidden them all. The program tabs (0171):
+ * Spiritual Care and Care Cart keep their own lists, with their own columns. */
+export const CALENDAR_SHEET_TABS: { gid: string; program: CalendarProgram }[] = [
+  { gid: CALENDAR_SHEET_GID, program: "general" },
+  { gid: "452703845", program: "general" },
+  { gid: "103238911", program: "spiritual_care" },
+  { gid: "1085375219", program: "care_cart" },
+];
 
 /** The export endpoint, not gviz: gviz omits rows the sheet has hidden, and
  * the sheet hides everything in the past. */
@@ -100,6 +107,10 @@ export interface SheetEvent {
   bookedBy: string | null;
   contactInfo: string | null;
   remarks: string | null;
+  /** The tab it was read from (0171). */
+  program: CalendarProgram;
+  menu: string | null;
+  volunteers: string | null;
   isHoliday: boolean;
   timeKey: string;
   key: string;
@@ -119,14 +130,17 @@ export interface SheetParseResult {
 const COLUMN_ALIASES: Record<string, string[]> = {
   date: ["date"],
   time: ["time"],
-  title: ["event", "events", "activity"],
-  venue: ["venue", "location"],
+  title: ["event", "events", "activity", "activity / event"],
+  venue: ["venue", "location", "venue / area"],
   // "Off Staff" is what the sheet has called this column since about October 2026.
   officer: ["officer on duty", "officer", "ood", "off staff"],
   staffNeeded: ["staff needed", "staff"],
   bookedBy: ["booked by", "booked"],
   contactInfo: ["contact name and number", "contact", "contact number"],
   remarks: ["remarks", "notes"],
+  // The Care Cart tab's own columns (0171).
+  menu: ["menu"],
+  volunteers: ["name of volunteers", "volunteers"],
 };
 
 /** A header cell as its plain name: "Booked By:" -> "booked by", and a note in brackets after the name is
@@ -148,7 +162,7 @@ function text(v: string | undefined): string | null {
  * junk officers and holidays are the cleaner's, so a row parses the same
  * whichever path it came in by.
  */
-export function parseSheetCsv(csv: string): SheetParseResult {
+export function parseSheetCsv(csv: string, program: CalendarProgram = "general"): SheetParseResult {
   const grid = parseCsv(csv);
   const problems: string[] = [];
   if (grid.length === 0) return { events: [], duplicates: 0, forwardFilled: 0, problems: ["The sheet came back empty."] };
@@ -221,6 +235,9 @@ export function parseSheetCsv(csv: string): SheetParseResult {
       bookedBy: text(cell(row, "bookedBy")),
       contactInfo: text(cell(row, "contactInfo")),
       remarks: text(cell(row, "remarks")),
+      program,
+      menu: text(cell(row, "menu")),
+      volunteers: text(cell(row, "volunteers")),
       isHoliday,
       timeKey,
       key,
@@ -249,6 +266,9 @@ export interface DbSheetRow {
   bookedBy: string | null;
   contactInfo: string | null;
   remarks: string | null;
+  program?: CalendarProgram;
+  menu?: string | null;
+  volunteers?: string | null;
   isHoliday: boolean;
   sheetKey: string | null;
   sheetRemovedAt: string | null;
@@ -265,6 +285,9 @@ export interface SheetRowPatch {
   booked_by?: string | null;
   contact_info?: string | null;
   remarks?: string | null;
+  program?: CalendarProgram;
+  menu?: string | null;
+  volunteers?: string | null;
   is_holiday?: boolean;
   sheet_key?: string;
   sheet_synced_at: string;
@@ -283,6 +306,9 @@ export interface NewSheetRow {
   booked_by: string | null;
   contact_info: string | null;
   remarks: string | null;
+  program: CalendarProgram;
+  menu: string | null;
+  volunteers: string | null;
   is_holiday: boolean;
   source: "sheet";
   sheet_key: string;
@@ -378,6 +404,9 @@ export function reconcile(input: ReconcileInput): ReconcilePlan {
         booked_by: s.bookedBy,
         contact_info: s.contactInfo,
         remarks: s.remarks,
+        program: s.program ?? "general",
+        menu: s.menu ?? null,
+        volunteers: s.volunteers ?? null,
         is_holiday: s.isHoliday,
         source: "sheet",
         sheet_key: s.key,
@@ -404,6 +433,9 @@ export function reconcile(input: ReconcileInput): ReconcilePlan {
     if ((row.bookedBy ?? null) !== s.bookedBy) set("booked_by", s.bookedBy);
     if ((row.contactInfo ?? null) !== s.contactInfo) set("contact_info", s.contactInfo);
     if ((row.remarks ?? null) !== s.remarks) set("remarks", s.remarks);
+    if ((row.program ?? "general") !== (s.program ?? "general")) set("program", s.program ?? "general");
+    if ((row.menu ?? null) !== (s.menu ?? null)) set("menu", s.menu ?? null);
+    if ((row.volunteers ?? null) !== (s.volunteers ?? null)) set("volunteers", s.volunteers ?? null);
     if (row.isHoliday !== s.isHoliday) set("is_holiday", s.isHoliday);
 
     // Bookkeeping that does not count as a change to the event.
@@ -471,18 +503,57 @@ export interface CopyEvent {
   bookedBy: string | null;
   contactInfo: string | null;
   remarks: string | null;
+  menu?: string | null;
+  volunteers?: string | null;
+}
+
+const inOrder = (events: CopyEvent[]) =>
+  [...events].sort((a, b) => a.date.localeCompare(b.date) || timeSortKey(a.time).localeCompare(timeSortKey(b.time)) || a.title.localeCompare(b.title));
+
+const weekdayOf = (date: string) => {
+  const [y, m, d] = date.split("-").map(Number);
+  return WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()] ?? "";
+};
+
+/** A program tab's rows, in that tab's own columns (0171):
+ *   Care Cart: weekday, date, time, activity, MENU, venue / area, staff needed, name of volunteers, remarks (9);
+ *   Spiritual Care and LAF Activity Center: weekday, date, time, activity, venue, staff needed, remarks (7). */
+export function programRows(events: CopyEvent[], program: Exclude<CalendarProgram, "general">): string[][] {
+  return inOrder(events).map((e) =>
+    program === "care_cart"
+      ? [weekdayOf(e.date), e.date, e.time ?? "", e.title, e.menu ?? "", e.venue ?? "", e.staffNeeded ?? "", e.volunteers ?? "", e.remarks ?? ""]
+      : [weekdayOf(e.date), e.date, e.time ?? "", e.title, e.venue ?? "", e.staffNeeded ?? "", e.remarks ?? ""]
+  );
+}
+
+export interface Celebrant {
+  name: string;
+  /** `yyyy-MM-dd`. */
+  birthDate: string;
+}
+
+/** A person's age on `today` (`yyyy-MM-dd`): the Birthday Celebrants tab shows the age today, not the age they turn. */
+export function ageOn(birthDate: string, today: string): number {
+  const [by, bm, bd] = birthDate.split("-").map(Number);
+  const [ty, tm, td] = today.split("-").map(Number);
+  return ty - by - (tm < bm || (tm === bm && td < bd) ? 1 : 0);
+}
+
+/** The Birthday Celebrants tab: name, birthday, age today, notes; January first, by month and day. */
+export function birthdayRows(people: Celebrant[], today: string): (string | number)[][] {
+  return [...people]
+    .sort((a, b) => a.birthDate.slice(5).localeCompare(b.birthDate.slice(5)) || a.name.localeCompare(b.name))
+    .map((p) => [p.name, p.birthDate, ageOn(p.birthDate, today), ""]);
 }
 
 /** The copy's rows, oldest day first. The date goes out as `yyyy-MM-dd` and the copy's script turns it into
  * a real date; every row carries its weekday and date (the original wrote them on a day's first event only),
  * so the copy can be filtered and sorted. */
 export function copyRows(events: CopyEvent[]): string[][] {
-  return [...events]
-    .sort((a, b) => a.date.localeCompare(b.date) || timeSortKey(a.time).localeCompare(timeSortKey(b.time)) || a.title.localeCompare(b.title))
+  return inOrder(events)
     .map((e) => {
-      const [y, m, d] = e.date.split("-").map(Number);
       return [
-        WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()] ?? "",
+        weekdayOf(e.date),
         e.date,
         e.time ?? "",
         e.title,
@@ -513,4 +584,19 @@ export function mergeSheets(parts: SheetParseResult[]): SheetParseResult {
     }
   }
   return merged;
+}
+
+/** Monday to Friday from `from` to `until` (both `yyyy-MM-dd`, both included), for "repeat every weekday
+ * until" on the Calendar: a daily devotion is typed once, not once a day. Never more than `max` days. */
+export function weekdaysBetween(from: string, until: string, max = 70): string[] {
+  const day = (iso: string) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+  const days: string[] = [];
+  for (let t = day(from); t <= day(until) && days.length < max; t += 86_400_000) {
+    const w = new Date(t).getUTCDay();
+    if (w !== 0 && w !== 6) days.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return days;
 }

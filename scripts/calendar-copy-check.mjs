@@ -4,16 +4,16 @@
 //   node --env-file=.env.prod.local scripts/calendar-copy-check.mjs
 import pg from "pg";
 import { pgUrl } from "./lib/db-url.mjs";
-import { buildKey, CALENDAR_SHEET_GIDS, CALENDAR_SHEET_ID, copyRows, mergeSheets, normalizeTime, parseSheetCsv, sheetCsvUrl } from "../lib/utils/calendar-sheet.ts";
+import { buildKey, CALENDAR_SHEET_ID, CALENDAR_SHEET_TABS, copyRows, mergeSheets, normalizeTime, parseSheetCsv, sheetCsvUrl } from "../lib/utils/calendar-sheet.ts";
 
-// Every year's tab, as the sync reads them.
+// Every tab that holds events, as the sync reads them.
 const tabs = [];
-for (const gid of CALENDAR_SHEET_GIDS) {
+for (const { gid, program } of CALENDAR_SHEET_TABS) {
   const res = await fetch(sheetCsvUrl(CALENDAR_SHEET_ID, gid));
   if (!res.ok) throw new Error(`The sheet answered ${res.status} for tab ${gid}`);
-  tabs.push(parseSheetCsv(await res.text()));
+  tabs.push(parseSheetCsv(await res.text(), program));
 }
-console.log("events per tab:", tabs.map((t) => t.events.length).join(" + "));
+console.log("events per tab:", tabs.map((t, i) => `${CALENDAR_SHEET_TABS[i].program} ${t.events.length}`).join(" + "));
 const sheet = mergeSheets(tabs);
 if (sheet.problems.length) console.log("sheet problems:", sheet.problems.length);
 
@@ -21,8 +21,7 @@ const c = new pg.Client({ connectionString: pgUrl(), ssl: { rejectUnauthorized: 
 await c.connect();
 await c.query("begin read only");
 const { rows } = await c.query(
-  `select date::text, time, time_key, title, venue, officer_on_duty, staff_needed, booked_by, contact_info, remarks, source
-     from ops.calendar_events where sheet_removed_at is null`
+  `select to_jsonb(e) e from ops.calendar_events e where sheet_removed_at is null`
 );
 const { rows: [state] } = await c.query(
   `select (select calendar_sheet_sync_enabled from shared.app_settings where id) sync_on,
@@ -31,7 +30,9 @@ const { rows: [state] } = await c.query(
 await c.query("rollback");
 await c.end();
 
-const app = new Map(rows.map((r) => [buildKey(r.date, r.title, r.time_key ?? normalizeTime(r.time)), r]));
+// to_jsonb: the program columns (0171) are read when the database has them, and missing ones read as empty.
+const events = rows.map((r) => r.e);
+const app = new Map(events.map((r) => [buildKey(r.date, r.title, r.time_key ?? normalizeTime(r.time)), r]));
 const inSheet = new Map(sheet.events.map((e) => [e.key, e]));
 const same = (a, b) => (a ?? "") === (b ?? "");
 const fields = [
@@ -42,6 +43,9 @@ const fields = [
   ["booked by", (e) => e.bookedBy, (r) => r.booked_by],
   ["contact", (e) => e.contactInfo, (r) => r.contact_info],
   ["remarks", (e) => e.remarks, (r) => r.remarks],
+  ["program", (e) => e.program, (r) => r.program ?? "general"],
+  ["menu", (e) => e.menu, (r) => r.menu],
+  ["volunteers", (e) => e.volunteers, (r) => r.volunteers],
 ];
 let both = 0;
 const differs = Object.fromEntries(fields.map(([name]) => [name, 0]));
@@ -55,10 +59,10 @@ const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).form
 const onlySheet = [...inSheet.keys()].filter((k) => !app.has(k));
 const onlyApp = [...app.keys()].filter((k) => !inSheet.has(k));
 const upcoming = (keys) => keys.filter((k) => k.slice(0, 10) >= today).length;
-const copy = copyRows(rows.map((r) => ({ date: r.date, time: r.time, title: r.title, venue: r.venue, officerOnDuty: r.officer_on_duty, staffNeeded: r.staff_needed, bookedBy: r.booked_by, contactInfo: r.contact_info, remarks: r.remarks })));
+const copy = copyRows(events.filter((r) => (r.program ?? "general") === "general").map((r) => ({ date: r.date, time: r.time, title: r.title, venue: r.venue, officerOnDuty: r.officer_on_duty, staffNeeded: r.staff_needed, bookedBy: r.booked_by, contactInfo: r.contact_info, remarks: r.remarks })));
 
 console.log(`sheet sync is ${state.sync_on ? "ON" : "OFF"}; last good run ${state.last_run ?? "never"}`);
-console.log(`events: sheet ${inSheet.size}, ArkOS ${app.size} (added in ArkOS: ${rows.filter((r) => r.source === "app").length})`);
+console.log(`events: sheet ${inSheet.size}, ArkOS ${app.size} (added in ArkOS: ${events.filter((r) => r.source === "app").length})`);
 console.log(`in both: ${both} | only in the sheet: ${onlySheet.length} (today or later: ${upcoming(onlySheet)}) | only in ArkOS: ${onlyApp.length} (today or later: ${upcoming(onlyApp)})`);
 console.log("cells that differ, of the events in both:", JSON.stringify(differs));
-console.log(`the copy sheet would hold ${copy.length} rows, ${copy.filter((r) => r[1] < today).length} of them past, from ${copy[0]?.[1]} to ${copy.at(-1)?.[1]}`);
+console.log(`the copy's yearly lists would hold ${copy.length} rows, ${copy.filter((r) => r[1] < today).length} of them past, from ${copy[0]?.[1]} to ${copy.at(-1)?.[1]}`);

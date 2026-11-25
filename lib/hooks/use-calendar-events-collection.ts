@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
 import { useRole } from "@/context/role-provider";
-import type { CalendarEvent } from "@/lib/types/calendar";
+import type { CalendarProgram, CalendarEvent } from "@/lib/types/calendar";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
 
@@ -19,6 +19,9 @@ interface CalendarEventRow {
   booked_by: string | null;
   contact_info: string | null;
   remarks: string | null;
+  program: CalendarProgram | null;
+  menu: string | null;
+  volunteers: string | null;
   is_holiday: boolean;
   source: "app" | "sheet";
   sheet_removed_at: string | null;
@@ -39,6 +42,9 @@ function toCalendarEvent(row: CalendarEventRow): CalendarEvent {
     bookedBy: row.booked_by ?? undefined,
     contactInfo: row.contact_info ?? undefined,
     remarks: row.remarks ?? undefined,
+    program: row.program ?? "general",
+    menu: row.menu ?? undefined,
+    volunteers: row.volunteers ?? undefined,
     isHoliday: row.is_holiday,
     source: row.source,
     sheetRemovedAt: row.sheet_removed_at ?? undefined,
@@ -62,6 +68,10 @@ function toRow(input: CalendarEventInput) {
     booked_by: text(input.bookedBy),
     contact_info: text(input.contactInfo),
     remarks: text(input.remarks),
+    program: input.program,
+    // The two Care Cart boxes are kept only on a Care Cart event.
+    menu: input.program === "care_cart" ? text(input.menu) : null,
+    volunteers: input.program === "care_cart" ? text(input.volunteers) : null,
     is_holiday: input.isHoliday,
   };
 }
@@ -105,6 +115,17 @@ export function useCalendarEventsData() {
     return { ok: true };
   }
 
+  /** The same event on several days ("repeat every weekday until"): all of them saved, or none. */
+  async function addEvents(inputs: CalendarEventInput[]): Promise<MutationResult> {
+    const { error } = await createClient()
+      .schema("ops")
+      .from("calendar_events")
+      .insert(inputs.map((input) => ({ ...toRow(input), source: "app", created_by: staffId ?? null, updated_by: staffId ?? null })));
+    if (error) return { ok: false, error: error.message };
+    await calendarEventsStore.refetch();
+    return { ok: true };
+  }
+
   async function updateEvent(id: string, input: CalendarEventInput): Promise<MutationResult> {
     const { error } = await createClient()
       .schema("ops")
@@ -123,5 +144,5 @@ export function useCalendarEventsData() {
     return { ok: true };
   }
 
-  return { events, loading, error, addEvent, updateEvent, deleteEvent, refetch: calendarEventsStore.refetch };
+  return { events, loading, error, addEvent, addEvents, updateEvent, deleteEvent, refetch: calendarEventsStore.refetch };
 }
