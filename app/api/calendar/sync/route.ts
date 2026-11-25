@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { dayKey } from "@/lib/utils/dtr";
-import { normalizeTime, parseSheetCsv, reconcile, sheetCsvUrl, type DbSheetRow } from "@/lib/utils/calendar-sheet";
+import { CALENDAR_SHEET_GIDS, CALENDAR_SHEET_ID, mergeSheets, normalizeTime, parseSheetCsv, reconcile, sheetCsvUrl, type DbSheetRow } from "@/lib/utils/calendar-sheet";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -99,13 +99,17 @@ export async function POST(request: Request) {
 
   try {
     // ---- fetch ----
-    const response = await fetch(sheetCsvUrl(), { cache: "no-store", redirect: "follow", headers: { accept: "text/csv" } });
-    const contentType = response.headers.get("content-type") ?? "";
-    if (!response.ok || !contentType.includes("text/csv")) {
-      throw new Error(`Google returned ${response.status} ${contentType || "(no content type)"} — is the sheet still shared as "anyone with the link"?`);
+    // Every year's tab, or nothing: a tab that does not load must stop the run, or its events would be hidden.
+    const csvs: string[] = [];
+    for (const gid of CALENDAR_SHEET_GIDS) {
+      const response = await fetch(sheetCsvUrl(CALENDAR_SHEET_ID, gid), { cache: "no-store", redirect: "follow", headers: { accept: "text/csv" } });
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!response.ok || !contentType.includes("text/csv")) {
+        throw new Error(`Google returned ${response.status} ${contentType || "(no content type)"} for tab ${gid} — is the sheet still shared as "anyone with the link"?`);
+      }
+      csvs.push(await response.text());
     }
-    const csv = await response.text();
-    const hash = createHash("sha256").update(csv).digest("hex");
+    const hash = createHash("sha256").update(csvs.join("\n\u0000\n")).digest("hex");
 
     // ---- unchanged since last time? ----
     const { data: last } = await admin
@@ -123,7 +127,11 @@ export async function POST(request: Request) {
     }
 
     // ---- read ----
-    const parsed = parseSheetCsv(csv);
+    const tabs = csvs.map(parseSheetCsv);
+    // A tab whose header can't be read is a broken tab, not an empty year.
+    const broken = tabs.find((t) => t.events.length === 0 && t.problems.length > 0);
+    if (broken) throw new Error(broken.problems[0]);
+    const parsed = mergeSheets(tabs);
     if (parsed.events.length === 0) {
       throw new Error(parsed.problems[0] ?? "The sheet had no events in it.");
     }

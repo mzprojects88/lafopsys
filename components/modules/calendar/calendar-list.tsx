@@ -66,7 +66,7 @@ export function CalendarList({
       ),
     },
     { id: "venue", header: "Venue", accessorFn: (e) => e.venue ?? "", cell: ({ row }) => <VenueBadge venue={row.original.venue} /> },
-    { id: "officer", header: "Officer on duty", accessorFn: (e) => e.officerOnDuty ?? "", cell: ({ row }) => row.original.officerOnDuty ?? <span className="text-muted-foreground">—</span> },
+    { id: "officer", header: "Off Staff", accessorFn: (e) => e.officerOnDuty ?? "", cell: ({ row }) => row.original.officerOnDuty ?? <span className="text-muted-foreground">—</span> },
     { id: "staff", header: "Staff needed", accessorFn: (e) => e.staffNeeded ?? "", cell: ({ row }) => row.original.staffNeeded ?? <span className="text-muted-foreground">—</span> },
     { id: "booked", header: "Booked by", accessorFn: (e) => e.bookedBy ?? "", cell: ({ row }) => row.original.bookedBy ?? <span className="text-muted-foreground">—</span> },
     { id: "contact", header: "Contact", accessorFn: (e) => e.contactInfo ?? "", cell: ({ row }) => row.original.contactInfo ?? <span className="text-muted-foreground">—</span> },

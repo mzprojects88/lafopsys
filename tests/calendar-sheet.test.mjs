@@ -4,7 +4,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildKey, normalizeTime, normalizeTitle, parseSheetCsv, reconcile, sheetCsvUrl } from "../lib/utils/calendar-sheet.ts";
+import { buildKey, CALENDAR_SHEET_GIDS, copyRows, COPY_WIDTH, mergeSheets, normalizeTime, normalizeTitle, parseSheetCsv, reconcile, sheetCsvUrl, timeSortKey } from "../lib/utils/calendar-sheet.ts";
 
 describe("normalizeTime", () => {
   it("turns every clock form into HH:MM", () => {
@@ -243,5 +243,79 @@ describe("reconcile", () => {
     const plan = run([sheetEvent("2026-09-10", "Visit", "3:00 PM")], [row]);
     assert.equal(plan.updates.length, 1);
     assert.equal(plan.updates[0].patch.sheet_key, "2026-09-10|visit|15:00");
+  });
+});
+
+// 25 Nov 2026: the sheet's header row had become
+//   " ,Date,Time,Event ,Venue,Off Staff ,Staff Needed,Booked By:,Contact Name and Number,Remarks (w/o food, ...)"
+// and two columns were no longer read: "Off Staff" (214 cells) and the Remarks with a note in brackets (268).
+describe("the sheet's header as it is today", () => {
+  const header = ' ,Date,Time,Event ,Venue,Off Staff ,Staff Needed,Booked By:,Contact Name and Number,"Remarks (w/o food, type of food, no. of visitors, requirements needed)"';
+  it("reads Off Staff and the Remarks with a note in brackets", () => {
+    const { events, problems } = parseSheetCsv([header, 'Thursday,11/26/2026,10:00 AM,Book reading,NCH,Des,2,Sample Group,Sample Person 0917,"w/o food, 8 visitors"'].join("\n"));
+    assert.deepEqual(problems, []);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].officerOnDuty, "Des");
+    assert.equal(events[0].remarks, "w/o food, 8 visitors");
+    assert.equal(events[0].bookedBy, "Sample Group");
+    assert.equal(events[0].staffNeeded, "2");
+  });
+});
+
+describe("the copy sheet's rows (ArkOS is the master calendar)", () => {
+  const ev = (date, time, title, more = {}) => ({ date, time, title, venue: null, officerOnDuty: null, staffNeeded: null, bookedBy: null, contactInfo: null, remarks: null, ...more });
+
+  it("orders a day: all day, then by the clock (a range by its start), then words, then no time", () => {
+    assert.deepEqual(
+      ["3:00 PM", null, "TBD", "1:00 PM - 5:00 PM", "All day", "10:00 AM", "12:00 NN"].map(timeSortKey),
+      ["15:00", "99:99", "99:00", "13:00", "00:00", "10:00", "12:00"]
+    );
+  });
+
+  it("writes columns A to J, oldest day first, each row with its weekday and date", () => {
+    const rows = copyRows([
+      ev("2026-11-27", "1:00 PM - 5:00 PM", "Afternoon visit", { venue: "NCH" }),
+      ev("2026-11-26", "10:00 AM", "Book reading", { venue: "NCH", officerOnDuty: "Des", staffNeeded: "2", bookedBy: "Sample Group", contactInfo: "09171234567", remarks: "w/o food" }),
+      ev("2026-11-27", "10:00 AM", "Morning visit"),
+    ]);
+    assert.ok(rows.every((r) => r.length === COPY_WIDTH));
+    assert.deepEqual(rows[0], ["Thursday", "2026-11-26", "10:00 AM", "Book reading", "NCH", "Des", "2", "Sample Group", "09171234567", "w/o food"]);
+    assert.deepEqual(rows.map((r) => [r[0], r[1], r[3]]), [
+      ["Thursday", "2026-11-26", "Book reading"],
+      ["Friday", "2026-11-27", "Morning visit"],
+      ["Friday", "2026-11-27", "Afternoon visit"],
+    ]);
+    assert.deepEqual(rows[1].slice(4), ["", "", "", "", "", ""]);
+  });
+
+  it("what the copy holds reads back as the same events (the copy could feed the app again)", () => {
+    const events = [
+      ev("2026-12-01", "10:00 AM", "Drawing", { venue: "NCH", officerOnDuty: "Cath", remarks: "8 visitors" }),
+      ev("2026-12-01", "1:00 PM", "Film showing", { venue: "LAF", bookedBy: "Sample Group", contactInfo: "Sample Person" }),
+    ];
+    const header = " ,Date,Time,Event ,Venue,Off Staff ,Staff Needed,Booked By:,Contact Name and Number,Remarks (notes)";
+    const usDate = (iso) => { const [y, m, d] = iso.split("-").map(Number); return `${m}/${d}/${y}`; };
+    const csv = [header, ...copyRows(events).map((r) => [r[0], usDate(r[1]), ...r.slice(2)].join(","))].join("\n");
+    const back = parseSheetCsv(csv).events;
+    assert.deepEqual(
+      back.map((e) => [e.date, e.time, e.title, e.venue, e.officerOnDuty, e.bookedBy, e.contactInfo, e.remarks]),
+      events.map((e) => [e.date, e.time, e.title, e.venue, e.officerOnDuty, e.bookedBy, e.contactInfo, e.remarks])
+    );
+  });
+});
+
+// 25 Nov 2026: the 2027 events were moved from the "2026" tab to a new "2027" tab the same afternoon.
+describe("a tab per year", () => {
+  const header = " ,Date,Time,Event ,Venue,Off Staff ,Staff Needed,Booked By:,Contact Name and Number,Remarks";
+  it("reads the 2026 and the 2027 tabs", () => {
+    assert.deepEqual(CALENDAR_SHEET_GIDS, ["590670193", "452703845"]);
+  });
+  it("the tabs make one calendar, and an event found in two of them is kept once", () => {
+    const y26 = parseSheetCsv([header, "Thursday,12/31/2026,10:00 AM,Year-end visit,NCH", "Friday,1/1/2027,,New Year's Day,HOLIDAY"].join("\n"));
+    const y27 = parseSheetCsv([header, "Friday,1/1/2027,,New Year's Day,HOLIDAY", "Monday,1/4/2027,10:00 AM,Book reading,NCH"].join("\n"));
+    const all = mergeSheets([y26, y27]);
+    assert.deepEqual(all.events.map((e) => e.date), ["2026-12-31", "2027-01-01", "2027-01-04"]);
+    assert.equal(all.duplicates, 1);
+    assert.equal(all.events[1].isHoliday, true);
   });
 });

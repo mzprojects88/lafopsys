@@ -16,8 +16,11 @@ import { parseCsv, parseDate } from "./bank-statement.ts";
  */
 
 export const CALENDAR_SHEET_ID = "1krxg8BjkZgd0kSHlwm3w25Nq40MMW5DIzJC6gtgj5_g";
-/** The list tab. The other tabs are scratch; the old month grids are gone. */
+/** The list tab of 2026. */
 export const CALENDAR_SHEET_GID = "590670193";
+/** Every list tab, one per year: on 25 Nov 2026 the 2027 events were moved to a tab of their own ("2027"),
+ * and a sync that read only the 2026 tab would have hidden them all. Same columns in each. */
+export const CALENDAR_SHEET_GIDS = [CALENDAR_SHEET_GID, "452703845"];
 
 /** The export endpoint, not gviz: gviz omits rows the sheet has hidden, and
  * the sheet hides everything in the past. */
@@ -118,15 +121,19 @@ const COLUMN_ALIASES: Record<string, string[]> = {
   time: ["time"],
   title: ["event", "events", "activity"],
   venue: ["venue", "location"],
-  officer: ["officer on duty", "officer", "ood"],
+  // "Off Staff" is what the sheet has called this column since about October 2026.
+  officer: ["officer on duty", "officer", "ood", "off staff"],
   staffNeeded: ["staff needed", "staff"],
   bookedBy: ["booked by", "booked"],
   contactInfo: ["contact name and number", "contact", "contact number"],
   remarks: ["remarks", "notes"],
 };
 
+/** A header cell as its plain name: "Booked By:" -> "booked by", and a note in brackets after the name is
+ * dropped ("Remarks (w/o food, type of food, no. of visitors, requirements needed)" -> "remarks"). Until
+ * 25 Nov 2026 that note kept the Remarks column from being read at all. */
 function normHeader(h: string): string {
-  return h.replace(/^﻿/, "").trim().toLowerCase().replace(/:$/, "").replace(/\s+/g, " ").trim();
+  return h.replace(/^﻿/, "").replace(/\(.*$/, "").trim().toLowerCase().replace(/:$/, "").replace(/\s+/g, " ").trim();
 }
 
 function text(v: string | undefined): string | null {
@@ -431,4 +438,79 @@ export function reconcile(input: ReconcileInput): ReconcilePlan {
   }
 
   return plan;
+}
+
+// ---------------------------------------------------------------------------
+// The copy sheet (ArkOS is the master calendar; LAF's copy of the sheet is filled from it)
+
+/** The list tab's columns A to J: weekday, date, time, event, venue, off staff, staff needed, booked by,
+ * contact, remarks. The copy keeps the original's own header row; only the rows under it are written. */
+export const COPY_WIDTH = 10;
+
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** Where an event sorts within its day: all-day first, then by the clock (a range by its start),
+ * then anything that is not a time ("TBD", "evening"), then events with no time. */
+export function timeSortKey(time: string | null | undefined): string {
+  if (!time) return "99:99";
+  const key = normalizeTime(time);
+  if (/^\d{2}:\d{2}$/.test(key)) return key;
+  if (key.startsWith("all day") || key === "whole day") return "00:00";
+  const start = normalizeTime(time.split(/\s*(?:-|–|—|\bto\b)\s*/i)[0]);
+  return /^\d{2}:\d{2}$/.test(start) ? start : "99:00";
+}
+
+export interface CopyEvent {
+  /** `yyyy-MM-dd`. */
+  date: string;
+  time: string | null;
+  title: string;
+  venue: string | null;
+  officerOnDuty: string | null;
+  staffNeeded: string | null;
+  bookedBy: string | null;
+  contactInfo: string | null;
+  remarks: string | null;
+}
+
+/** The copy's rows, oldest day first. The date goes out as `yyyy-MM-dd` and the copy's script turns it into
+ * a real date; every row carries its weekday and date (the original wrote them on a day's first event only),
+ * so the copy can be filtered and sorted. */
+export function copyRows(events: CopyEvent[]): string[][] {
+  return [...events]
+    .sort((a, b) => a.date.localeCompare(b.date) || timeSortKey(a.time).localeCompare(timeSortKey(b.time)) || a.title.localeCompare(b.title))
+    .map((e) => {
+      const [y, m, d] = e.date.split("-").map(Number);
+      return [
+        WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()] ?? "",
+        e.date,
+        e.time ?? "",
+        e.title,
+        e.venue ?? "",
+        e.officerOnDuty ?? "",
+        e.staffNeeded ?? "",
+        e.bookedBy ?? "",
+        e.contactInfo ?? "",
+        e.remarks ?? "",
+      ];
+    });
+}
+
+/** Several list tabs read as one calendar. An event found in two tabs is kept once. */
+export function mergeSheets(parts: SheetParseResult[]): SheetParseResult {
+  const seen = new Set<string>();
+  const merged: SheetParseResult = { events: [], duplicates: 0, forwardFilled: 0, problems: [] };
+  for (const part of parts) {
+    merged.duplicates += part.duplicates;
+    merged.forwardFilled += part.forwardFilled;
+    merged.problems.push(...part.problems);
+    for (const event of part.events) {
+      if (seen.has(event.key)) merged.duplicates += 1;
+      else {
+        seen.add(event.key);
+        merged.events.push(event);
+      }
+    }
+  }
+  return merged;
 }

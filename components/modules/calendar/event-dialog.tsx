@@ -28,7 +28,8 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { CALENDAR_VENUES, type CalendarEvent } from "@/lib/types/calendar";
 import { useCalendarEventsData, type CalendarEventInput } from "@/lib/hooks/use-calendar-events-collection";
 
-/** The people who appear as Officer on Duty in the sheet, offered as
+/** The people who appear in the sheet's "Off Staff" column (called "Officer on Duty" until late 2026; the label
+ * follows the sheet's own wording until management says what it means, owner 25 Nov 2026), offered as
  * suggestions. Free text is still allowed -- a new officer is not a config change. */
 const OFFICER_SUGGESTIONS = ["Butch", "Des", "Cath", "Queen"];
 const TIME_SUGGESTIONS = ["All day", "9:00 AM", "10:00 AM", "10:30 AM - 12:00 NN", "12:00 NN", "1:00 PM", "2:00 PM", "3:00 PM", "TBD"];
@@ -162,7 +163,7 @@ function EventForm({
               </datalist>
             </Field>
             <Field>
-              <FieldLabel htmlFor="ev-officer">Officer on duty</FieldLabel>
+              <FieldLabel htmlFor="ev-officer">Off Staff</FieldLabel>
               <Input id="ev-officer" list="ev-officer-suggestions" value={officer} onChange={(e) => setOfficer(e.target.value)} />
               <datalist id="ev-officer-suggestions">
                 {OFFICER_SUGGESTIONS.map((o) => (
