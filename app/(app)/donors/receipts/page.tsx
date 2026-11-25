@@ -61,7 +61,7 @@ export default function ReceiptsPage() {
 
   async function download(ar: AcknowledgmentReceipt) {
     setBusy(ar.id);
-    const result = await downloadPdf("/api/ar/pdf", { receiptId: ar.id }, `${ar.sequenceNumber}.pdf`);
+    const result = await downloadPdf("/api/ar/pdf", { receiptId: ar.id }, `${ar.sequenceNumber}.pdf`, true);
     setBusy(null);
     if (!result.ok) toast.error(result.error);
   }

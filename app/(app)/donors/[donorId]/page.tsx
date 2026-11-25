@@ -69,7 +69,8 @@ export default function DonorDetailPage({ params }: { params: Promise<{ donorId:
   }
 
   async function handleDownload(url: string, body: Record<string, unknown>, filename: string) {
-    const result = await downloadPdf(url, body, filename);
+    // Only the AR and the 2322 certificate download from here: both are named by the server after the donor.
+    const result = await downloadPdf(url, body, filename, true);
     if (!result.ok) toast.error(result.error);
   }
 

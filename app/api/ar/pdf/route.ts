@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { arFileName, attachmentHeader } from "@/lib/utils/ar-file-name";
 import { accreditationLine } from "@/lib/pdf/accreditation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -71,7 +72,7 @@ export async function POST(req: Request) {
   return new NextResponse(new Uint8Array(pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${receipt.sequence_number}.pdf"`,
+      "Content-Disposition": attachmentHeader(arFileName(donor?.name, receipt.sequence_number)),
       "Cache-Control": "no-store",
     },
   });

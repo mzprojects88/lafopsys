@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { arFileName, attachmentHeader } from "@/lib/utils/ar-file-name";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildDoneeCert, type DoneeCertLine } from "@/lib/pdf/donee-cert";
@@ -80,7 +81,7 @@ export async function POST(req: Request) {
   return new NextResponse(new Uint8Array(pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${cert.control_number}.pdf"`,
+      "Content-Disposition": attachmentHeader(arFileName(donor?.name, cert.control_number)),
       "Cache-Control": "no-store",
     },
   });

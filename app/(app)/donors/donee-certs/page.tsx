@@ -54,7 +54,7 @@ export default function DoneeCertsPage() {
 
   async function download(cert: DoneeCertificate) {
     setBusy(cert.id);
-    const result = await downloadPdf("/api/donee-cert/pdf", { certificateId: cert.id }, `${cert.controlNumber}.pdf`);
+    const result = await downloadPdf("/api/donee-cert/pdf", { certificateId: cert.id }, `${cert.controlNumber}.pdf`, true);
     setBusy(null);
     if (!result.ok) toast.error(result.error);
   }
