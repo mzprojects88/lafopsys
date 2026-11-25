@@ -71,7 +71,7 @@ export function AppSidebar() {
                         )}
                       >
                         <Icon className={cn("size-5 shrink-0", active ? "text-sidebar-accent-foreground" : "text-muted-foreground group-hover:text-foreground")} strokeWidth={1.75} />
-                        {open ? <span className="flex-1 truncate">{item.title}</span> : null}
+                        {open ? <span className="min-w-0 flex-1 leading-snug">{item.title}</span> : null}
                         {badge ? (
                           <span
                             title={`${badge} change${badge === 1 ? "" : "s"} on the original sheet to review`}

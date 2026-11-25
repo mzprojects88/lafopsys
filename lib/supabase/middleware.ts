@@ -5,10 +5,12 @@ import { isAdminOnlyPath } from "@/lib/rbac/hidden";
 
 // /api/calendar/sync, /api/patients/{house,master}-sheet-sync, /api/patients/sheet-export and /api/finance/month-drivers check a bearer secret
 // themselves: their callers (scheduled jobs, the copy sheet's script) have no session, and a redirect to /login would be silent.
-const PUBLIC_PATHS = ["/login", "/portal/login", "/api/calendar/sync", "/api/calendar/sheet-export", "/api/patients/house-sheet-sync", "/api/patients/master-sheet-sync", "/api/patients/sheet-export", "/api/programs/sheet-export", "/api/donors/tracker-sync", "/api/public/dashboard", "/api/programs/sheet-sync", "/api/db-sync", "/api/reports/scheduled-run", "/api/shop/send-emails", "/api/finance/month-drivers"];
+const PUBLIC_PATHS = ["/login", "/portal/login", "/api/calendar/sync", "/api/calendar/sheet-export", "/api/patients/house-sheet-sync", "/api/patients/master-sheet-sync", "/api/patients/sheet-export", "/api/programs/sheet-export", "/api/donors/tracker-sync", "/api/public/dashboard", "/api/programs/sheet-sync", "/api/db-sync", "/api/reports/scheduled-run", "/api/shop/send-emails", "/api/finance/month-drivers", "/book", "/api/book", "/api/bookings/reminders"];
+
+const isUnder = (pathname: string, p: string): boolean => pathname === p || pathname.startsWith(`${p}/`);
 
 function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  return PUBLIC_PATHS.some((p) => isUnder(pathname, p));
 }
 
 function isPortalPath(pathname: string): boolean {
@@ -30,6 +32,13 @@ const ENFORCE_AUTH = true;
  * enforcement point, staged in deliberately rather than turned on all at once.
  */
 export async function updateSession(request: NextRequest) {
+  // The booking site's own address (book.littlearkfoundation.org) serves the public booking pages and nothing
+  // else of ArkOS: any other path there goes to the booking page. No session is read or refreshed on that host.
+  if (request.nextUrl.hostname.startsWith("book.")) {
+    const path = request.nextUrl.pathname;
+    return isUnder(path, "/book") || isUnder(path, "/api/book") ? NextResponse.next({ request }) : NextResponse.redirect(new URL("/book", request.url));
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(supabaseUrl(), supabaseAnonKey(), {

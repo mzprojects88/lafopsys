@@ -9,10 +9,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *
  * The shop keeps its own outbox (shop.outbox, 0157) in the same shape: ops is carried between development and
  * production every hour, and a test order's email must never be sent from production. `schema` picks the outbox.
+ * LAF Activity Center Bookings has its own too (booking.outbox, 0172), for the same reason.
  */
 export const emailReady = () => !!process.env.RESEND_API_KEY;
 
-export async function sendPending(admin: SupabaseClient, schema: "ops" | "shop" = "ops"): Promise<{ sent: number; failed: number; held: number }> {
+export async function sendPending(admin: SupabaseClient, schema: "ops" | "shop" | "booking" = "ops"): Promise<{ sent: number; failed: number; held: number }> {
   const ops = admin.schema(schema);
   const key = process.env.RESEND_API_KEY;
   if (!key) {

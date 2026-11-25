@@ -49,9 +49,12 @@ export function qrRects(pixels: ArrayLike<number>, columns: number, rows: number
 }
 
 /** The QR modules for a card's link (error correction M, the quiet zone is left white on the card). */
-export async function cardQr(token: string): Promise<{ pixels: ArrayLike<number>; columns: number; rows: number }> {
+export const cardQr = (token: string) => textQr(CARD_LINK_BASE + token);
+
+/** The QR modules for any text (error correction M); the booking documents use it for their link (0172). */
+export async function textQr(text: string): Promise<{ pixels: ArrayLike<number>; columns: number; rows: number }> {
   const { default: bwipjs } = await import("bwip-js/node");
-  const raw = await bwipjs.raw({ bcid: "qrcode", text: CARD_LINK_BASE + token, eclevel: "M" } as Parameters<typeof bwipjs.raw>[0]);
+  const raw = await bwipjs.raw({ bcid: "qrcode", text, eclevel: "M" } as Parameters<typeof bwipjs.raw>[0]);
   const first = raw[0] as unknown as { pixs: number[]; pixx: number; pixy: number };
   return { pixels: first.pixs, columns: first.pixx, rows: first.pixy };
 }

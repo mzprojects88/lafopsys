@@ -40,6 +40,9 @@ const p = (module: ModuleKey, key: string, path: string, title: string, power?: 
 
 export const PAGES: PageDef[] = [
   p("dashboard", "home", "/dashboard", "Dashboard"),
+  p("bookings", "requests", "/bookings", "Bookings"),
+  p("bookings", "plan", "/bookings/plan", "Activity Plan"),
+  p("bookings", "settings", "/bookings/settings", "Booking settings"),
   p("calendar", "calendar", "/calendar", "Calendar"),
   p("calendar", "sync_log", "/calendar/sync-log", "Calendar sync log"),
   p("patients", "all", "/patients", "All Patients"),

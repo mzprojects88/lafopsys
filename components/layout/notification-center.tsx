@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { BedDouble, Bell, Bus, ClipboardList, CloudOff, Fuel, Mail, MapPin, PenLine, Receipt, UtensilsCrossed, Wrench, type LucideIcon } from "lucide-react";
+import { BedDouble, Bell, Bus, CalendarCheck, ClipboardList, CloudOff, Fuel, Mail, MapPin, PenLine, Receipt, UtensilsCrossed, Wrench, type LucideIcon } from "lucide-react";
+import { bookingRequestsStore } from "@/lib/hooks/use-bookings-collection";
 import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
 import { mealsServedStore } from "@/lib/hooks/use-meals-served";
 import { useTripsData } from "@/lib/hooks/use-trips-collection";
@@ -108,8 +109,11 @@ export function NotificationCenter() {
   const caseRole = roles.includes("social_worker") || roles.includes("ceo");
   // Budgets (0137): next year's budget is due; for those who key it in and the CEO who approves it.
   const budgetRole = roles.includes("admin") || roles.includes("ceo") || roles.includes("finance") || roles.includes("office_admin");
-  const popover = (r: Reminder[]) =>
+  // LAF Activity Center Bookings (0172): requests waiting for an answer and visits to record, for those who process them.
+  const bookingRole = roles.includes("admin") || roles.includes("social_worker") || roles.includes("office_admin");
+  const withCases = (r: Reminder[]) =>
     caseRole ? <CaseReminders>{(c) => <BellPopover reminders={[...r, ...c]} />}</CaseReminders> : <BellPopover reminders={r} />;
+  const popover = (r: Reminder[]) => (bookingRole ? <BookingReminders>{(b) => withCases([...r, ...b])}</BookingReminders> : withCases(r));
   const bell = (more: Reminder[]) => (
     <RequestReminders funds={budgetRole}>
       {(q) => (budgetRole ? <BudgetDue>{(b) => popover([...reminders, ...more, ...q, ...b])}</BudgetDue> : popover([...reminders, ...more, ...q]))}
@@ -156,6 +160,19 @@ function RequestReminders({ funds: seesFunds, children }: { funds: boolean; chil
   if (overdue.length)
     out.push({ id: "advances-overdue", title: `${overdue.length} cash advance${overdue.length === 1 ? " is" : "s are"} overdue`, body: "Not liquidated within the set days.", href: "/finance/funds", icon: Receipt });
   return seesFunds ? <LowFunds>{(f) => children([...out, ...f])}</LowFunds> : <>{children(out)}</>;
+}
+
+/** LAF Activity Center Bookings (0172): requests that wait for an answer (each holds its slot), and approved visits
+ * whose day has come and are not yet recorded. The database shows the requests only to those who may open the page. */
+function BookingReminders({ children }: { children: (reminders: Reminder[]) => React.ReactNode }) {
+  const { data } = useCollection(bookingRequestsStore);
+  const today = todayIso();
+  const pending = data.requests.filter((r) => r.status === "pending").length;
+  const toRecord = data.requests.filter((r) => r.status === "approved" && r.date <= today).length;
+  const out: Reminder[] = [];
+  if (pending) out.push({ id: "bookings-pending", title: `${pending} booking request${pending === 1 ? " waits" : "s wait"} for an answer`, body: "Each holds its slot at the LAF Activity Center until it is approved or declined.", href: "/bookings", icon: CalendarCheck });
+  if (toRecord) out.push({ id: "bookings-to-record", title: `${toRecord} visit${toRecord === 1 ? "" : "s"} to record`, body: "The day has come: record who came, or mark it Did not come.", href: "/bookings", icon: CalendarCheck });
+  return <>{children(out)}</>;
 }
 
 /** A fund below its top-up point with none on its way (0138); only for those who see Finance. */

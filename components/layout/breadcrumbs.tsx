@@ -17,6 +17,8 @@ const SEGMENT_LABELS: Record<string, string> = {
   stocks: "Operations Stocks",
   "id-cards": "ID cards",
   calendar: "Calendar",
+  bookings: "LAF Activity Center Bookings",
+  plan: "Activity Plan",
   "sync-log": "Sync log",
   executive: "Executive",
   hr: "HR",

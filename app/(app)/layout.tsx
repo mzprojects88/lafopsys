@@ -6,7 +6,7 @@ import { ErrorReporter } from "@/components/layout/error-reporter";
 
 export default function AppGroupLayout({ children }: { children: ReactNode }) {
   return (
-    <RealtimeProvider schemas={["ops", "shared", "inventory", "hr", "shop"]}>
+    <RealtimeProvider schemas={["ops", "shared", "inventory", "hr", "shop", "booking"]}>
       <AppShell>{children}</AppShell>
       <ErrorReporter />
       <AiConsentGate />

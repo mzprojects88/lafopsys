@@ -5,6 +5,7 @@ import { isAllowedLandingPath as isAllowedLandingPathIn, resolveLandingPath as r
 import {
   LayoutDashboard,
   Briefcase,
+  CalendarCheck,
   CalendarDays,
   Clock,
   Users,
@@ -85,6 +86,7 @@ export const NAV_ITEMS: NavItem[] = [
   // work, then the tools, with Settings last. Hidden modules keep their
   // place in the list and simply do not render.
   { title: "Dashboard", href: "/dashboard", group: "Main", icon: LayoutDashboard, module: "dashboard", viewOnly: true, note: "Figures from the modules the person can open." },
+  { title: "LAF Activity Center Bookings", href: "/bookings", group: "Main", icon: CalendarCheck, module: "bookings", note: "Requests from donors and groups to run activities for the children, from the public booking page." },
   { title: "Calendar", href: "/calendar", group: "Main", icon: CalendarDays, module: "calendar" },
   { title: "Patients & Admissions", href: "/patients", group: "Work", startsAt: "/patients/house-sheet", icon: Users, module: "patients", note: "Includes the house sheet, the floor plan and the rides." },
   { title: "Transport", href: "/transport", group: "Work", icon: Bus, module: "transport", note: "Pick-ups from NCH: the manifest and the driver's on-board ticks." },

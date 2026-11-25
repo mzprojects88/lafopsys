@@ -231,6 +231,23 @@ export const STATUS_DOMAIN_MAP: Record<string, Record<string, StatusTone>> = {
     other: "neutral",
     holiday: "warning",
   },
+  // The monthly Activity Plan sent to NCH (0172).
+  booking_plan: {
+    draft: "neutral",
+    submitted: "warning",
+    approved: "positive",
+    returned: "negative",
+  },
+  // LAF Activity Center Bookings (0172); "off_plan" is the chip beside a pending request.
+  booking: {
+    pending: "warning",
+    approved: "positive",
+    declined: "negative",
+    cancelled: "neutral",
+    completed: "info",
+    no_show: "negative",
+    off_plan: "info",
+  },
   // Shop orders (0156, 0157); "flagged" is the Needs a look chip beside the status.
   shop_order: {
     placed: "warning",
