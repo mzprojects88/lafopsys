@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ConfirmAttendance } from "@/components/modules/bookings/confirm-attendance";
 import { SignOutButton } from "@/components/modules/bookings/portal-forms";
 import { StatusPill, ui } from "@/components/modules/bookings/public-ui";
 import { portalHome, portalSession, type PortalVisit } from "@/lib/booking/portal";
@@ -25,6 +26,7 @@ function Visit({ v, upcoming }: { v: PortalVisit; upcoming: boolean }) {
       <p className="mt-1 text-[13px] text-[#557086]">
         {v.cameCount !== null ? `${v.cameCount} of ${v.volunteersCount} volunteers came · ${v.hours ?? 0} h` : `${v.namesGiven} of ${v.volunteersCount} volunteers named`} · Request ID {v.ref}
       </p>
+      {v.status === "completed" && v.confirmUntil ? <ConfirmAttendance refId={v.ref} members={v.members} until={v.confirmUntil} open={v.canConfirm} /> : null}
       {namesWanted ? (
         <p className="mt-2 rounded-xl bg-[#fff6dd] px-3 py-2 text-[14px] text-[#082f59]">
           Please give your volunteers&apos; names and emails by {longDate(v.namesDue)}.
@@ -74,6 +76,7 @@ export default async function PortalHomePage() {
         <a href="/book" className={`${ui.cta} mt-6`}>
           Book a visit
         </a>
+        {home.history.some((v) => v.canConfirm) ? <p className="mt-3 text-[15px] font-bold text-[#082f59]">A recent visit is waiting for you to confirm who came: see History of events.</p> : null}
       </section>
 
       <section className={ui.card}>

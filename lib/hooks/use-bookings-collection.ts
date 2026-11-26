@@ -37,7 +37,7 @@ const text = (v: unknown) => (typeof v === "string" ? v : "");
 const hhmm = (v: unknown) => text(v).slice(0, 5);
 const fail = (error: { message: string } | null): MutationResult => (error ? { ok: false, error: error.message } : { ok: true });
 
-const DEFAULT_SETTINGS: BookingSettings = { minDaysAhead: 14, maxDaysAhead: 60, maxVolunteers: 10, maxOpenRequests: 2, namesDueDays: 3, replyDays: 3, guidelines: "", prohibited: "", privacyNotice: "", siteUrl: "" };
+const DEFAULT_SETTINGS: BookingSettings = { minDaysAhead: 14, maxDaysAhead: 60, maxVolunteers: 10, maxOpenRequests: 2, namesDueDays: 3, replyDays: 3, attendanceDays: 7, guidelines: "", prohibited: "", privacyNotice: "", siteUrl: "" };
 
 export interface BookingSetup {
   settings: BookingSettings;
@@ -60,7 +60,7 @@ export const bookingSetupStore = createCollection<BookingSetup>({
   ],
   fetch: async () => {
     const [s, p, sl, c, a] = await Promise.all([
-      booking().from("settings").select("min_days_ahead, max_days_ahead, max_volunteers, max_open_requests, names_due_days, reply_days, guidelines, prohibited, privacy_notice, site_url").maybeSingle(),
+      booking().from("settings").select("min_days_ahead, max_days_ahead, max_volunteers, max_open_requests, names_due_days, reply_days, attendance_days, guidelines, prohibited, privacy_notice, site_url").maybeSingle(),
       booking().from("places").select("id, name, site, where_to_go, instructions, coordinator_name, coordinator_phone, open, sort").order("sort").order("name"),
       booking().from("slots").select("id, place_id, weekday, start_time, end_time, active").order("weekday").order("start_time"),
       booking().from("closures").select("id, place_id, date_from, date_to, reason").order("date_from", { ascending: false }),
@@ -77,6 +77,7 @@ export const bookingSetupStore = createCollection<BookingSetup>({
             maxOpenRequests: Number(s.data.max_open_requests),
             namesDueDays: Number(s.data.names_due_days),
             replyDays: Number(s.data.reply_days),
+            attendanceDays: Number(s.data.attendance_days ?? 7),
             guidelines: text(s.data.guidelines),
             prohibited: text(s.data.prohibited),
             privacyNotice: text(s.data.privacy_notice),
@@ -281,6 +282,7 @@ export function useBookingSetup() {
     if (patch.maxOpenRequests !== undefined) row.max_open_requests = patch.maxOpenRequests;
     if (patch.namesDueDays !== undefined) row.names_due_days = patch.namesDueDays;
     if (patch.replyDays !== undefined) row.reply_days = patch.replyDays;
+    if (patch.attendanceDays !== undefined) row.attendance_days = patch.attendanceDays;
     if (patch.guidelines !== undefined) row.guidelines = patch.guidelines;
     if (patch.prohibited !== undefined) row.prohibited = patch.prohibited;
     if (patch.privacyNotice !== undefined) row.privacy_notice = patch.privacyNotice;

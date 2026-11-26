@@ -49,7 +49,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
  * its volunteers' names until they are due, and may cancel before the day. Each of these is a call to the server,
  * which the database counts per caller.
  */
-export function TrackBooking({ initialRef }: { initialRef: string }) {
+export function TrackBooking({ initialRef, signedIn = false }: { initialRef: string; signedIn?: boolean }) {
   const [ref, setRef] = React.useState(initialRef);
   const [booking, setBooking] = React.useState<PublicBooking | null>(null);
   const [busy, setBusy] = React.useState(() => !!initialRef.trim());
@@ -220,6 +220,23 @@ export function TrackBooking({ initialRef }: { initialRef: string }) {
                     </label>
                   </div>
                 ))}
+                {b.canEditNames && signedIn ? (
+                  <button
+                    type="button"
+                    className={`${ui.secondary} self-start`}
+                    disabled={busy}
+                    onClick={async () => {
+                      const res = await fetch("/api/book/portal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "last-members", ref: b.ref }) }).catch(() => null);
+                      const out = (await res?.json().catch(() => null)) as { ok?: boolean; error?: string; people?: PublicMember[] } | null;
+                      if (!res?.ok || !out?.ok) return void setError(out?.error ?? "We could not reach the server.");
+                      if (!out.people?.length) return void setError("Your group has no earlier visit with names.");
+                      setError("");
+                      setNames(out.people.slice(0, b.volunteersCount));
+                    }}
+                  >
+                    Same people as last time
+                  </button>
+                ) : null}
                 {b.canEditNames && rows.length < b.volunteersCount ? (
                   <button type="button" className={`${ui.secondary} self-start`} disabled={busy} onClick={() => setNames([...rows, { name: "", email: "", under18: false }])}>
                     Add a volunteer

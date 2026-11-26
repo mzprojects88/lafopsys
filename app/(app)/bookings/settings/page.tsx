@@ -30,6 +30,7 @@ const LIMITS: { key: keyof BookingSettings; label: string; note: string; min: nu
   { key: "maxOpenRequests", label: "Open requests per email address", note: "Pending or approved, not yet held.", min: 1, max: 10 },
   { key: "namesDueDays", label: "Volunteers' names are due", note: "Days before the visit.", min: 0, max: 14 },
   { key: "replyDays", label: "We answer a request within", note: "Working days. Shown to the group.", min: 1, max: 14 },
+  { key: "attendanceDays", label: "Groups may confirm who came for", note: "Days after the visit, in the Volunteers Portal.", min: 0, max: 30 },
 ];
 
 /**

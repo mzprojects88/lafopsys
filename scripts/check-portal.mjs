@@ -128,6 +128,48 @@ try {
   const other = await one("select booking.web_request($1::jsonb, 'pc-3') r", [JSON.stringify(payload(place.id, open[3], { email: "noportal@example.org", contact_person: "First" }))]);
   await one("select booking.web_request($1::jsonb, 'pc-4') r", [JSON.stringify(payload(place.id, open[4], { email: "noportal@example.org", contact_person: "Second" }))]);
   check("a group without a portal account still follows its latest request", (await one("select contact_person from booking.groups where lower(email) = 'noportal@example.org'")).contact_person === "Second" && !!other.r?.ref);
+  // ---- step 3: the group confirms and corrects who came (0183) ----
+  if (await one("select count(*)::int n from pg_proc where proname = 'portal_attendance'").then((x) => x.n)) {
+    await service();
+    await c.query("update booking.settings set max_open_requests = 10"); // the sample group already has two
+    const visit = (await one("select booking.web_request($1::jsonb, 'pc-5') r", [JSON.stringify(payload(place.id, open[5], { volunteers_count: 3 }))])).r;
+    await c.query("update booking.requests set status = 'approved' where id = $1", [visit.id]);
+    await c.query("select booking.web_names($1, $2::jsonb, 'pc-n')", [visit.ref, JSON.stringify([{ name: "Sample One", email: "one@example.org" }, { name: "Sample Two", email: "two@example.org" }])]);
+    const ids = (await q("select id, name from booking.volunteers where request_id = $1 order by position", [visit.id])).map((x) => x.id);
+    const att = (g, ref, body) => tryIt("select booking.portal_attendance($1, $2, $3::jsonb) v", [g, ref, JSON.stringify(body)]);
+    const early = await att(group, visit.ref, { marks: [{ id: ids[1], came: false }] });
+    check("who came can be confirmed only once the visit is recorded", !early.ok && /once Little Ark Foundation has recorded the visit/.test(early.error), early.error ?? "accepted");
+    await c.query("update booking.requests set date = booking.today() - 2, status = 'completed', attended_hours = 2 where id = $1", [visit.id]);
+    await c.query("update booking.settings set feeds_ops = true");
+    await c.query("select booking.sync_volunteer_log($1)", [visit.id]);
+    const otherGroup = await att(nmg, visit.ref, { marks: [{ id: ids[1], came: false }] });
+    check("another group's session cannot touch this visit", !otherGroup.ok && /not found/.test(otherGroup.error), otherGroup.error ?? "accepted");
+    await c.query("insert into booking.volunteers (request_id, position, name, email) values ($1, 1, 'Sample Other', 'other@example.org')", [first.id]);
+    const foreign = (await one("select id from booking.volunteers where request_id <> $1 limit 1", [visit.id]))?.id;
+    if (foreign) {
+      const stray = await att(group, visit.ref, { marks: [{ id: foreign, came: false }] });
+      check("a person from another visit cannot be marked here", !stray.ok && /not on this visit/.test(stray.error), stray.error ?? "accepted");
+    }
+    const noMail = await att(group, visit.ref, { added: [{ name: "Sample Added" }] });
+    check("someone added needs an email address", !noMail.ok && /email address of Sample Added/.test(noMail.error), noMail.error ?? "accepted");
+    const done = await att(group, visit.ref, { marks: [{ id: ids[1], came: false }], added: [{ name: "Sample Three", email: "three@example.org", under18: true }] });
+    const lines = await q("select v.email from ops.volunteer_hours h join ops.volunteers v on v.id = h.volunteer_id where h.booking_request_id = $1 order by v.email", [visit.id]);
+    check("the group unticks one and adds one: the log follows (the switch on)", done.ok && done.rows[0].v.changed === 1 && done.rows[0].v.added === 1 && lines.map((l) => l.email).join() === "one@example.org,three@example.org", done.error ?? JSON.stringify(lines));
+    const trail = await one("select detail from booking.events where request_id = $1 and action = 'attendance' and by_requestor", [visit.id]);
+    check("the change is on the visit's trail, as the group's", trail?.detail === "1 mark(s) changed. 1 person(s) added.", JSON.stringify(trail));
+    const official = await one("select attended_volunteers, attended_hours::float h from booking.requests where id = $1", [visit.id]);
+    check("staff's record of the visit is left as it was", official.h === 2, JSON.stringify(official));
+    await c.query("update booking.settings set max_volunteers = 3");
+    const cap = await att(group, visit.ref, { added: [{ name: "Sample Four", email: "four@example.org" }] });
+    check("no more people than a visit may have", !cap.ok && /at most 3 volunteers/.test(cap.error), cap.error ?? "accepted");
+    await c.query("update booking.requests set date = booking.today() - 8 where id = $1", [visit.id]);
+    const late = await att(group, visit.ref, { marks: [{ id: ids[0], came: false }] });
+    check("after 7 days the group writes to the foundation instead", !late.ok && /until 7 days after the visit/.test(late.error), late.error ?? "accepted");
+    await as(worker);
+    const direct = await tryIt("select booking.portal_attendance($1, $2, '{}'::jsonb)", [group, visit.ref]);
+    check("nobody signed in to ArkOS calls it directly (the portal server only)", !direct.ok && direct.code === "42501", direct.error ?? "accepted");
+    await service();
+  }
 } catch (e) {
   failures++;
   console.log("FAIL", e.message);

@@ -21,6 +21,8 @@ export interface BookingSettings {
   maxOpenRequests: number;
   namesDueDays: number;
   replyDays: number;
+  /** Days after a visit the group may confirm who came from the portal (0183). */
+  attendanceDays: number;
   guidelines: string;
   prohibited: string;
   privacyNotice: string;

@@ -34,7 +34,7 @@ const row = (key: number, start: string, end: string): Row => ({ key, choice: ""
  * activities inside the slot), agree to the guidelines, send. The page checks what it can so a group is told at
  * once; the database checks everything again when the request is filed, and its word is final.
  */
-export function BookForm({ form }: { form: PublicBookingForm }) {
+export function BookForm({ form, prefill }: { form: PublicBookingForm; prefill?: { name: string; kind: string; contactPerson: string; email: string; mobile: string } | null }) {
   const { settings: st } = form;
   const firstMonth = addDays(form.today, st.minDaysAhead).slice(0, 7);
   const lastMonth = addDays(form.today, st.maxDaysAhead).slice(0, 7);
@@ -45,7 +45,7 @@ export function BookForm({ form }: { form: PublicBookingForm }) {
   const [reload, setReload] = React.useState(0);
   const [day, setDay] = React.useState<string | null>(null);
   const [slot, setSlot] = React.useState<PublicSlot | null>(null);
-  const [who, setWho] = React.useState({ requestorName: "", requestorKind: "organization", contactPerson: "", email: "", mobile: "", volunteers: "", hasMinors: false });
+  const [who, setWho] = React.useState({ requestorName: prefill?.name ?? "", requestorKind: prefill?.kind ?? "organization", contactPerson: prefill?.contactPerson ?? "", email: prefill?.email ?? "", mobile: prefill?.mobile ?? "", volunteers: "", hasMinors: false });
   const [rows, setRows] = React.useState<Row[]>([row(1, "", "")]);
   const [agree, setAgree] = React.useState({ guidelines: false, privacy: false });
   const [website, setWebsite] = React.useState("");
@@ -337,8 +337,8 @@ export function BookForm({ form }: { form: PublicBookingForm }) {
           </label>
           <label className="block">
             <span className={ui.label}>Email</span>
-            <input className={ui.input} type="email" inputMode="email" value={who.email} maxLength={200} autoComplete="email" onChange={(e) => setWho({ ...who, email: e.target.value })} />
-            <span className={`${ui.hint} block`}>We write to this address about your booking.</span>
+            <input className={ui.input} type="email" inputMode="email" value={who.email} maxLength={200} autoComplete="email" readOnly={!!prefill} onChange={(e) => setWho({ ...who, email: e.target.value })} />
+            <span className={`${ui.hint} block`}>{prefill ? "Your group's email in the Volunteers Portal: the booking goes to your group." : "We write to this address about your booking."}</span>
           </label>
           <label className="block">
             <span className={ui.label}>Contact number</span>

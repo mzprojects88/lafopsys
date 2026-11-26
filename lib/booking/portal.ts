@@ -49,6 +49,15 @@ export async function portalSession(): Promise<PortalSession | null> {
   return { sessionId: s.id as string, groupId: s.group_id as string, setupOnly: s.setup_only === true };
 }
 
+/**
+ * The one guard of every portal data action (step 3 onward): a full session of an unlocked group, never one opened
+ * with the one-time password (that may only set a password). The group always comes from here, never from a request.
+ */
+export async function requireGroupSession(): Promise<PortalSession | null> {
+  const session = await portalSession();
+  return session && !session.setupOnly ? session : null;
+}
+
 const WRONG = "That email address and password do not match. Check them, or ask Little Ark Foundation for a new one-time password.";
 /** Checked against when there is no password to check, so every failed sign-in takes about the same time. */
 const DUMMY_HASH = hashPassword("not a password anyone has");
@@ -118,6 +127,12 @@ export interface PortalVisit {
   namesDue: string;
   cameCount: number | null;
   hours: number | null;
+  /** Completed and still inside the days the group may confirm who came. */
+  canConfirm: boolean;
+  /** The last day the group may confirm who came (completed visits). */
+  confirmUntil: string | null;
+  /** Who was named for the visit (completed visits only): whether each came. */
+  members: { id: string; name: string; under18: boolean; came: boolean }[];
 }
 
 export interface PortalHome {
@@ -132,15 +147,21 @@ export async function portalHome(groupId: string): Promise<PortalHome | null> {
   if (!g) return null;
   const [{ data: rows }, { data: st }, { data: places }] = await Promise.all([
     db().from("requests").select("id, ref, date, start_time, end_time, status, place_id, volunteers_count, attended_hours").eq("group_id", groupId).order("date", { ascending: false }).limit(200),
-    db().from("settings").select("names_due_days").maybeSingle(),
+    db().from("settings").select("names_due_days, attendance_days").maybeSingle(),
     db().from("places").select("id, name"),
   ]);
   const ids = (rows ?? []).map((r) => r.id as string);
   const [{ data: items }, { data: members }] = ids.length
-    ? await Promise.all([db().from("request_items").select("request_id, position, activity").in("request_id", ids), db().from("volunteers").select("request_id, came").in("request_id", ids)])
+    ? await Promise.all([db().from("request_items").select("request_id, position, activity").in("request_id", ids), db().from("volunteers").select("id, request_id, position, name, under_18, came").in("request_id", ids)])
     : [{ data: [] }, { data: [] }];
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
   const due = Number(st?.names_due_days ?? 3);
+  const window = Number(st?.attendance_days ?? 7);
+  const addDays = (day: string, n: number) => {
+    const d = new Date(`${day}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
   const visits: PortalVisit[] = (rows ?? []).map((r) => {
     const mine = (members ?? []).filter((m) => m.request_id === r.id);
     const d = new Date(`${r.date}T00:00:00Z`);
@@ -158,6 +179,12 @@ export async function portalHome(groupId: string): Promise<PortalHome | null> {
       namesDue: d.toISOString().slice(0, 10),
       cameCount: r.status === "completed" ? mine.filter((m) => m.came !== false).length : null,
       hours: r.status === "completed" ? Number(r.attended_hours ?? 0) : null,
+      canConfirm: r.status === "completed" && today <= addDays(r.date as string, window),
+      confirmUntil: r.status === "completed" ? addDays(r.date as string, window) : null,
+      members:
+        r.status === "completed"
+          ? mine.sort((a, b) => a.position - b.position).map((m) => ({ id: m.id as string, name: m.name as string, under18: m.under_18 === true, came: m.came !== false }))
+          : [],
     };
   });
   const coming = (v: PortalVisit) => (v.status === "pending" || v.status === "approved") && v.date >= today;
@@ -166,4 +193,33 @@ export async function portalHome(groupId: string): Promise<PortalHome | null> {
     upcoming: visits.filter(coming).sort((a, b) => a.date.localeCompare(b.date)),
     history: visits.filter((v) => !coming(v)),
   };
+}
+
+/** The group confirms or corrects who came (booking.portal_attendance checks the visit is the group's, recorded, and
+ * still inside the window). Ticks are member ids with came; additions are full name, email and under 18. */
+export async function confirmAttendance(session: PortalSession, ref: string, marks: { id: string; came: boolean }[], added: { name: string; email: string; under18: boolean }[]): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
+  const { error } = await db().rpc("portal_attendance", { p_group: session.groupId, p_ref: ref, p: { marks, added } });
+  if (!error) return { ok: true };
+  const shown = error.code === "22023" || error.code === "P0002";
+  if (!shown) console.error(`[portal] attendance: ${error.code ?? ""} ${error.message}`);
+  return { ok: false, error: shown ? error.message : "Something went wrong on our side. Please try again in a few minutes.", status: shown ? 400 : 500 };
+}
+
+/** The people of the group's latest earlier visit, to offer on the names step of one of its bookings: full name,
+ * email and under 18. Only for the group's own booking, so nobody with just a Request ID sees an email. */
+export async function lastMembers(session: PortalSession, ref: string): Promise<{ name: string; email: string; under18: boolean }[] | null> {
+  const { data: r } = await db().from("requests").select("id, date, group_id").eq("ref", ref.toUpperCase().replace(/\s+/g, "")).maybeSingle();
+  if (!r || r.group_id !== session.groupId) return null;
+  const { data: earlier } = await db().from("requests").select("id").eq("group_id", session.groupId).neq("id", r.id).lte("date", r.date).order("date", { ascending: false }).limit(20);
+  for (const e of earlier ?? []) {
+    const { data: people } = await db().from("volunteers").select("name, email, under_18, position").eq("request_id", e.id).order("position");
+    if (people?.length) return people.filter((p) => p.email).map((p) => ({ name: p.name as string, email: p.email as string, under18: p.under_18 === true }));
+  }
+  return [];
+}
+
+/** The group's details, to fill in a new booking made from the portal. */
+export async function groupDetails(session: PortalSession): Promise<{ name: string; kind: string; contactPerson: string; email: string; mobile: string } | null> {
+  const { data: g } = await db().from("groups").select("name, kind, contact_person, email, mobile").eq("id", session.groupId).maybeSingle();
+  return g ? { name: g.name as string, kind: g.kind as string, contactPerson: g.contact_person as string, email: (g.email as string) ?? "", mobile: (g.mobile as string) ?? "" } : null;
 }

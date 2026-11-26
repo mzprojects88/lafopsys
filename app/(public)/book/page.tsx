@@ -1,4 +1,5 @@
 import { BookForm } from "@/components/modules/bookings/book-form";
+import { groupDetails, requireGroupSession } from "@/lib/booking/portal";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { PublicBookingForm } from "@/lib/types/booking";
 
@@ -21,5 +22,9 @@ export default async function BookPage() {
       </section>
     );
   }
-  return <BookForm form={form} />;
+  // Signed in to the Volunteers Portal: the group's details are filled in and its email is fixed, so the request
+  // lands in the group. Only from the session, never from the address.
+  const session = await requireGroupSession();
+  const prefill = session ? await groupDetails(session) : null;
+  return <BookForm form={form} prefill={prefill?.email ? prefill : null} />;
 }

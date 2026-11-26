@@ -1,4 +1,5 @@
 import { TrackBooking } from "@/components/modules/bookings/track-booking";
+import { requireGroupSession } from "@/lib/booking/portal";
 
 export const dynamic = "force-dynamic";
 
@@ -9,5 +10,6 @@ export const dynamic = "force-dynamic";
  */
 export default async function TrackPage({ searchParams }: { searchParams: Promise<{ ref?: string | string[] }> }) {
   const { ref } = await searchParams;
-  return <TrackBooking initialRef={typeof ref === "string" ? ref.slice(0, 40) : ""} />;
+  const signedIn = !!(await requireGroupSession());
+  return <TrackBooking initialRef={typeof ref === "string" ? ref.slice(0, 40) : ""} signedIn={signedIn} />;
 }
