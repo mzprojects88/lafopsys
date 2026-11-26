@@ -1,5 +1,5 @@
 import { NextResponse, after } from "next/server";
-import { UUID, callerMark, queueBookingEmail, readableError } from "@/lib/booking/server";
+import { UUID, callerMark, queueBookingEmail, readableError, requestPayload } from "@/lib/booking/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -31,40 +31,6 @@ export async function GET(request: Request) {
 }
 
 type Json = Record<string, unknown>;
-
-/** Only the fields the form has; whatever else was sent is dropped before the database sees it. */
-function requestPayload(b: Json): Json {
-  const items = Array.isArray(b.items) ? b.items.slice(0, 4) : [];
-  return {
-    place_id: text(b.place_id, 36),
-    date: text(b.date, 10),
-    start_time: text(b.start_time, 5),
-    requestor_name: text(b.requestor_name, 200),
-    requestor_kind: text(b.requestor_kind, 20),
-    contact_person: text(b.contact_person, 200),
-    email: text(b.email, 250),
-    mobile: text(b.mobile, 60),
-    volunteers_count: Number.isInteger(b.volunteers_count) ? b.volunteers_count : 0,
-    has_minors: b.has_minors === true,
-    agree_guidelines: b.agree_guidelines === true,
-    agree_privacy: b.agree_privacy === true,
-    items: items.map((raw) => {
-      const i = (raw && typeof raw === "object" ? raw : {}) as Json;
-      return {
-        source: text(i.source, 12),
-        plan_item_id: text(i.plan_item_id, 36),
-        activity: text(i.activity, 120),
-        purpose: text(i.purpose, 300),
-        who: text(i.who, 10),
-        ages: text(i.ages, 40),
-        gender: text(i.gender, 6),
-        start_time: text(i.start_time, 5),
-        end_time: text(i.end_time, 5),
-        materials: text(i.materials, 500),
-      };
-    }),
-  };
-}
 
 export async function POST(request: Request) {
   const raw = await request.text();

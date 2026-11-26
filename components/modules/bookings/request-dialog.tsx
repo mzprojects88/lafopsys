@@ -14,8 +14,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useBookingRequests, useBookingSetup, type BookingStep } from "@/lib/hooks/use-bookings-collection";
 import { useStaffRoster } from "@/lib/hooks/use-staff-roster";
+import { createClient } from "@/lib/supabase/client";
 import type { BookingRequest } from "@/lib/types/booking";
-import { BOOKING_STATUS_LABEL, REQUESTOR_KINDS, WEEKDAYS, durationLabel, participantsLabel } from "@/lib/utils/booking";
+import { BOOKING_STATUS_LABEL, CHANNEL_LABEL, REQUESTOR_KINDS, WEEKDAYS, durationLabel, participantsLabel } from "@/lib/utils/booking";
 import { formatDate, todayIso } from "@/lib/utils/date";
 import { formatTime12 } from "@/lib/utils/time12";
 
@@ -51,6 +52,30 @@ export function RequestDialog({ request, canEdit, onClose }: { request: BookingR
   const [names, setNames] = React.useState<string | null>(null);
   const [move, setMove] = React.useState({ date: request?.date ?? "", start: request?.start ?? "" });
   const [visit, setVisit] = React.useState({ children: "", volunteers: String(request?.volunteersCount ?? ""), hours: "" });
+  // The day’s other entries on the Calendar, so a clash with the foundation’s own events is seen before approving.
+  // Kept with the day they were read for; the booking’s own entry (its remark names the booking) is left out.
+  const [sameDay, setSameDay] = React.useState<{ day: string; events: { id: string; time: string; title: string; venue: string; holiday: boolean }[] } | null>(null);
+  const day = request?.date ?? "";
+  const seqNo = request?.seqNo ?? "";
+  React.useEffect(() => {
+    let live = true;
+    if (day)
+      void createClient()
+        .schema("ops")
+        .from("calendar_events")
+        .select("id, time, title, venue, is_holiday, remarks")
+        .eq("date", day)
+        .is("sheet_removed_at", null)
+        .order("time")
+        .then(({ data }) => {
+          if (!live) return;
+          const events = (data ?? []).filter((e) => !(seqNo && String(e.remarks ?? "").includes(seqNo))).map((e) => ({ id: e.id as string, time: String(e.time ?? ""), title: String(e.title ?? ""), venue: String(e.venue ?? ""), holiday: e.is_holiday === true }));
+          setSameDay({ day, events });
+        });
+    return () => {
+      live = false;
+    };
+  }, [day, seqNo]);
 
   if (!request) return null;
   const r = request;
@@ -115,8 +140,9 @@ export function RequestDialog({ request, canEdit, onClose }: { request: BookingR
             <Fact label="Requestor">{REQUESTOR_KINDS.find((k) => k.key === r.requestorKind)?.label}</Fact>
             <Fact label="Contact person">{r.contactPerson}</Fact>
             <Fact label="Volunteers">{`${r.volunteersCount}${r.hasMinors ? " (some under 18)" : ""}`}</Fact>
-            <Fact label="Email">{r.email}</Fact>
+            <Fact label="Email">{r.email || "None given (no email is sent)"}</Fact>
             <Fact label="Mobile">{r.mobile}</Fact>
+            <Fact label="How it came">{CHANNEL_LABEL[r.channel]}</Fact>
             {r.declineReason ? <Fact label="Why it was declined">{r.declineReason}</Fact> : null}
             {r.status === "completed" ? <Fact label="The visit">{`${r.attendedChildren ?? 0} children · ${r.attendedVolunteers ?? 0} volunteers · ${r.attendedHours ?? 0} h`}</Fact> : null}
           </dl>
@@ -154,6 +180,22 @@ export function RequestDialog({ request, canEdit, onClose }: { request: BookingR
               </Table>
             </div>
           </section>
+
+          {sameDay?.day === r.date && sameDay.events.length ? (
+            <section className="min-w-0 flex flex-col gap-1.5">
+              <h4 className="text-theme-sm font-medium text-foreground">Also on the Calendar that day</h4>
+              <ul className="flex flex-col gap-1 text-theme-sm text-muted-foreground">
+                {sameDay.events.map((e) => (
+                  <li key={e.id}>
+                    <span className="text-foreground">{e.title}</span>
+                    {e.time ? ` · ${e.time}` : ""}
+                    {e.venue ? ` · ${e.venue}` : ""}
+                    {e.holiday ? " · Holiday" : ""}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           {r.offPlan ? (
             <section className="min-w-0 flex flex-col gap-3 rounded-xl border border-warning/40 bg-warning/5 p-4">

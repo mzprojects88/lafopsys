@@ -1,7 +1,7 @@
 // lib/utils/booking.ts: the words and small sums of LAF Activity Center Bookings (0172).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { byNeedsAnswer, durationLabel, flowProblems, lastDayOf, minutesOf, monthCover, monthName, monthWeeks, participantsLabel, sameWeekdayIn, shiftMonth, slotsLine } from "../lib/utils/booking.ts";
+import { bookingMonths, bookingTotals, byNeedsAnswer, durationLabel, flowProblems, lastDayOf, minutesOf, monthCover, monthName, monthWeeks, participantsLabel, sameWeekdayIn, shiftMonth, slotsLine } from "../lib/utils/booking.ts";
 
 describe("a program flow", () => {
   const slot = ["10:00", "12:00"];
@@ -79,5 +79,31 @@ describe("small sums", () => {
     assert.equal(shiftMonth("2026-12", 1), "2027-01");
     assert.equal(shiftMonth("2027-01", -1), "2026-12");
     assert.equal(lastDayOf("2027-02"), "2027-02-28");
+  });
+});
+
+describe("the bookings report", () => {
+  const r = (date, status, c = null, v = null, h = null) => ({ date, status, attendedChildren: c, attendedVolunteers: v, attendedHours: h });
+  const rows = [
+    r("2026-12-10", "completed", 12, 5, 2),
+    r("2026-12-11", "completed", 8, 4, 1.5),
+    r("2026-12-14", "no_show"),
+    r("2026-12-15", "approved"),
+    r("2026-12-17", "pending"),
+    r("2026-12-18", "declined"),
+    r("2026-11-30", "cancelled"),
+    r("2027-01-05", "approved"),
+  ];
+  it("counts by the month of the visit, and takes children, volunteers and hours only from recorded visits", () => {
+    const months = bookingMonths(rows, 2026);
+    assert.equal(months.length, 12);
+    assert.deepEqual(months[11], { month: "2026-12", requests: 6, pending: 1, upcoming: 1, visits: 2, noShow: 1, declined: 1, cancelled: 0, children: 20, volunteers: 9, hours: 3.5 });
+    assert.equal(months[10].cancelled, 1);
+    assert.equal(months[0].requests, 0);
+  });
+  it("leaves another year out and adds the year up", () => {
+    const totals = bookingTotals(bookingMonths(rows, 2026));
+    assert.deepEqual(totals, { requests: 7, pending: 1, upcoming: 1, visits: 2, noShow: 1, declined: 1, cancelled: 1, children: 20, volunteers: 9, hours: 3.5 });
+    assert.equal(bookingTotals(bookingMonths(rows, 2027)).requests, 1);
   });
 });

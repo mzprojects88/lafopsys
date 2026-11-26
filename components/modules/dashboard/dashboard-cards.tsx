@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   BedDouble,
   Bus,
+  CalendarCheck,
   Fuel,
   HandCoins,
   HandHeart,
@@ -39,6 +40,7 @@ import { useVehicleExpenses } from "@/lib/hooks/use-vehicle-expenses-collection"
 import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
 import { useGoalActuals } from "@/lib/hooks/use-goal-actuals";
 import { useShopOrders } from "@/lib/hooks/use-shop-collection";
+import { useBookingRequests } from "@/lib/hooks/use-bookings-collection";
 import { proceedsOf, soldIn } from "@/lib/utils/shop";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
@@ -47,7 +49,7 @@ import { bedCounts } from "@/lib/utils/beds";
 import { useRole } from "@/lib/rbac/use-role";
 import { complianceCalendar } from "@/lib/utils/compliance";
 import { formatCurrency } from "@/lib/utils/currency";
-import { todayIso } from "@/lib/utils/date";
+import { formatDate, todayIso } from "@/lib/utils/date";
 import type { CardKey } from "@/lib/utils/dashboard-catalog";
 import type { DayWindow } from "@/lib/utils/period";
 
@@ -133,6 +135,8 @@ export function DashboardCard({ k, f, period, window, now }: { k: CardKey; f: Da
       return <BedsCard />;
     case "shop":
       return <ShopCard window={window} period={period} />;
+    case "bookings":
+      return <BookingsCard />;
   }
 }
 
@@ -226,6 +230,27 @@ function ShopCard({ window, period }: { window: DayWindow; period: string }) {
       sublabel={`${sold.orders} paid order${sold.orders === 1 ? "" : "s"} · ${period}${toPack ? ` · ${toPack} to pack now` : ""}`}
       icon={ShoppingBag}
       tone={toPack ? "warning" : undefined}
+    />
+  );
+}
+
+/** LAF Activity Center Bookings (0172, 0179): the requests waiting for an answer (each holds its slot), what is
+ * coming, and the visits whose day has come and are not recorded yet. Read under the person's own access to
+ * Bookings: without it the list is empty and the card shows zeros. */
+function BookingsCard() {
+  const { requests, loading } = useBookingRequests();
+  const today = todayIso();
+  const pending = requests.filter((r) => r.status === "pending").length;
+  const upcoming = requests.filter((r) => r.status === "approved" && r.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+  const toRecord = requests.filter((r) => r.status === "approved" && r.date <= today).length;
+  return (
+    <Card
+      href="/bookings"
+      label="Activity Center bookings"
+      value={loading ? "…" : String(pending)}
+      sublabel={`pending approval · ${upcoming.length} upcoming${upcoming[0] ? `, next ${formatDate(upcoming[0].date, "EEE, MMM d")}` : ""}${toRecord ? ` · ${toRecord} to record` : ""}`}
+      icon={CalendarCheck}
+      tone={pending || toRecord ? "warning" : undefined}
     />
   );
 }

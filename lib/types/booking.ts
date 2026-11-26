@@ -98,8 +98,11 @@ export interface BookingRequest {
   requestorName: string;
   requestorKind: RequestorKind;
   contactPerson: string;
+  /** Empty on a request staff filed for someone without an email address. */
   email: string;
   mobile: string;
+  /** How it came: the public page, or filed by staff for a phone call or a walk-in. */
+  channel: "web" | "phone" | "walk_in";
   volunteersCount: number;
   hasMinors: boolean;
   /** An activity is not in the month's NCH-approved plan: approval needs the coordination below. */
@@ -201,7 +204,8 @@ export interface PublicBooking {
   requestorName: string;
   requestorKind: RequestorKind;
   contactPerson: string;
-  email: string;
+  /** Masked; null when the request has no email address. */
+  email: string | null;
   mobile: string;
   volunteersCount: number;
   hasMinors: boolean;

@@ -197,7 +197,10 @@ it("a payment method reads in plain words", async () => {
 it("the Shop sales card is in the catalogue and in the database's list of cards (0158)", async () => {
   const { CARDS, ACTIONS } = await import("../lib/utils/dashboard-catalog.ts");
   const text = readFileSync(new URL("../supabase/migrations/0158_shop_dashboard_card.sql", import.meta.url), "utf8");
-  const allowed = text.match(/check \(card in \(([^;]+)\)\);/)[1].replace(/\s+/g, " ").split(",").map((s) => s.trim().replace(/'/g, ""));
+  // The list of cards the database allows is restated by each migration that adds one: the latest is 0179 (bookings).
+  const latest = readFileSync(new URL("../supabase/migrations/0179_booking_dashboard_card.sql", import.meta.url), "utf8");
+  const allowed = latest.match(/check \(card in \(([^;]+)\)\);/)[1].replace(/\s+/g, " ").split(",").map((s) => s.trim().replace(/'/g, ""));
+  assert.ok(allowed.includes("shop") && allowed.includes("bookings"));
   assert.deepEqual(allowed.slice().sort(), CARDS.map((c) => c.key).sort(), "the database allows exactly the catalogue's cards");
   assert.equal(CARDS.find((c) => c.key === "shop").main, false, "it is offered, not forced onto everyone's dashboard");
   assert.match(text, /unnest\(array\['shop_admin', 'finance', 'ceo'\]\)/);

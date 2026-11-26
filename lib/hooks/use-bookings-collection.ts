@@ -99,7 +99,7 @@ export interface BookingRequests {
 }
 
 const REQUEST_COLUMNS =
-  "id, ref, seq_no, place_id, date, start_time, end_time, status, requestor_name, requestor_kind, contact_person, email, mobile, volunteers_count, has_minors, off_plan, nch_contact, nch_coordinated_at, nch_notes, decline_reason, staff_note, instructions, attended_children, attended_volunteers, attended_hours, created_at, decided_at";
+  "id, ref, seq_no, place_id, date, start_time, end_time, status, requestor_name, requestor_kind, contact_person, email, mobile, channel, volunteers_count, has_minors, off_plan, nch_contact, nch_coordinated_at, nch_notes, decline_reason, staff_note, instructions, attended_children, attended_volunteers, attended_hours, created_at, decided_at";
 
 /** Every request with its program flow, its volunteers' names and its trail.
  * ponytail: all of them are loaded; page them by month once there are a few thousand. */
@@ -136,6 +136,7 @@ export const bookingRequestsStore = createCollection<BookingRequests>({
         contactPerson: text(r.contact_person),
         email: text(r.email),
         mobile: text(r.mobile),
+        channel: r.channel === "phone" ? "phone" : r.channel === "walk_in" ? "walk_in" : "web",
         volunteersCount: Number(r.volunteers_count ?? 0),
         hasMinors: r.has_minors === true,
         offPlan: r.off_plan === true,

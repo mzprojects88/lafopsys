@@ -155,7 +155,7 @@ export function TrackBooking({ initialRef }: { initialRef: string }) {
               </Fact>
               <Fact label="Contact person">{b.contactPerson}</Fact>
               <Fact label="We write to">
-                {b.email} · {b.mobile}
+                {[b.email, b.mobile].filter(Boolean).join(" · ")}
               </Fact>
             </dl>
           </section>

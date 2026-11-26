@@ -40,7 +40,7 @@ try {
   await c.query("begin");
   if (process.argv.includes("--with-migration")) {
     if (process.argv.includes("--fresh")) await c.query("drop schema if exists booking cascade");
-    for (const file of ["0172_booking_core.sql", "0173_booking_links_deferrable.sql", "0175_booking_site_url.sql", "0176_booking_dated_plan.sql", "0177_booking_calendar_and_sessions.sql", "0178_booking_reminders.sql"]) await c.query(readFileSync(new URL(`../supabase/migrations/${file}`, import.meta.url), "utf8"));
+    for (const file of ["0172_booking_core.sql", "0173_booking_links_deferrable.sql", "0175_booking_site_url.sql", "0176_booking_dated_plan.sql", "0177_booking_calendar_and_sessions.sql", "0178_booking_reminders.sql", "0180_booking_staff_request.sql"]) await c.query(readFileSync(new URL(`../supabase/migrations/${file}`, import.meta.url), "utf8"));
     const [links] = await q("select count(*)::int n, count(*) filter (where not condeferrable)::int fixed from pg_constraint where contype = 'f' and connamespace = 'booking'::regnamespace");
     check(`every link of the booking tables can be deferred (${links.n} links)`, links.n >= 14 && links.fixed === 0, JSON.stringify(links));
   }
@@ -161,6 +161,16 @@ try {
     const closeIt = await tryIt("insert into booking.closures (place_id, date_from, date_to, reason) values (null, $1::date, $1::date, 'Check') returning id", [open[9]]);
     const typeIt = await tryIt("insert into booking.activity_types (name) values ('Sample Check Activity') returning id");
     check("she changes Settings: the limits and the address, a slot, a closed date, the activity list", setIt.ok && setIt.rows[0]?.reply_days === 4 && slotIt.ok && closeIt.ok && typeIt.ok, setIt.error ?? slotIt.error ?? closeIt.error ?? typeIt.error ?? "no settings row changed");
+    // Staff file a booking for someone who phoned or walked in (0180).
+    const lateDay = states.filter((s) => s.state === "too_soon").at(-1)?.day;
+    const phone = await tryIt("select booking.staff_request($1::jsonb) r", [JSON.stringify(payload(place.id, lateDay, { email: "", channel: "phone" }))]);
+    check("staff file a phone request: no email address needed, and a day inside the 14 days may be taken", phone.ok && /^LAF-AC-[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(phone.rows[0].r.ref), phone.error);
+    const filed = phone.ok ? await one("select r.channel, r.filed_by, r.email, r.status, e.actor, e.by_requestor, e.detail from booking.requests r join booking.events e on e.request_id = r.id and e.action = 'requested' where r.id = $1", [phone.rows[0].r.id]) : {};
+    check("it is kept as a phone request with who filed it, and waits for approval like any other", filed.channel === "phone" && filed.filed_by === worker.id && filed.email === null && filed.status === "pending" && filed.actor === worker.id && filed.by_requestor === false && /^Filed by staff for a phone request\./.test(filed.detail), JSON.stringify(filed));
+    const twice = await tryIt("select booking.staff_request($1::jsonb) r", [JSON.stringify(payload(place.id, lateDay, { channel: "walk_in" }))]);
+    const badMail = await tryIt("select booking.staff_request($1::jsonb) r", [JSON.stringify(payload(place.id, d3, { email: "not-an-email", channel: "walk_in" }))]);
+    const noTicks = await tryIt("select booking.staff_request($1::jsonb) r", [JSON.stringify(payload(place.id, d3, { agree_privacy: false }))]);
+    check("the rules still hold for staff: one group per slot, a real address when one is given, and the two confirmations", !twice.ok && /asked for by another group/.test(twice.error) && !badMail.ok && /email address/.test(badMail.error) && !noTicks.ok && /tick both boxes/.test(noTicks.error), twice.error ?? badMail.error ?? noTicks.error ?? "accepted");
   } else console.log("skip the social worker's checks (none active on development)");
 
   await service();
@@ -179,6 +189,9 @@ try {
     const rows = await tryIt("select count(*)::int n from booking.requests");
     const act = await tryIt("select booking.decide((select id from booking.requests limit 1), 'cancel', '{}'::jsonb)");
     check("Accounting sees the requests but can't act on them", rows.ok && rows.rows[0].n >= 3 && !act.ok && act.code === "42501", act.error ?? "it acted");
+    const vAdd = await tryIt("select booking.staff_request($1::jsonb) r", [JSON.stringify(payload(place.id, d4, { channel: "phone" }))]);
+    const vCore = await tryIt("select booking.file_request($1::jsonb, 'x', null)", [JSON.stringify(payload(place.id, d4))]);
+    check("nor file a booking for someone, and nobody signed in can reach the rules' core directly", !vAdd.ok && vAdd.code === "42501" && !vCore.ok && vCore.code === "42501", vAdd.error ?? vCore.error ?? "accepted");
     const vPlan = await tryIt("insert into booking.plans (place_id, month) values ($1, date '2031-01-01') returning id", [place.id]);
     const vItem = await tryIt("delete from booking.plan_items returning id");
     const vSet = await tryIt("update booking.settings set reply_days = 9 returning reply_days");

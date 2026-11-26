@@ -49,6 +49,9 @@ export const REQUESTOR_KINDS: { key: RequestorKind; label: string }[] = [
 
 export const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+/** How a request came. */
+export const CHANNEL_LABEL = { web: "The booking page", phone: "By phone, filed by staff", walk_in: "Walk-in, filed by staff" } as const;
+
 export const PLAN_STATUS_LABEL: Record<PlanStatus, string> = { draft: "Draft", submitted: "For NCH approval", approved: "Approved by NCH", returned: "Returned by NCH" };
 
 /** "December 2026" from `yyyy-MM`. */
@@ -165,4 +168,54 @@ export function sameWeekdayIn(day: string, month: string): string | null {
 export function lastDayOf(month: string): string {
   const [y, m] = month.split("-").map(Number);
   return `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
+}
+
+/** One month of the bookings report: what was asked for that month's days, and what the visits held gave. */
+export interface BookingMonth {
+  /** `yyyy-MM`. */
+  month: string;
+  requests: number;
+  pending: number;
+  upcoming: number;
+  visits: number;
+  noShow: number;
+  declined: number;
+  cancelled: number;
+  children: number;
+  volunteers: number;
+  hours: number;
+}
+
+type Countable = Pick<BookingRequest, "date" | "status" | "attendedChildren" | "attendedVolunteers" | "attendedHours">;
+
+/**
+ * The bookings report of a year, month by month, by the day of the visit (a request filed in November for a
+ * December visit counts in December). Children, volunteers and hours come from the visits staff recorded, never
+ * from what a group planned. All twelve months are returned, the empty ones with zeros.
+ */
+export function bookingMonths(requests: Countable[], year: number): BookingMonth[] {
+  const months: BookingMonth[] = Array.from({ length: 12 }, (_, i) => ({ month: `${year}-${String(i + 1).padStart(2, "0")}`, requests: 0, pending: 0, upcoming: 0, visits: 0, noShow: 0, declined: 0, cancelled: 0, children: 0, volunteers: 0, hours: 0 }));
+  for (const r of requests) {
+    const m = months.find((x) => x.month === r.date.slice(0, 7));
+    if (!m) continue;
+    m.requests += 1;
+    if (r.status === "pending") m.pending += 1;
+    else if (r.status === "approved") m.upcoming += 1;
+    else if (r.status === "no_show") m.noShow += 1;
+    else if (r.status === "declined") m.declined += 1;
+    else if (r.status === "cancelled") m.cancelled += 1;
+    else {
+      m.visits += 1;
+      m.children += r.attendedChildren ?? 0;
+      m.volunteers += r.attendedVolunteers ?? 0;
+      m.hours += r.attendedHours ?? 0;
+    }
+  }
+  return months;
+}
+
+/** The totals of a report's months. */
+export function bookingTotals(months: BookingMonth[]): Omit<BookingMonth, "month"> {
+  const sum = (k: keyof Omit<BookingMonth, "month">) => months.reduce((n, m) => n + m[k], 0);
+  return { requests: sum("requests"), pending: sum("pending"), upcoming: sum("upcoming"), visits: sum("visits"), noShow: sum("noShow"), declined: sum("declined"), cancelled: sum("cancelled"), children: sum("children"), volunteers: sum("volunteers"), hours: sum("hours") };
 }

@@ -44,7 +44,8 @@ export async function queueBookingEmail(requestId: string, kind: BookingEmailKin
       db.from("settings").select("reply_days, names_due_days, site_url").maybeSingle(),
       db.from("volunteers").select("id", { count: "exact", head: true }).eq("request_id", requestId),
     ]);
-    if (!r || !st) return;
+    // A request staff filed for someone without an email address has nobody to write to.
+    if (!r || !st || !r.email) return;
     const { data: place } = await db.from("places").select("name, where_to_go, instructions, coordinator_name, coordinator_phone").eq("id", r.place_id).maybeSingle();
     const { subject, html } = bookingEmail(
       kind,
@@ -90,7 +91,8 @@ export async function queueBookingReminders(): Promise<{ reminders: number }> {
   const admin = createAdminClient();
   const db = admin.schema("booking");
   const today = dayKey(new Date());
-  const { data: due } = await db.from("requests").select("id, date").eq("status", "approved").in("date", [addDays(today, 1), addDays(today, 3)]);
+  // A booking staff filed for someone without an email address has nobody to remind (0180).
+  const { data: due } = await db.from("requests").select("id, date").eq("status", "approved").not("email", "is", null).in("date", [addDays(today, 1), addDays(today, 3)]);
   let reminders = 0;
   for (const r of due ?? []) {
     const source = `reminder${daysBetween(today, r.date)}`;
@@ -101,4 +103,43 @@ export async function queueBookingReminders(): Promise<{ reminders: number }> {
   }
   if (!reminders) await sendPending(admin, "booking");
   return { reminders };
+}
+
+type Json = Record<string, unknown>;
+const text = (v: unknown, max: number): string => (typeof v === "string" ? v.slice(0, max) : "");
+
+/** Only the fields the form has; whatever else was sent is dropped before the database sees it. */
+export function requestPayload(b: Json): Json {
+  const items = Array.isArray(b.items) ? b.items.slice(0, 4) : [];
+  return {
+    place_id: text(b.place_id, 36),
+    date: text(b.date, 10),
+    start_time: text(b.start_time, 5),
+    requestor_name: text(b.requestor_name, 200),
+    requestor_kind: text(b.requestor_kind, 20),
+    contact_person: text(b.contact_person, 200),
+    email: text(b.email, 250),
+    mobile: text(b.mobile, 60),
+    volunteers_count: Number.isInteger(b.volunteers_count) ? b.volunteers_count : 0,
+    has_minors: b.has_minors === true,
+    agree_guidelines: b.agree_guidelines === true,
+    agree_privacy: b.agree_privacy === true,
+    // Read only by the staff's door: how the request came (a phone call or a walk-in).
+    channel: text(b.channel, 10),
+    items: items.map((raw) => {
+      const i = (raw && typeof raw === "object" ? raw : {}) as Json;
+      return {
+        source: text(i.source, 12),
+        plan_item_id: text(i.plan_item_id, 36),
+        activity: text(i.activity, 120),
+        purpose: text(i.purpose, 300),
+        who: text(i.who, 10),
+        ages: text(i.ages, 40),
+        gender: text(i.gender, 6),
+        start_time: text(i.start_time, 5),
+        end_time: text(i.end_time, 5),
+        materials: text(i.materials, 500),
+      };
+    }),
+  };
 }

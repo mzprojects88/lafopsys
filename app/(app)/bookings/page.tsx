@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { CalendarCheck, CalendarClock, ChevronLeft, ChevronRight, ClipboardList, Hourglass, Search, Settings, Users } from "lucide-react";
+import { CalendarCheck, CalendarClock, ChevronLeft, ChevronRight, ClipboardList, Hourglass, Plus, Search, Settings, Users } from "lucide-react";
+import { AddBookingDialog } from "@/components/modules/bookings/add-booking-dialog";
+import { BookingsReport } from "@/components/modules/bookings/bookings-report";
 import { RequestDialog } from "@/components/modules/bookings/request-dialog";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { LoadingState } from "@/components/patterns/loading-state";
@@ -59,10 +61,12 @@ export default function BookingsPage() {
   const canEdit = access.levelOfPath("/bookings") === "edit";
   const { requests, loading } = useBookingRequests();
   const { places, loading: setupLoading } = useBookingSetup();
-  const [view, setView] = React.useState<"calendar" | "list">("calendar");
+  const [view, setView] = React.useState<"calendar" | "list" | "report">("calendar");
   const [queue, setQueue] = React.useState<Queue>("pending");
   const [search, setSearch] = React.useState("");
   const [openId, setOpenId] = React.useState<string | null>(null);
+  // Each opening of "Add a booking" gets a fresh form (0 = closed).
+  const [adding, setAdding] = React.useState(0);
   const [month, setMonth] = React.useState(() => todayIso().slice(0, 7));
   const [chosenPlace, setChosenPlace] = React.useState<string | null>(null);
   const [slots, setSlots] = React.useState<SlotOfDay[]>([]);
@@ -97,7 +101,16 @@ export default function BookingsPage() {
       <PageHeader
         title="LAF Activity Center Bookings"
         description="Requests from donors and groups to run activities for the children, filed on the public booking page."
-        action={<ModuleSubNav items={SUB_NAV} />}
+        action={
+          <>
+            {canEdit ? (
+              <Button type="button" onClick={() => setAdding((n) => n + 1)}>
+                <Plus className="size-4" /> Add a booking
+              </Button>
+            ) : null}
+            <ModuleSubNav items={SUB_NAV} />
+          </>
+        }
       />
 
       <KpiGrid>
@@ -109,12 +122,13 @@ export default function BookingsPage() {
 
       <SectionCard flush className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-          <Tabs value={view} onValueChange={(v) => setView(v as "calendar" | "list")}>
+          <Tabs value={view} onValueChange={(v) => setView(v as "calendar" | "list" | "report")}>
             <TabsList>
               <TabsTrigger value="calendar">Calendar</TabsTrigger>
               <TabsTrigger value="list">
                 Requests {count("pending") ? <span className="ml-1 text-muted-foreground">{count("pending")}</span> : null}
               </TabsTrigger>
+              <TabsTrigger value="report">Report</TabsTrigger>
             </TabsList>
           </Tabs>
           {view === "calendar" ? (
@@ -141,12 +155,12 @@ export default function BookingsPage() {
                 <ChevronRight className="size-4" />
               </Button>
             </div>
-          ) : (
+          ) : view === "list" ? (
             <div className="relative w-full sm:w-72">
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, email, mobile or Request ID" className="pl-9" aria-label="Search the requests" />
             </div>
-          )}
+          ) : null}
         </div>
 
         {view === "calendar" ? (
@@ -198,6 +212,8 @@ export default function BookingsPage() {
             </div>
             <p className="px-4 pb-4 text-theme-xs text-muted-foreground">Open slots are what the booking page offers. A pending request holds its slot until it is answered. Holidays come from the Calendar; closed dates and the slots themselves from Settings.</p>
           </div>
+        ) : view === "report" ? (
+          <BookingsReport requests={requests} />
         ) : (
           <>
             {!term ? (
@@ -265,6 +281,16 @@ export default function BookingsPage() {
       </SectionCard>
 
       <RequestDialog key={open?.id ?? "none"} request={open} canEdit={canEdit} onClose={() => setOpenId(null)} />
+      {adding ? (
+        <AddBookingDialog
+          key={adding}
+          onClose={() => setAdding(0)}
+          onAdded={(id) => {
+            setAdding(0);
+            setOpenId(id);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
