@@ -40,6 +40,7 @@ const p = (module: ModuleKey, key: string, path: string, title: string, power?: 
 
 export const PAGES: PageDef[] = [
   p("dashboard", "home", "/dashboard", "Dashboard"),
+  p("volunteers", "list", "/volunteers", "Volunteers"),
   p("bookings", "requests", "/bookings", "Bookings"),
   p("bookings", "plan", "/bookings/plan", "Activity Plan"),
   p("bookings", "settings", "/bookings/settings", "Booking settings"),
@@ -69,7 +70,6 @@ export const PAGES: PageDef[] = [
   p("staff", "punches", "/staff/punches", "Punches"),
   p("staff", "roster", "/staff/roster", "Roster"),
   p("staff", "timesheets", "/staff/timesheets", "Timesheets"),
-  p("staff", "volunteers", "/staff/volunteers", "Volunteers"),
   p("inventory", "overview", "/inventory", "Inventory"),
   p("inventory", "assets", "/inventory/assets", "Fixed Assets"),
   p("inventory", "locations", "/inventory/locations", "Storage Locations"),

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { AlertTriangle, Printer } from "lucide-react";
 import { toast } from "sonner";
+import { MembersEditor } from "@/components/modules/bookings/members-editor";
 import { ReasonDialog } from "@/components/patterns/reason-dialog";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { Button } from "@/components/ui/button";
@@ -41,7 +42,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
  * who may and whether the step fits. The page gives the dialog a key per request, so nothing half-typed carries over.
  */
 export function RequestDialog({ request, canEdit, onClose }: { request: BookingRequest | null; canEdit: boolean; onClose: () => void }) {
-  const { items, volunteers, events, decide, saveNotes, saveVolunteers } = useBookingRequests();
+  const { items, volunteers, events, decide, saveNotes, saveMembers } = useBookingRequests();
   const { places, slots } = useBookingSetup();
   const { staff } = useStaffRoster();
   const [busy, setBusy] = React.useState(false);
@@ -49,7 +50,6 @@ export function RequestDialog({ request, canEdit, onClose }: { request: BookingR
   const [nch, setNch] = React.useState({ contact: request?.nchContact ?? "", at: "", notes: request?.nchNotes ?? "" });
   const [instructions, setInstructions] = React.useState(request?.instructions ?? "");
   const [staffNote, setStaffNote] = React.useState(request?.staffNote ?? "");
-  const [names, setNames] = React.useState<string | null>(null);
   const [move, setMove] = React.useState({ date: request?.date ?? "", start: request?.start ?? "" });
   const [visit, setVisit] = React.useState({ children: "", volunteers: String(request?.volunteersCount ?? ""), hours: "" });
   // The day’s other entries on the Calendar, so a clash with the foundation’s own events is seen before approving.
@@ -81,11 +81,10 @@ export function RequestDialog({ request, canEdit, onClose }: { request: BookingR
   const r = request;
   const place = places.find((p) => p.id === r.placeId);
   const flow = items.filter((i) => i.requestId === r.id);
-  const listed = volunteers.filter((v) => v.requestId === r.id).map((v) => v.name);
+  const members = volunteers.filter((v) => v.requestId === r.id);
   const trail = events.filter((e) => e.requestId === r.id);
   const open = r.status === "pending" || r.status === "approved";
   const visited = r.status === "approved" && r.date <= todayIso();
-  const namesText = names ?? listed.join("\n");
   const who = (id: string | null, byRequestor: boolean) => {
     if (byRequestor) return "The requestor";
     const s = staff.find((x) => x.id === id);
@@ -243,18 +242,28 @@ export function RequestDialog({ request, canEdit, onClose }: { request: BookingR
             </section>
           ) : null}
 
-          <section className="min-w-0 grid gap-4 sm:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="names">Volunteers&apos; names ({listed.length} of {r.volunteersCount})</FieldLabel>
-              <Textarea id="names" rows={5} value={namesText} disabled={!canEdit} placeholder="One name per line" onChange={(e) => setNames(e.target.value)} />
-              <FieldDescription>NCH needs the names for the gate. The group can also give them on the booking page with its Request ID.</FieldDescription>
-              {canEdit && names !== null ? (
-                <Button type="button" variant="outline" size="sm" className="self-start" disabled={busy} onClick={() => keep(saveVolunteers(r.id, names.split("\n")), "Names saved.").then(() => setNames(null))}>
-                  Save the names
-                </Button>
-              ) : null}
-            </Field>
-            <div className="flex flex-col gap-4">
+          <MembersEditor
+            key={members.map((m) => `${m.id}${m.email}${m.came}`).join()}
+            members={members}
+            count={r.volunteersCount}
+            recorded={r.status === "completed"}
+            canEdit={canEdit && r.status !== "declined" && r.status !== "cancelled"}
+            busy={busy}
+            onSave={async (rows) => {
+              setBusy(true);
+              const res = await saveMembers(r.id, rows);
+              setBusy(false);
+              if (!res.ok) {
+                toast.error(res.error);
+                return false;
+              }
+              toast.success("Members saved.");
+              return true;
+            }}
+          />
+
+          <section className="min-w-0 grid gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="instructions">Instructions for this booking</FieldLabel>
                 <Textarea id="instructions" rows={2} value={instructions} maxLength={2000} disabled={!canEdit} onChange={(e) => setInstructions(e.target.value)} />

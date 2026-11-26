@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import type { PublicBooking } from "@/lib/types/booking";
+import type { PublicBooking, PublicMember } from "@/lib/types/booking";
 import { REQUESTOR_KINDS, durationLabel, participantsLabel } from "@/lib/utils/booking";
 import { longDate } from "@/lib/utils/booking-emails";
 import { formatTime12 } from "@/lib/utils/time12";
@@ -54,7 +54,8 @@ export function TrackBooking({ initialRef }: { initialRef: string }) {
   const [booking, setBooking] = React.useState<PublicBooking | null>(null);
   const [busy, setBusy] = React.useState(() => !!initialRef.trim());
   const [error, setError] = React.useState("");
-  const [names, setNames] = React.useState<string | null>(null);
+  // The members as typed; null = as the booking holds them. An email shown masked is kept as it is on record.
+  const [names, setNames] = React.useState<PublicMember[] | null>(null);
   const [saved, setSaved] = React.useState("");
   const [sure, setSure] = React.useState(false);
 
@@ -93,7 +94,11 @@ export function TrackBooking({ initialRef }: { initialRef: string }) {
   }, [initialRef]);
 
   const b = booking;
-  const typed = (names ?? b?.names.join("\n") ?? "").split("\n").map((n) => n.trim()).filter(Boolean);
+  const rows: PublicMember[] = names ?? b?.members ?? [];
+  const typed = rows.filter((m) => m.name.trim() || m.email.trim());
+  const setRow = (i: number, change: Partial<PublicMember>) => setNames(rows.map((m, n) => (n === i ? { ...m, ...change } : m)));
+  const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  const incomplete = typed.find((m) => m.name.trim().length < 2 || !(EMAIL.test(m.email.trim()) || m.email.includes("*")));
 
   return (
     <div className="flex flex-col gap-6">
@@ -192,16 +197,40 @@ export function TrackBooking({ initialRef }: { initialRef: string }) {
               <p className="mt-2 max-w-prose text-[15px] leading-relaxed">
                 The hospital needs the full name of each volunteer for the gate. {b.canEditNames ? `Please give them by ${longDate(b.namesDue)}.` : `They were due on ${longDate(b.namesDue)}. To change them now, please write to us.`}
               </p>
-              <label className="mt-4 block">
-                <span className={ui.label}>
-                  One full name per line ({typed.length} of {b.volunteersCount})
-                </span>
-                <textarea className={`${ui.area} min-h-36`} value={names ?? b.names.join("\n")} disabled={!b.canEditNames || busy} onChange={(e) => setNames(e.target.value)} />
-              </label>
-              {typed.length > b.volunteersCount ? <p className={`${ui.problem} mt-3`}>This booking is for {b.volunteersCount} volunteers. Please write to us if the number changed.</p> : null}
+              <p className="mt-2 max-w-prose text-[15px] leading-relaxed">
+                Give each volunteer&apos;s full name and email. For a volunteer under 18, give a parent&apos;s or guardian&apos;s email. We keep these to record their volunteer service with Little Ark Foundation.
+              </p>
+              <div className="mt-4 flex flex-col gap-3">
+                <p className={ui.label}>
+                  Volunteers ({typed.length} of {b.volunteersCount})
+                </p>
+                {rows.map((m, i) => (
+                  <div key={i} className="grid gap-2 rounded-2xl border border-[#c7dce9] p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                    <label className="block">
+                      <span className="sr-only">Volunteer {i + 1}: full name</span>
+                      <input className={ui.input} placeholder="Full name" value={m.name} maxLength={120} disabled={!b.canEditNames || busy} onChange={(e) => setRow(i, { name: e.target.value })} />
+                    </label>
+                    <label className="block">
+                      <span className="sr-only">Volunteer {i + 1}: email</span>
+                      <input className={ui.input} type="email" inputMode="email" placeholder="Email" value={m.email} maxLength={200} disabled={!b.canEditNames || busy} onFocus={() => m.email.includes("*") && setRow(i, { email: "" })} onChange={(e) => setRow(i, { email: e.target.value })} />
+                    </label>
+                    <label className="flex items-center gap-2 self-center text-[15px] text-[#082f59]">
+                      <input type="checkbox" className="size-5 accent-[#0068c9]" checked={m.under18} disabled={!b.canEditNames || busy} onChange={(e) => setRow(i, { under18: e.target.checked })} />
+                      Under 18
+                    </label>
+                  </div>
+                ))}
+                {b.canEditNames && rows.length < b.volunteersCount ? (
+                  <button type="button" className={`${ui.secondary} self-start`} disabled={busy} onClick={() => setNames([...rows, { name: "", email: "", under18: false }])}>
+                    Add a volunteer
+                  </button>
+                ) : null}
+                <p className={ui.hint}>An email shown with stars is kept as it is. Click into it to type a new one.</p>
+              </div>
+              {incomplete ? <p className={`${ui.problem} mt-3`}>Please give the full name and the email of {incomplete.name.trim() || "each volunteer"}.</p> : null}
               {b.canEditNames ? (
                 <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <button type="button" className={ui.primary} disabled={busy || names === null || typed.length > b.volunteersCount} onClick={() => void call({ action: "names", ref: b.ref, names: typed }).then((ok) => ok && setSaved("The names are saved. Thank you."))}>
+                  <button type="button" className={ui.primary} disabled={busy || names === null || !!incomplete || typed.length > b.volunteersCount} onClick={() => void call({ action: "names", ref: b.ref, names: typed.map((m) => ({ name: m.name.trim(), email: m.email.trim(), under18: m.under18 })) }).then((ok) => ok && setSaved("The names are saved. Thank you."))}>
                     Save the names
                   </button>
                   {saved ? (

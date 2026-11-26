@@ -24,11 +24,11 @@ describe("document names", () => {
 describe("pages and powers (0093)", () => {
   it("the migrations seed exactly the catalogue's levelled pages", () => {
     // 0093 seeded the first pages; later pages are seeded by the migration that adds them.
-    const sql = ["0093_roles_pages_powers.sql", "0095_gift_totals_and_meals_served.sql", "0106_house_stocks.sql", "0112_program_impact.sql", "0128_program_impact_range.sql", "0120_diet_instructions_weekly_menu.sql", "0124_case_files.sql", "0134_vouchers.sql", "0137_budgets_goals.sql", "0138_funds_advances_ewt.sql", "0140_finance_picks_fund_ledger.sql", "0146_punches_page.sql", "0155_shop_catalogue.sql", "0157_shop_fulfilment.sql", "0160_shop_customers.sql", "0167_history_ledger.sql", "0169_id_card_template.sql", "0170_inventory_operations_stocks.sql", "0174_booking_access.sql"]
+    const sql = ["0093_roles_pages_powers.sql", "0095_gift_totals_and_meals_served.sql", "0106_house_stocks.sql", "0112_program_impact.sql", "0128_program_impact_range.sql", "0120_diet_instructions_weekly_menu.sql", "0124_case_files.sql", "0134_vouchers.sql", "0137_budgets_goals.sql", "0138_funds_advances_ewt.sql", "0140_finance_picks_fund_ledger.sql", "0146_punches_page.sql", "0155_shop_catalogue.sql", "0157_shop_fulfilment.sql", "0160_shop_customers.sql", "0167_history_ledger.sql", "0169_id_card_template.sql", "0170_inventory_operations_stocks.sql", "0174_booking_access.sql", "0181_volunteers_groups.sql"]
       .map((f) => readFileSync(new URL(`../supabase/migrations/${f}`, import.meta.url), "utf8"))
       .join("\n");
     // Pages retired later (finance.entry, 0147) leave the catalogue; their old seeds stay in their migrations.
-    const retired = new Set(["finance.entry", "reports.generate"]);
+    const retired = new Set(["finance.entry", "reports.generate", "staff.volunteers"]);
     const seeded = [...sql.matchAll(/\('([a-z_]+\.[a-z_]+)'\)/g)].map((m) => m[1]).filter((k) => !retired.has(k)).sort();
     assert.deepEqual(seeded, PAGES.filter((p) => !p.power).map((p) => p.key).sort());
   });

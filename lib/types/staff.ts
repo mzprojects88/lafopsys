@@ -101,4 +101,8 @@ export interface VolunteerHours {
   hours: number;
   activity: VolunteerActivity;
   note: string;
+  /** Where they served (0181): the booking's place, or typed by staff. */
+  place: string;
+  /** manual = logged by staff; booking = written when staff recorded an Activity Center visit. */
+  source: "manual" | "booking";
 }

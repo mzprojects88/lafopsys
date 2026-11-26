@@ -103,6 +103,8 @@ export interface BookingRequest {
   mobile: string;
   /** How it came: the public page, or filed by staff for a phone call or a walk-in. */
   channel: "web" | "phone" | "walk_in";
+  /** The group it belongs to (0181). */
+  groupId: string | null;
   volunteersCount: number;
   hasMinors: boolean;
   /** An activity is not in the month's NCH-approved plan: approval needs the coordination below. */
@@ -149,11 +151,37 @@ export interface BookingPlanItem {
   sort: number;
 }
 
+/** A member of a booking's group (0181): full name and email (a parent's or guardian's for a member under 18). */
 export interface BookingVolunteer {
   id: string;
   requestId: string;
   position: number;
   name: string;
+  email: string;
+  under18: boolean;
+  /** After the visit: false = did not come; null = not marked (counts as came). */
+  came: boolean | null;
+  /** The volunteer on the Volunteers page this member was credited to (production only). */
+  personId: string | null;
+}
+
+/** One per contact email: the group that books visits (0181). */
+export interface BookingGroup {
+  id: string;
+  name: string;
+  kind: RequestorKind;
+  contactPerson: string;
+  /** Empty for a group staff filed for someone without an email address. */
+  email: string;
+  mobile: string;
+  createdAt: string;
+}
+
+/** A member as the group's own page shows it (email masked). */
+export interface PublicMember {
+  name: string;
+  email: string;
+  under18: boolean;
 }
 
 export interface BookingEvent {
@@ -212,6 +240,7 @@ export interface PublicBooking {
   requestedOn: string;
   items: { activity: string; source: ActivitySource; purpose: string; who: "patients" | "carers" | "both"; ages: string; gender: "all" | "girls" | "boys"; note: string; start: string; end: string; materials: string }[];
   names: string[];
+  members: PublicMember[];
   namesDue: string;
   canEditNames: boolean;
   canCancel: boolean;

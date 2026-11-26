@@ -40,7 +40,7 @@ try {
   await c.query("begin");
   if (process.argv.includes("--with-migration")) {
     if (process.argv.includes("--fresh")) await c.query("drop schema if exists booking cascade");
-    for (const file of ["0172_booking_core.sql", "0173_booking_links_deferrable.sql", "0175_booking_site_url.sql", "0176_booking_dated_plan.sql", "0177_booking_calendar_and_sessions.sql", "0178_booking_reminders.sql", "0180_booking_staff_request.sql"]) await c.query(readFileSync(new URL(`../supabase/migrations/${file}`, import.meta.url), "utf8"));
+    for (const file of ["0172_booking_core.sql", "0173_booking_links_deferrable.sql", "0175_booking_site_url.sql", "0176_booking_dated_plan.sql", "0177_booking_calendar_and_sessions.sql", "0178_booking_reminders.sql", "0180_booking_staff_request.sql", "0181_volunteers_groups.sql"]) await c.query(readFileSync(new URL(`../supabase/migrations/${file}`, import.meta.url), "utf8"));
     const [links] = await q("select count(*)::int n, count(*) filter (where not condeferrable)::int fixed from pg_constraint where contype = 'f' and connamespace = 'booking'::regnamespace");
     check(`every link of the booking tables can be deferred (${links.n} links)`, links.n >= 14 && links.fixed === 0, JSON.stringify(links));
   }
@@ -177,8 +177,8 @@ try {
   const after = (await one("select booking.web_lookup($1, 'caller-b') v", [made.ref])).v;
   check("once approved, the look-up shows the instructions and who to coordinate with", !worker || (after.status === "approved" && after.approved?.coordinatorName === "Sample Coordinator" && after.approved?.instructions === "Sign the logbook at Gate 2." && after.approved?.bookingInstructions === "Bring a valid ID." && after.canEditNames === true), JSON.stringify(after?.approved));
   if (worker) {
-    const names = await tryIt("select booking.web_names($1, $2::jsonb, 'caller-b') v", [made.ref, JSON.stringify(["Sample One", "Sample Two", "Sample Three"])]);
-    const tooMany = await tryIt("select booking.web_names($1, $2::jsonb, 'caller-b') v", [made.ref, JSON.stringify(["A A", "B B", "C C", "D D", "E E", "F F"])]);
+    const names = await tryIt("select booking.web_names($1, $2::jsonb, 'caller-b') v", [made.ref, JSON.stringify([{ name: "Sample One", email: "one@example.org" }, { name: "Sample Two", email: "two@example.org" }, { name: "Sample Three", email: "three@example.org" }])]);
+    const tooMany = await tryIt("select booking.web_names($1, $2::jsonb, 'caller-b') v", [made.ref, JSON.stringify(["A A", "B B", "C C", "D D", "E E", "F F"].map((name, i) => ({ name, email: `m${i}@example.org` })))]);
     check("the group gives its volunteers' names, never more than it booked for", names.ok && names.rows[0].v.names.length === 3 && !tooMany.ok && /for 5 volunteers/.test(tooMany.error), names.error ?? tooMany.error ?? "six names accepted");
     const cancelled = await tryIt("select booking.web_cancel($1, 'caller-b') v", [made.ref]);
     check("the group can cancel its own booking, which frees the slot", cancelled.ok && cancelled.rows[0].v.status === "cancelled" && (await one("select state from booking.slot_states($1, $2::date, $2::date)", [place.id, d1])).state === "open", cancelled.error);

@@ -26,7 +26,8 @@ export type ModuleKey =
   | "transport"
   | "requests"
   | "shop"
-  | "bookings";
+  | "bookings"
+  | "volunteers";
 
 export type AccessLevel = "none" | "view" | "edit";
 

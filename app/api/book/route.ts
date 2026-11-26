@@ -68,7 +68,13 @@ export async function POST(request: Request) {
       return data ? yes({ booking: data }) : no("No booking has that Request ID. Please check it and try again.", 404);
     }
     case "names": {
-      const names = Array.isArray(b.names) ? b.names.slice(0, 100).map((n) => text(n, 120)) : [];
+      // Each member: full name, email and under 18 (0181); whatever else was sent is dropped.
+      const names = Array.isArray(b.names)
+        ? b.names.slice(0, 100).map((raw) => {
+            const m = (raw && typeof raw === "object" ? raw : { name: raw }) as Json;
+            return { name: text(m.name, 120), email: text(m.email, 200), under18: m.under18 === true };
+          })
+        : [];
       const { data, error } = await booking().rpc("web_names", { p_ref: ref, p_names: names, p_caller: caller });
       if (error) {
         const e = readableError(error, "names");

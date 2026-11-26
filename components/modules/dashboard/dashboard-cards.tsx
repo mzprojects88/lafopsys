@@ -114,7 +114,7 @@ export function DashboardCard({ k, f, period, window, now }: { k: CardKey; f: Da
     case "since_2024":
       return <Card href="/reports/programs" label="Since 2024" value={dash ?? n(f?.since_2024)} sublabel={(f?.prior_years ?? 0) < 2 ? "Without 2024–2025: enter them in Programs › Prior years" : "Total program output, 2024 to date"} icon={Sigma} />;
     case "volunteers":
-      return <Card href="/staff/volunteers" label="Volunteers" value={dash ?? n(sum(f, "care_cart_volunteers", "center_nch_volunteers", "center_laf_volunteers"))} sublabel={`Care Cart ${n(sum(f, "care_cart_volunteers"))} · Activity Center ${n(sum(f, "center_nch_volunteers", "center_laf_volunteers"))}`} icon={HandHeart} />;
+      return <Card href="/volunteers" label="Volunteers" value={dash ?? n(sum(f, "care_cart_volunteers", "center_nch_volunteers", "center_laf_volunteers"))} sublabel={`Care Cart ${n(sum(f, "care_cart_volunteers"))} · Activity Center ${n(sum(f, "center_nch_volunteers", "center_laf_volunteers"))}`} icon={HandHeart} />;
     case "stock":
       return <Card href="/inventory/expiry" label="Stock alerts" value={now.expiringSoon + now.lowStock} sublabel={`${now.expiringSoon} expiring ≤14 days · ${now.lowStock} low · now`} icon={PackageX} tone={now.expiringSoon + now.lowStock > 0 ? "warning" : "default"} />;
     case "caf_nights":

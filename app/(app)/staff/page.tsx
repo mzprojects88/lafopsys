@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, FileText, Fingerprint, ListChecks, Users2 } from "lucide-react";
+import { CalendarDays, FileText, Fingerprint, ListChecks } from "lucide-react";
 import { PageHeader } from "@/components/patterns/page-header";
 import { ModuleSubNav, type ModuleSubNavItem } from "@/components/patterns/module-subnav";
 import { ClockWidget } from "@/components/modules/staff/clock-widget";
@@ -13,7 +13,6 @@ const SUB_NAV: ModuleSubNavItem[] = [
   { href: "/staff/punches", label: "Punches", icon: ListChecks },
   { href: "/staff/roster", label: "Roster", icon: CalendarDays },
   { href: "/staff/timesheets", label: "Timesheets", icon: FileText },
-  { href: "/staff/volunteers", label: "Volunteers", icon: Users2 },
 ];
 
 export default function StaffPage() {

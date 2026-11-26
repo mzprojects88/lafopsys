@@ -7,6 +7,7 @@ import type {
   ActivitySource,
   BookingActivityType,
   BookingClosure,
+  BookingGroup,
   BookingEvent,
   BookingItem,
   BookingPlace,
@@ -21,6 +22,15 @@ import type {
 } from "@/lib/types/booking";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
+
+/** A member row as the staff editor holds it; `id` is empty for a new one. */
+export interface MemberInput {
+  id?: string;
+  name: string;
+  email: string;
+  under18: boolean;
+  came: boolean | null;
+}
 
 const booking = () => createClient().schema("booking");
 const text = (v: unknown) => (typeof v === "string" ? v : "");
@@ -99,7 +109,7 @@ export interface BookingRequests {
 }
 
 const REQUEST_COLUMNS =
-  "id, ref, seq_no, place_id, date, start_time, end_time, status, requestor_name, requestor_kind, contact_person, email, mobile, channel, volunteers_count, has_minors, off_plan, nch_contact, nch_coordinated_at, nch_notes, decline_reason, staff_note, instructions, attended_children, attended_volunteers, attended_hours, created_at, decided_at";
+  "id, ref, seq_no, place_id, date, start_time, end_time, status, requestor_name, requestor_kind, contact_person, email, mobile, channel, group_id, volunteers_count, has_minors, off_plan, nch_contact, nch_coordinated_at, nch_notes, decline_reason, staff_note, instructions, attended_children, attended_volunteers, attended_hours, created_at, decided_at";
 
 /** Every request with its program flow, its volunteers' names and its trail.
  * ponytail: all of them are loaded; page them by month once there are a few thousand. */
@@ -117,7 +127,7 @@ export const bookingRequestsStore = createCollection<BookingRequests>({
     const [requests, items, volunteers, events] = await Promise.all([
       fetchAll<Row>((from, to) => booking().from("requests").select(REQUEST_COLUMNS).order("date", { ascending: false }).order("id").range(from, to)),
       fetchAll<Row>((from, to) => booking().from("request_items").select("id, request_id, position, activity, source, purpose, who, ages, gender, participants_note, start_time, end_time, materials").order("request_id").order("position").range(from, to)),
-      fetchAll<Row>((from, to) => booking().from("volunteers").select("id, request_id, position, name").order("request_id").order("position").range(from, to)),
+      fetchAll<Row>((from, to) => booking().from("volunteers").select("id, request_id, position, name, email, under_18, came, person_id").order("request_id").order("position").range(from, to)),
       fetchAll<Row>((from, to) => booking().from("events").select("id, request_id, at, actor, by_requestor, action, detail").order("at").order("id").range(from, to)),
     ]);
     const n = (v: unknown) => (v === null || v === undefined ? null : Number(v));
@@ -137,6 +147,7 @@ export const bookingRequestsStore = createCollection<BookingRequests>({
         email: text(r.email),
         mobile: text(r.mobile),
         channel: r.channel === "phone" ? "phone" : r.channel === "walk_in" ? "walk_in" : "web",
+        groupId: (r.group_id as string | null) ?? null,
         volunteersCount: Number(r.volunteers_count ?? 0),
         hasMinors: r.has_minors === true,
         offPlan: r.off_plan === true,
@@ -167,7 +178,16 @@ export const bookingRequestsStore = createCollection<BookingRequests>({
         end: hhmm(r.end_time),
         materials: text(r.materials),
       })),
-      volunteers: volunteers.map((r) => ({ id: r.id as string, requestId: r.request_id as string, position: Number(r.position), name: text(r.name) })),
+      volunteers: volunteers.map((r) => ({
+        id: r.id as string,
+        requestId: r.request_id as string,
+        position: Number(r.position),
+        name: text(r.name),
+        email: text(r.email),
+        under18: r.under_18 === true,
+        came: typeof r.came === "boolean" ? r.came : null,
+        personId: (r.person_id as string | null) ?? null,
+      })),
       events: events.map((r) => ({ id: r.id as string, requestId: r.request_id as string, at: text(r.at), actor: (r.actor as string | null) ?? null, byRequestor: r.by_requestor === true, action: text(r.action), detail: text(r.detail) })),
     };
   },
@@ -211,23 +231,39 @@ export function useBookingRequests() {
     return { ok: true };
   }
 
-  /** The volunteers' names, replaced as a whole (staff may fix what the group typed). */
-  async function saveVolunteers(id: string, names: string[]): Promise<MutationResult> {
-    const clean = names.map((x) => x.replace(/\s+/g, " ").trim()).filter(Boolean);
-    const removed = await booking().from("volunteers").delete().eq("request_id", id);
-    if (removed.error) return { ok: false, error: removed.error.message };
-    if (clean.length) {
-      const added = await booking().from("volunteers").insert(clean.map((name, i) => ({ request_id: id, position: i + 1, name })));
-      if (added.error) {
-        await bookingRequestsStore.refetch();
-        return { ok: false, error: added.error.message };
-      }
+  /** The members of a booking, kept row by row (0181): a member staff did not touch keeps whether they came and the
+   * volunteer they were credited to. Rows left out are removed; new rows go after the last. */
+  async function saveMembers(id: string, rows: MemberInput[]): Promise<MutationResult> {
+    const before = data.volunteers.filter((v) => v.requestId === id);
+    const clean = rows.map((m) => ({ ...m, name: m.name.replace(/\s+/g, " ").trim(), email: m.email.trim().toLowerCase() })).filter((m) => m.name || m.email);
+    const bad = clean.find((m) => m.name.length < 2 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m.email));
+    if (bad) return { ok: false, error: `Give the full name and email of each member${bad.name ? ` (${bad.name})` : ""}. For a member under 18, a parent's or guardian's email.` };
+    const finish = async (e: { message: string } | null): Promise<MutationResult> => {
+      await bookingRequestsStore.refetch();
+      return e ? { ok: false, error: e.message } : { ok: true };
+    };
+    const kept = new Set(clean.map((m) => m.id).filter(Boolean));
+    const gone = before.filter((v) => !kept.has(v.id)).map((v) => v.id);
+    if (gone.length) {
+      const { error: e } = await booking().from("volunteers").delete().in("id", gone);
+      if (e) return finish(e);
     }
-    await bookingRequestsStore.refetch();
-    return { ok: true };
+    for (const m of clean.filter((x) => x.id)) {
+      const was = before.find((v) => v.id === m.id);
+      if (was && was.name === m.name && was.email === m.email && was.under18 === m.under18 && was.came === m.came) continue;
+      const { error: e } = await booking().from("volunteers").update({ name: m.name, email: m.email, under_18: m.under18, came: m.came }).eq("id", m.id as string);
+      if (e) return finish(e);
+    }
+    let position = Math.max(0, ...before.filter((v) => kept.has(v.id)).map((v) => v.position));
+    const added = clean.filter((x) => !x.id).map((m) => ({ request_id: id, position: ++position, name: m.name, email: m.email, under_18: m.under18, came: m.came }));
+    if (added.length) {
+      const { error: e } = await booking().from("volunteers").insert(added);
+      if (e) return finish(e);
+    }
+    return finish(null);
   }
 
-  return { ...data, loading, error, decide, saveNotes, saveVolunteers };
+  return { ...data, loading, error, decide, saveNotes, saveMembers };
 }
 
 export function useBookingSetup() {
@@ -282,4 +318,28 @@ export function useBookingSetup() {
     done((await booking().from("activity_types").update({ ...(patch.name ? { name: patch.name.replace(/\s+/g, " ").trim() } : {}), ...(patch.active !== undefined ? { active: patch.active } : {}) }).eq("id", id)).error);
 
   return { ...data, loading, error, saveSettings, addPlace, updatePlace, addSlot, updateSlot, removeSlot, addClosure, removeClosure, addActivityType, updateActivityType };
+}
+
+/** booking.groups (0181): one per contact email, the group that books visits. Read by Bookings and Volunteers. */
+export const bookingGroupsStore = createCollection<BookingGroup[]>({
+  key: "booking.groups",
+  empty: [],
+  tables: [{ schema: "booking", table: "groups" }],
+  fetch: async () => {
+    const rows = await fetchAll<Record<string, unknown>>((from, to) => booking().from("groups").select("id, name, kind, contact_person, email, mobile, created_at").order("name").order("id").range(from, to));
+    return rows.map((r) => ({
+      id: r.id as string,
+      name: text(r.name),
+      kind: r.kind as RequestorKind,
+      contactPerson: text(r.contact_person),
+      email: text(r.email),
+      mobile: text(r.mobile),
+      createdAt: text(r.created_at),
+    }));
+  },
+});
+
+export function useBookingGroups() {
+  const { data: groups, loading, error } = useCollection(bookingGroupsStore);
+  return { groups, loading, error };
 }
