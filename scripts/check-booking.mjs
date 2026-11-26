@@ -98,7 +98,7 @@ try {
   const miss = (await one("select booking.web_lookup('LAF-AC-AAAA-AAAA', 'caller-b') v")).v;
   const seen = (await one("select booking.web_lookup($1, 'caller-b') v", [made.ref.toLowerCase().replace(/-/g, " - ")])).v;
   check("an unknown Request ID shows nothing", miss === null);
-  check("the right one shows the booking, however it is typed; contacts masked; nothing for approved bookings yet", seen?.status === "pending" && seen.items.length === 2 && /^g\*\*\*@example\.org$/.test(seen.email) && /^\*+000$/.test(seen.mobile) && seen.approved === null && seen.canEditNames === false, JSON.stringify(seen)?.slice(0, 200));
+  check("the right one shows the booking, however it is typed; contacts masked; nothing for approved bookings yet; names may be given while pending (0184)", seen?.status === "pending" && seen.items.length === 2 && /^g\*\*\*@example\.org$/.test(seen.email) && /^\*+000$/.test(seen.mobile) && seen.approved === null && seen.canEditNames === true, JSON.stringify(seen)?.slice(0, 200));
 
   // ---- staff ----
   const worker = await one("select id from shared.staff where active and role = 'social_worker' order by created_at limit 1");
@@ -263,6 +263,140 @@ try {
     const before = (await one("select calendar_event_id e from booking.requests where id = $1", [gone.rows[0].r.id])).e;
     await tryIt("select booking.web_cancel($1, 'caller-e')", [gone.rows[0].r.ref]);
     check("a booking the group cancels leaves the Calendar", before !== null && (await one("select count(*)::int n from ops.calendar_events where id = $1", [before])).n === 0 && (await one("select calendar_event_id e from booking.requests where id = $1", [gone.rows[0].r.id])).e === null);
+  }
+
+  {
+  // ---- 0184: names when filing, confirm-by, the group's change of date, expiry ----
+  await service();
+  await c.query("update booking.settings set min_days_ahead = 5, max_open_requests = 10");
+  const freeSlots = async () => (await q("select day::text d, left(start_time::text, 5) t from booking.slot_states($1, booking.today(), booking.today() + 60) where state = 'open' and start_time = '10:00' and end_time = '12:00' order by day, start_time", [place.id])).map((x) => ({ d: x.d, t: x.t }));
+  let open = await freeSlots();
+  const soon = await one("select day::text d, left(start_time::text, 5) t from booking.slot_states($1, booking.today(), booking.today() + 4) where state = 'too_soon' order by day limit 1", [place.id]);
+  if (soon) {
+    const r = await request(payload(place.id, soon.d, { start_time: soon.t }), "c184-soon");
+    check("with 5 days set, the booking page refuses a day 4 days ahead", !r.ok && /at least 5 days/.test(r.error), r.error ?? "filed");
+  }
+  check("with 5 days set, the first open day is at least 5 days ahead", open.length > 4 && (await one("select ($1::date - booking.today()) n", [open[0].d])).n >= 5, JSON.stringify(open[0]));
+  const people = (k) => Array.from({ length: k }, (_, i) => ({ name: `Sample Member ${i + 1}`, email: `m${i + 1}@example.org`, under18: i === 1 }));
+  const fewer = await request(payload(place.id, open[0].d, { start_time: open[0].t, volunteers_count: 3, members: people(2) }), "c184-a");
+  check("when the form sends names, every volunteer needs one", !fewer.ok && /full name and email of each volunteer/.test(fewer.error), fewer.error ?? "filed");
+  const noMail = await request(payload(place.id, open[0].d, { start_time: open[0].t, volunteers_count: 2, members: [{ name: "Sample One", email: "one@example.org" }, { name: "Sample Two", email: "" }] }), "c184-b");
+  check("a volunteer named without an email is refused", !noMail.ok && /email address of Sample Two/.test(noMail.error), noMail.error ?? "filed");
+  const good = await request(payload(place.id, open[0].d, { start_time: open[0].t, volunteers_count: 3, members: people(3) }), "c184-c");
+  const goodRow = good.ok ? await one("select r.id, r.ref, r.confirm_by::text cb, (r.date - s.names_due_days)::text d, r.has_minors, (select count(*)::int from booking.volunteers v where v.request_id = r.id) n from booking.requests r, booking.settings s where s.id and r.id = $1", [good.rows[0].r.id]) : null;
+  check("a request with every name is filed with its members and its confirm-by date (3 days before)", goodRow?.n === 3 && goodRow.cb === goodRow.d, JSON.stringify(goodRow ?? good.error));
+  check("the filing answers with the confirm-by date", good.ok && good.rows[0].r.confirmBy === goodRow?.cb, JSON.stringify(good.rows?.[0]?.r));
+  check("names given when filing mark the group as having volunteers under 18", goodRow?.has_minors === true);
+  const pendingNames = await tryIt("select booking.web_names($1, $2::jsonb, 'c184-names') v", [goodRow.ref, JSON.stringify([...people(2), { name: "Sample Member 3", email: "m3***@example.org" }])]);
+  check("a group corrects its names while the request is still pending (a masked email keeps the one on file)", pendingNames.ok && (await one("select email from booking.volunteers where request_id = $1 and position = 3", [goodRow.id])).email === "m3@example.org", pendingNames.error);
+
+  // the group's change of date
+  open = await freeSlots();
+  const other = open.find((x) => x.d !== open[0].d) ?? open[1];
+  const before = await one("select left(start_time::text, 5) s from booking.request_items where request_id = $1 order by position limit 1", [goodRow.id]);
+  const moved = await tryIt("select booking.web_change_date($1, $2::date, $3::time, 'c184-move') v", [goodRow.ref, other.d, other.t]);
+  const afterMove = await one("select date::text d, status, confirm_by::text cb, (date - (select names_due_days from booking.settings))::text e from booking.requests where id = $1", [goodRow.id]);
+  check("the group moves its pending request to another open day; it stays pending with a new confirm-by date", moved.ok && afterMove.d === other.d && afterMove.status === "pending" && afterMove.cb === afterMove.e, JSON.stringify(moved.ok ? afterMove : moved.error));
+  check("the change is on the trail, said by the group", (await one("select count(*)::int n from booking.events where request_id = $1 and action = 'date_changed' and by_requestor", [goodRow.id])).n === 1);
+  check("the program keeps its times inside the new slot", (await one("select left(start_time::text, 5) s from booking.request_items where request_id = $1 order by position limit 1", [goodRow.id])).s === before.s);
+  const nobody = await tryIt("select booking.web_change_date('LAF-AC-ZZZZ-ZZZ2', $1::date, $2::time, 'c184-x') v", [other.d, other.t]);
+  check("an unknown Request ID changes nothing", nobody.ok && nobody.rows[0].v === null);
+  const blockerSlot = (await freeSlots()).find((x) => x.d !== other.d);
+  const blocker = await request(payload(place.id, blockerSlot.d, { start_time: blockerSlot.t, volunteers_count: 1, members: people(1) }), "c184-blocker");
+  const taken = await tryIt("select booking.web_change_date($1, $2::date, $3::time, 'c184-y') v", [goodRow.ref, blockerSlot.d, blockerSlot.t]);
+  check("a day another group already asked for is refused", blocker.ok && !taken.ok && /just been asked for/.test(taken.error), taken.error ?? "moved");
+  if (worker) {
+    await as(worker.id);
+    const ok2 = await tryIt("select booking.decide($1, 'approve', $2::jsonb) v", [goodRow.id, JSON.stringify({ nch_contact: "Sample Nurse", nch_coordinated_at: new Date().toISOString() })]);
+    await service();
+    check("staff approve the request", ok2.ok, ok2.error);
+    open = await freeSlots();
+    const third = open.find((x) => x.d !== other.d) ?? open[0];
+    const back = await tryIt("select booking.web_change_date($1, $2::date, $3::time, 'c184-move') v", [goodRow.ref, third.d, third.t]);
+    const row2 = await one("select status, nch_contact, decided_at from booking.requests where id = $1", [goodRow.id]);
+    check("an approved booking whose date the group changes goes back to pending, its NCH coordination cleared", back.ok && row2.status === "pending" && row2.nch_contact === null && row2.decided_at === null, JSON.stringify(back.ok ? row2 : back.error));
+    open = await freeSlots();
+    const fourth = open.find((x) => x.d !== third.d) ?? open[0];
+    const again = await tryIt("select booking.web_change_date($1, $2::date, $3::time, 'c184-move') v", [goodRow.ref, fourth.d, fourth.t]);
+    check("a third change of date is refused (2 allowed)", !again.ok && /already changed 2 times/.test(again.error), again.error ?? "moved");
+    // staff Move: staff take it on themselves, no confirm-by date
+    await as(worker.id);
+    const staffMove = await tryIt("select booking.decide($1, 'move', $2::jsonb) v", [goodRow.id, JSON.stringify({ date: fourth.d, start_time: fourth.t })]);
+    await service();
+    check("a staff Move clears the confirm-by date", staffMove.ok && (await one("select confirm_by from booking.requests where id = $1", [goodRow.id])).confirm_by === null, staffMove.error);
+  }
+  // the cut-off: within 3 days of the visit the group can no longer change it
+  open = await freeSlots();
+  const late = await request(payload(place.id, open[0].d, { start_time: open[0].t, volunteers_count: 1, members: people(1) }), "c184-late");
+  await c.query("update booking.requests set date = booking.today() + 2 where ref = $1", [late.rows?.[0]?.r.ref]);
+  const tooLate = await tryIt("select booking.web_change_date($1, $2::date, $3::time, 'c184-late') v", [late.rows?.[0]?.r.ref, open[1].d, open[1].t]);
+  if (!late.ok) console.log("late request not filed:", late.error);
+  check("within 3 days of the visit the group can't change the date", !tooLate.ok && /until 3 days before/.test(tooLate.error), tooLate.error ?? "moved");
+  const viewLate = (await one("select booking.request_view(id) v from booking.requests where ref = $1", [late.rows?.[0]?.r.ref])).v;
+  check("its page says so: no change of date, names closed, cancel still open", viewLate.canChangeDate === false && viewLate.canEditNames === false && viewLate.canCancel === true, JSON.stringify({ c: viewLate.canChangeDate, n: viewLate.canEditNames }));
+
+  // expiry, and approval after the confirm-by date
+  await c.query("update booking.requests set confirm_by = booking.today() - 1 where ref = $1", [late.rows?.[0]?.r.ref]);
+  if (worker) {
+    await as(worker.id);
+    const lateYes = await tryIt("select booking.decide(id, 'approve', '{}'::jsonb) v from booking.requests where ref = $1", [late.rows?.[0]?.r.ref]);
+    await service();
+    check("staff can't approve a request past its confirm-by date", !lateYes.ok && /had to be confirmed by/.test(lateYes.error), lateYes.error ?? "approved");
+  }
+  const staffFiled = worker ? await tryIt("select booking.file_request($1::jsonb, 'staff', $2) r", [JSON.stringify(payload(place.id, open[2].d, { start_time: open[2].t, volunteers_count: 4, members: people(2), channel: "phone" })), worker.id]) : null;
+  if (staffFiled) check("a staff booking may name only some volunteers, and has no confirm-by date", staffFiled.ok && (await one("select confirm_by, (select count(*)::int from booking.volunteers where request_id = r.id) n from booking.requests r where id = $1", [staffFiled.rows[0].r.id])).n === 2 && staffFiled.rows[0].r.confirmBy === null, staffFiled.error);
+  if (staffFiled?.ok) await c.query("update booking.requests set date = booking.today() + 1 where id = $1", [staffFiled.rows[0].r.id]);
+  const gone = (await q("select booking.expire_unconfirmed() id")).map((x) => x.id);
+  const lateRow = await one("select id, status, decline_reason from booking.requests where ref = $1", [late.rows?.[0]?.r.ref]);
+  check("the morning job closes a request past its confirm-by date: declined as not confirmed in time, slot free", gone.includes(lateRow.id) && lateRow.status === "declined" && /Not confirmed in time/.test(lateRow.decline_reason), JSON.stringify({ gone: gone.length, s: lateRow.status }));
+  check("it is on the trail as expired, and the group's page tells it so", (await one("select count(*)::int n from booking.events where request_id = $1 and action = 'expired'", [lateRow.id])).n === 1 && (await one("select booking.request_view($1) v", [lateRow.id])).v.history.some((h) => h.action === "expired"));
+  check("a staff booking is never closed by the job", !staffFiled?.ok || (await one("select status from booking.requests where id = $1", [staffFiled.rows[0].r.id])).status === "pending");
+  const hist = (await one("select booking.request_view($1) v", [goodRow.id])).v.history;
+  check("the group's history holds the action, the day and who: never a staff name or note", hist.length > 2 && hist.every((h) => Object.keys(h).sort().join() === "action,byYou,on"), JSON.stringify(hist[0]));
+  if (worker) {
+    await as(worker.id);
+    const direct = await tryIt("select booking.web_change_date('LAF-AC-ZZZZ-ZZZ2', current_date, '10:00'::time, 'x')");
+    const directExpire = await tryIt("select booking.expire_unconfirmed()");
+    await service();
+    check("signed-in staff can't call the change-of-date door or the expiry directly", !direct.ok && !directExpire.ok);
+  }
+  }
+
+  {
+  // ---- 0185: the Calendar follows a booking out of "approved"; staff add who turned up beyond the number booked ----
+  // feeds_ops is on only on production: switched on here inside the rolled-back transaction (the Calendar is copied hourly).
+  await service();
+  await c.query("update booking.settings set feeds_ops = true, min_days_ahead = 5, max_open_requests = 10");
+  const free = (await q("select day::text d, left(start_time::text, 5) t from booking.slot_states($1, booking.today(), booking.today() + 60) where state = 'open' and start_time = '10:00' and end_time = '12:00' order by day", [place.id])).map((x) => ({ d: x.d, t: x.t }));
+  const one1 = [{ name: "Sample Person A", email: "pa@example.org" }];
+  const filed = await request(payload(place.id, free[0].d, { start_time: free[0].t, volunteers_count: 1, members: one1 }), "c185-a");
+  if (worker && filed.ok) {
+    const id = filed.rows[0].r.id;
+    const ref = filed.rows[0].r.ref;
+    await as(worker.id);
+    const okA = await tryIt("select booking.decide($1, 'approve', $2::jsonb) v", [id, JSON.stringify({ nch_contact: "Sample Nurse", nch_coordinated_at: new Date().toISOString() })]);
+    await service();
+    const ev1 = (await one("select calendar_event_id e from booking.requests where id = $1", [id])).e;
+    check("an approved booking is on the Calendar", okA.ok && ev1 && (await one("select count(*)::int n from ops.calendar_events where id = $1", [ev1])).n === 1, okA.error);
+    const moved = await tryIt("select booking.web_change_date($1, $2::date, $3::time, 'c185-b') v", [ref, free[1].d, free[1].t]);
+    const after = await one("select status, calendar_event_id e from booking.requests where id = $1", [id]);
+    check("when the group changes its date it goes back to pending and leaves the Calendar", moved.ok && after.status === "pending" && after.e === null && (await one("select count(*)::int n from ops.calendar_events where id = $1", [ev1])).n === 0, JSON.stringify(moved.ok ? after : moved.error));
+    await as(worker.id);
+    const okB = await tryIt("select booking.decide($1, 'approve', $2::jsonb) v", [id, JSON.stringify({ nch_contact: "Sample Nurse", nch_coordinated_at: new Date().toISOString() })]);
+    await service();
+    const ev2 = await one("select e.date::text d from booking.requests r join ops.calendar_events e on e.id = r.calendar_event_id where r.id = $1", [id]);
+    check("approved again, it is back on the Calendar on the new day", okB.ok && ev2?.d === free[1].d, JSON.stringify(ev2 ?? okB.error));
+    // on the day: staff add a person who came beyond the one booked
+    await as(worker.id);
+    const extra = await tryIt("insert into booking.volunteers (request_id, position, name, email) values ($1, 2, 'Sample Person B', 'pb@example.org') returning id", [id]);
+    await service();
+    check("staff add someone beyond the number booked and the booking's number follows", extra.ok && (await one("select volunteers_count n from booking.requests where id = $1", [id])).n === 2, extra.error);
+    const tooMany = await tryIt("select booking.web_names($1, $2::jsonb, 'c185-c') v", [ref, JSON.stringify([...one1, { name: "Sample Person B", email: "pb@example.org" }, { name: "Sample Person C", email: "pc@example.org" }])]);
+    check("the group still can't give more names than its booking has", !tooMany.ok && /This booking is for 2 volunteers/.test(tooMany.error), tooMany.error ?? "saved");
+    const pub = await request(payload(place.id, free[2].d, { start_time: free[2].t, volunteers_count: 1, members: [...one1, { name: "Sample Person Z", email: "pz@example.org" }] }), "c185-d");
+    check("the booking page still refuses more names than volunteers", !pub.ok && /More names than volunteers/.test(pub.error), pub.error ?? "filed");
+    await c.query("update booking.settings set feeds_ops = false");
+  }
   }
 
   let blocked = null;

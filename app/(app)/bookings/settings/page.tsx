@@ -28,7 +28,8 @@ const LIMITS: { key: keyof BookingSettings; label: string; note: string; min: nu
   { key: "maxDaysAhead", label: "Latest day a group can book", note: "Days ahead of today.", min: 7, max: 365 },
   { key: "maxVolunteers", label: "Most volunteers in a group", note: "Per booking.", min: 1, max: 50 },
   { key: "maxOpenRequests", label: "Open requests per email address", note: "Pending or approved, not yet held.", min: 1, max: 10 },
-  { key: "namesDueDays", label: "Volunteers' names are due", note: "Days before the visit.", min: 0, max: 14 },
+  { key: "namesDueDays", label: "Confirm, change the date and the names by", note: "Days before the visit: staff confirm a request by then; a group changes its date or names until then.", min: 1, max: 14 },
+  { key: "maxDateChanges", label: "Changes of date per booking", note: "How many times a group may change its own date.", min: 0, max: 5 },
   { key: "replyDays", label: "We answer a request within", note: "Working days. Shown to the group.", min: 1, max: 14 },
   { key: "attendanceDays", label: "Groups may confirm who came for", note: "Days after the visit, in the Volunteers Portal.", min: 0, max: 30 },
 ];
@@ -46,6 +47,7 @@ export default function BookingSettingsPage() {
   const [limits, setLimits] = React.useState<Partial<Record<keyof BookingSettings, string>>>({});
   const [texts, setTexts] = React.useState<Partial<Pick<BookingSettings, "guidelines" | "prohibited" | "privacyNotice">>>({});
   const [siteUrl, setSiteUrl] = React.useState<string | null>(null);
+  const [alertEmails, setAlertEmails] = React.useState<string | null>(null);
   const [place, setPlace] = React.useState<PlaceForm | null>(null);
   const [slot, setSlot] = React.useState({ placeId: "", weekday: "1", start: "10:00", end: "12:00" });
   const [closure, setClosure] = React.useState({ placeId: "all", dateFrom: "", dateTo: "", reason: "" });
@@ -318,6 +320,29 @@ export default function BookingSettingsPage() {
             </Button>
           </form>
         ) : null}
+      </SectionCard>
+
+      <SectionCard title="Booking alerts by email" description="For the staff who answer bookings. The bell and the hourly reminder in ArkOS always show what waits; these emails are extra.">
+        <div className="flex flex-col gap-4">
+          <Field className="w-full sm:max-w-xl">
+            <FieldLabel htmlFor="alert-emails">Send them to</FieldLabel>
+            <Input id="alert-emails" inputMode="email" maxLength={600} disabled={!canEdit} placeholder="socialworker@littlearkfoundation.org, officeadmin@littlearkfoundation.org" value={alertEmails ?? settings.alertEmails} onChange={(e) => setAlertEmails(e.target.value)} />
+            <FieldDescription>Up to 10 addresses, separated by commas.</FieldDescription>
+          </Field>
+          {canEdit && alertEmails !== null ? (
+            <Button type="button" className="self-start" disabled={busy} onClick={() => run(setup.saveSettings({ alertEmails: alertEmails.trim() }), "Saved.", () => setAlertEmails(null))}>
+              Save the addresses
+            </Button>
+          ) : null}
+          <label className="flex items-center gap-3 text-theme-sm text-foreground">
+            <Switch checked={settings.alertNewRequest} disabled={!canEdit || busy} onCheckedChange={(on) => run(setup.saveSettings({ alertNewRequest: on }), on ? "On." : "Off.")} />
+            An email for each new request from the booking page
+          </label>
+          <label className="flex items-center gap-3 text-theme-sm text-foreground">
+            <Switch checked={settings.alertMorning} disabled={!canEdit || busy} onCheckedChange={(on) => run(setup.saveSettings({ alertMorning: on }), on ? "On." : "Off.")} />
+            A morning summary at 8:00 AM of every request that waits
+          </label>
+        </div>
       </SectionCard>
 
       <SectionCard title="Address of the booking page" description="Where the public booking page is served. The emails to a group link to it, so a wrong address here means links that do not open.">

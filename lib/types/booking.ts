@@ -23,6 +23,12 @@ export interface BookingSettings {
   replyDays: number;
   /** Days after a visit the group may confirm who came from the portal (0183). */
   attendanceDays: number;
+  /** How many times a group may change its own date (0184). */
+  maxDateChanges: number;
+  /** Booking alerts for staff (0184): who gets them, and the two switches (both off at first). */
+  alertEmails: string;
+  alertNewRequest: boolean;
+  alertMorning: boolean;
   guidelines: string;
   prohibited: string;
   privacyNotice: string;
@@ -88,6 +94,8 @@ export interface BookingItem {
 
 export interface BookingRequest {
   id: string;
+  /** The day staff must confirm a request from the booking page by (0184); null when staff filed or moved it. */
+  confirmBy: string | null;
   /** The Request ID the requestor holds (LAF-AC-XXXX-XXXX). */
   ref: string;
   /** The running number staff use (LAF-ACB-2026-0001). */
@@ -246,6 +254,14 @@ export interface PublicBooking {
   namesDue: string;
   canEditNames: boolean;
   canCancel: boolean;
+  /** While pending: the day staff confirm it by (0184); null for a booking staff filed or moved. */
+  confirmBy: string | null;
+  canChangeDate: boolean;
+  dateChangesLeft: number;
+  /** What happened, by day: the action only, never a staff name or note. */
+  history: { action: string; on: string; byYou: boolean }[];
+  /** Added by the server's look-up, for the open days of "Change the date". */
+  placeId?: string;
   declineReason: string | null;
   approved: { instructions: string; bookingInstructions: string; coordinatorName: string; coordinatorPhone: string } | null;
   replyDays: number;

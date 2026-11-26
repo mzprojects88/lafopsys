@@ -28,7 +28,8 @@ export async function sendPending(admin: SupabaseClient, schema: "ops" | "shop" 
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({ from: process.env.RESEND_FROM || "Little Ark Foundation <onboarding@resend.dev>", to: [r.to_address], subject: r.subject, html: r.body_html }),
+      // RESEND_REPLY_TO (26 Nov 2026): where a reply goes (info@), since the sender address takes no mail for people.
+      body: JSON.stringify({ from: process.env.RESEND_FROM || "Little Ark Foundation <onboarding@resend.dev>", ...(process.env.RESEND_REPLY_TO ? { reply_to: process.env.RESEND_REPLY_TO } : {}), to: [r.to_address], subject: r.subject, html: r.body_html }),
     }).catch((e: unknown) => ({ ok: false, status: 0, text: async () => String(e) }) as const);
     if (res.ok) {
       sent++;

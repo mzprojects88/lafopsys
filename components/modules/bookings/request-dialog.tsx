@@ -3,6 +3,7 @@
 import * as React from "react";
 import { AlertTriangle, Printer } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmBy } from "@/components/modules/bookings/confirm-by";
 import { MembersEditor } from "@/components/modules/bookings/members-editor";
 import { ReasonDialog } from "@/components/patterns/reason-dialog";
 import { StatusBadge } from "@/components/patterns/status-badge";
@@ -22,7 +23,7 @@ import { formatDate, todayIso } from "@/lib/utils/date";
 import { formatTime12 } from "@/lib/utils/time12";
 
 const when = (iso: string | null) => formatDate(iso, "MMM d, yyyy, h:mm a");
-const TRAIL: Record<string, string> = { requested: "Request filed", approved: "Approved", declined: "Declined", cancelled: "Cancelled", moved: "Moved", names: "Volunteers' names given", attendance: "Who came, confirmed by the group", completed: "Visit recorded", no_show: "Marked: did not come" };
+const TRAIL: Record<string, string> = { requested: "Request filed", approved: "Approved", declined: "Declined", cancelled: "Cancelled", moved: "Moved", names: "Volunteers' names given", date_changed: "Date changed by the group", expired: "Not confirmed in time: closed", attendance: "Who came, confirmed by the group", completed: "Visit recorded", no_show: "Marked: did not come" };
 const SOURCE: Record<string, string> = { plan: "In the NCH-approved plan", list: "From LAF's list", suggested: "Suggested by the group" };
 /** A moment as `yyyy-MM-ddTHH:mm` in this browser's own time, for a datetime-local input. */
 const localInput = (d = new Date()) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
@@ -43,7 +44,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
  */
 export function RequestDialog({ request, canEdit, onClose }: { request: BookingRequest | null; canEdit: boolean; onClose: () => void }) {
   const { items, volunteers, events, decide, saveNotes, saveMembers } = useBookingRequests();
-  const { places, slots } = useBookingSetup();
+  const { places, slots, settings } = useBookingSetup();
   const { staff } = useStaffRoster();
   const [busy, setBusy] = React.useState(false);
   const [ask, setAsk] = React.useState<"approve" | "decline" | "cancel" | "move" | "complete" | "no_show" | null>(null);
@@ -120,6 +121,7 @@ export function RequestDialog({ request, canEdit, onClose }: { request: BookingR
             <DialogTitle className="flex flex-wrap items-center gap-2">
               {r.requestorName}
               <StatusBadge domain="booking" status={r.status} label={BOOKING_STATUS_LABEL[r.status]} />
+              {r.status === "pending" && r.confirmBy ? <ConfirmBy day={r.confirmBy} /> : null}
             </DialogTitle>
             <DialogDescription>
               {r.seqNo} · Request ID {r.ref} · filed {when(r.createdAt)}
@@ -246,6 +248,8 @@ export function RequestDialog({ request, canEdit, onClose }: { request: BookingR
             key={members.map((m) => `${m.id}${m.email}${m.came}`).join()}
             members={members}
             count={r.volunteersCount}
+            // On the day staff may add who turned up beyond the number booked, up to the group limit (0185).
+            limit={Math.max(r.volunteersCount, settings.maxVolunteers)}
             recorded={r.status === "completed"}
             canEdit={canEdit && r.status !== "declined" && r.status !== "cancelled"}
             busy={busy}

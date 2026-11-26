@@ -37,7 +37,7 @@ const text = (v: unknown) => (typeof v === "string" ? v : "");
 const hhmm = (v: unknown) => text(v).slice(0, 5);
 const fail = (error: { message: string } | null): MutationResult => (error ? { ok: false, error: error.message } : { ok: true });
 
-const DEFAULT_SETTINGS: BookingSettings = { minDaysAhead: 14, maxDaysAhead: 60, maxVolunteers: 10, maxOpenRequests: 2, namesDueDays: 3, replyDays: 3, attendanceDays: 7, guidelines: "", prohibited: "", privacyNotice: "", siteUrl: "" };
+const DEFAULT_SETTINGS: BookingSettings = { minDaysAhead: 14, maxDaysAhead: 60, maxVolunteers: 10, maxOpenRequests: 2, namesDueDays: 3, replyDays: 3, attendanceDays: 7, maxDateChanges: 2, alertEmails: "", alertNewRequest: false, alertMorning: false, guidelines: "", prohibited: "", privacyNotice: "", siteUrl: "" };
 
 export interface BookingSetup {
   settings: BookingSettings;
@@ -60,7 +60,7 @@ export const bookingSetupStore = createCollection<BookingSetup>({
   ],
   fetch: async () => {
     const [s, p, sl, c, a] = await Promise.all([
-      booking().from("settings").select("min_days_ahead, max_days_ahead, max_volunteers, max_open_requests, names_due_days, reply_days, attendance_days, guidelines, prohibited, privacy_notice, site_url").maybeSingle(),
+      booking().from("settings").select("min_days_ahead, max_days_ahead, max_volunteers, max_open_requests, names_due_days, reply_days, attendance_days, max_date_changes, alert_emails, alert_new_request, alert_morning, guidelines, prohibited, privacy_notice, site_url").maybeSingle(),
       booking().from("places").select("id, name, site, where_to_go, instructions, coordinator_name, coordinator_phone, open, sort").order("sort").order("name"),
       booking().from("slots").select("id, place_id, weekday, start_time, end_time, active").order("weekday").order("start_time"),
       booking().from("closures").select("id, place_id, date_from, date_to, reason").order("date_from", { ascending: false }),
@@ -78,6 +78,10 @@ export const bookingSetupStore = createCollection<BookingSetup>({
             namesDueDays: Number(s.data.names_due_days),
             replyDays: Number(s.data.reply_days),
             attendanceDays: Number(s.data.attendance_days ?? 7),
+            maxDateChanges: Number(s.data.max_date_changes ?? 2),
+            alertEmails: text(s.data.alert_emails),
+            alertNewRequest: s.data.alert_new_request === true,
+            alertMorning: s.data.alert_morning === true,
             guidelines: text(s.data.guidelines),
             prohibited: text(s.data.prohibited),
             privacyNotice: text(s.data.privacy_notice),
@@ -110,7 +114,7 @@ export interface BookingRequests {
 }
 
 const REQUEST_COLUMNS =
-  "id, ref, seq_no, place_id, date, start_time, end_time, status, requestor_name, requestor_kind, contact_person, email, mobile, channel, group_id, volunteers_count, has_minors, off_plan, nch_contact, nch_coordinated_at, nch_notes, decline_reason, staff_note, instructions, attended_children, attended_volunteers, attended_hours, created_at, decided_at";
+  "id, confirm_by, ref, seq_no, place_id, date, start_time, end_time, status, requestor_name, requestor_kind, contact_person, email, mobile, channel, group_id, volunteers_count, has_minors, off_plan, nch_contact, nch_coordinated_at, nch_notes, decline_reason, staff_note, instructions, attended_children, attended_volunteers, attended_hours, created_at, decided_at";
 
 /** Every request with its program flow, its volunteers' names and its trail.
  * ponytail: all of them are loaded; page them by month once there are a few thousand. */
@@ -135,6 +139,7 @@ export const bookingRequestsStore = createCollection<BookingRequests>({
     return {
       requests: requests.map((r) => ({
         id: r.id as string,
+        confirmBy: (r.confirm_by as string | null) ?? null,
         ref: text(r.ref),
         seqNo: text(r.seq_no),
         placeId: r.place_id as string,
@@ -283,6 +288,10 @@ export function useBookingSetup() {
     if (patch.namesDueDays !== undefined) row.names_due_days = patch.namesDueDays;
     if (patch.replyDays !== undefined) row.reply_days = patch.replyDays;
     if (patch.attendanceDays !== undefined) row.attendance_days = patch.attendanceDays;
+    if (patch.maxDateChanges !== undefined) row.max_date_changes = patch.maxDateChanges;
+    if (patch.alertEmails !== undefined) row.alert_emails = patch.alertEmails;
+    if (patch.alertNewRequest !== undefined) row.alert_new_request = patch.alertNewRequest;
+    if (patch.alertMorning !== undefined) row.alert_morning = patch.alertMorning;
     if (patch.guidelines !== undefined) row.guidelines = patch.guidelines;
     if (patch.prohibited !== undefined) row.prohibited = patch.prohibited;
     if (patch.privacyNotice !== undefined) row.privacy_notice = patch.privacyNotice;

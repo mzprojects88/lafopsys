@@ -1,5 +1,5 @@
 import { NextResponse, after } from "next/server";
-import { UUID, callerMark, queueBookingEmail, readableError, requestPayload } from "@/lib/booking/server";
+import { UUID, callerMark, queueBookingEmail, queueStaffAlert, readableError, requestPayload } from "@/lib/booking/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -49,15 +49,18 @@ export async function POST(request: Request) {
   switch (b.action) {
     case "request": {
       // A field no person sees or fills in: a robot that fills it gets a thank-you and nothing is filed.
-      if (text(b.website, 200)) return yes({ ref: "LAF-AC-0000-0000", replyDays: 3 });
+      if (text(b.website, 200)) return yes({ ref: "LAF-AC-0000-0000", replyDays: 3, confirmBy: null });
       const { data, error } = await booking().rpc("web_request", { p: requestPayload(b), p_caller: caller });
       if (error) {
         const e = readableError(error, "request");
         return no(e.message, e.status);
       }
-      const made = data as { id: string; ref: string; replyDays: number };
-      after(() => queueBookingEmail(made.id, "received"));
-      return yes({ ref: made.ref, replyDays: made.replyDays });
+      const made = data as { id: string; ref: string; replyDays: number; confirmBy: string | null };
+      after(async () => {
+        await queueBookingEmail(made.id, "received");
+        await queueStaffAlert("new", made.id);
+      });
+      return yes({ ref: made.ref, replyDays: made.replyDays, confirmBy: made.confirmBy ?? null });
     }
     case "lookup": {
       const { data, error } = await booking().rpc("web_lookup", { p_ref: ref, p_caller: caller });
@@ -65,7 +68,10 @@ export async function POST(request: Request) {
         const e = readableError(error, "lookup");
         return no(e.message, e.status);
       }
-      return data ? yes({ booking: data }) : no("No booking has that Request ID. Please check it and try again.", 404);
+      if (!data) return no("No booking has that Request ID. Please check it and try again.", 404);
+      // The place, for the open days of "Change the date" (an id, nothing about anyone).
+      const { data: row } = await booking().from("requests").select("place_id").eq("ref", (data as { ref: string }).ref).maybeSingle();
+      return yes({ booking: { ...(data as Record<string, unknown>), placeId: row?.place_id ?? null } });
     }
     case "names": {
       // Each member: full name, email and under 18 (0181); whatever else was sent is dropped.
@@ -92,6 +98,21 @@ export async function POST(request: Request) {
       const { data: row } = await booking().from("requests").select("id").eq("ref", (data as { ref: string }).ref).maybeSingle();
       if (row) after(() => queueBookingEmail(row.id as string, "cancelled"));
       return yes({ booking: data });
+    }
+    case "change-date": {
+      // The group moves its own booking to another open day (0184); it goes back to pending approval.
+      const date = text(b.date, 10);
+      const start = text(b.start_time, 5);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(start)) return no("Please choose a day and a time slot.");
+      const { data, error } = await booking().rpc("web_change_date", { p_ref: ref, p_date: date, p_start: start, p_caller: caller });
+      if (error) {
+        const e = readableError(error, "change-date");
+        return no(e.message, e.status);
+      }
+      if (!data) return no("No booking has that Request ID. Please check it and try again.", 404);
+      const { id, ...view } = data as { id: string } & Record<string, unknown>;
+      after(() => queueBookingEmail(id, "changed"));
+      return yes({ booking: view });
     }
     default:
       return no("Unknown request.");

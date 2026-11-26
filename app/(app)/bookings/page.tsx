@@ -4,6 +4,7 @@ import * as React from "react";
 import { CalendarCheck, CalendarClock, ChevronLeft, ChevronRight, ClipboardList, Hourglass, Plus, Search, Settings, Users } from "lucide-react";
 import { AddBookingDialog } from "@/components/modules/bookings/add-booking-dialog";
 import { BookingsReport } from "@/components/modules/bookings/bookings-report";
+import { ConfirmBy } from "@/components/modules/bookings/confirm-by";
 import { RequestDialog } from "@/components/modules/bookings/request-dialog";
 import { KpiCard, KpiGrid } from "@/components/patterns/kpi-card";
 import { LoadingState } from "@/components/patterns/loading-state";
@@ -267,6 +268,7 @@ export default function BookingsPage() {
                           <div className="flex flex-wrap items-center gap-1.5">
                             <StatusBadge domain="booking" status={r.status} label={BOOKING_STATUS_LABEL[r.status]} />
                             {r.offPlan && r.status === "pending" ? <StatusBadge domain="booking" status="off_plan" label="Not in the NCH plan" /> : null}
+                            {r.status === "pending" && r.confirmBy ? <ConfirmBy day={r.confirmBy} /> : null}
                           </div>
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-muted-foreground">{r.seqNo}</TableCell>

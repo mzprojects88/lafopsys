@@ -1,7 +1,7 @@
 // lib/utils/booking-emails.ts: the emails a requestor gets about a booking (0172).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { bookingEmail, escapeHtml, longDate, trackUrl } from "../lib/utils/booking-emails.ts";
+import { bookingAlertEmail, bookingEmail, escapeHtml, longDate, trackUrl } from "../lib/utils/booking-emails.ts";
 
 const data = {
   ref: "LAF-AC-ABCD-2345",
@@ -66,9 +66,33 @@ describe("booking emails", () => {
   it("nothing a requestor or staff typed can enter the email as HTML", () => {
     assert.equal(escapeHtml(`<a href="x">&'`), "&lt;a href=&quot;x&quot;&gt;&amp;&#39;");
     const evil = { ...data, requestorName: `<img src=x onerror=alert(1)>`, contactPerson: `</p><script>x</script>`, placeInstructions: `<b>bold</b>`, declineReason: `<i>no</i>`, coordinatorName: `"><svg>`, ref: `LAF"><b>` };
-    for (const kind of ["received", "approved", "declined", "cancelled", "moved", "reminder", "thanks"]) {
+    for (const kind of ["received", "approved", "declined", "cancelled", "moved", "reminder", "thanks", "changed", "expired"]) {
       const { html } = bookingEmail(kind, evil, site);
       for (const tag of ["<img", "<script", "<b>bold", "<i>no", "<svg", `"><b>`]) assert.ok(!html.includes(tag), `${kind}: ${tag}`);
     }
+  });
+  it("0184: the confirm-by date, the group's own change of date, expiry, and no email asks for a reply", () => {
+    const received = bookingEmail("received", { ...data, confirmBy: "2026-12-07" }, site).html;
+    assert.ok(received.includes("We will confirm your booking by") && received.includes("Monday, December 7, 2026") && !received.includes("working days"));
+    const named = bookingEmail("approved", { ...data, namesGiven: 5 }, site);
+    assert.ok(named.html.includes("The hospital's gate has your volunteers' names") && named.html.includes("See your booking") && named.html.includes("change the date or to cancel"));
+    const changed = bookingEmail("changed", { ...data, confirmBy: "2026-12-07" }, site);
+    assert.equal(changed.subject, "We received your new date (LAF-AC-ABCD-2345)");
+    assert.ok(changed.html.includes("pending approval") && changed.html.includes("Monday, December 7, 2026"));
+    const expired = bookingEmail("expired", data, site);
+    assert.ok(expired.html.includes("could not confirm this request in time") && expired.html.includes('href="https://book.littlearkfoundation.org/book"'));
+    for (const kind of ["received", "approved", "declined", "cancelled", "moved", "reminder", "thanks", "changed", "expired"]) assert.ok(!/reply to this email/i.test(bookingEmail(kind, data, site).html), kind);
+  });
+  it("0184: the staff alert lists each request with its confirm-by date, escaped, and links to Bookings", () => {
+    const rows = [
+      { ref: "LAF-AC-ABCD-2345", group: "<b>Sample</b> Group", date: "2026-12-10", start: "10:00", end: "12:00", confirmBy: "2026-12-07" },
+      { ref: "LAF-AC-ABCD-2346", group: "Staff Filed", date: "2026-12-11", start: "10:00", end: "12:00", confirmBy: "" },
+    ];
+    const one = bookingAlertEmail("new", rows.slice(0, 1), "https://lafopsys.vercel.app/");
+    assert.equal(one.subject, "New booking request: <b>Sample</b> Group");
+    assert.ok(!one.html.includes("<b>Sample") && one.html.includes("Confirm by Monday, December 7, 2026") && one.html.includes('href="https://lafopsys.vercel.app/bookings"'));
+    const sum = bookingAlertEmail("summary", rows, "https://lafopsys.vercel.app");
+    assert.equal(sum.subject, "2 booking requests to confirm");
+    assert.ok(sum.html.includes("Filed by staff"));
   });
 });

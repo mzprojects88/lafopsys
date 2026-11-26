@@ -5,17 +5,23 @@ import type { PublicBooking, PublicMember } from "@/lib/types/booking";
 import { REQUESTOR_KINDS, durationLabel, participantsLabel } from "@/lib/utils/booking";
 import { longDate } from "@/lib/utils/booking-emails";
 import { formatTime12 } from "@/lib/utils/time12";
+import { ChangeDate } from "./change-date";
+import { PublicMemberRows, incompleteMember } from "./public-members";
 import { StatusPill, ui } from "./public-ui";
 
 /** What each status means for the group, in a sentence. */
 function meaning(b: PublicBooking): string {
   switch (b.status) {
     case "pending":
-      return `Your slot is held for you while we review your request. We reply within ${b.replyDays} working day${b.replyDays === 1 ? "" : "s"} of the day you asked.`;
+      return b.confirmBy
+        ? `Your slot is held for you while we review your request. We will confirm it by ${longDate(b.confirmBy)}.`
+        : `Your slot is held for you while we review your request. We reply within ${b.replyDays} working day${b.replyDays === 1 ? "" : "s"} of the day you asked.`;
     case "approved":
       return "We look forward to your visit. What you need for the day is below.";
     case "declined":
-      return "We are sorry that we could not approve this request. You are welcome to ask for another day.";
+      return b.history.some((h) => h.action === "expired")
+        ? "We are sorry: we could not confirm this request in time. Its slot is free again; you are welcome to choose another day."
+        : "We are sorry that we could not approve this request. You are welcome to ask for another day.";
     case "cancelled":
       return "This booking is cancelled and its slot is free again.";
     case "completed":
@@ -24,6 +30,19 @@ function meaning(b: PublicBooking): string {
       return "This booking is closed.";
   }
 }
+
+const STEP: Record<string, [string, string]> = {
+  requested: ["You sent your request", "Filed for you by our staff"],
+  approved: ["", "Confirmed"],
+  declined: ["", "Not approved"],
+  cancelled: ["You cancelled", "Cancelled by us"],
+  moved: ["", "Moved by us to a new schedule"],
+  date_changed: ["You changed the date", "Date changed"],
+  names: ["You gave your volunteers' names", "Volunteers' names given"],
+  expired: ["", "Not confirmed in time"],
+  completed: ["", "Visit held"],
+  no_show: ["", "Marked as did not come"],
+};
 
 type Answer = { booking?: PublicBooking; error?: string };
 
@@ -66,7 +85,8 @@ export function TrackBooking({ initialRef, signedIn = false }: { initialRef: str
       setError(out.error ?? "We could not reach the server. Please check your connection and try again.");
       return null;
     }
-    setBooking(out.booking);
+    // A step's answer has no place id; the one from the look-up stays (the place of a booking does not change).
+    setBooking((was) => ({ ...out.booking!, placeId: out.booking!.placeId ?? was?.placeId }));
     setNames(null);
     setSure(false);
     return out.booking;
@@ -96,9 +116,7 @@ export function TrackBooking({ initialRef, signedIn = false }: { initialRef: str
   const b = booking;
   const rows: PublicMember[] = names ?? b?.members ?? [];
   const typed = rows.filter((m) => m.name.trim() || m.email.trim());
-  const setRow = (i: number, change: Partial<PublicMember>) => setNames(rows.map((m, n) => (n === i ? { ...m, ...change } : m)));
-  const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-  const incomplete = typed.find((m) => m.name.trim().length < 2 || !(EMAIL.test(m.email.trim()) || m.email.includes("*")));
+  const incomplete = incompleteMember(rows);
 
   return (
     <div className="flex flex-col gap-6">
@@ -191,11 +209,31 @@ export function TrackBooking({ initialRef, signedIn = false }: { initialRef: str
             </section>
           ) : null}
 
-          {b.status === "approved" ? (
+          {b.history.length ? (
+            <section className={ui.card}>
+              <h2 className={ui.h2}>What happened so far</h2>
+              <ol className="mt-3 flex flex-col gap-1.5">
+                {b.history.map((h, i) => (
+                  <li key={i} className="text-[15px] leading-snug">
+                    <span className="font-bold text-[#082f59]">{longDate(h.on)}</span> · {(h.byYou ? STEP[h.action]?.[0] : "") || STEP[h.action]?.[1] || h.action}
+                  </li>
+                ))}
+                {b.status === "pending" && b.confirmBy ? (
+                  <li className="text-[15px] leading-snug text-[#436077]">
+                    <span className="font-bold">{longDate(b.confirmBy)}</span> · We confirm your booking by this day
+                  </li>
+                ) : null}
+              </ol>
+            </section>
+          ) : null}
+
+          {b.canChangeDate ? <ChangeDate key={`${b.date}-${b.start}`} b={b} busy={busy} onChange={(date, start) => void call({ action: "change-date", ref: b.ref, date, start_time: start })} /> : null}
+
+          {b.status === "approved" || b.status === "pending" ? (
             <section className={ui.card}>
               <h2 className={ui.h2}>Volunteers&apos; names</h2>
               <p className="mt-2 max-w-prose text-[15px] leading-relaxed">
-                The hospital needs the full name of each volunteer for the gate. {b.canEditNames ? `Please give them by ${longDate(b.namesDue)}.` : `They were due on ${longDate(b.namesDue)}. To change them now, please write to us.`}
+                The hospital needs the full name of each volunteer for the gate. {b.canEditNames ? `You can give or correct them until ${longDate(b.namesDue)}.` : `They were due on ${longDate(b.namesDue)}. To change them now, please write to us.`}
               </p>
               <p className="mt-2 max-w-prose text-[15px] leading-relaxed">
                 Give each volunteer&apos;s full name and email. For a volunteer under 18, give a parent&apos;s or guardian&apos;s email. We keep these to record their volunteer service with Little Ark Foundation.
@@ -204,22 +242,7 @@ export function TrackBooking({ initialRef, signedIn = false }: { initialRef: str
                 <p className={ui.label}>
                   Volunteers ({typed.length} of {b.volunteersCount})
                 </p>
-                {rows.map((m, i) => (
-                  <div key={i} className="grid gap-2 rounded-2xl border border-[#c7dce9] p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-                    <label className="block">
-                      <span className="sr-only">Volunteer {i + 1}: full name</span>
-                      <input className={ui.input} placeholder="Full name" value={m.name} maxLength={120} disabled={!b.canEditNames || busy} onChange={(e) => setRow(i, { name: e.target.value })} />
-                    </label>
-                    <label className="block">
-                      <span className="sr-only">Volunteer {i + 1}: email</span>
-                      <input className={ui.input} type="email" inputMode="email" placeholder="Email" value={m.email} maxLength={200} disabled={!b.canEditNames || busy} onFocus={() => m.email.includes("*") && setRow(i, { email: "" })} onChange={(e) => setRow(i, { email: e.target.value })} />
-                    </label>
-                    <label className="flex items-center gap-2 self-center text-[15px] text-[#082f59]">
-                      <input type="checkbox" className="size-5 accent-[#0068c9]" checked={m.under18} disabled={!b.canEditNames || busy} onChange={(e) => setRow(i, { under18: e.target.checked })} />
-                      Under 18
-                    </label>
-                  </div>
-                ))}
+                <PublicMemberRows rows={rows} onChange={setNames} max={b.volunteersCount} disabled={!b.canEditNames || busy} />
                 {b.canEditNames && signedIn ? (
                   <button
                     type="button"
@@ -235,11 +258,6 @@ export function TrackBooking({ initialRef, signedIn = false }: { initialRef: str
                     }}
                   >
                     Same people as last time
-                  </button>
-                ) : null}
-                {b.canEditNames && rows.length < b.volunteersCount ? (
-                  <button type="button" className={`${ui.secondary} self-start`} disabled={busy} onClick={() => setNames([...rows, { name: "", email: "", under18: false }])}>
-                    Add a volunteer
                   </button>
                 ) : null}
                 <p className={ui.hint}>An email shown with stars is kept as it is. Click into it to type a new one.</p>

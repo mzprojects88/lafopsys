@@ -3,7 +3,7 @@ import { createHmac } from "node:crypto";
 import { sendPending } from "@/lib/notify/email";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { supabaseServiceRoleKey } from "@/lib/supabase/env";
-import { bookingEmail, type BookingEmailKind } from "@/lib/utils/booking-emails";
+import { bookingAlertEmail, bookingEmail, type BookingAlertRow, type BookingEmailKind } from "@/lib/utils/booking-emails";
 import { addDays, dayKey } from "@/lib/utils/dtr";
 import { clientIpFromHeaders } from "@/lib/utils/device";
 
@@ -40,7 +40,7 @@ export async function queueBookingEmail(requestId: string, kind: BookingEmailKin
     const admin = createAdminClient();
     const db = admin.schema("booking");
     const [{ data: r }, { data: st }, { count: namesGiven }] = await Promise.all([
-      db.from("requests").select("ref, requestor_name, contact_person, email, date, start_time, end_time, volunteers_count, decline_reason, instructions, place_id").eq("id", requestId).maybeSingle(),
+      db.from("requests").select("ref, requestor_name, contact_person, email, date, start_time, end_time, volunteers_count, decline_reason, instructions, place_id, confirm_by").eq("id", requestId).maybeSingle(),
       db.from("settings").select("reply_days, names_due_days, site_url").maybeSingle(),
       db.from("volunteers").select("id", { count: "exact", head: true }).eq("request_id", requestId),
     ]);
@@ -68,6 +68,7 @@ export async function queueBookingEmail(requestId: string, kind: BookingEmailKin
         coordinatorPhone: place?.coordinator_phone ?? "",
         daysToGo: daysBetween(dayKey(new Date()), r.date),
         namesGiven: namesGiven ?? 0,
+        confirmBy: r.confirm_by ?? "",
       },
       st.site_url,
     );
@@ -87,10 +88,16 @@ export const daysBetween = (from: string, to: string): number => Math.round((Dat
  * (the queue itself remembers: a reminder already written for that booking is not written again). Whatever else
  * waits in the queue is sent on the same run. Returns how many reminders were written.
  */
-export async function queueBookingReminders(): Promise<{ reminders: number }> {
+export async function queueBookingReminders(): Promise<{ reminders: number; expired: number; summary: number }> {
   const admin = createAdminClient();
   const db = admin.schema("booking");
   const today = dayKey(new Date());
+  // First what was not confirmed by its confirm-by date (0184): closed, the slot free, the group told.
+  const { data: gone, error: expireError } = await db.rpc("expire_unconfirmed");
+  if (expireError) console.error(`[booking] expiry: ${expireError.message}`);
+  const expired = ((gone ?? []) as unknown[]).map((v) => (typeof v === "string" ? v : String((v as Record<string, unknown>).expire_unconfirmed ?? "")));
+  for (const id of expired) if (UUID.test(id)) await queueBookingEmail(id, "expired");
+  const summary = await queueStaffAlert("summary");
   // A booking staff filed for someone without an email address has nobody to remind (0180).
   const { data: due } = await db.from("requests").select("id, date").eq("status", "approved").not("email", "is", null).in("date", [addDays(today, 1), addDays(today, 3)]);
   let reminders = 0;
@@ -102,7 +109,44 @@ export async function queueBookingReminders(): Promise<{ reminders: number }> {
     reminders += 1;
   }
   if (!reminders) await sendPending(admin, "booking");
-  return { reminders };
+  return { reminders, expired: expired.length, summary };
+}
+
+/** The addresses typed in Booking settings › Booking alerts: valid ones only, at most 10. */
+export const alertRecipients = (typed: string): string[] =>
+  [...new Set(typed.split(/[\s,;]+/).map((a) => a.trim().toLowerCase()).filter((a) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a) && a.length <= 200))].slice(0, 10);
+
+/**
+ * The booking alerts for staff (0184), each behind its own switch in Booking settings (both off at first): one new
+ * request from the booking page, or the morning summary of every request that waits. Returns how many emails were
+ * queued. A failure is logged and never fails the step that called it.
+ */
+export async function queueStaffAlert(kind: "new" | "summary", requestId?: string): Promise<number> {
+  try {
+    const admin = createAdminClient();
+    const db = admin.schema("booking");
+    const { data: st } = await db.from("settings").select("alert_emails, alert_new_request, alert_morning, site_url").maybeSingle();
+    if (!st || !(kind === "new" ? st.alert_new_request : st.alert_morning)) return 0;
+    const to = alertRecipients(String(st.alert_emails ?? ""));
+    if (!to.length) return 0;
+    let q = db.from("requests").select("ref, requestor_name, date, start_time, end_time, confirm_by").eq("status", "pending").order("date");
+    q = kind === "new" && requestId ? q.eq("id", requestId) : q;
+    const { data: waiting } = await q;
+    const rows: BookingAlertRow[] = (waiting ?? []).map((r) => ({ ref: r.ref, group: r.requestor_name, date: r.date, start: String(r.start_time).slice(0, 5), end: String(r.end_time).slice(0, 5), confirmBy: r.confirm_by ?? "" }));
+    if (!rows.length) return 0;
+    const { subject, html } = bookingAlertEmail(kind, rows, st.site_url);
+    const source = kind === "new" ? "alert-new" : "alert-summary";
+    const { error } = await db.from("outbox").insert(to.map((address) => ({ request_id: kind === "new" ? (requestId ?? null) : null, to_address: address, subject, body_html: html, source })));
+    if (error) {
+      console.error(`[booking] alert not queued (${kind}): ${error.message}`);
+      return 0;
+    }
+    await sendPending(admin, "booking");
+    return to.length;
+  } catch (e) {
+    console.error(`[booking] alert not queued (${kind}): ${String(e)}`);
+    return 0;
+  }
 }
 
 type Json = Record<string, unknown>;
@@ -120,8 +164,18 @@ export function requestPayload(b: Json): Json {
     contact_person: text(b.contact_person, 200),
     email: text(b.email, 250),
     mobile: text(b.mobile, 60),
-    volunteers_count: Number.isInteger(b.volunteers_count) ? b.volunteers_count : 0,
-    has_minors: b.has_minors === true,
+    // The volunteers' names (0184): when the form sends them, the number and "under 18" follow the names.
+    ...(Array.isArray(b.members)
+      ? (() => {
+          const members = (b.members as unknown[]).slice(0, 100).map((raw) => {
+            const m = (raw && typeof raw === "object" ? raw : {}) as Json;
+            return { name: text(m.name, 120), email: text(m.email, 200), under18: m.under18 === true };
+          });
+          const named = members.filter((m) => m.name.trim());
+          const typed = Number.isInteger(b.volunteers_count) && (b.volunteers_count as number) > 0 ? (b.volunteers_count as number) : named.length;
+          return { members, volunteers_count: typed, has_minors: b.has_minors === true || named.some((m) => m.under18) };
+        })()
+      : { volunteers_count: Number.isInteger(b.volunteers_count) ? b.volunteers_count : 0, has_minors: b.has_minors === true }),
     agree_guidelines: b.agree_guidelines === true,
     agree_privacy: b.agree_privacy === true,
     // Read only by the staff's door: how the request came (a phone call or a walk-in).

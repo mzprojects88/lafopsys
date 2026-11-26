@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { BedDouble, Bell, Bus, CalendarCheck, ClipboardList, CloudOff, Fuel, Mail, MapPin, PenLine, Receipt, UtensilsCrossed, Wrench, type LucideIcon } from "lucide-react";
 import { bookingRequestsStore } from "@/lib/hooks/use-bookings-collection";
 import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
@@ -162,17 +164,61 @@ function RequestReminders({ funds: seesFunds, children }: { funds: boolean; chil
   return seesFunds ? <LowFunds>{(f) => children([...out, ...f])}</LowFunds> : <>{children(out)}</>;
 }
 
-/** LAF Activity Center Bookings (0172): requests that wait for an answer (each holds its slot), and approved visits
- * whose day has come and are not yet recorded. The database shows the requests only to those who may open the page. */
+/** LAF Activity Center Bookings (0172, 0184): each request that waits for an answer, the most urgent first, with the
+ * day staff must confirm it by; and approved visits whose day has come and are not yet recorded. Shown to those who
+ * answer bookings (the database shows the requests only to those who may open the page). */
 function BookingReminders({ children }: { children: (reminders: Reminder[]) => React.ReactNode }) {
   const { data } = useCollection(bookingRequestsStore);
   const today = todayIso();
-  const pending = data.requests.filter((r) => r.status === "pending").length;
+  const pending = data.requests.filter((r) => r.status === "pending").sort((a, b) => (a.confirmBy ?? a.date).localeCompare(b.confirmBy ?? b.date));
   const toRecord = data.requests.filter((r) => r.status === "approved" && r.date <= today).length;
-  const out: Reminder[] = [];
-  if (pending) out.push({ id: "bookings-pending", title: `${pending} booking request${pending === 1 ? " waits" : "s wait"} for an answer`, body: "Each holds its slot at the LAF Activity Center until it is approved or declined.", href: "/bookings", icon: CalendarCheck });
+  const out: Reminder[] = pending.slice(0, 5).map((r) => ({
+    id: `booking-${r.id}`,
+    title: `Confirm ${r.requestorName}`,
+    body: `Visit ${formatDate(r.date)} at ${formatTime12(r.start)}. ${r.confirmBy ? (r.confirmBy < today ? "Past its confirm-by date: it closes tomorrow morning." : r.confirmBy === today ? "Confirm it today." : `Confirm by ${formatDate(r.confirmBy)}.`) : "Filed by staff."}`,
+    href: "/bookings",
+    icon: CalendarCheck,
+  }));
+  if (pending.length > 5) out.push({ id: "bookings-pending-more", title: `${pending.length - 5} more booking request${pending.length - 5 === 1 ? "" : "s"} to confirm`, body: "Each holds its slot until it is approved or declined.", href: "/bookings", icon: CalendarCheck });
   if (toRecord) out.push({ id: "bookings-to-record", title: `${toRecord} visit${toRecord === 1 ? "" : "s"} to record`, body: "The day has come: record who came, or mark it Did not come.", href: "/bookings", icon: CalendarCheck });
-  return <>{children(out)}</>;
+  return (
+    <>
+      <BookingNudge count={pending.length} soonest={pending[0]?.confirmBy ?? null} />
+      {children(out)}
+    </>
+  );
+}
+
+const NUDGE_KEY = "laf-booking-nudge";
+// Kept here too, for a browser that refuses storage (a private window): then the hour counts within this tab.
+let nudgedAt = 0;
+/** Every hour, while a booking request waits, a pop-up on whatever page is open (0184). The last one shown is kept in
+ * the browser, so reloading a page does not show it again within the hour. */
+function BookingNudge({ count, soonest }: { count: number; soonest: string | null }) {
+  const router = useRouter();
+  const now = useNow().getTime();
+  React.useEffect(() => {
+    if (!count) return;
+    let last = nudgedAt;
+    try {
+      last = Math.max(last, Number(window.localStorage.getItem(NUDGE_KEY) ?? 0));
+    } catch {
+      /* private window: the time kept in this tab counts */
+    }
+    if (now - last < 60 * 60 * 1000) return;
+    nudgedAt = now;
+    try {
+      window.localStorage.setItem(NUDGE_KEY, String(now));
+    } catch {
+      /* nothing to keep */
+    }
+    toast.warning(`${count} booking request${count === 1 ? "" : "s"} to confirm`, {
+      description: soonest ? `The first must be confirmed by ${formatDate(soonest)}.` : "Each holds its slot until it is answered.",
+      duration: 20_000,
+      action: { label: "Open Bookings", onClick: () => router.push("/bookings") },
+    });
+  }, [count, soonest, now, router]);
+  return null;
 }
 
 /** A fund below its top-up point with none on its way (0138); only for those who see Finance. */

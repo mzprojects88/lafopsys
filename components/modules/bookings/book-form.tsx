@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import type { PublicMember } from "@/lib/types/booking";
+import { PublicMemberRows, incompleteMember } from "./public-members";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import type { PublicBookingForm, PublicSlot, SlotState } from "@/lib/types/booking";
@@ -45,13 +47,15 @@ export function BookForm({ form, prefill }: { form: PublicBookingForm; prefill?:
   const [reload, setReload] = React.useState(0);
   const [day, setDay] = React.useState<string | null>(null);
   const [slot, setSlot] = React.useState<PublicSlot | null>(null);
-  const [who, setWho] = React.useState({ requestorName: prefill?.name ?? "", requestorKind: prefill?.kind ?? "organization", contactPerson: prefill?.contactPerson ?? "", email: prefill?.email ?? "", mobile: prefill?.mobile ?? "", volunteers: "", hasMinors: false });
+  const [who, setWho] = React.useState({ requestorName: prefill?.name ?? "", requestorKind: prefill?.kind ?? "organization", contactPerson: prefill?.contactPerson ?? "", email: prefill?.email ?? "", mobile: prefill?.mobile ?? "" });
   const [rows, setRows] = React.useState<Row[]>([row(1, "", "")]);
+  const [members, setMembers] = React.useState<PublicMember[]>([{ name: "", email: "", under18: false }]);
+  const named = members.filter((m) => m.name.trim() || m.email.trim());
   const [agree, setAgree] = React.useState({ guidelines: false, privacy: false });
   const [website, setWebsite] = React.useState("");
   const [problems, setProblems] = React.useState<string[]>([]);
   const [busy, setBusy] = React.useState(false);
-  const [done, setDone] = React.useState<{ ref: string; replyDays: number } | null>(null);
+  const [done, setDone] = React.useState<{ ref: string; replyDays: number; confirmBy: string | null } | null>(null);
   const [copied, setCopied] = React.useState(false);
   const problemsRef = React.useRef<HTMLDivElement>(null);
   const nextKey = React.useRef(2);
@@ -100,8 +104,9 @@ export function BookForm({ form, prefill }: { form: PublicBookingForm; prefill?:
     if (who.contactPerson.trim().length < 2) out.push("Give the name of a contact person.");
     if (!EMAIL.test(who.email.trim())) out.push("Give an email address we can write to.");
     if (who.mobile.replace(/\D/g, "").length < 7) out.push("Give a contact number.");
-    const n = Number(who.volunteers);
-    if (!/^\d{1,3}$/.test(who.volunteers) || n < 1 || n > st.maxVolunteers) out.push(`A group is 1 to ${st.maxVolunteers} volunteers.`);
+    if (named.length < 1 || named.length > st.maxVolunteers) out.push(`Give the full name and email of each volunteer: 1 to ${st.maxVolunteers}.`);
+    const missing = incompleteMember(named);
+    if (missing) out.push(`Give the full name and the email of ${missing.name.trim() || "each volunteer"}. For a volunteer under 18, a parent's or guardian's email.`);
     if (slot) out.push(...flowProblems(rows.map((r) => ({ activity: nameOf(r), start: r.start, end: r.end })), slot.start, slot.end));
     rows.forEach((r, i) => r.purpose.trim().length < 3 && out.push(`Activity ${i + 1}: please say its purpose.`));
     if (!agree.guidelines || !agree.privacy) out.push("Please tick both boxes: the visit guidelines and the privacy notice.");
@@ -130,8 +135,7 @@ export function BookForm({ form, prefill }: { form: PublicBookingForm; prefill?:
         contact_person: who.contactPerson.trim(),
         email: who.email.trim(),
         mobile: who.mobile.trim(),
-        volunteers_count: Number(who.volunteers),
-        has_minors: who.hasMinors,
+        members: named.map((m) => ({ name: m.name.trim(), email: m.email.trim(), under18: m.under18 })),
         agree_guidelines: agree.guidelines,
         agree_privacy: agree.privacy,
         items: rows.map((r) => ({
@@ -148,14 +152,14 @@ export function BookForm({ form, prefill }: { form: PublicBookingForm; prefill?:
         })),
       }),
     }).catch(() => null);
-    const out = (await res?.json().catch(() => null)) as { ok?: boolean; error?: string; ref?: string; replyDays?: number } | null;
+    const out = (await res?.json().catch(() => null)) as { ok?: boolean; error?: string; ref?: string; replyDays?: number; confirmBy?: string | null } | null;
     setBusy(false);
     if (!res?.ok || !out?.ok || !out.ref) {
       setProblems([out?.error ?? "We could not send your request. Please check your connection and try again."]);
       setReload((n) => n + 1); // the slot may have just been taken: show the month as it is now
       return void requestAnimationFrame(() => problemsRef.current?.focus());
     }
-    setDone({ ref: out.ref, replyDays: out.replyDays ?? st.replyDays });
+    setDone({ ref: out.ref, replyDays: out.replyDays ?? st.replyDays, confirmBy: out.confirmBy ?? null });
     window.scrollTo({ top: 0 });
   }
 
@@ -165,12 +169,13 @@ export function BookForm({ form, prefill }: { form: PublicBookingForm; prefill?:
         <p className={ui.eyebrow}>Request sent</p>
         <h1 className={ui.h1}>Thank you. Your request is in.</h1>
         <p className={ui.lead}>
-          Your slot is held for you while we review it. We will email you within {done.replyDays} working day{done.replyDays === 1 ? "" : "s"}.
+          Your slot is held for you while we review it.{" "}
+          {done.confirmBy ? `We will confirm your booking by ${longDate(done.confirmBy)}.` : `We will email you within ${done.replyDays} working day${done.replyDays === 1 ? "" : "s"}.`}
         </p>
         <div className="mt-6 rounded-2xl bg-[#f2f9fd] p-5">
           <p className={ui.label}>Your Request ID</p>
           <p className="mt-1 text-2xl font-black tracking-wide break-all text-[#082f59] select-all sm:text-3xl">{done.ref}</p>
-          <p className={ui.hint}>Keep this. It opens your booking, where you can see its status, give your volunteers&apos; names once it is approved, or cancel.</p>
+          <p className={ui.hint}>Keep this. It opens your booking, where you can follow it, correct your volunteers&apos; names, change the date or cancel.</p>
           <button type="button" className={`${ui.secondary} mt-3`} onClick={() => void navigator.clipboard?.writeText(done.ref).then(() => setCopied(true))}>
             {copied ? "Copied" : "Copy the Request ID"}
           </button>
@@ -344,17 +349,15 @@ export function BookForm({ form, prefill }: { form: PublicBookingForm; prefill?:
             <span className={ui.label}>Contact number</span>
             <input className={ui.input} type="tel" inputMode="tel" value={who.mobile} maxLength={40} autoComplete="tel" onChange={(e) => setWho({ ...who, mobile: e.target.value })} />
           </label>
-          <label className="block">
-            <span className={ui.label}>Number of volunteers</span>
-            <input className={ui.input} inputMode="numeric" value={who.volunteers} onChange={(e) => setWho({ ...who, volunteers: e.target.value.replace(/\D/g, "").slice(0, 3) })} />
-            <span className={`${ui.hint} block`}>
-              1 to {st.maxVolunteers}. Their full names are needed {st.namesDueDays} day{st.namesDueDays === 1 ? "" : "s"} before the visit, for the hospital&apos;s gate.
-            </span>
-          </label>
-          <label className="flex items-start gap-3 self-center text-[15px] leading-snug text-[#082f59]">
-            <input type="checkbox" className="mt-0.5 size-5 shrink-0 accent-[#0068c9]" checked={who.hasMinors} onChange={(e) => setWho({ ...who, hasMinors: e.target.checked })} />
-            Some of our volunteers are under 18.
-          </label>
+        </div>
+        <div className="mt-6">
+          <p className={ui.label}>
+            Your volunteers ({named.length} of up to {st.maxVolunteers})
+          </p>
+          <p className={`${ui.hint} mb-3 block`}>
+            The full name and email of each volunteer, for the hospital&apos;s gate and their volunteer record. For a volunteer under 18, a parent&apos;s or guardian&apos;s email. You can correct them on your booking page until {st.namesDueDays} day{st.namesDueDays === 1 ? "" : "s"} before the visit.
+          </p>
+          <PublicMemberRows rows={members} onChange={setMembers} max={st.maxVolunteers} />
         </div>
         {/* Not for people: left empty by anyone who can see the page. */}
         <div className="absolute -left-[9999px]" aria-hidden>

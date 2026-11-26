@@ -48,6 +48,7 @@ export function AddBookingDialog({ onClose, onAdded }: { onClose: () => void; on
   const [chosenPlace, setChosenPlace] = React.useState<string | null>(null);
   const [date, setDate] = React.useState("");
   const [start, setStart] = React.useState("");
+  const [names, setNames] = React.useState<{ name: string; email: string; under18: boolean }[]>([]);
   const [who, setWho] = React.useState({ requestorName: "", requestorKind: "organization", contactPerson: "", email: "", mobile: "", volunteers: "", hasMinors: false });
   const [rows, setRows] = React.useState<Row[]>([row(1, "", "")]);
   const [told, setTold] = React.useState(false);
@@ -118,6 +119,7 @@ export function AddBookingDialog({ onClose, onAdded }: { onClose: () => void; on
         mobile: who.mobile.trim(),
         volunteers_count: Number(who.volunteers),
         has_minors: who.hasMinors,
+        members: names.filter((m) => m.name.trim() || m.email.trim()).map((m) => ({ name: m.name.trim(), email: m.email.trim(), under18: m.under18 })),
         agree_guidelines: told,
         agree_privacy: told,
         items: rows.map((r) => ({
@@ -264,6 +266,30 @@ export function AddBookingDialog({ onClose, onAdded }: { onClose: () => void; on
             <Checkbox checked={who.hasMinors} onCheckedChange={(v) => setWho({ ...who, hasMinors: v === true })} />
             Some volunteers are under 18
           </label>
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-2">
+          <p className="text-theme-sm font-medium text-foreground">
+            Volunteers&apos; names <span className="font-normal text-muted-foreground">· full name and email (a parent&apos;s or guardian&apos;s for under 18); any not known yet can be added later in the booking</span>
+          </p>
+          {names.map((m, i) => (
+            <div key={i} className="grid min-w-0 items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
+              <Input aria-label={`Volunteer ${i + 1}: full name`} placeholder="Full name" value={m.name} maxLength={120} onChange={(e) => setNames(names.map((x, n) => (n === i ? { ...x, name: e.target.value } : x)))} />
+              <Input aria-label={`Volunteer ${i + 1}: email`} placeholder="Email" inputMode="email" value={m.email} maxLength={200} onChange={(e) => setNames(names.map((x, n) => (n === i ? { ...x, email: e.target.value } : x)))} />
+              <label className="flex items-center gap-1.5 text-theme-sm whitespace-nowrap text-foreground">
+                <Checkbox checked={m.under18} onCheckedChange={(v) => setNames(names.map((x, n) => (n === i ? { ...x, under18: v === true } : x)))} />
+                Under 18
+              </label>
+              <Button type="button" variant="ghost" size="icon" aria-label={`Remove volunteer ${i + 1}`} onClick={() => setNames(names.filter((_, n) => n !== i))}>
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+          ))}
+          {names.length < (Number(who.volunteers) || 0) ? (
+            <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setNames([...names, { name: "", email: "", under18: false }])}>
+              <Plus className="size-4" /> Add a name
+            </Button>
+          ) : null}
         </div>
 
         <div className="flex min-w-0 flex-col gap-3">

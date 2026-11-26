@@ -17,7 +17,7 @@ const fromMember = (v: BookingVolunteer): Row => ({ key: v.id, id: v.id, name: v
  * nobody touched keeps its "did not come" mark and the volunteer it was credited to. The dialog gives this a key
  * per booking, so nothing half-typed carries over.
  */
-export function MembersEditor({ members, count, recorded, canEdit, busy, onSave }: { members: BookingVolunteer[]; count: number; recorded: boolean; canEdit: boolean; busy: boolean; onSave: (rows: MemberInput[]) => Promise<boolean> }) {
+export function MembersEditor({ members, count, limit = count, recorded, canEdit, busy, onSave }: { members: BookingVolunteer[]; count: number; limit?: number; recorded: boolean; canEdit: boolean; busy: boolean; onSave: (rows: MemberInput[]) => Promise<boolean> }) {
   const [rows, setRows] = React.useState<Row[] | null>(null);
   const shown = rows ?? members.map(fromMember);
   const nextKey = React.useRef(0);
@@ -62,7 +62,7 @@ export function MembersEditor({ members, count, recorded, canEdit, busy, onSave 
       </div>
       {canEdit ? (
         <div className="flex flex-wrap gap-2">
-          {shown.length < count ? (
+          {shown.length < limit ? (
             <Button type="button" variant="outline" size="sm" onClick={() => setRows([...shown, { key: `new${nextKey.current++}`, name: "", email: "", under18: false, came: null }])}>
               <Plus className="size-4" /> Add a member
             </Button>
