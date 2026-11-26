@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Search } from "lucide-react";
+import { PortalAccess } from "@/components/modules/volunteers/portal-access";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -51,7 +52,7 @@ function groupRows(groups: BookingGroup[], requests: BookingRequest[], members: 
  * Volunteers › Groups (0181): one per contact email, made when a group books. Visits held, what is coming, the
  * people it brought and the hours of its visits. Opening a group shows its bookings and its members.
  */
-export function GroupsTab() {
+export function GroupsTab({ canEdit }: { canEdit: boolean }) {
   const { groups, loading } = useBookingGroups();
   const { requests, volunteers } = useBookingRequests();
   const { places } = useBookingSetup();
@@ -144,6 +145,7 @@ export function GroupsTab() {
                   </Table>
                 </div>
               </section>
+              <PortalAccess key={open.group.id} groupId={open.group.id} hasEmail={!!open.group.email} canEdit={canEdit} />
               <section className="flex min-w-0 flex-col gap-2">
                 <h4 className="text-theme-sm font-medium text-foreground">Members</h4>
                 {open.members.length === 0 ? (

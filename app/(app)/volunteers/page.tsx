@@ -194,7 +194,7 @@ function VolunteersContent() {
       </Tabs>
       {tab === "groups" ? (
         <SectionCard flush className="overflow-hidden">
-          <GroupsTab />
+          <GroupsTab canEdit={access.levelOfPath("/volunteers") === "edit"} />
         </SectionCard>
       ) : null}
       {tab !== "groups" ? <PeriodPresetsBar state={period.state} onChange={period.setState} today={period.today} allowAll /> : null}

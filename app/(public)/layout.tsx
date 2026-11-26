@@ -29,6 +29,9 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
             <Link href="/book/track" className="rounded py-2 hover:text-[#082f59] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0068c9]">
               My booking
             </Link>
+            <Link href="/book/my" className="rounded py-2 hover:text-[#082f59] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0068c9]">
+              Volunteers Portal
+            </Link>
           </nav>
         </div>
       </header>
