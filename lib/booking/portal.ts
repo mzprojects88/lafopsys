@@ -1,6 +1,8 @@
 import "server-only";
 import { cookies } from "next/headers";
-import { hashPassword, makeToken, normalizeOtp, otpHash, passwordProblem, sameHash, sha256hex, verifyPassword } from "@/lib/booking/portal-crypto";
+import { hashPassword, makeOtp, makeToken, normalizeOtp, otpHash, passwordProblem, sameHash, sha256hex, verifyPassword } from "@/lib/booking/portal-crypto";
+import { emailReady, sendNow } from "@/lib/notify/email";
+import { portalPasswordEmail } from "@/lib/utils/booking-emails";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { BookingStatus } from "@/lib/types/booking";
 
@@ -210,10 +212,13 @@ export async function confirmAttendance(session: PortalSession, ref: string, mar
 export async function lastMembers(session: PortalSession, ref: string): Promise<{ name: string; email: string; under18: boolean }[] | null> {
   const { data: r } = await db().from("requests").select("id, date, group_id").eq("ref", ref.toUpperCase().replace(/\s+/g, "")).maybeSingle();
   if (!r || r.group_id !== session.groupId) return null;
-  const { data: earlier } = await db().from("requests").select("id").eq("group_id", session.groupId).neq("id", r.id).lte("date", r.date).order("date", { ascending: false }).limit(20);
+  // Only a visit that took place (owner, 27 Nov): a cancelled, declined or missed booking has nobody who came.
+  const { data: earlier } = await db().from("requests").select("id").eq("group_id", session.groupId).eq("status", "completed").neq("id", r.id).lte("date", r.date).order("date", { ascending: false }).limit(20);
   for (const e of earlier ?? []) {
-    const { data: people } = await db().from("volunteers").select("name, email, under_18, position").eq("request_id", e.id).order("position");
-    if (people?.length) return people.filter((p) => p.email).map((p) => ({ name: p.name as string, email: p.email as string, under18: p.under_18 === true }));
+    // Only the people who came (owner, 27 Nov 2026): someone unticked as "did not come" is left out.
+    const { data: people } = await db().from("volunteers").select("name, email, under_18, position, came").eq("request_id", e.id).order("position");
+    const came = (people ?? []).filter((p) => p.email && p.came !== false);
+    if (came.length) return came.map((p) => ({ name: p.name as string, email: p.email as string, under18: p.under_18 === true }));
   }
   return [];
 }
@@ -222,4 +227,78 @@ export async function lastMembers(session: PortalSession, ref: string): Promise<
 export async function groupDetails(session: PortalSession): Promise<{ name: string; kind: string; contactPerson: string; email: string; mobile: string } | null> {
   const { data: g } = await db().from("groups").select("name, kind, contact_person, email, mobile").eq("id", session.groupId).maybeSingle();
   return g ? { name: g.name as string, kind: g.kind as string, contactPerson: g.contact_person as string, email: (g.email as string) ?? "", mobile: (g.mobile as string) ?? "" } : null;
+}
+
+/** "Monday, November 30, 2026, 9:15 AM" in Manila, for the email. */
+const manilaWhen = (iso: string) => new Date(iso).toLocaleString("en-US", { timeZone: "Asia/Manila", weekday: "long", month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+
+/** Sets a fresh one-time password (72 hours) on the group's account and emails it. `fresh`: a new account (first
+ * approval); otherwise the existing password is left as it is ("forgot"). Returns whether the email went out. */
+async function emailOtp(groupId: string, kind: "welcome" | "forgot"): Promise<boolean> {
+  const { data: g } = await db().from("groups").select("id, name, contact_person, email").eq("id", groupId).maybeSingle();
+  const { data: st } = await db().from("settings").select("site_url").maybeSingle();
+  if (!g?.email || !st) return false;
+  const otp = makeOtp();
+  const until = new Date(Date.now() + 72 * 3_600_000).toISOString();
+  const now = new Date().toISOString();
+  if (kind === "welcome") {
+    // Only a group with no account yet: never touches a group staff already gave access to.
+    const { error } = await db().from("portal_accounts").insert({ group_id: g.id, otp_hash: otpHash(otp), otp_expires_at: until, must_set_password: true, issued_at: now, updated_at: now });
+    if (error) return false;
+  } else {
+    // Only when the account is still open: a lock that lands meanwhile changes nothing, and nothing is sent.
+    const { data: changed, error } = await db().from("portal_accounts").update({ otp_hash: otpHash(otp), otp_expires_at: until, otp_used_at: null, updated_at: now }).eq("group_id", g.id).eq("locked", false).select("group_id");
+    if (error || !changed?.length) return false;
+  }
+  const { subject, html } = portalPasswordEmail(kind, { contactPerson: g.contact_person ?? "", groupName: g.name, email: g.email, otp, until: manilaWhen(until) }, st.site_url);
+  const sent = await sendNow(g.email, subject, html);
+  if (!sent.ok) {
+    console.error(`[portal] ${kind} email not sent: ${sent.error}`);
+    // A welcome that did not go out is taken back, so staff see "no access yet" and can give it by hand.
+    if (kind === "welcome") await db().from("portal_accounts").delete().eq("group_id", g.id).is("password_hash", null).is("otp_used_at", null);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Step 4: a group's first approved booking emails its contact a one-time password, if the group has no portal account
+ * yet (staff may have given one by hand) and email is set up. Called after the approval succeeded; never fails it.
+ */
+export async function welcomeGroupOnApproval(requestId: string): Promise<void> {
+  try {
+    if (!emailReady()) return;
+    const { data: r } = await db().from("requests").select("group_id, status").eq("id", requestId).maybeSingle();
+    if (!r?.group_id || r.status !== "approved") return;
+    const { data: has } = await db().from("portal_accounts").select("group_id").eq("group_id", r.group_id).maybeSingle();
+    if (has) return;
+    await emailOtp(r.group_id as string, "welcome");
+  } catch (e) {
+    console.error(`[portal] welcome: ${String(e)}`);
+  }
+}
+
+/**
+ * "Forgot my password": a fresh one-time password by email to a group that has portal access and is not locked. The
+ * current password keeps working until a new one is chosen, so nobody can lock a group out by asking. The caller
+ * always gets the same answer (the route sends it before this runs), so it says nothing about which emails exist.
+ */
+export async function forgotPassword(emailTyped: string, caller: string): Promise<void> {
+  try {
+    const email = emailTyped.trim().toLowerCase().slice(0, 200);
+    if (!emailReady() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return;
+    const client = createAdminClient();
+    const [{ data: byCaller }, { data: byEmail }] = await Promise.all([
+      client.schema("booking").rpc("within_limit", { p_kind: "portal-forgot", p_key: caller, p_max: 5, p_window: "1 hour" }),
+      client.schema("booking").rpc("within_limit", { p_kind: "portal-forgot-email", p_key: email, p_max: 3, p_window: "1 hour" }),
+    ]);
+    if (byCaller === false || byEmail === false) return;
+    const { data: g } = await db().from("groups").select("id").eq("email", email).maybeSingle();
+    if (!g) return;
+    const { data: a } = await db().from("portal_accounts").select("locked").eq("group_id", g.id).maybeSingle();
+    if (!a || a.locked) return;
+    await emailOtp(g.id as string, "forgot");
+  } catch (e) {
+    console.error(`[portal] forgot: ${String(e)}`);
+  }
 }

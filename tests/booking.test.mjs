@@ -1,7 +1,7 @@
 // lib/utils/booking.ts: the words and small sums of LAF Activity Center Bookings (0172).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { bookingMonths, bookingTotals, byNeedsAnswer, durationLabel, flowProblems, lastDayOf, minutesOf, monthCover, monthName, monthWeeks, participantsLabel, sameWeekdayIn, shiftMonth, slotsLine } from "../lib/utils/booking.ts";
+import { bookingMonths, bookingTotals, byNeedsAnswer, durationLabel, flowProblems, lastDayOf, minutesOf, monthCover, monthName, monthWeeks, participantsLabel, sameWeekdayIn, shiftMonth, slotsLine, signedName, bookingSiteAllows } from "../lib/utils/booking.ts";
 
 describe("a program flow", () => {
   const slot = ["10:00", "12:00"];
@@ -105,5 +105,13 @@ describe("the bookings report", () => {
     const totals = bookingTotals(bookingMonths(rows, 2026));
     assert.deepEqual(totals, { requests: 7, pending: 1, upcoming: 1, visits: 2, noShow: 1, declined: 1, cancelled: 1, children: 20, volunteers: 9, hours: 3.5 });
     assert.equal(bookingTotals(bookingMonths(rows, 2027)).requests, 1);
+  });
+  it("signedName: the file name back from the library key", () => {
+    assert.equal(signedName("Bookings/Activity Plans/2026-12/0b6f0c4e-1d2a-4c3b-9e8f-123456789abc-a1b2c3d4-NCH signed.pdf"), "NCH signed.pdf");
+    assert.equal(signedName(""), "");
+  });
+  it("the booking site serves only the booking pages and their API", () => {
+    for (const p of ["/book", "/book/track", "/book/my/password", "/api/book", "/api/book/portal", "/api/book/details"]) assert.ok(bookingSiteAllows(p), p);
+    for (const p of ["/", "/bookings", "/booking", "/api/bookings/pdf", "/api/bookings/reminders", "/login", "/patients", "/api/db-sync", "/bookx"]) assert.ok(!bookingSiteAllows(p), p);
   });
 });

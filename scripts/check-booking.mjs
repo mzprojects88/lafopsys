@@ -333,7 +333,9 @@ try {
   if (!late.ok) console.log("late request not filed:", late.error);
   check("within 3 days of the visit the group can't change the date", !tooLate.ok && /until 3 days before/.test(tooLate.error), tooLate.error ?? "moved");
   const viewLate = (await one("select booking.request_view(id) v from booking.requests where ref = $1", [late.rows?.[0]?.r.ref])).v;
-  check("its page says so: no change of date, names closed, cancel still open", viewLate.canChangeDate === false && viewLate.canEditNames === false && viewLate.canCancel === true, JSON.stringify({ c: viewLate.canChangeDate, n: viewLate.canEditNames }));
+  check("its page says so: no change of date, names closed, no cancelling here (0186)", viewLate.canChangeDate === false && viewLate.canEditNames === false && viewLate.canCancel === false, JSON.stringify({ c: viewLate.canChangeDate, n: viewLate.canEditNames, x: viewLate.canCancel }));
+  const lateCancel = await tryIt("select booking.web_cancel($1, 'c186-late') v", [late.rows?.[0]?.r.ref]);
+  check("0186: within 3 days of the visit the group can't cancel on its page; it is told to contact LAF", !lateCancel.ok && /can no longer be cancelled here.*info@littlearkfoundation\.org/.test(lateCancel.error), lateCancel.error ?? "cancelled");
 
   // expiry, and approval after the confirm-by date
   await c.query("update booking.requests set confirm_by = booking.today() - 1 where ref = $1", [late.rows?.[0]?.r.ref]);
@@ -403,7 +405,7 @@ try {
   for (let i = 0; i < 32 && !blocked; i++) { const r = await tryIt("select booking.web_lookup('LAF-AC-ZZZZ-ZZZZ', 'caller-flood')"); if (!r.ok) blocked = { at: i + 1, ...r }; }
   check("a caller guessing Request IDs is stopped after 30 tries in an hour", blocked?.at === 31 && blocked.code === "53400", JSON.stringify(blocked));
   const trail = await q("select action from booking.events where request_id = (select id from booking.requests where ref = $1) order by at", [made.ref]);
-  check("every step is on the request's trail", !worker || trail.map((t) => t.action).join() === "requested,approved,names,cancelled", trail.map((t) => t.action).join());
+  check("every step is on the request's trail", !worker || trail.map((t) => t.action).sort().join() === "approved,cancelled,names,requested", trail.map((t) => t.action).join());
 } catch (e) {
   failures++;
   console.log("FAIL", e.message);

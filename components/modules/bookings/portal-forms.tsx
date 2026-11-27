@@ -36,7 +36,7 @@ export function SignInForm() {
       <label className="block">
         <span className={ui.label}>Password</span>
         <input className={ui.input} type="password" autoComplete="current-password" required value={password} maxLength={200} onChange={(e) => setPassword(e.target.value)} />
-        <span className={`${ui.hint} block`}>The first time, the one-time password Little Ark Foundation gave you.</span>
+        <span className={`${ui.hint} block`}>The first time, the one-time password Little Ark Foundation sent you.</span>
       </label>
       {error ? (
         <p role="alert" className={ui.problem}>
@@ -45,6 +45,48 @@ export function SignInForm() {
       ) : null}
       <button type="submit" className={`${ui.cta} self-start`} disabled={busy}>
         {busy ? "Signing in…" : "Sign in"}
+      </button>
+    </form>
+  );
+}
+
+/** "Forgot my password" (step 4): asks for a new one-time password by email. The answer is the same either way. */
+export function ForgotForm() {
+  const [email, setEmail] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [done, setDone] = React.useState("");
+  const [error, setError] = React.useState("");
+  if (done)
+    return (
+      <p role="status" className={`${ui.soft} mt-5 max-w-md`}>
+        {done}
+      </p>
+    );
+  return (
+    <form
+      className="mt-5 flex max-w-md flex-col gap-4"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setError("");
+        const r = (await send({ action: "forgot", email })) as { ok?: boolean; error?: string; message?: string };
+        setBusy(false);
+        if (r.ok && r.message) setDone(r.message);
+        else setError(r.error ?? "");
+      }}
+    >
+      <label className="block">
+        <span className={ui.label}>Email</span>
+        <input className={ui.input} type="email" inputMode="email" autoComplete="username" required value={email} maxLength={200} onChange={(e) => setEmail(e.target.value)} />
+        <span className={`${ui.hint} block`}>The email address your group books with.</span>
+      </label>
+      {error ? (
+        <p role="alert" className={ui.problem}>
+          {error}
+        </p>
+      ) : null}
+      <button type="submit" className={`${ui.cta} self-start`} disabled={busy}>
+        {busy ? "Sending…" : "Email me a one-time password"}
       </button>
     </form>
   );

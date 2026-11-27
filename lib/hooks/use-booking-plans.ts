@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import { createCollection, useCollection } from "@/lib/data/collection-store";
 import type { BookingPlan, BookingPlanItem, PlanStatus } from "@/lib/types/booking";
 import type { MutationResult } from "@/lib/hooks/use-bookings-collection";
-import { sameWeekdayIn } from "@/lib/utils/booking";
+import { sameWeekdayIn, signedName } from "@/lib/utils/booking";
 
 const booking = () => createClient().schema("booking");
 const text = (v: unknown) => (typeof v === "string" ? v : "");
@@ -23,7 +23,7 @@ export const bookingPlansStore = createCollection<{ plans: BookingPlan[]; items:
   ],
   fetch: async () => {
     const [p, i] = await Promise.all([
-      booking().from("plans").select("id, place_id, month, status, submitted_on, approved_on, approved_by, notes").order("month", { ascending: false }),
+      booking().from("plans").select("id, place_id, month, status, submitted_on, approved_on, approved_by, notes, signed_file_key").order("month", { ascending: false }),
       booking().from("plan_items").select("id, plan_id, activity, purpose, participants, materials, on_date, start_time, end_time, sort").order("on_date").order("start_time").order("activity"),
     ]);
     const error = p.error ?? i.error;
@@ -38,6 +38,7 @@ export const bookingPlansStore = createCollection<{ plans: BookingPlan[]; items:
         approvedOn: (r.approved_on as string | null) ?? null,
         approvedBy: text(r.approved_by),
         notes: text(r.notes),
+        signedName: signedName(text(r.signed_file_key)),
       })),
       items: (i.data ?? []).map((r) => ({
         id: r.id as string,

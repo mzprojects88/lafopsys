@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { callerMark } from "@/lib/booking/server";
-import { confirmAttendance, lastMembers, portalSession, requireGroupSession, setPassword, signIn, signOut } from "@/lib/booking/portal";
+import { confirmAttendance, forgotPassword, lastMembers, portalSession, requireGroupSession, setPassword, signIn, signOut } from "@/lib/booking/portal";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +38,13 @@ export async function POST(request: Request) {
   if (body.action === "sign-in") {
     const r = await signIn(text(body.email, 200), text(body.password, 201), callerMark(request.headers));
     return r.ok ? reply({ ok: true, next: r.setupOnly ? "/book/my/password" : "/book/my" }) : reply({ ok: false, error: r.error }, r.status);
+  }
+  if (body.action === "forgot") {
+    // The same answer whether or not the email is known; the work (and its email) happens after the answer has gone.
+    const email = text(body.email, 200);
+    const caller = callerMark(request.headers);
+    after(() => forgotPassword(email, caller));
+    return reply({ ok: true, message: "If that email belongs to a group in the Volunteers Portal, a new one-time password is on its way. Check your inbox, and your spam folder." });
   }
   const session = await portalSession();
   if (body.action === "set-password") {

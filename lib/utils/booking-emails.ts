@@ -119,7 +119,7 @@ export function bookingEmail(kind: BookingEmailKind, d: BookingEmailData, siteUr
       (d.bookingInstructions ? p(`<strong style="color:${NAVY}">For your group</strong><br>${lines(d.bookingInstructions)}`) : "") +
       (coordinator ? p(`<strong style="color:${NAVY}">Who to coordinate with</strong><br>${coordinator}`) : "") +
       p(`Please print the Booking Details sheet from your booking page and hand it to the guard at the gate. Each volunteer signs the logbook and shows a valid ID.`) +
-      p(`If your group can no longer come, please cancel on your booking page so another group can take the slot.`);
+      p(`If your group can no longer come, please tell us as soon as you can at <strong style="color:${NAVY}">info@littlearkfoundation.org</strong>, so the children are not left waiting.`);
   } else if (kind === "thanks") {
     subject = `Thank you for your visit (${d.ref})`;
     title = "Thank you for your visit";
@@ -156,6 +156,33 @@ export function bookingEmail(kind: BookingEmailKind, d: BookingEmailData, siteUr
 ${p(`Dear ${escapeHtml(d.contactPerson || d.requestorName)},`)}
 ${body}
 <p style="margin:22px 0 8px"><a href="${escapeHtml(link)}" style="display:inline-block;background:#ffc83d;color:${NAVY};font-weight:bold;font-size:13px;letter-spacing:0.5px;text-transform:uppercase;text-decoration:none;padding:13px 24px;border-radius:999px">${button}</a></p>
+<p style="margin:18px 0 0;color:${SLATE};font-size:13px;line-height:1.5">Little Ark Foundation · Our Children. Our Future.</p>
+</div></div>`;
+  return { subject, html };
+}
+
+/**
+ * The Volunteers Portal one-time password by email (step 4): "welcome" at a group's first approved booking, "forgot"
+ * when the contact asks for a new one. The password itself is in this email only; nothing keeps a copy.
+ */
+export function portalPasswordEmail(kind: "welcome" | "forgot", d: { contactPerson: string; groupName: string; email: string; otp: string; until: string }, siteUrl: string): { subject: string; html: string } {
+  const signIn = `${siteUrl.replace(/\/+$/, "")}/book/sign-in`;
+  const title = kind === "welcome" ? "Your group's Volunteers Portal" : "Your new one-time password";
+  const subject = kind === "welcome" ? "Your Volunteers Portal sign-in" : "Your new Volunteers Portal password";
+  const intro =
+    kind === "welcome"
+      ? p(`${escapeHtml(d.groupName)} now has its own page with Little Ark Foundation: your visits, coming and past, booking again with your details filled in, and confirming who came.`)
+      : p(`You asked for a new one-time password for ${escapeHtml(d.groupName)}. Your current password keeps working until you choose a new one. If you did not ask for this, you can ignore this email.`);
+  const html = `<div style="background:#edf8ff;padding:24px 12px;font-family:Arial,Helvetica,sans-serif">
+<div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #c7dce9;border-radius:20px;padding:28px 24px">
+<p style="margin:0 0 6px;color:${BLUE};font-size:12px;font-weight:bold;letter-spacing:1px;text-transform:uppercase">Volunteers Portal</p>
+<h1 style="margin:0 0 16px;color:${NAVY};font-size:24px;line-height:1.15">${title}</h1>
+${p(`Dear ${escapeHtml(d.contactPerson || d.groupName)},`)}
+${intro}
+${p(`Sign in with <strong style="color:${NAVY}">${escapeHtml(d.email)}</strong> and this one-time password:`)}
+<p style="margin:0 0 16px;font-family:Consolas,Menlo,monospace;font-size:26px;font-weight:bold;letter-spacing:3px;color:${NAVY}">${escapeHtml(d.otp)}</p>
+${p(`It works once, until ${escapeHtml(d.until)}. Then choose your own password. Keep it to yourself: Little Ark Foundation never asks for it.`)}
+<p style="margin:22px 0 8px"><a href="${escapeHtml(signIn)}" style="display:inline-block;background:#ffc83d;color:${NAVY};font-weight:bold;font-size:13px;letter-spacing:0.5px;text-transform:uppercase;text-decoration:none;padding:13px 24px;border-radius:999px">Sign in</a></p>
 <p style="margin:18px 0 0;color:${SLATE};font-size:13px;line-height:1.5">Little Ark Foundation · Our Children. Our Future.</p>
 </div></div>`;
   return { subject, html };

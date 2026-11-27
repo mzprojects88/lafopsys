@@ -254,6 +254,8 @@ export function TrackBooking({ initialRef, signedIn = false }: { initialRef: str
                       if (!res?.ok || !out?.ok) return void setError(out?.error ?? "We could not reach the server.");
                       if (!out.people?.length) return void setError("Your group has no earlier visit with names.");
                       setError("");
+                      // Names already typed or saved are only replaced when the group says so.
+                      if (typed.length && !window.confirm(`Replace the ${typed.length} name${typed.length === 1 ? "" : "s"} here with the ${Math.min(out.people.length, b.volunteersCount)} who came last time?`)) return;
                       setNames(out.people.slice(0, b.volunteersCount));
                     }}
                   >
@@ -301,7 +303,7 @@ export function TrackBooking({ initialRef, signedIn = false }: { initialRef: str
           {b.canCancel ? (
             <section className={ui.card}>
               <h2 className={ui.h2}>Can&apos;t make it?</h2>
-              <p className="mt-2 max-w-prose text-[15px] leading-relaxed">Please cancel as early as you can, so another group can take the slot.</p>
+              <p className="mt-2 max-w-prose text-[15px] leading-relaxed">Please cancel as early as you can, so another group can take the slot. You can cancel here until {longDate(b.namesDue)}.</p>
               <div className="mt-4 flex flex-wrap gap-3">
                 {sure ? (
                   <>
@@ -318,6 +320,13 @@ export function TrackBooking({ initialRef, signedIn = false }: { initialRef: str
                   </button>
                 )}
               </div>
+            </section>
+          ) : b.status === "approved" || b.status === "pending" ? (
+            <section className={ui.card}>
+              <h2 className={ui.h2}>Can&apos;t make it?</h2>
+              <p className="mt-2 max-w-prose text-[15px] leading-relaxed">
+                Your visit is close, so it can no longer be cancelled here. Please tell us as soon as you can at <strong className="text-[#082f59]">info@littlearkfoundation.org</strong>.
+              </p>
             </section>
           ) : null}
         </>

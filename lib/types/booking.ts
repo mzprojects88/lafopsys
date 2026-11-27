@@ -144,6 +144,8 @@ export interface BookingPlan {
   approvedOn: string | null;
   approvedBy: string;
   notes: string;
+  /** The signed copy NCH returned (signed_file_key): its file name, or empty when none is on file. */
+  signedName: string;
 }
 
 export interface BookingPlanItem {

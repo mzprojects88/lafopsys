@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronLeft, ChevronRight, FileDown, Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileCheck2, FileDown, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { LoadingState } from "@/components/patterns/loading-state";
 import { PageHeader } from "@/components/patterns/page-header";
@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useRole } from "@/context/role-provider";
-import { useBookingPlans, type PlanItemInput } from "@/lib/hooks/use-booking-plans";
+import { bookingPlansStore, useBookingPlans, type PlanItemInput } from "@/lib/hooks/use-booking-plans";
 import { fetchSlotStates, useBookingSetup, type MutationResult } from "@/lib/hooks/use-bookings-collection";
 import { useModuleAccess } from "@/lib/hooks/use-module-access";
 import type { SlotOfDay } from "@/lib/types/booking";
@@ -165,6 +165,41 @@ export default function ActivityPlanPage() {
                     <FileDown className="size-4" /> PDF
                   </a>
                 </Button>
+                {plan.signedName ? (
+                  <Button asChild variant="outline" size="sm">
+                    <a href={`/api/bookings/plan-signed?id=${plan.id}`} target="_blank" rel="noreferrer noopener" title={plan.signedName}>
+                      <FileCheck2 className="size-4" /> Signed copy
+                    </a>
+                  </Button>
+                ) : null}
+                {canEdit && plan.status !== "draft" ? (
+                  <Button asChild variant="outline" size="sm" disabled={busy}>
+                    <label className="cursor-pointer">
+                      <Upload className="size-4" /> {plan.signedName ? "Replace signed copy" : "Add signed copy"}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,application/pdf"
+                        className="sr-only"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = "";
+                          if (!file) return;
+                          if (file.size > 3 * 1024 * 1024) return void toast.error("Attach a photo (JPG or PNG) or a PDF of up to 3 MB.");
+                          const data = await new Promise<string>((ok) => {
+                            const r = new FileReader();
+                            r.onload = () => ok(String(r.result));
+                            r.readAsDataURL(file);
+                          });
+                          const res = await fetch("/api/bookings/plan-signed", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ planId: plan.id, fileName: file.name, data }) }).catch(() => null);
+                          const out = (await res?.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+                          if (!res?.ok || !out?.ok) return void toast.error(out?.error ?? "The signed copy couldn't be filed.");
+                          toast.success("Signed copy filed.");
+                          void bookingPlansStore.refetch();
+                        }}
+                      />
+                    </label>
+                  </Button>
+                ) : null}
               </div>
             }
             flush

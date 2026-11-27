@@ -1,4 +1,5 @@
 import { NextResponse, after } from "next/server";
+import { welcomeGroupOnApproval } from "@/lib/booking/portal";
 import { UUID, queueBookingEmail, readableError } from "@/lib/booking/server";
 import { createClient } from "@/lib/supabase/server";
 import type { BookingEmailKind } from "@/lib/utils/booking-emails";
@@ -33,5 +34,7 @@ export async function POST(request: Request) {
   }
   const kind = EMAIL[step];
   if (kind) after(() => queueBookingEmail(id, kind));
+  // A group's first approved booking: its contact gets a one-time password for the Volunteers Portal (step 4).
+  if (step === "approve") after(() => welcomeGroupOnApproval(id));
   return NextResponse.json({ ok: true });
 }

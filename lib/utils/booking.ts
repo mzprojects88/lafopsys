@@ -219,3 +219,11 @@ export function bookingTotals(months: BookingMonth[]): Omit<BookingMonth, "month
   const sum = (k: keyof Omit<BookingMonth, "month">) => months.reduce((n, m) => n + m[k], 0);
   return { requests: sum("requests"), pending: sum("pending"), upcoming: sum("upcoming"), visits: sum("visits"), noShow: sum("noShow"), declined: sum("declined"), cancelled: sum("cancelled"), children: sum("children"), volunteers: sum("volunteers"), hours: sum("hours") };
 }
+
+/** The file's own name, from its library key ("…/<plan id>-<8 chars>-<name>"). */
+export const signedName = (key: string) => key.split("/").pop()?.replace(/^[0-9a-f-]{36}-[0-9a-f]{8}-/i, "") ?? "";
+
+/** The paths the public booking site (BOOKING_SITE_ONLY=1, proxy.ts) serves: the booking pages and their API. */
+export function bookingSiteAllows(path: string): boolean {
+  return /^\/(book|api\/book)(\/|$)/.test(path);
+}

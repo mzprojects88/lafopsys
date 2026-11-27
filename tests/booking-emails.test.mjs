@@ -1,7 +1,7 @@
 // lib/utils/booking-emails.ts: the emails a requestor gets about a booking (0172).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { bookingAlertEmail, bookingEmail, escapeHtml, longDate, trackUrl } from "../lib/utils/booking-emails.ts";
+import { bookingAlertEmail, bookingEmail, escapeHtml, longDate, portalPasswordEmail, trackUrl } from "../lib/utils/booking-emails.ts";
 
 const data = {
   ref: "LAF-AC-ABCD-2345",
@@ -94,5 +94,18 @@ describe("booking emails", () => {
     const sum = bookingAlertEmail("summary", rows, "https://lafopsys.vercel.app");
     assert.equal(sum.subject, "2 booking requests to confirm");
     assert.ok(sum.html.includes("Filed by staff"));
+  });
+  it("step 4: the portal password email carries the one-time password, the sign-in link and the right words, escaped", () => {
+    const d = { contactPerson: "Sample <b>Contact</b>", groupName: "Sample Group", email: "group@example.org", otp: "ABCDE-FGH23", until: "Monday, November 30, 2026 at 9:15 AM" };
+    const w = portalPasswordEmail("welcome", d, "https://lafopsys.vercel.app/");
+    assert.equal(w.subject, "Your Volunteers Portal sign-in");
+    assert.ok(w.html.includes("ABCDE-FGH23") && w.html.includes('href="https://lafopsys.vercel.app/book/sign-in"') && w.html.includes("group@example.org") && !w.html.includes("<b>Contact"));
+    const f = portalPasswordEmail("forgot", d, "https://lafopsys.vercel.app");
+    assert.equal(f.subject, "Your new Volunteers Portal password");
+    assert.ok(f.html.includes("current password keeps working") && f.html.includes("did not ask for this"));
+  });
+  it("0186: the reminder no longer says to cancel on the page; it says to write to info@", () => {
+    const r = bookingEmail("reminder", { ...data, daysToGo: 1, namesGiven: 5 }, site).html;
+    assert.ok(!r.includes("cancel on your booking page") && r.includes("info@littlearkfoundation.org"));
   });
 });
