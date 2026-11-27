@@ -4,6 +4,7 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/patterns/page-header";
 import { CardScanResult, cardToken } from "@/components/modules/patients/card-scan-result";
+import { CardDonations } from "@/components/modules/patients/direct-donations";
 import { useBarcodeScanner } from "@/lib/hooks/use-barcode-scanner";
 
 /**
@@ -47,6 +48,7 @@ export default function ScanPage() {
       {token ? (
         <>
           <CardScanResult key={token} token={token} />
+          <CardDonations key={"d-" + token} token={token} canByName={false} />
           <Button size="lg" onClick={next}>
             Scan next card
           </Button>

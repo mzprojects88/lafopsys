@@ -16,6 +16,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   history: "History",
   stocks: "Operations Stocks",
   "id-cards": "ID cards",
+  direct: "Direct donations",
   calendar: "Calendar",
   bookings: "LAF Activity Center Bookings",
   plan: "Activity Plan",
