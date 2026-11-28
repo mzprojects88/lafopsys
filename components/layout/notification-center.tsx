@@ -4,8 +4,9 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { BedDouble, Bell, Bus, CalendarCheck, ClipboardList, CloudOff, Fuel, Mail, MapPin, PenLine, Receipt, UtensilsCrossed, Wrench, type LucideIcon } from "lucide-react";
+import { BedDouble, Bell, Bus, CalendarCheck, ClipboardList, CloudOff, Fuel, Gift, Mail, MapPin, PenLine, Receipt, UtensilsCrossed, Wrench, type LucideIcon } from "lucide-react";
 import { bookingRequestsStore } from "@/lib/hooks/use-bookings-collection";
+import { useDirectWaiting } from "@/lib/hooks/use-direct-donations";
 import { bedNightsStore } from "@/lib/hooks/use-bed-nights-collection";
 import { mealsServedStore } from "@/lib/hooks/use-meals-served";
 import { useTripsData } from "@/lib/hooks/use-trips-collection";
@@ -88,6 +89,18 @@ export function NotificationCenter() {
       title: `${giftChecks} gift-in-kind record${giftChecks === 1 ? "" : "s"} to check`,
       body: "Match them with the Inventory Lead, then answer each one in Finance › Approvals › Data checks.",
       href: "/finance/approvals",
+    });
+  }
+  // Donations for patients (Inventory 0082): goods not fully given after the target days, for those who give them out.
+  const direct = useDirectWaiting(roles.some((r) => r === "admin" || r === "office_admin" || r === "social_worker" || r === "inventory_lead"));
+  if (direct.late.length > 0) {
+    const d = direct.late[0]!;
+    reminders.push({
+      id: "direct-donations-late",
+      title: `${direct.late.length} donation${direct.late.length === 1 ? "" : "s"} for patients still to give`,
+      body: `${d.arNumber}${direct.late.length > 1 ? ` and ${direct.late.length - 1} more` : ""}: received more than ${d.targetDays} days ago and not all given. Scan the children's ID cards to give their shares.`,
+      href: "/patients/direct",
+      icon: Gift,
     });
   }
   // DTR (0063): without the pin, clock-ins can't be checked against the 20 m radius.

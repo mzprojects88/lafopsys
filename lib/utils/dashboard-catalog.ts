@@ -5,7 +5,7 @@
 export type CardKey =
   | "housing" | "rides" | "meals" | "child_visits" | "care_cart" | "patients" | "cash" | "gifts" | "expenses"
   | "in_house" | "since_2024" | "waiting" | "funds" | "budget" | "compliance" | "volunteers" | "stock"
-  | "transport_costs" | "caf_nights" | "staff_in" | "goals" | "beds" | "shop" | "bookings";
+  | "transport_costs" | "caf_nights" | "staff_in" | "goals" | "beds" | "shop" | "bookings" | "direct";
 
 /** In the order a new dashboard shows them; `main` cards are on by default, the others are switched on by the person.
  * `money`: a peso figure the database sends only to profiles that have the card (shared.dashboard_card_ok). */
@@ -34,6 +34,7 @@ export const CARDS: { key: CardKey; title: string; main: boolean; now?: boolean;
   { key: "beds", title: "Beds", main: false, now: true },
   { key: "shop", title: "Shop sales", main: false, readers: "Only those who can open the Shop see its figures: other roles see an empty card." },
   { key: "bookings", title: "Activity Center bookings", main: false, now: true, readers: "Only those who can open LAF Activity Center Bookings see its figures: other roles see zeros." },
+  { key: "direct", title: "Donations for patients", main: false, now: true, readers: "Only those who receive or give donations for patients, or who can open Donors, see its figures: other roles see zeros." },
 ];
 
 export type ActionKey =

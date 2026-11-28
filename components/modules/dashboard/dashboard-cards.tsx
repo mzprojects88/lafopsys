@@ -7,6 +7,7 @@ import {
   Bus,
   CalendarCheck,
   Fuel,
+  Gift,
   HandCoins,
   HandHeart,
   Home,
@@ -41,6 +42,7 @@ import { useDtrSessions } from "@/lib/hooks/use-dtr-sessions";
 import { useGoalActuals } from "@/lib/hooks/use-goal-actuals";
 import { useShopOrders } from "@/lib/hooks/use-shop-collection";
 import { useBookingRequests } from "@/lib/hooks/use-bookings-collection";
+import { useDirectWaiting } from "@/lib/hooks/use-direct-donations";
 import { proceedsOf, soldIn } from "@/lib/utils/shop";
 import { useHouseLayout } from "@/lib/hooks/use-house-layout-collection";
 import { usePatientsData } from "@/lib/hooks/use-patients-collection";
@@ -137,6 +139,8 @@ export function DashboardCard({ k, f, period, window, now }: { k: CardKey; f: Da
       return <ShopCard window={window} period={period} />;
     case "bookings":
       return <BookingsCard />;
+    case "direct":
+      return <DirectCard />;
   }
 }
 
@@ -251,6 +255,23 @@ function BookingsCard() {
       sublabel={`pending approval · ${upcoming.length} upcoming${upcoming[0] ? `, next ${formatDate(upcoming[0].date, "EEE, MMM d")}` : ""}${toRecord ? ` · ${toRecord} to record` : ""}`}
       icon={CalendarCheck}
       tone={pending || toRecord ? "warning" : undefined}
+    />
+  );
+}
+
+/** Donations for patients (Inventory 0082): how many still have goods to give, how much, and which are past the target
+ * days. Read through the database's own rule: someone who may not see them gets zeros. */
+function DirectCard() {
+  const { open, late, loading } = useDirectWaiting(true);
+  const left = open.reduce((s, d) => s + Number(d.left), 0);
+  return (
+    <Card
+      href="/patients/direct"
+      label="Donations for patients"
+      value={loading ? "…" : String(open.length)}
+      sublabel={open.length ? `still to give · ${Math.round(left * 1000) / 1000} item${left === 1 ? "" : "s"} left${late.length ? ` · ${late.length} past ${late[0]!.targetDays} days` : ""}` : "Nothing waiting to be given"}
+      icon={Gift}
+      tone={late.length ? "warning" : undefined}
     />
   );
 }

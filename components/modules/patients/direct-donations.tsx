@@ -33,6 +33,8 @@ export interface DirectDonationsProps {
   Scanner: React.ComponentType<{ onToken: (token: string) => void; onClose: () => void }>;
   /** Download the AR of a receipt (each app has its own PDF door). */
   onDownloadAr?: (donation: { id: string; arNumber: string }) => void;
+  /** Something was received, given or undone: the app's bell and dashboard card read again. */
+  onChanged?: () => void;
 }
 
 const inv = () => createClient().schema("inventory");
@@ -53,7 +55,11 @@ export function DirectDonations(props: DirectDonationsProps) {
 
   // Each change (a give, an undo, a new receipt) bumps the tick: the list and the open donation are read again.
   const [tick, setTick] = React.useState(0);
-  const refresh = React.useCallback(() => setTick((t) => t + 1), []);
+  const { onChanged } = props;
+  const refresh = React.useCallback(() => {
+    setTick((t) => t + 1);
+    onChanged?.();
+  }, [onChanged]);
 
   React.useEffect(() => {
     let off = false;

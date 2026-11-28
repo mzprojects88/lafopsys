@@ -6,6 +6,7 @@ import { DirectDonations } from "@/components/modules/patients/direct-donations"
 import { DirectScanner } from "@/components/modules/patients/direct-scanner";
 import { PatientsSubNav } from "@/components/modules/patients/patients-subnav";
 import { useRole } from "@/context/role-provider";
+import { directDonationsStore } from "@/lib/hooks/use-direct-donations";
 import { fileNameFromHeader } from "@/lib/utils/ar-file-name";
 
 /**
@@ -45,6 +46,7 @@ export default function DirectDonationsPage() {
         canUndo={has("admin", "inventory_lead")}
         Scanner={DirectScanner}
         onDownloadAr={(d) => void downloadAr(d)}
+        onChanged={() => void directDonationsStore.refetch()}
       />
     </div>
   );
